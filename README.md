@@ -134,9 +134,9 @@ Apply a direct -400 kHz shift to the signal and pipe to nrsc5 to decode the firs
 nrsc5_resample_tool -i my_capture.wav -F -400e3 -o | nrsc5 -r - 0
 ```
 **Example 4: Shifting frequency after resampling**
-Use the -x flag as a workaround for narrow recordings where the HD sideband is near the edge of the passband.
+Use the -x flag as a workaround for narrow recordings where only one HD sideband is present. 
 ```bash
-nrsc5_resample_tool -i narrow_capture.wav -F 192e3 -x -o | nrsc5 -r - 0
+nrsc5_resample_tool -i narrow_capture.wav -c 97.3e6 -x -o | nrsc5 -r - 0
 ```
 ### Known Issues and Limitations
 
