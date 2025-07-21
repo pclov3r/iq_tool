@@ -114,6 +114,7 @@ Options:
                                HD sideband is present).
 
   -s, --scale <value>         Scaling factor for input samples (Default: 0.02 for cu8, 0.5 for cs16).
+```
 
 #### Examples
 **Example 1: Basic resampling to a file**
