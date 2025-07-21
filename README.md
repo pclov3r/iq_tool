@@ -119,20 +119,25 @@ Options:
 #### Examples
 **Example 1: Basic resampling to a file**
 Resample a 16-bit WAV file to the default cu8 format.
+```bash
 nrsc5_resample_tool -i my_capture.wav -f my_capture.cu8
-
+```
 **Example 2: Piping directly to nrsc5**
 Resample and shift a signal to the target station, then pipe it to nrsc5 to decode the first program (0). (Assumes the WAV has metadata).
+```bash
 nrsc5_resample_tool -i sdrsharp_capture.wav -c 97.3e6 -o | nrsc5 -r - 0
+```
 
 **Example 3: Manual frequency shift**
 Apply a direct -400 kHz shift to the signal and pipe to nrsc5 to decode the first program.
+```bash
 nrsc5_resample_tool -i my_capture.wav -F -400e3 -o | nrsc5 -r - 0
-
+```
 **Example 4: Shifting frequency after resampling**
 Use the -x flag as a workaround for narrow recordings where the HD sideband is near the edge of the passband.
+```bash
 nrsc5_resample_tool -i narrow_capture.wav -F 192e3 -x -o | nrsc5 -r - 0
-
+```
 ### Known Issues and Limitations
 
 *   **Experimental:** As stated above, the code is not as extensively tested as a mature project and may contain bugs.
