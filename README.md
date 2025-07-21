@@ -79,7 +79,7 @@ The repository includes a helper script `build-win.sh` for cross-compiling from 
 ```bash
 # Edit build-win.sh to match your environment first!
 ./build-win.sh 64 avx2
-
+```
 ### Usage
 
 #### Command-Line Options
