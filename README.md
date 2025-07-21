@@ -63,11 +63,10 @@ To build this project, you will need:
     ```bash
     git clone https://github.com/pclov3r/nrsc5_resample_tool.git
     cd nrsc5_resample_tool
-
     mkdir build
     cd build
     cmake ..
-    make -j$(nproc)
+    make
     ```
     The executable `nrsc5_resample_tool` will be in the `build` directory.
 
@@ -79,7 +78,7 @@ The repository includes a helper script `build-win.sh` for cross-compiling from 
 
 ```bash
 # Edit build-win.sh to match your environment first!
-./build-win.sh 64 avx2 -j$(nproc)
+./build-win.sh 64 avx2
 ```
 ### Usage
 
