@@ -138,6 +138,36 @@ Use the -x flag as a workaround for narrow recordings where only one HD sideband
 ```bash
 nrsc5_resample_tool -i narrow_capture.wav -c 97.3e6 -x -o | nrsc5 -r - 0
 ```
+### Releases and Precompiled Binaries
+
+Releases, including precompiled Windows binaries, are available on the project's **[GitHub Releases page](https://github.com/pclov3r/nrsc5_resample_tool/releases)**.
+
+#### Windows Binaries
+
+Precompiled 64-bit Windows executables (`nrsc5_resample_tool.exe`) are provided with each release. These are built using MinGW-w64 and are dynamically linked.
+
+**Important:** All the required library files (`.dll`s) are included in the `.zip` archive. For the program to function correctly, the executable **must** remain in the same directory as these DLL files.
+
+#### Choosing the Right Version (AVX vs. AVX2)
+
+Two versions of the Windows binaries are provided, compiled for different CPU instruction sets to optimize performance:
+
+*   **AVX2:** Offers the best performance but requires a more modern CPU (Intel Haswell from 2013, AMD Excavator from 2015, or newer).
+*   **AVX:** A more compatible version that runs on older CPUs (Intel Sandy Bridge from 2011, AMD Bulldozer from 2011, or newer).
+
+**How to choose:**
+1.  **Try the AVX2 version first.** Most 64-bit systems from the last decade support it.
+2.  If the `avx2` version fails to run or crashes immediately, your CPU does not support AVX2. You should use the **AVX** version instead.
+3.  To be certain, you can use a free utility like **CPU-Z** to check the "Instructions" field for AVX2 support.
+
+#### Installation Steps
+
+1.  Navigate to the [Releases page](https://github.com/pclov3r/nrsc5_resample_tool/releases).
+2.  Find the latest release and expand the "Assets" section.
+3.  Download the `.zip` file that matches your CPU (e.g., `nrsc5_resample_tool_avx2_win64.zip` for newer CPUs, or `nrsc5_resample_tool_avx_win64.zip` for older ones).
+4.  **Extract the entire contents** of the archive into a new folder.
+5.  Run `nrsc5_resample_tool.exe` from that folder using the command line (e.g., `cmd.exe` or PowerShell). Do not move the executable out of this folder.
+
 ### Known Issues and Limitations
 
 *   **Experimental:** As stated above, the code is not as extensively tested as a mature project and may contain bugs.
