@@ -10,6 +10,11 @@
 
 #ifndef _WIN32
 #include <strings.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#else
+#include <sys/stat.h>
+#include <io.h> // For _isatty
 #endif
 
 #include "types.h"
@@ -24,24 +29,28 @@
 #include "input_manager.h"
 #include "sample_convert.h"
 #include "file_writer.h"
-#include "presets_loader.h" // Include the new header for preset loading
+#include "presets_loader.h"
 
-#ifndef _WIN32
-#include <sys/stat.h>
-#include <unistd.h>
-#else
-#include <sys/stat.h>
-#include <io.h> // For _isatty
-#endif
+// --- Global Variable Definitions ---
 
-// Define a single, global, recursive mutex for all console output
+// Define a single, global, recursive mutex for all console output.
+// It is declared 'extern' in signal_handler.c so it can be used there.
 pthread_mutex_t g_console_mutex;
 
-// Make the global config accessible to other files that need it (like cli.c)
-extern AppConfig g_config; // Already declared extern in cli.c, but good to have here too.
-AppConfig g_config; // Actual definition in main.c
+// Define the global configuration struct.
+// It is declared 'extern' in cli.c so it can be populated there.
+AppConfig g_config;
 
-// Create a lock function for the logger to use our global mutex
+// --- Forward Declarations for Static Helper Functions ---
+static void initialize_resource_struct(AppResources *resources);
+static bool validate_configuration(const AppConfig *config, const AppResources *resources);
+static bool initialize_application(AppConfig *config, AppResources *resources);
+static void cleanup_application(AppConfig *config, AppResources *resources);
+static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success);
+static void format_duration(double total_seconds, char* buffer, size_t buffer_size);
+
+// --- Logger Lock Function ---
+// Provides the logging library with a way to use our global mutex.
 static void console_lock_function(bool lock, void *udata) {
     pthread_mutex_t *mutex = (pthread_mutex_t *)udata;
     if (lock) {
@@ -51,11 +60,14 @@ static void console_lock_function(bool lock, void *udata) {
     }
 }
 
-// Progress update callback function
+// --- Progress Update Callback ---
+// This function is passed to the processing pipeline to report progress.
 static void application_progress_callback(unsigned long long current_read_frames, long long total_input_frames, unsigned long long total_output_frames, void* udata) {
-    (void)total_output_frames;
+    (void)total_output_frames; // This parameter is currently unused.
     pthread_mutex_t *console_mutex = (pthread_mutex_t *)udata;
     pthread_mutex_lock(console_mutex);
+
+    // Only print progress if stderr is a terminal.
     #ifdef _WIN32
     if (_isatty(_fileno(stderr))) {
         fprintf(stderr, "\r                                                                               \r");
@@ -65,35 +77,33 @@ static void application_progress_callback(unsigned long long current_read_frames
         fprintf(stderr, "\r                                                                               \r");
     }
     #endif
-    if (total_input_frames > 0) {
+
+    if (total_input_frames > 0) { // Finite source (e.g., WAV file)
         double percentage = ((double)current_read_frames / (double)total_input_frames) * 100.0;
         if (percentage > 100.0) percentage = 100.0;
         fprintf(stderr, "\rProcessed %llu / %lld input frames (%.1f%%)...",
                 current_read_frames, total_input_frames, percentage);
-    } else {
+    } else { // Infinite source (e.g., SDR stream)
         fprintf(stderr, "\rProcessed %llu input frames...", current_read_frames);
     }
+    fflush(stderr);
     pthread_mutex_unlock(console_mutex);
 }
 
 
-// --- Forward Declarations for Static Helper Functions ---
-static void initialize_resource_struct(AppResources *resources);
-static bool validate_configuration(const AppConfig *config, const AppResources *resources);
-static bool initialize_application(AppConfig *config, AppResources *resources);
-static void cleanup_application(AppConfig *config, AppResources *resources);
-static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success);
-
+// --- Main Application Entry Point ---
 int main(int argc, char *argv[]) {
-    // Initialize mutex attributes for recursive mutex
+    // Initialize mutex attributes for a recursive mutex, allowing the same
+    // thread to lock it multiple times without deadlocking.
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
     pthread_mutex_init(&g_console_mutex, &attr);
     pthread_mutexattr_destroy(&attr);
 
+    // Configure the logger to use our global mutex for thread-safe output.
     log_set_lock(console_lock_function, &g_console_mutex);
-    log_set_level(LOG_INFO); // Default log level
+    log_set_level(LOG_INFO); // Set the default logging level.
 
     AppResources resources;
     int exit_status = EXIT_FAILURE;
@@ -102,56 +112,72 @@ int main(int argc, char *argv[]) {
     pthread_t sig_thread_id;
     #endif
 
-    // --- CRUCIAL FIX: Explicitly reset global/static state for re-entry ---
-    // This ensures a clean state if main() is called multiple times without a full process exit.
-    memset(&g_config, 0, sizeof(AppConfig)); // Reset global config struct
-    initialize_resource_struct(&resources); // Reset global resources struct
-    reset_shutdown_flag(); // Reset the signal handler's shutdown flag
-    // -----------------------------------------------------------------------
+    // --- CRUCIAL: Explicitly reset all global/static state ---
+    // This ensures a clean state if main() were ever called multiple times
+    // without a full process exit (e.g., in a testing harness).
+    memset(&g_config, 0, sizeof(AppConfig));
+    g_config.help_requested = false; // FIX: Initialize the new help flag.
+    initialize_resource_struct(&resources);
+    reset_shutdown_flag();
 
-    // +++ STEP 1: LOAD PRESETS FROM FILE AT THE VERY BEGINNING +++
-    // The presets_load_from_file function now handles searching for the file.
-    // It returns false only on fatal system errors (e.g., malloc failure),
-    // not for conflicts or file not found (which are logged as warnings/info).
+    // Load presets from file at the very beginning. This function handles
+    // finding the file and logs info/warnings; it only returns false on a
+    // fatal, unrecoverable error like a memory allocation failure.
     if (!presets_load_from_file(&g_config)) {
-        // A false return from the loader is a fatal, unrecoverable error (e.g., malloc failed)
         presets_free_loaded(&g_config);
         pthread_mutex_destroy(&g_console_mutex);
         return EXIT_FAILURE;
     }
 
+    // Set up signal handlers (Ctrl+C) for graceful shutdown.
     setup_signal_handlers(&resources);
 
+    // Parse command-line arguments.
     if (!parse_arguments(argc, argv, &g_config)) {
+        // A 'false' return here indicates a genuine parsing error (e.g., unknown
+        // option, missing value), not a help request.
         print_usage(argv[0]);
-        presets_free_loaded(&g_config); // Free presets before exiting
+        presets_free_loaded(&g_config);
         pthread_mutex_destroy(&g_console_mutex);
         return EXIT_FAILURE;
     }
 
+    // --- FIX: Check for the help flag after successful parsing ---
+    // If --help was used, parse_arguments returns true and sets this flag.
+    if (g_config.help_requested) {
+        print_usage(argv[0]);
+        presets_free_loaded(&g_config);
+        pthread_mutex_destroy(&g_console_mutex);
+        return EXIT_SUCCESS; // Exit cleanly with success code.
+    }
+
+    // Get the correct set of input operations (WAV, SDRplay, etc.).
     resources.selected_input_ops = get_input_ops_by_name(g_config.input_type_str);
     if (!resources.selected_input_ops) {
         log_fatal("Input type '%s' is not supported or not enabled in this build.", g_config.input_type_str);
-        presets_free_loaded(&g_config); // Free presets before exiting
+        presets_free_loaded(&g_config);
         pthread_mutex_destroy(&g_console_mutex);
         return EXIT_FAILURE;
     }
 
+    // Validate the combination of options.
     if (!validate_configuration(&g_config, &resources)) {
-        presets_free_loaded(&g_config); // Free presets before exiting
+        presets_free_loaded(&g_config);
         pthread_mutex_destroy(&g_console_mutex);
         return EXIT_FAILURE;
     }
 
+    // Initialize all application resources (buffers, DSP, threads, etc.).
     if (!initialize_application(&g_config, &resources)) {
         cleanup_application(&g_config, &resources);
-        presets_free_loaded(&g_config); // Free presets before exiting
+        presets_free_loaded(&g_config);
         pthread_mutex_destroy(&g_console_mutex);
         return EXIT_FAILURE;
     }
 
     resources.start_time = time(NULL);
 
+    // On POSIX systems, spawn a dedicated thread to wait for signals.
     #ifndef _WIN32
     if (pthread_create(&sig_thread_id, NULL, signal_handler_thread, &resources) != 0) {
         log_fatal("Failed to create signal handler thread.");
@@ -162,6 +188,7 @@ int main(int argc, char *argv[]) {
     }
     #endif
 
+    // Start the main processing pipeline threads.
     if (!run_processing_threads(&g_config, &resources)) {
         log_fatal("Failed to start processing threads.");
         #ifndef _WIN32
@@ -174,9 +201,11 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+    // Wait for the processing pipeline to complete.
     pthread_join(resources.processor_thread, NULL);
     pthread_join(resources.writer_thread, NULL);
 
+    // Clear the progress line from the console if it was being displayed.
     if (!g_config.output_to_stdout) {
         pthread_mutex_lock(&g_console_mutex);
         #ifdef _WIN32
@@ -191,25 +220,32 @@ int main(int argc, char *argv[]) {
     pthread_join(resources.reader_thread, NULL);
     log_info("Reader thread has joined.");
 
+    // Clean up the signal handler thread on POSIX.
     #ifndef _WIN32
     pthread_cancel(sig_thread_id);
     pthread_join(sig_thread_id, NULL);
     #endif
 
+    // Release all allocated resources.
     cleanup_application(&g_config, &resources);
 
+    // Determine final exit status.
     bool processing_ok = !resources.error_occurred;
     print_final_summary(&g_config, &resources, processing_ok);
     exit_status = (processing_ok || is_shutdown_requested()) ? EXIT_SUCCESS : EXIT_FAILURE;
 
     fflush(stderr);
-    
-    // +++ STEP 2: FREE THE LOADED PRESETS AT THE VERY END +++
+
+    // Free memory used by presets.
     presets_free_loaded(&g_config);
 
+    // Destroy the global mutex.
     pthread_mutex_destroy(&g_console_mutex);
     return exit_status;
 }
+
+
+// --- Static Helper Function Implementations ---
 
 static void initialize_resource_struct(AppResources *resources) {
     memset(resources, 0, sizeof(AppResources));
@@ -276,7 +312,7 @@ static void cleanup_application(AppConfig *config, AppResources *resources) {
 
     InputSourceContext ctx = { .config = config, .resources = resources };
 
-    if (resources->selected_input_ops) {
+    if (resources->selected_input_ops && resources->selected_input_ops->cleanup) {
         resources->selected_input_ops->cleanup(&ctx);
     }
 
@@ -310,7 +346,7 @@ static void format_duration(double total_seconds, char* buffer, size_t buffer_si
         return;
     }
     if (total_seconds > 0 && total_seconds < 1.0) {
-        total_seconds = 1.0;
+        total_seconds = 1.0; // Report at least 1 second for very short runs
     }
 
     int hours = (int)(total_seconds / 3600);
@@ -319,14 +355,16 @@ static void format_duration(double total_seconds, char* buffer, size_t buffer_si
     total_seconds -= minutes * 60;
     int seconds = (int)round(total_seconds);
 
-    if (seconds >= 60) { minutes += seconds / 60; seconds %= 60; }
-    if (minutes >= 60) { hours += minutes / 60; minutes %= 60; }
+    // Handle potential rounding carry-over
+    if (seconds >= 60) { minutes++; seconds = 0; }
+    if (minutes >= 60) { hours++; minutes = 0; }
+
     snprintf(buffer, buffer_size, "%02d:%02d:%02d", hours, minutes, seconds);
 }
 
 static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success) {
     if (config->output_to_stdout) {
-        return;
+        return; // Don't print summary for stdout piping
     }
 
     const int label_width = 32;
@@ -337,43 +375,41 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
     format_duration(duration_secs, duration_buf, sizeof(duration_buf));
     unsigned long long total_output_samples = resources->total_output_frames * 2;
 
+    fprintf(stderr, "\n--- Final Summary ---\n");
+
     if (success && !is_shutdown_requested()) {
-        fprintf(stderr, "\n");
+        fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Completed Successfully");
         fprintf(stderr, "%-*s %s\n", label_width, "Processing Duration:", duration_buf);
         fprintf(stderr, "%-*s %lld / %lld (100.0%%)\n", label_width, "Input Frames Processed:",
                 (long long)resources->source_info.frames, (long long)resources->source_info.frames);
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Generated:", resources->total_output_frames);
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Generated:", total_output_samples);
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
-        fprintf(stderr, "\nResample operation completed successfully.\n");
 
     } else if (is_shutdown_requested()) {
-        fprintf(stderr, "\n");
-        
+        fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Cancelled by User");
         bool is_sdr_input = resources->selected_input_ops->is_sdr_hardware();
-        
+        const char* duration_label = is_sdr_input ? "Capture Duration:" : "Processing Duration:";
+        fprintf(stderr, "%-*s %s\n", label_width, duration_label, duration_buf);
+
         if (is_sdr_input) {
-            fprintf(stderr, "%-*s %s\n", label_width, "Capture Duration:", duration_buf);
             fprintf(stderr, "%-*s %llu\n", label_width, "Input Frames Processed:", resources->total_frames_read);
-            fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Generated:", resources->total_output_frames);
-            fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Generated:", total_output_samples);
-            fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
         } else {
             double percentage = 0.0;
             if (resources->source_info.frames > 0) {
                 percentage = ((double)resources->total_frames_read / (double)resources->source_info.frames) * 100.0;
             }
-            fprintf(stderr, "%-*s %s\n", label_width, "Processing Duration:", duration_buf);
             fprintf(stderr, "%-*s %llu / %lld (%.1f%%)\n", label_width, "Input Frames Processed:",
                     resources->total_frames_read, (long long)resources->source_info.frames, percentage);
-            fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Generated:", resources->total_output_frames);
-            fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Generated:", total_output_samples);
-            fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
-            fprintf(stderr, "\nResample operation cancelled.\n");
         }
+        fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Generated:", resources->total_output_frames);
+        fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Generated:", total_output_samples);
+        fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
 
-    } else {
-        log_error("Processing stopped due to an error after %llu input frames.", resources->total_frames_read);
+    } else { // Error occurred
+        fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Stopped Due to Error");
+        log_error("Processing stopped after %llu input frames.", resources->total_frames_read);
         fprintf(stderr, "%-*s %s (possibly incomplete)\n", label_width, "Output File Size:", size_buf);
     }
+    fprintf(stderr, "\n");
 }

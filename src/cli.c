@@ -34,7 +34,7 @@ static void print_usage_output_options_section(int option_width);
 static void print_usage_wav_specific_options_section(int option_width);
 static void print_usage_processing_options_section(int option_width);
 
-// FIX: Wrap SDR-specific forward declarations in preprocessor guards
+// --- Forward declarations for SDR-specific sections ---
 #if defined(WITH_SDRPLAY) || defined(WITH_HACKRF)
 static void print_usage_sdr_general_options_section(int option_width);
 #endif
@@ -85,14 +85,19 @@ void print_usage(const char *prog_name) {
 }
 
 
-// --- Helper functions for print_usage with corrected formatting ---
+// --- Helper functions for print_usage ---
 
 static void print_usage_input_section(int option_width) {
     fprintf(stderr, "Required Input:\n");
     fprintf(stderr, "  %-*s %s\n", option_width, "-i, --input <type>", "Specifies the input type. Must be one of:");
     fprintf(stderr, "  %-*s   %s\n", option_width, "", "wav:      Input from a WAV file specified by <file_path>.");
+#if defined(WITH_SDRPLAY)
     fprintf(stderr, "  %-*s   %s\n", option_width, "", "sdrplay:  Input from a SDRplay device.");
-    fprintf(stderr, "  %-*s   %s\n\n", option_width, "", "hackrf:   Input from a HackRF device.");
+#endif
+#if defined(WITH_HACKRF)
+    fprintf(stderr, "  %-*s   %s\n", option_width, "", "hackrf:   Input from a HackRF device.");
+#endif
+    fprintf(stderr, "\n");
 }
 
 static void print_usage_output_destination_section(int option_width) {
@@ -177,7 +182,7 @@ static void print_usage_processing_options_section(int option_width) {
     fprintf(stderr, "  %-*s %s\n", option_width, "--no-8-to-16", "Use a native 8-bit processing path, skipping internal scaling.");
     fprintf(stderr, "  %-*s   %s\n", option_width, "", "(Only valid for 8-bit input and an 8-bit output mode).");
     fprintf(stderr, "  %-*s   %s\n\n", option_width, "", "(May provide a minor performance improvement).");
-    
+
     fprintf(stderr, "  %-*s %s\n", option_width, "--preset <name>", "Use a preset for a common target.");
     fprintf(stderr, "  %-*s   %s\n", option_width, "", "(Cannot be used with --no-resample).");
 
@@ -190,6 +195,7 @@ static void print_usage_processing_options_section(int option_width) {
             fprintf(stderr, "  %-*s     %-15s %s\n", option_width, "", preset_label, p->description);
         }
     }
+    fprintf(stderr, "\n");
 }
 
 
@@ -199,41 +205,40 @@ static void print_usage_processing_options_section(int option_width) {
 bool parse_arguments(int argc, char *argv[], AppConfig *config) {
     int opt;
     int long_index = 0;
-    const char* short_opts = "i:of:h"; // Added 'h' for short help option
+    const char* short_opts = "i:of:h"; // Short options string
 
-    // --- CRUCIAL FIX: Reset getopt_long's internal state ---
-    optind = 1; // Reset argument index to start from the beginning of argv
-    opterr = 1; // Ensure getopt prints its own error messages (e.g., unknown option)
-    // -------------------------------------------------------
+    // --- CRUCIAL: Reset getopt_long's internal state for re-entry ---
+    optind = 1;
+    opterr = 1;
 
     static const struct option long_options[] = {
-        {"input",                required_argument, 0, 'i'},
-        {"stdout",               no_argument,       0, 'o'},
-        {"file",                 required_argument, 0, 'f'},
-        {"output-container",     required_argument, 0, 3002},
-        {"output-sample-format", required_argument, 0, 3003},
-        {"rf-freq",              required_argument, 0, 1001},
-        {"bias-t",               no_argument,       0, 1002},
-        {"sdrplay-device-idx",   required_argument, 0, 1003},
-        {"sdrplay-gain-level",   required_argument, 0, 1004},
-        {"sdrplay-antenna",      required_argument, 0, 1005},
-        {"sdrplay-hdr-mode",     no_argument,       0, 1006},
-        {"sdrplay-hdr-bw",       required_argument, 0, 1007},
-        {"hackrf-lna-gain",      required_argument, 0, 1008},
-        {"hackrf-vga-gain",      required_argument, 0, 1009},
-        {"hackrf-amp-enable",    no_argument,       0, 1010},
-        {"no-8-to-16",           no_argument,       0, 1011},
-        {"output-rate",          required_argument, 0, 1012},
-        {"preset",               required_argument, 0, 1013},
-        {"hackrf-sample-rate",   required_argument, 0, 1014},
-        {"sdrplay-sample-rate",  required_argument, 0, 1015},
-        {"sdrplay-bandwidth",    required_argument, 0, 1016},
-        {"no-resample",          no_argument,       0, 1017},
+        {"input",                     required_argument, 0, 'i'},
+        {"stdout",                    no_argument,       0, 'o'},
+        {"file",                      required_argument, 0, 'f'},
+        {"help",                      no_argument,       0, 'h'},
+        {"output-container",          required_argument, 0, 3002},
+        {"output-sample-format",      required_argument, 0, 3003},
+        {"scale",                     required_argument, 0, 3001},
+        {"rf-freq",                   required_argument, 0, 1001},
+        {"bias-t",                    no_argument,       0, 1002},
+        {"sdrplay-device-idx",        required_argument, 0, 1003},
+        {"sdrplay-gain-level",        required_argument, 0, 1004},
+        {"sdrplay-antenna",           required_argument, 0, 1005},
+        {"sdrplay-hdr-mode",          no_argument,       0, 1006},
+        {"sdrplay-hdr-bw",            required_argument, 0, 1007},
+        {"sdrplay-sample-rate",       required_argument, 0, 1015},
+        {"sdrplay-bandwidth",         required_argument, 0, 1016},
+        {"hackrf-lna-gain",           required_argument, 0, 1008},
+        {"hackrf-vga-gain",           required_argument, 0, 1009},
+        {"hackrf-amp-enable",         no_argument,       0, 1010},
+        {"hackrf-sample-rate",        required_argument, 0, 1014},
         {"wav-center-target-frequency", required_argument, 0, 2001},
-        {"wav-shift-frequency",    required_argument, 0, 2002},
-        {"wav-shift-after-resample", no_argument,       0, 2003},
-        {"scale",                required_argument, 0, 3001},
-        {"help",                 no_argument,       0, 'h'}, // ADDED: Explicit --help option
+        {"wav-shift-frequency",       required_argument, 0, 2002},
+        {"wav-shift-after-resample",  no_argument,       0, 2003},
+        {"output-rate",               required_argument, 0, 1012},
+        {"preset",                    required_argument, 0, 1013},
+        {"no-resample",               no_argument,       0, 1017},
+        {"no-8-to-16",                no_argument,       0, 1011},
         {0, 0, 0, 0}
     };
 
@@ -242,6 +247,10 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
             case 'i': config->input_type_str = optarg; break;
             case 'o': config->output_to_stdout = true; break;
             case 'f': config->output_filename_arg = optarg; break;
+            case 'h': // FIX: Handle --help or -h
+                config->help_requested = true;
+                // Return true to signal a clean exit, bypassing validation.
+                return true;
             case 3001: // --scale
                 {
                     char *endptr;
@@ -482,10 +491,7 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
             case 1017: // --no-resample
                 config->no_resample = true;
                 break;
-            case 'h': // ADDED: Explicitly handle --help or -h
-                print_usage(argv[0]);
-                return false; // Exit after printing usage
-            case '?':
+            case '?': // Unknown option or missing argument
                 return false;
             default:
                 log_fatal("Internal error: Unexpected option processing failure.");
@@ -501,6 +507,7 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
     if (!validate_wav_specific_options(config)) return false;
     if (!validate_processing_options(config)) return false;
 
+    // Check for any leftover, non-option arguments
     if (optind < argc) {
         log_fatal("Unexpected non-option arguments found:");
         for (int i = optind; i < argc; i++) { log_error("  %s", argv[i]); }
@@ -529,7 +536,7 @@ static bool validate_input_source(AppConfig *config, int argc, char *argv[], int
         config->sdrplay.use_sdrplay_input = true;
 #else
         log_fatal("Input type 'sdrplay' is not supported in this build. "
-                  "Please re-compile with the -DWITH_SDRPLAY=ON flag.");
+                  "Please re-compile with SDRplay support enabled.");
         return false;
 #endif
     } else if (strcasecmp(config->input_type_str, "hackrf") == 0) {
@@ -537,7 +544,7 @@ static bool validate_input_source(AppConfig *config, int argc, char *argv[], int
         config->hackrf.use_hackrf_input = true;
 #else
         log_fatal("Input type 'hackrf' is not supported in this build. "
-                  "Please re-compile with the -DWITH_HACKRF=ON flag.");
+                  "Please re-compile with HackRF support enabled.");
         return false;
 #endif
     } else {
@@ -560,71 +567,64 @@ static bool validate_output_destination(AppConfig *config) {
 }
 
 static bool validate_output_type_and_sample_format(AppConfig *config) {
+    // --- Step 1: Resolve preset if provided ---
     if (config->preset_name) {
         bool preset_found = false;
         for (int i = 0; i < config->num_presets; i++) {
             if (strcasecmp(config->preset_name, config->presets[i].name) == 0) {
                 const PresetDefinition* p = &config->presets[i];
-                
                 config->target_rate = p->target_rate;
-                
+
+                // Preset provides defaults ONLY if not specified by the user
                 if (!config->sample_type_name) {
                     config->sample_type_name = p->sample_format_name;
                 }
                 if (!config->output_type_provided) {
                     config->output_type = p->output_type;
-                    config->output_type_provided = true; 
+                    config->output_type_provided = true;
                 }
-                
                 preset_found = true;
                 break;
             }
         }
         if (!preset_found) {
-            // Use the PRESETS_FILENAME constant here
             log_fatal("Unknown preset '%s'. Check '%s' or --help for available presets.", config->preset_name, PRESETS_FILENAME);
             return false;
         }
     }
 
+    // --- Step 2: Resolve output container type ---
     if (!config->output_type_provided) {
-        if (config->output_to_stdout) {
-            config->output_type = OUTPUT_TYPE_RAW;
-        } else {
-            config->output_type = OUTPUT_TYPE_WAV_RF64;
-        }
-    } else { 
-        if (config->output_type_name) {
-            if (strcasecmp(config->output_type_name, "raw") == 0) config->output_type = OUTPUT_TYPE_RAW;
-            else if (strcasecmp(config->output_type_name, "wav") == 0) config->output_type = OUTPUT_TYPE_WAV;
-            else if (strcasecmp(config->output_type_name, "wav-rf64") == 0) config->output_type = OUTPUT_TYPE_WAV_RF64;
-            else {
-                log_fatal("Invalid output type '%s'. Must be 'raw', 'wav', or 'wav-rf64'.", config->output_type_name);
-                return false;
-            }
+        // Set default based on destination
+        config->output_type = config->output_to_stdout ? OUTPUT_TYPE_RAW : OUTPUT_TYPE_WAV_RF64;
+    } else if (config->output_type_name) {
+        // User provided a name, so parse it
+        if (strcasecmp(config->output_type_name, "raw") == 0) config->output_type = OUTPUT_TYPE_RAW;
+        else if (strcasecmp(config->output_type_name, "wav") == 0) config->output_type = OUTPUT_TYPE_WAV;
+        else if (strcasecmp(config->output_type_name, "wav-rf64") == 0) config->output_type = OUTPUT_TYPE_WAV_RF64;
+        else {
+            log_fatal("Invalid output type '%s'. Must be 'raw', 'wav', or 'wav-rf64'.", config->output_type_name);
+            return false;
         }
     }
 
-    if (config->output_to_stdout && (config->output_type == OUTPUT_TYPE_WAV || config->output_type == OUTPUT_TYPE_WAV_RF64)) {
-        log_fatal("Invalid option: WAV output cannot be used with --stdout.");
-        return false;
-    }
-
-    if (config->output_filename_arg && !config->output_to_stdout) {
-        if (!config->sample_type_name) {
-            config->sample_type_name = "cs16";
-        }
-    }
-
+    // --- Step 3: Set target rate if user provided it directly ---
     if (config->user_rate_provided) {
         config->target_rate = config->user_defined_target_rate;
     }
 
+    // --- Step 4: Resolve output sample format ---
     if (!config->sample_type_name) {
-        log_fatal("Missing required argument: you must specify an --output-sample-format or use a preset.");
-        return false;
+        // If still no sample format, set default for file output
+        if (config->output_filename_arg && !config->output_to_stdout) {
+            config->sample_type_name = "cs16";
+        } else {
+            log_fatal("Missing required argument: you must specify an --output-sample-format or use a preset.");
+            return false;
+        }
     }
 
+    // --- Step 5: Parse sample format name and set defaults ---
     if (strcmp(config->sample_type_name, "cu8") == 0) {
         config->sample_format = SAMPLE_TYPE_CU8;
         if (!config->scale_provided) config->scale_value = DEFAULT_SCALE_FACTOR_CU8;
@@ -639,6 +639,12 @@ static bool validate_output_type_and_sample_format(AppConfig *config) {
         return false;
     }
 
+    // --- Step 6: Final validation checks for combinations ---
+    if (config->output_to_stdout && (config->output_type == OUTPUT_TYPE_WAV || config->output_type == OUTPUT_TYPE_WAV_RF64)) {
+        log_fatal("Invalid option: WAV/RF64 container format cannot be used with --stdout.");
+        return false;
+    }
+
     if ((config->output_type == OUTPUT_TYPE_WAV || config->output_type == OUTPUT_TYPE_WAV_RF64) &&
         config->sample_format == SAMPLE_TYPE_CS8) {
         log_fatal("Error: Signed 8-bit PCM (cs8) is not supported for WAV or RF64 output.");
@@ -650,7 +656,8 @@ static bool validate_output_type_and_sample_format(AppConfig *config) {
 
 static bool validate_sdr_specific_options(const AppConfig *config) {
 #if defined(WITH_SDRPLAY) || defined(WITH_HACKRF)
-    if (config->input_type_str && strcasecmp(config->input_type_str, "wav") == 0) {
+    bool is_wav_input = (config->input_type_str && strcasecmp(config->input_type_str, "wav") == 0);
+    if (is_wav_input) {
         if (config->sdr.rf_freq_provided) {
             log_fatal("Option --rf-freq is not valid for 'wav' input.");
             return false;
@@ -661,14 +668,16 @@ static bool validate_sdr_specific_options(const AppConfig *config) {
         }
     }
 #else
-    (void)config;
+    (void)config; // Suppress unused parameter warning if SDR support is disabled
 #endif
     return true;
 }
 
 static bool validate_wav_specific_options(const AppConfig *config) {
     bool wav_option_used = config->set_center_frequency_target_hz || config->freq_shift_requested || config->shift_after_resample;
-    if (wav_option_used && config->input_type_str && strcasecmp(config->input_type_str, "wav") != 0) {
+    bool is_wav_input = (config->input_type_str && strcasecmp(config->input_type_str, "wav") == 0);
+
+    if (wav_option_used && !is_wav_input) {
         log_fatal("Options --wav-center-target-frequency, --wav-shift-frequency, and --wav-shift-after-resample are only valid for 'wav' input.");
         return false;
     }
