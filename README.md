@@ -47,7 +47,7 @@ While the tool is functional and has been refined, its unique development proces
 
 * **Processing Control:**
 * * **Resampling:** Uses `liquid-dsp` for polyphase resampling to a user-defined rate.
-* * **Frequency Shifting:** Applies frequency shifts using an NCO. The `--wav-shift-after-resample` flag can apply shifts after resampling, which may be useful for narrow I/Q recordings with a single sideband.
+* * **Frequency Shifting:** Applies frequency shifts using an NCO. The `--wav-shift-after-resample` flag can apply shifts after resampling, which may be useful for narrow I/Q recordings.
 * * **8-Bit Processing:** The `--no-8-to-16` flag enables a native 8-bit processing path for 8-bit to 8-bit workflows.
 
 * **System Compatibility:**
