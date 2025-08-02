@@ -63,7 +63,7 @@ To build this project, you will need:
 * **liquid-dsp** (development headers and library).
 * **libexpat** (development headers and library).
 * **pthreads** (On Linux/macOS this is standard; on Windows, MinGW provides a version).
-* **(Optional) SDRplay API Library:** To build with SDRplay support, you must first download and install the official API from the LINK_START_TEXTSDRplay website](https://www.sdrplay.com/downloads/).
+* **(Optional) SDRplay API Library:** To build with SDRplay support, you must first download and install the official API from the [SDRplay website](https://www.sdrplay.com/downloads/).
 * **(Optional) HackRF Library (libhackrf) and libusb:** To build with HackRF support, you must install the host libraries. On Linux, this is typically `libhackrf-dev` and `libusb-1.0-0-dev`.
 
 ### Building the Project
