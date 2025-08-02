@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+
+# Exit immediately if a command exits with a non-zero status.
+set -e
+
+# --- Dependency Paths (Easy to Modify) ---
+# Define the single base path for all Windows dependencies here.
+DEPS_BASE_PATH="/usr/local/src/windows_deps_files/src"
+
+SNDFILE_INCLUDE_DIR="${DEPS_BASE_PATH}/libsndfile/include"
+SNDFILE_LIBRARY="${DEPS_BASE_PATH}/libsndfile/build-win64/libsndfile.dll.a"
+
+LIQUID_INCLUDE_DIR="${DEPS_BASE_PATH}/liquid-dsp/include"
+LIQUID_LIB_BASE_PATH="${DEPS_BASE_PATH}/liquid-dsp"
+
+EXPAT_INCLUDE_DIR="${DEPS_BASE_PATH}/libexpat/expat/lib"
+EXPAT_LIBRARY="${DEPS_BASE_PATH}/libexpat/expat/build-win64/libexpat.dll.a"
+
+SDRPLAY_INCLUDE_DIR="${DEPS_BASE_PATH}/sdrplay_api/include"
+SDRPLAY_LIBRARY="${DEPS_BASE_PATH}/sdrplay_api/x64/sdrplay_api.lib"
+
+HACKRF_INCLUDE_DIR="${DEPS_BASE_PATH}/hackrf/host/libhackrf/src/"
+HACKRF_LIBRARY="${DEPS_BASE_PATH}/hackrf/host/build-win64/libhackrf/src/libhackrf.dll.a"
+
+LIBUSB_INCLUDE_DIR="${DEPS_BASE_PATH}/libusb/build-win64/include/libusb-1.0/"
+LIBUSB_LIBRARY="${DEPS_BASE_PATH}/libusb/build-win64/lib/libusb-1.0.dll.a"
+
+# --- Function to Display Usage ---
+usage() {
+    echo "Usage: $0 [options] [make arguments]"
+    echo
+    echo "Required: liquid-dsp Library Version and Target CPU Architecture (choose one):"
+    echo "  --avx              Link against the pre-compiled AVX version of liquid-dsp."
+    echo "                     This also sets the target CPU architecture to x86-64-v2."
+    echo "  --avx2             Link against the pre-compiled AVX2 version of liquid-dsp."
+    echo "                     This also sets the target CPU architecture to x86-64-v3."
+    echo
+    echo "Optional Build Options:"
+    echo "  --with-sdrplay     Enable and link SDRplay support."
+    echo "  --with-hackrf      Enable and link HackRF support."
+    echo
+    echo "Argument Passthrough:"
+    echo "  --cmake-args \"...\" Pass additional quoted arguments to CMake."
+    echo
+    echo "Other:"
+    echo "  -h, --help         Display this help and exit."
+    echo
+    echo "Any additional arguments are passed directly to 'make' (e.g., -j4)."
+    exit 1
+}
+
+# --- Parse Command-Line Arguments ---
+# Initialize an empty array to hold arguments for 'make'
+MAKE_ARGS=()
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --avx) BUILD_TYPE="avx";;
+        --avx2) BUILD_TYPE="avx2";;
+        --with-sdrplay) WITH_SDRPLAY="ON";;
+        --with-hackrf) WITH_HACKRF="ON";;
+        --cmake-args) CMAKE_EXTRA_ARGS="$2"; shift;; # Consume argument value
+        -h|--help) usage;;
+        *)
+            # If the argument is not a known flag, add it to the MAKE_ARGS array
+            MAKE_ARGS+=("$1")
+            ;;
+    esac
+    shift # Move to the next argument
+done
+
+# --- Validate Required Options ---
+if [ -z "$BUILD_TYPE" ]; then
+    echo "Error: A liquid-dsp library version and corresponding CPU architecture must be specified."
+    echo "Please choose one of the following options:"
+    echo "  --avx  (for x86-64-v2 compatible CPUs)"
+    echo "  --avx2 (for x86-64-v3 compatible CPUs)"
+    echo
+    usage
+fi
+
+# --- Determine CPU_TARGET_ARCHITECTURE based on BUILD_TYPE ---
+# This ensures the compiled binary uses the appropriate instruction set
+# matching the selected liquid-dsp library.
+CPU_TARGET_ARCHITECTURE=""
+case "$BUILD_TYPE" in
+    avx)
+        CPU_TARGET_ARCHITECTURE="x86-64-v2"
+        ;;
+    avx2)
+        CPU_TARGET_ARCHITECTURE="x86-64-v3"
+        ;;
+    *)
+        # This case should ideally not be hit due to the validation above,
+        # but good for robustness.
+        echo "Warning: Unknown BUILD_TYPE '$BUILD_TYPE'. No specific CPU_TARGET_ARCHITECTURE will be set."
+        ;;
+esac
+
+
+# --- Set up environment variables ---
+root=$(cd "$(dirname "$0")/.." && pwd)
+host=x86_64-w64-mingw32
+
+# Construct a unique build directory name based on the selected options
+build_suffix="${BUILD_TYPE}"
+if [ -n "$WITH_SDRPLAY" ]; then
+    build_suffix+="-sdrplay"
+fi
+if [ -n "$WITH_HACKRF" ]; then
+    build_suffix+="-hackrf"
+fi
+prefix=${root}/build-win64-${build_suffix}
+
+
+# --- Set up base CMake options in an array ---
+# CORRECTED: All -D flags now use the consistently named variables.
+cmake_opts=(
+    -D CMAKE_SYSTEM_NAME=Windows
+    -D CMAKE_C_COMPILER=${host}-gcc
+    -D SNDFILE_INCLUDE_DIR=${SNDFILE_INCLUDE_DIR}
+    -D SNDFILE_LIBRARY=${SNDFILE_LIBRARY}
+    -D LIQUID_INCLUDE_DIR=${LIQUID_INCLUDE_DIR}
+    -D EXPAT_INCLUDE_DIR=${EXPAT_INCLUDE_DIR}
+    -D EXPAT_LIBRARY=${EXPAT_LIBRARY}
+)
+
+# --- Conditionally add options to the CMake command ---
+
+# Add the liquid-dsp library path.
+liquid_library_path="${LIQUID_LIB_BASE_PATH}/build-win64-${BUILD_TYPE}/libliquid.dll.a"
+cmake_opts+=(-D LIQUID_LIBRARY=${liquid_library_path})
+
+# Add the CPU_TARGET_ARCHITECTURE if determined
+if [ -n "$CPU_TARGET_ARCHITECTURE" ]; then
+    cmake_opts+=(-D CPU_TARGET_ARCHITECTURE=${CPU_TARGET_ARCHITECTURE})
+fi
+
+# Add SDRplay support if the flag was used
+if [ -n "$WITH_SDRPLAY" ]; then
+    cmake_opts+=(
+        -D WITH_SDRPLAY=ON
+        -D SDRPLAY_INCLUDE_DIR=${SDRPLAY_INCLUDE_DIR}
+        -D SDRPLAY_LIBRARY=${SDRPLAY_LIBRARY}
+    )
+fi
+
+# Add HackRF support if the flag was used
+if [ -n "$WITH_HACKRF" ]; then
+    cmake_opts+=(
+        -D WITH_HACKRF=ON
+        -D HACKRF_INCLUDE_DIR=${HACKRF_INCLUDE_DIR}
+        -D HACKRF_LIBRARY=${HACKRF_LIBRARY}
+        -D LIBUSB_INCLUDE_DIR=${LIBUSB_INCLUDE_DIR}
+        -D LIBUSB_LIBRARY=${LIBUSB_LIBRARY}
+    )
+fi
+
+# Add any extra CMake arguments passed by the user
+if [ -n "$CMAKE_EXTRA_ARGS" ]; then
+    # CMAKE_EXTRA_ARGS is already quoted, so we need to expand it carefully
+    # using eval or by ensuring it's treated as separate words.
+    # For simplicity and robustness with spaces, let's re-parse it into an array.
+    read -r -a CMAKE_EXTRA_ARGS_ARRAY <<< "$CMAKE_EXTRA_ARGS"
+    cmake_opts+=("${CMAKE_EXTRA_ARGS_ARRAY[@]}")
+fi
+
+# --- Execute the build ---
+mkdir -p "${prefix}"
+cd "${prefix}"
+
+# Corrected cmake command
+cmake "${cmake_opts[@]}" ..
+
+make "${MAKE_ARGS[@]}"
