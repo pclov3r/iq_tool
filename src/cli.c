@@ -32,18 +32,11 @@ static void print_usage_input_section(int option_width);
 static void print_usage_output_destination_section(int option_width);
 static void print_usage_output_options_section(int option_width);
 static void print_usage_wav_specific_options_section(int option_width);
-static void print_usage_processing_options_section(int option_width);
-
-// --- Forward declarations for SDR-specific sections ---
-#if defined(WITH_SDRPLAY) || defined(WITH_HACKRF)
+static void print_usage_raw_file_specific_options_section(int option_width);
 static void print_usage_sdr_general_options_section(int option_width);
-#endif
-#if defined(WITH_SDRPLAY)
 static void print_usage_sdrplay_specific_options_section(int option_width);
-#endif
-#if defined(WITH_HACKRF)
 static void print_usage_hackrf_specific_options_section(int option_width);
-#endif
+static void print_usage_processing_options_section(int option_width);
 
 // --- Forward declarations for validation functions ---
 static bool validate_input_source(AppConfig *config, int argc, char *argv[], int *optind_ptr);
@@ -51,6 +44,7 @@ static bool validate_output_destination(AppConfig *config);
 static bool validate_output_type_and_sample_format(AppConfig *config);
 static bool validate_sdr_specific_options(const AppConfig *config);
 static bool validate_wav_specific_options(const AppConfig *config);
+static bool validate_raw_file_specific_options(const AppConfig *config);
 static bool validate_processing_options(AppConfig *config);
 
 
@@ -60,7 +54,7 @@ static bool validate_processing_options(AppConfig *config);
 void print_usage(const char *prog_name) {
     const int option_width = 38;
 
-    fprintf(stderr, "Usage: %s -i {wav <file_path> | sdrplay | hackrf} {--file <path> | --stdout} [options]\n\n", prog_name);
+    fprintf(stderr, "Usage: %s -i {wav <file_path> | raw-file <file_path> | sdrplay | hackrf} {--file <path> | --stdout} [options]\n\n", prog_name);
     fprintf(stderr, "Description:\n");
     fprintf(stderr, "  Resamples an I/Q file or a stream from an SDR device to a specified format and sample rate.\n\n");
 
@@ -68,19 +62,15 @@ void print_usage(const char *prog_name) {
     print_usage_output_destination_section(option_width);
     print_usage_output_options_section(option_width);
 
-#if defined(WITH_SDRPLAY) || defined(WITH_HACKRF)
-    print_usage_sdr_general_options_section(option_width);
-#endif
-
-#if defined(WITH_SDRPLAY)
-    print_usage_sdrplay_specific_options_section(option_width);
-#endif
-
-#if defined(WITH_HACKRF)
-    print_usage_hackrf_specific_options_section(option_width);
-#endif
-
+    // --- Group file-based options together ---
     print_usage_wav_specific_options_section(option_width);
+    print_usage_raw_file_specific_options_section(option_width);
+
+    // --- Group SDR-based options together ---
+    print_usage_sdr_general_options_section(option_width);
+    print_usage_sdrplay_specific_options_section(option_width);
+    print_usage_hackrf_specific_options_section(option_width);
+
     print_usage_processing_options_section(option_width);
 }
 
@@ -91,12 +81,9 @@ static void print_usage_input_section(int option_width) {
     fprintf(stderr, "Required Input:\n");
     fprintf(stderr, "  %-*s %s\n", option_width, "-i, --input <type>", "Specifies the input type. Must be one of:");
     fprintf(stderr, "  %-*s   %s\n", option_width, "", "wav:      Input from a WAV file specified by <file_path>.");
-#if defined(WITH_SDRPLAY)
+    fprintf(stderr, "  %-*s   %s\n", option_width, "", "raw-file: Input from a headerless file of raw I/Q samples specified by <file_path>.");
     fprintf(stderr, "  %-*s   %s\n", option_width, "", "sdrplay:  Input from a SDRplay device.");
-#endif
-#if defined(WITH_HACKRF)
     fprintf(stderr, "  %-*s   %s\n", option_width, "", "hackrf:   Input from a HackRF device.");
-#endif
     fprintf(stderr, "\n");
 }
 
@@ -120,15 +107,31 @@ static void print_usage_output_options_section(int option_width) {
     fprintf(stderr, "  %-*s   %s\n\n", option_width, "", "cs16:  Signed 16-bit complex (Recommended for WAV/RF64 I/Q output).");
 }
 
-#if defined(WITH_SDRPLAY) || defined(WITH_HACKRF)
+static void print_usage_wav_specific_options_section(int option_width) {
+    fprintf(stderr, "WAV Input Specific Options (Only valid with '--input wav'):\n");
+    fprintf(stderr, "  %-*s %s\n", option_width, "--wav-center-target-frequency <hz>", "Shift signal to a new target center frequency (e.g., 97.3e6).");
+    fprintf(stderr, "  %-*s   %s\n", option_width, "", "(Recommended for WAV captures with frequency metadata).");
+    fprintf(stderr, "  %-*s %s\n", option_width, "--wav-shift-frequency <hz>", "Apply a direct frequency shift in Hz.");
+    fprintf(stderr, "  %-*s   %s\n", option_width, "", "(Use if WAV input lacks metadata or for manual correction).");
+    fprintf(stderr, "  %-*s %s\n", option_width, "--wav-shift-after-resample", "Apply frequency shift AFTER resampling (default is before).");
+    fprintf(stderr, "  %-*s   %s\n", option_width, "", "(A workaround for narrow I/Q WAV recordings where only a single");
+    fprintf(stderr, "  %-*s   %s\n\n", option_width, "", " HD sideband is present).");
+}
+
+static void print_usage_raw_file_specific_options_section(int option_width) {
+    fprintf(stderr, "Raw File Input Options (Only valid with '--input raw-file'):\n");
+    fprintf(stderr, "  %-*s %s\n", option_width, "--raw-file-input-rate <hz>", "(Required) The sample rate of the raw input file.");
+    fprintf(stderr, "  %-*s %s\n", option_width, "--raw-file-input-sample-format <format>", "(Required) The sample format of the raw input file.");
+    fprintf(stderr, "  %-*s   %s\n", option_width, "", "Valid formats: cs16, cu16, cs8, cu8.");
+    fprintf(stderr, "  %-*s   %s\n\n", option_width, "", "(File is assumed to be 2-channel interleaved I/Q data).");
+}
+
 static void print_usage_sdr_general_options_section(int option_width) {
     fprintf(stderr, "SDR Options (Only valid when using an SDR input):\n");
     fprintf(stderr, "  %-*s %s\n", option_width, "--rf-freq <hz>", "(Required) Tuner center frequency in Hz (e.g., 97.3e6).");
     fprintf(stderr, "  %-*s %s\n\n", option_width, "--bias-t", "(Optional) Enable Bias-T power.");
 }
-#endif
 
-#if defined(WITH_SDRPLAY)
 static void print_usage_sdrplay_specific_options_section(int option_width) {
     fprintf(stderr, "SDRplay-Specific Options (Only valid with '--input sdrplay'):\n");
     fprintf(stderr, "  %-*s %s\n", option_width, "--sdrplay-sample-rate <hz>", "Set sample rate in Hz. (Optional, Default: 2e6).");
@@ -145,9 +148,7 @@ static void print_usage_sdrplay_specific_options_section(int option_width) {
     fprintf(stderr, "  %-*s %s\n", option_width, "--sdrplay-hdr-bw <BW_MHZ>", "Set bandwidth for HDR mode. Requires --sdrplay-hdr-mode. (Default: 1.7).");
     fprintf(stderr, "  %-*s   %s\n\n", option_width, "", "Valid values: 0.2, 0.5, 1.2, 1.7.");
 }
-#endif
 
-#if defined(WITH_HACKRF)
 static void print_usage_hackrf_specific_options_section(int option_width) {
     fprintf(stderr, "HackRF-Specific Options (Only valid with '--input hackrf'):\n");
     fprintf(stderr, "  %-*s %s\n", option_width, "--hackrf-sample-rate <hz>", "Set sample rate in Hz. (Optional, Default: 8e6).");
@@ -158,18 +159,6 @@ static void print_usage_hackrf_specific_options_section(int option_width) {
     fprintf(stderr, "  %-*s %s\n", option_width, "--hackrf-vga-gain <db>", "Set VGA (Baseband) gain in dB. (Optional, Default: 0).");
     fprintf(stderr, "  %-*s   %s\n", option_width, "", "Valid values: 0-62 in 2 dB steps (e.g., 0, 2, 4, ... 62).");
     fprintf(stderr, "  %-*s %s\n\n", option_width, "--hackrf-amp-enable", "Enable the front-end RF amplifier (+14 dB).");
-}
-#endif
-
-static void print_usage_wav_specific_options_section(int option_width) {
-    fprintf(stderr, "WAV Input Specific Options (Only valid with '--input wav'):\n");
-    fprintf(stderr, "  %-*s %s\n", option_width, "--wav-center-target-frequency <hz>", "Shift signal to a new target center frequency (e.g., 97.3e6).");
-    fprintf(stderr, "  %-*s   %s\n", option_width, "", "(Recommended for WAV captures with frequency metadata).");
-    fprintf(stderr, "  %-*s %s\n", option_width, "--wav-shift-frequency <hz>", "Apply a direct frequency shift in Hz.");
-    fprintf(stderr, "  %-*s   %s\n", option_width, "", "(Use if WAV input lacks metadata or for manual correction).");
-    fprintf(stderr, "  %-*s %s\n", option_width, "--wav-shift-after-resample", "Apply frequency shift AFTER resampling (default is before).");
-    fprintf(stderr, "  %-*s   %s\n", option_width, "", "(A workaround for narrow I/Q WAV recordings where only a single");
-    fprintf(stderr, "  %-*s   %s\n\n", option_width, "", " HD sideband is present).");
 }
 
 static void print_usage_processing_options_section(int option_width) {
@@ -234,6 +223,8 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
         {"wav-center-target-frequency", required_argument, 0, 2001},
         {"wav-shift-frequency",       required_argument, 0, 2002},
         {"wav-shift-after-resample",  no_argument,       0, 2003},
+        {"raw-file-input-rate",       required_argument, 0, 5001},
+        {"raw-file-input-sample-format", required_argument, 0, 5002},
         {"output-rate",               required_argument, 0, 1012},
         {"preset",                    required_argument, 0, 1013},
         {"no-resample",               no_argument,       0, 1017},
@@ -246,9 +237,8 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
             case 'i': config->input_type_str = optarg; break;
             case 'o': config->output_to_stdout = true; break;
             case 'f': config->output_filename_arg = optarg; break;
-            case 'h': // FIX: Handle --help or -h
+            case 'h':
                 config->help_requested = true;
-                // Return true to signal a clean exit, bypassing validation.
                 return true;
             case 3001: // --scale
                 {
@@ -309,14 +299,14 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
                     config->sdr.rf_freq_provided = true;
                 }
 #else
-                log_warn("Option --rf-freq ignored: SDR support not enabled in this build.");
+                log_warn("Option --rf-freq ignored: No SDR hardware devices enabled in this build.");
 #endif
                 break;
             case 1002: // --bias-t
 #if defined(WITH_SDRPLAY) || defined(WITH_HACKRF)
                 config->sdr.bias_t_enable = true;
 #else
-                log_warn("Option --bias-t ignored: SDR support not enabled in this build.");
+                log_warn("Option --bias-t ignored: No SDR hardware devices enabled in this build.");
 #endif
                 break;
             case 1003: // --sdrplay-device-idx
@@ -490,6 +480,22 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
             case 1017: // --no-resample
                 config->no_resample = true;
                 break;
+            case 5001: // --raw-file-input-rate
+                {
+                    char *endptr;
+                    errno = 0;
+                    config->raw_file.sample_rate_hz = strtod(optarg, &endptr);
+                    if (errno != 0 || *endptr != '\0' || !isfinite(config->raw_file.sample_rate_hz) || config->raw_file.sample_rate_hz <= 0) {
+                        log_fatal("Invalid raw input rate '%s'. Must be a positive number.", optarg);
+                        return false;
+                    }
+                    config->raw_file.sample_rate_provided = true;
+                }
+                break;
+            case 5002: // --raw-file-input-sample-format
+                config->raw_file.format_str = optarg;
+                config->raw_file.format_provided = true;
+                break;
             case '?': // Unknown option or missing argument
                 return false;
             default:
@@ -504,6 +510,7 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
     if (!validate_output_type_and_sample_format(config)) return false;
     if (!validate_sdr_specific_options(config)) return false;
     if (!validate_wav_specific_options(config)) return false;
+    if (!validate_raw_file_specific_options(config)) return false;
     if (!validate_processing_options(config)) return false;
 
     // Check for any leftover, non-option arguments
@@ -530,6 +537,20 @@ static bool validate_input_source(AppConfig *config, int argc, char *argv[], int
             return false;
         }
         config->input_filename_arg = argv[(*optind_ptr)++];
+    } else if (strcasecmp(config->input_type_str, "raw-file") == 0) {
+        if (*optind_ptr >= argc) {
+            log_fatal("Missing <file_path> source after '--input raw-file'.");
+            return false;
+        }
+        config->input_filename_arg = argv[(*optind_ptr)++];
+        if (!config->raw_file.sample_rate_provided) {
+            log_fatal("Missing required option --raw-file-input-rate <hz> for raw file input.");
+            return false;
+        }
+        if (!config->raw_file.format_provided) {
+            log_fatal("Missing required option --raw-file-input-sample-format <format> for raw file input.");
+            return false;
+        }
     } else if (strcasecmp(config->input_type_str, "sdrplay") == 0) {
 #if defined(WITH_SDRPLAY)
         config->sdrplay.use_sdrplay_input = true;
@@ -547,7 +568,7 @@ static bool validate_input_source(AppConfig *config, int argc, char *argv[], int
         return false;
 #endif
     } else {
-        log_fatal("Invalid input type '%s'. Must be 'wav', 'sdrplay', or 'hackrf'.", config->input_type_str);
+        log_fatal("Invalid input type '%s'. Must be 'wav', 'raw-file', 'sdrplay', or 'hackrf'.", config->input_type_str);
         return false;
     }
     return true;
@@ -654,21 +675,21 @@ static bool validate_output_type_and_sample_format(AppConfig *config) {
 }
 
 static bool validate_sdr_specific_options(const AppConfig *config) {
+    bool is_file_input = (config->input_type_str && 
+                          (strcasecmp(config->input_type_str, "wav") == 0 ||
+                           strcasecmp(config->input_type_str, "raw-file") == 0));
+    if (is_file_input) {
 #if defined(WITH_SDRPLAY) || defined(WITH_HACKRF)
-    bool is_wav_input = (config->input_type_str && strcasecmp(config->input_type_str, "wav") == 0);
-    if (is_wav_input) {
         if (config->sdr.rf_freq_provided) {
-            log_fatal("Option --rf-freq is not valid for 'wav' input.");
+            log_fatal("Option --rf-freq is not valid for file-based inputs ('wav', 'raw-file').");
             return false;
         }
         if (config->sdr.bias_t_enable) {
-            log_fatal("Option --bias-t is not valid for 'wav' input.");
+            log_fatal("Option --bias-t is not valid for file-based inputs ('wav', 'raw-file').");
             return false;
         }
-    }
-#else
-    (void)config; // Suppress unused parameter warning if SDR support is disabled
 #endif
+    }
     return true;
 }
 
@@ -686,6 +707,17 @@ static bool validate_wav_specific_options(const AppConfig *config) {
             log_fatal("Option --wav-shift-after-resample specified, but no frequency shift was requested.");
             return false;
         }
+    }
+    return true;
+}
+
+static bool validate_raw_file_specific_options(const AppConfig *config) {
+    bool raw_file_option_used = config->raw_file.sample_rate_provided || config->raw_file.format_provided;
+    bool is_raw_file_input = (config->input_type_str && strcasecmp(config->input_type_str, "raw-file") == 0);
+
+    if (raw_file_option_used && !is_raw_file_input) {
+        log_fatal("Options --raw-file-input-rate and --raw-file-input-sample-format are only valid for 'raw-file' input.");
+        return false;
     }
     return true;
 }

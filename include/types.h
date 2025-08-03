@@ -207,11 +207,19 @@ typedef struct AppConfig {
     } hackrf;
 #endif
 
+    // --- Raw File Input Arguments ---
+    struct {
+        double sample_rate_hz;
+        bool sample_rate_provided;
+        char *format_str;
+        bool format_provided;
+    } raw_file;
+
     // --- Resolved/Derived Configuration ---
     OutputType output_type;
     sample_format_t sample_format;
     double target_rate;
-    bool help_requested; // FIX: Flag to signal a clean exit for --help
+    bool help_requested;
 
     // --- Effective Paths (Platform-Specific) ---
 #ifdef _WIN32
@@ -265,10 +273,10 @@ typedef struct AppResources {
     SdrMetadata sdr_info;
     bool sdr_info_present;
     sample_converter_t converter;
-    SNDFILE *infile; // Specific to WAV input
+    SNDFILE *infile; // Used for both WAV and Raw File input
 
     // --- Output State ---
-    FileWriterContext writer_ctx;
+    FileWriterContext writer_ctx; // <--- THIS IS THE MISSING MEMBER
     size_t output_bytes_per_sample_pair;
 
     // --- SDR Device Handles ---

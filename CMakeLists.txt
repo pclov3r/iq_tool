@@ -495,6 +495,7 @@ set(SOURCES
     src/setup.c
     src/utils.c
     src/input_manager.c
+    src/input_rawfile.c
     src/input_wav.c
 )
 

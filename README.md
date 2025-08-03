@@ -64,7 +64,7 @@ To build this project, you will need:
 * **libexpat** (development headers and library).
 * **pthreads** (On Linux/macOS this is standard; on Windows, MinGW provides a version).
 * **(Optional) SDRplay API Library:** To build with SDRplay support, you must first download and install the official API from the [SDRplay website](https://www.sdrplay.com/downloads/).
-* **(Optional) HackRF Library (libhackrf) and libusb:** To build with HackRF support, you must install the host libraries. On Linux, this is typically `libhackrf-dev` and `libusb-1.0-0-dev`.
+* **(Optional) HackRF Library (libhackrf) and libusb:** To build with HackRF support, you must install the host and development libraries. On Linux, this is typically `libhackrf-dev` and `libusb-1.0-0-dev`.
 
 ### Building the Project
 
@@ -76,7 +76,7 @@ To build this project, you will need:
 sudo apt-get update
 sudo apt-get install build-essential cmake libsndfile1-dev libliquid-dev libexpat1-dev libhackrf-dev libusb-1.0-0-dev
 
-# On Fedora/CentOS
+# On Fedora
 sudo dnf install cmake gcc-c++ libsndfile-devel liquid-dsp-devel expat-devel hackrf-devel libusbx-devel
 ```
 
@@ -130,67 +130,97 @@ Run `iq_resample_tool --help` for a full list of command-line options and their 
 #### Command-Line Options
 
 ```text
-Usage: iq_resample_tool -i {wav <file_path> | sdrplay | hackrf} {--file <path> | --stdout} [options]
+Usage: iq_resample_tool -i {wav <file_path> | raw-file <file_path> | sdrplay | hackrf} {--file <path> | --stdout} [options]
 
 Description:
   Resamples an I/Q file or a stream from an SDR device to a specified format and sample rate.
 
 Required Input:
-  -i, --input <type>          Specifies the input type. Must be one of:
-                                wav:      Input from a WAV file specified by <file_path>.
-                                sdrplay:  Input from a SDRplay device.
-                                hackrf:   Input from a HackRF device.
+  -i, --input <type>                     Specifies the input type. Must be one of:
+                                           wav:      Input from a WAV file specified by <file_path>.
+                                           raw-file: Input from a headerless file of raw I/Q samples specified by <file_path>.
+                                           sdrplay:  Input from a SDRplay device.
+                                           hackrf:   Input from a HackRF device.
 
 Output Destination (Required, choose one):
-  -f, --file <file>           Output to a file.
-  -o, --stdout                Output binary data for piping to another program.
+  -f, --file <file>                      Output to a file.
+  -o, --stdout                           Output binary data for piping to another program.
 
 Output Options:
-  --output-container <type>   Specifies the output file container format.
-                                Defaults to 'wav-rf64' for file output, 'raw' for stdout.
-                                raw:      Headerless, raw I/Q sample data.
-                                wav:      Standard WAV format (max 4GB, limited sample rates).
-                                wav-rf64: RF64/BW64 format for large files and high sample rates.
+  --output-container <type>              Specifies the output file container format.
+                                           Defaults to 'wav-rf64' for file output, 'raw' for stdout.
+                                           raw:      Headerless, raw I/Q sample data.
+                                           wav:      Standard WAV format (max 4GB, limited sample rates).
+                                           wav-rf64: RF64/BW64 format for large files and high sample rates.
 
-  --output-sample-format <format> Sample format for output data. (Defaults to cs16 for file output).
-                                cu8:   Unsigned 8-bit complex (WAV/RF64 output is unsigned 0-255, center 128).
-                                cs8:   Signed 8-bit complex (Only for 'raw' output. WAV/RF64 does NOT support signed 8-bit).
-                                cs16:  Signed 16-bit complex (Recommended for WAV/RF64 I/Q output).
-
-SDR Options (Only valid when using an SDR input):
-  --rf-freq <hz>              (Required) Tuner center frequency in Hz (e.g., 97.3e6).
-  --bias-t                    (Optional) Enable Bias-T power.
-
-SDRplay-Specific Options (Only valid with '--input sdrplay'):
-  --sdrplay-sample-rate <hz>  Set sample rate in Hz. (Optional, Default: 2e6). Valid range: 2e6 to 10e6.
-  --sdrplay-bandwidth <hz>    Set analog bandwidth in Hz. (Optional, Default: 1.536e6). Valid values: 200e3, 300e3, 600e3, 1.536e6, 5e6, 6e6, 7e6, 8e6.
-  --sdrplay-device-idx <IDX>  Select specific SDRplay device by index (0-indexed). (Default: 0).
-  --sdrplay-gain-level <LEVEL> Set manual gain level (0=min gain). Disables AGC. Max level varies by device/freq (e.g., RSP1A: 0-9, RSPdx @100MHz: 0-27).
-  --sdrplay-antenna <PORT>    Select antenna port (device-specific). RSPdx/R2: A, B, C | RSP2: A, B, HIZ | RSPduo: A, HIZ (Not applicable for RSP1, RSP1A, RSP1B).
-  --sdrplay-hdr-mode          (Optional) Enable HDR mode on RSPdx/RSPdxR2.
-  --sdrplay-hdr-bw <BW_MHZ>   Set bandwidth for HDR mode. Requires --sdrplay-hdr-mode. (Default: 1.7). Valid values: 0.2, 0.5, 1.2, 1.7.
-
-HackRF-Specific Options (Only valid with '--input hackrf'):
-  --hackrf-sample-rate <hz>   Set sample rate in Hz. (Optional, Default: 8e6). Valid range is 2-20 Msps (e.g., 2e6, 10e6, 20e6). Automatically selects a suitable baseband filter.
-  --hackrf-lna-gain <db>      Set LNA (IF) gain in dB. (Optional, Default: 16). Valid values: 0-40 in 8 dB steps (e.g., 0, 8, 16, 24, 32, 40).
-  --hackrf-vga-gain <db>      Set VGA (Baseband) gain in dB. (Optional, Default: 0). Valid values: 0-62 in 2 dB steps (e.g., 0, 2, 4, ... 62).
-  --hackrf-amp-enable         Enable the front-end RF amplifier (+14 dB).
+  --output-sample-format <format>        Sample format for output data. (Defaults to cs16 for file output).
+                                           cu8:   Unsigned 8-bit complex (WAV/RF64 output is unsigned 0-255, center 128).
+                                           cs8:   Signed 8-bit complex (Only for 'raw' output. WAV/RF64 does NOT support signed 8-bit).
+                                           cs16:  Signed 16-bit complex (Recommended for WAV/RF64 I/Q output).
 
 WAV Input Specific Options (Only valid with '--input wav'):
-  --wav-center-target-frequency <hz> Shift signal to a new target center frequency (e.g., 97.3e6). (Recommended for WAV captures with frequency metadata).
-  --wav-shift-frequency <hz>  Apply a direct frequency shift in Hz. (Use if WAV input lacks metadata or for manual correction).
-  --wav-shift-after-resample  Apply frequency shift AFTER resampling (default is before). (A workaround for narrow I/Q WAV recordings where only a single HD sideband is present).
+  --wav-center-target-frequency <hz>     Shift signal to a new target center frequency (e.g., 97.3e6).
+                                           (Recommended for WAV captures with frequency metadata).
+  --wav-shift-frequency <hz>             Apply a direct frequency shift in Hz.
+                                           (Use if WAV input lacks metadata or for manual correction).
+  --wav-shift-after-resample             Apply frequency shift AFTER resampling (default is before).
+                                           (A workaround for narrow I/Q WAV recordings where only a single
+                                            HD sideband is present).
+
+Raw File Input Options (Only valid with '--input raw-file'):
+  --raw-file-input-rate <hz>             (Required) The sample rate of the raw input file.
+  --raw-file-input-sample-format <format> (Required) The sample format of the raw input file.
+                                           Valid formats: cs16, cu16, cs8, cu8.
+                                           (File is assumed to be 2-channel interleaved I/Q data).
+
+SDR Options (Only valid when using an SDR input):
+  --rf-freq <hz>                         (Required) Tuner center frequency in Hz (e.g., 97.3e6).
+  --bias-t                               (Optional) Enable Bias-T power.
+
+SDRplay-Specific Options (Only valid with '--input sdrplay'):
+  --sdrplay-sample-rate <hz>             Set sample rate in Hz. (Optional, Default: 2e6).
+                                           Valid range: 2e6 to 10e6.
+  --sdrplay-bandwidth <hz>               Set analog bandwidth in Hz. (Optional, Default: 1.536e6).
+                                           Valid values: 200e3, 300e3, 600e3, 1.536e6, 5e6, 6e6, 7e6, 8e6.
+  --sdrplay-device-idx <IDX>             Select specific SDRplay device by index (0-indexed). (Default: 0).
+  --sdrplay-gain-level <LEVEL>           Set manual gain level (0=min gain). Disables AGC.
+                                           Max level varies by device/freq (e.g., RSP1A: 0-9, RSPdx @100MHz: 0-27).
+  --sdrplay-antenna <PORT>               Select antenna port (device-specific).
+                                           RSPdx/R2: A, B, C | RSP2: A, B, HIZ | RSPduo: A, HIZ
+                                           (Not applicable for RSP1, RSP1A, RSP1B).
+  --sdrplay-hdr-mode                     (Optional) Enable HDR mode on RSPdx/RSPdxR2.
+  --sdrplay-hdr-bw <BW_MHZ>              Set bandwidth for HDR mode. Requires --sdrplay-hdr-mode. (Default: 1.7).
+                                           Valid values: 0.2, 0.5, 1.2, 1.7.
+
+HackRF-Specific Options (Only valid with '--input hackrf'):
+  --hackrf-sample-rate <hz>              Set sample rate in Hz. (Optional, Default: 8e6).
+                                           Valid range is 2-20 Msps (e.g., 2e6, 10e6, 20e6).
+                                           Automatically selects a suitable baseband filter.
+  --hackrf-lna-gain <db>                 Set LNA (IF) gain in dB. (Optional, Default: 16).
+                                           Valid values: 0-40 in 8 dB steps (e.g., 0, 8, 16, 24, 32, 40).
+  --hackrf-vga-gain <db>                 Set VGA (Baseband) gain in dB. (Optional, Default: 0).
+                                           Valid values: 0-62 in 2 dB steps (e.g., 0, 2, 4, ... 62).
+  --hackrf-amp-enable                    Enable the front-end RF amplifier (+14 dB).
 
 Processing Options:
-  --output-rate <hz>          Output sample rate in Hz. (Required if no preset is used). (Cannot be used with --preset or --no-resample).
-  --scale <value>             Scaling factor for input samples (Default: 0.02 for 8-bit, 0.5 for 16-bit).
-  --no-resample               Disable the resampler (passthrough mode). Output sample rate will be the same as the input rate.
-  --no-8-to-16                Use a native 8-bit processing path, skipping internal scaling. (Only valid for 8-bit input and an 8-bit output mode). (May provide a minor performance improvement).
-  --preset <name>             Use a preset for a common target. (Cannot be used with --no-resample).
-                                Loaded presets:
-                                cu8-nrsc5:       Sets sample type to cu8, rate to 1488375.0 Hz.
-                                cs16-fm-nrsc5:   Sets sample type to cs16, rate to 744187.5 Hz.
-                                cs16-am-nrsc5:   Sets sample type to cs16, rate to 46511.71875 Hz.
+  --output-rate <hz>                     Output sample rate in Hz. (Required if no preset is used).
+                                           (Cannot be used with --preset or --no-resample).
+
+  --scale <value>                        Scaling factor for input samples (Default: 0.02 for 8-bit, 0.5 for 16-bit).
+
+  --no-resample                          Disable the resampler (passthrough mode).
+                                           Output sample rate will be the same as the input rate.
+
+  --no-8-to-16                           Use a native 8-bit processing path, skipping internal scaling.
+                                           (Only valid for 8-bit input and an 8-bit output mode).
+                                           (May provide a minor performance improvement).
+
+  --preset <name>                        Use a preset for a common target.
+                                           (Cannot be used with --no-resample).
+                                           Loaded presets:
+                                             cu8-nrsc5:      Sets sample type to cu8, rate to 1488375.0 Hz for FM/AM NRSC5 decoding (produces headerless raw output).
+                                             cs16-fm-nrsc5:  Sets sample type to cs16, rate to 744187.5 Hz for FM NRSC5 decoding (produces headerless raw output).
+                                             cs16-am-nrsc5:  Sets sample type to cs16, rate to 46511.71875 Hz for AM NRSC5 decoding (produces headerless raw output).
 ```
 
 #### Examples
@@ -280,7 +310,6 @@ If `iq_resample_tool_presets.conf` is found in **multiple** of the above locatio
 
 ### TO DO
 
-* **Raw File Input:** Add support for reading headerless I/Q data from generic binary files.
 * **Airspy (Mini, R2, HF+, Discovery) support** (Hardware needed for development)
 * **BladeRF Support**
 * **Clean up code and comments:** Review and refine existing code and comments for clarity and consistency

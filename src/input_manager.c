@@ -1,8 +1,11 @@
+// input_manager.c
+
 #include "input_manager.h"
 #include <string.h>
 
 // Include the headers for all concrete input source implementations
 #include "input_wav.h"
+#include "input_rawfile.h" // Add the new header
 #if defined(WITH_SDRPLAY)
 #include "input_sdrplay.h"
 #endif
@@ -24,6 +27,11 @@ InputSourceOps* get_input_ops_by_name(const char* name) {
     if (strcasecmp(name, "wav") == 0) {
         return get_wav_input_ops();
     }
+    // --- ADD THIS BLOCK ---
+    else if (strcasecmp(name, "raw-file") == 0) {
+        return get_raw_file_input_ops();
+    }
+    // --------------------
 #if defined(WITH_SDRPLAY)
     else if (strcasecmp(name, "sdrplay") == 0) {
         return get_sdrplay_input_ops();
