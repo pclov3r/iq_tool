@@ -25,9 +25,7 @@
 #include <time.h>    // For nanosleep()
 #endif
 
-// --- Add an external declaration for the global console mutex defined in main.c ---
-// This is no longer directly used for printing in resample.c, but kept for other potential uses
-// or if the callback itself needs it (which it does, in main.c).
+// Add an external declaration for the global console mutex defined in main.c
 extern pthread_mutex_t g_console_mutex;
 
 // --- Forward Declarations for Thread Functions ---
@@ -37,7 +35,6 @@ static void* writer_thread_func(void* arg);
 
 // --- Forward Declarations for Static Helpers ---
 static bool resample_block(AppConfig *config, AppResources *resources, WorkItem *item, unsigned int *num_output_frames);
-static void convert_complex_to_output(AppConfig *config, AppResources *resources, WorkItem *item, unsigned int num_frames);
 static void handle_thread_error(const char* thread_name, const char* error_msg, AppResources *resources);
 
 // Struct to pass arguments to threads
@@ -91,15 +88,12 @@ static bool resample_block(AppConfig *config, AppResources *resources, WorkItem 
                                             ? item->complex_buffer_shifted
                                             : item->complex_buffer_scaled;
 
-    // --- START: MODIFIED SECTION for Passthrough Logic ---
     if (resources->is_passthrough) {
-        // In passthrough mode, the ratio is 1.0, so we just copy the data.
         *num_output_frames = (unsigned int)item->frames_read;
         if (*num_output_frames > 0) {
             memcpy(item->complex_buffer_resampled, input_for_stage, *num_output_frames * sizeof(complex_float_t));
         }
     } else {
-        // In resampling mode, execute the liquid-dsp resampler.
         msresamp_crcf_execute(resources->resampler,
                               (liquid_float_complex*)input_for_stage,
                               (unsigned int)item->frames_read,
@@ -111,41 +105,8 @@ static bool resample_block(AppConfig *config, AppResources *resources, WorkItem 
              return false;
         }
     }
-    // --- END: MODIFIED SECTION ---
 
     return true;
-}
-
-static void convert_complex_to_output(AppConfig *config, AppResources *resources, WorkItem *item, unsigned int num_frames) {
-    (void)resources;
-    if (num_frames == 0) return;
-    complex_float_t *final_complex_data = (config->shift_after_resample && resources->shifter_nco != NULL)
-                                               ? item->complex_buffer_shifted
-                                               : item->complex_buffer_resampled;
-
-    if (config->sample_format == SAMPLE_TYPE_CU8) {
-        uint8_t *out_ptr_u8 = (uint8_t*)item->output_buffer;
-        for (unsigned int i = 0; i < num_frames; ++i) {
-            *out_ptr_u8++ = float_to_uchar(crealf(final_complex_data[i]));
-            *out_ptr_u8++ = float_to_uchar(cimagf(final_complex_data[i]));
-        }
-    } else if (config->sample_format == SAMPLE_TYPE_CS8) {
-        int8_t *out_ptr_s8 = (int8_t*)item->output_buffer;
-        for (unsigned int i = 0; i < num_frames; ++i) {
-            *out_ptr_s8++ = float_to_schar(crealf(final_complex_data[i]));
-            *out_ptr_s8++ = float_to_schar(cimagf(final_complex_data[i]));
-        }
-    } else { // Handles SAMPLE_TYPE_CS16
-        int16_t *out_ptr_s16 = (int16_t*)item->output_buffer;
-        for (unsigned int i = 0; i < num_frames; ++i) {
-            float real_val = crealf(final_complex_data[i]);
-            float imag_val = cimagf(final_complex_data[i]);
-            real_val = fmaxf(-32768.0f, fminf(32767.0f, real_val));
-            imag_val = fmaxf(-32768.0f, fminf(32767.0f, imag_val));
-            *out_ptr_s16++ = (int16_t)lrintf(real_val);
-            *out_ptr_s16++ = (int16_t)lrintf(imag_val);
-        }
-    }
 }
 
 static void* reader_thread_func(void* arg) {
@@ -192,7 +153,9 @@ static void* processor_thread_func(void* arg) {
         item->frames_to_write = output_frames_this_chunk;
         shift_apply(config, resources, item, SHIFT_STAGE_POST_RESAMPLE);
         pthread_mutex_unlock(&resources->dsp_mutex);
-        convert_complex_to_output(config, resources, item, item->frames_to_write);
+
+        convert_complex_to_output_format(config, resources, item, item->frames_to_write);
+
         if (!queue_enqueue(resources->output_q, item)) {
              break;
         }
@@ -238,7 +201,6 @@ static void* writer_thread_func(void* arg) {
             
             loop_count++;
             if (!config->output_to_stdout && (loop_count % PROGRESS_UPDATE_INTERVAL == 0)) {
-                // Call the progress callback function provided by main.c
                 if (resources->progress_callback) {
                     resources->progress_callback(current_total_read,
                                                 resources->source_info.frames,

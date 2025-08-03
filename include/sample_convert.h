@@ -15,7 +15,6 @@
  *                  must be set before calling this function. The 'converter' member
  *                  will be populated with the correct function pointer.
  */
-// MODIFIED: Signature updated to accept the AppConfig struct.
 void setup_sample_converter(AppConfig *config, AppResources *resources);
 
 /**
@@ -31,5 +30,15 @@ void setup_sample_converter(AppConfig *config, AppResources *resources);
  * @return true on successful conversion, false if a fatal error occurred.
  */
 bool convert_raw_input_to_complex(AppConfig *config, AppResources *resources, WorkItem *item);
+
+/**
+ * @brief Converts the final complex float samples into the specified output byte format.
+ *
+ * @param config Pointer to the application configuration.
+ * @param resources Pointer to the application resources.
+ * @param item Pointer to the WorkItem containing the final complex data and the output buffer.
+ * @param num_frames The number of complex frames to convert.
+ */
+void convert_complex_to_output_format(AppConfig *config, AppResources *resources, WorkItem *item, unsigned int num_frames);
 
 #endif // SAMPLE_CONVERT_H_
