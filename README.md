@@ -17,12 +17,12 @@ The tool's development was initially driven by requirements for **NRSC-5 (HD Rad
 While the tool is functional and has been refined, its unique development process means it has not undergone the same long-term, iterative evolution as a traditional open-source project. It should still be considered experimental.
 
 **Please be aware of the following:**
-* **Potential for Bugs:** Issues are still likely present. Subtle bugs, logical errors, or memory management issues may exist.
-* **Edge Cases:** The tool may not gracefully handle all possible inputs, file formats, or command-line argument combinations.
-* **Security:** No formal security audit has been performed. Use caution with untrusted input files.
+*   **Active Development & Instability:** The codebase is currently undergoing significant changes, with major features and refactors being actively added. Expect frequent updates, potential API changes, and periods of instability.
+*   **Potential for Bugs:** Issues are still likely present. Subtle bugs, logical errors, or memory management issues may exist.
+*   **Edge Cases:** The tool may not gracefully handle all possible inputs, file formats, or command-line argument combinations.
+*   **Security:** No formal security audit has been performed. Use caution with untrusted input files.
 
 ## Please use this tool with this context in mind and review the code if you intend to use it for any critical purpose.
-
 ---
 
 ### Key Features 
