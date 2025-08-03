@@ -312,6 +312,7 @@ If `iq_resample_tool_presets.conf` is found in **multiple** of the above locatio
 
 ### TO DO
 
+* **RTL-SDR Support**
 * **Airspy (Mini, R2, HF+, Discovery) support** (Hardware needed for development)
 * **BladeRF Support**
 * **Clean up code and comments:** Review and refine existing code and comments for clarity and consistency
