@@ -29,11 +29,12 @@ While the tool is functional and has been refined, its unique development proces
 
 * **Multi-Threaded Processing:** Employs a reader -> processor -> writer pipeline for data throughput on multi-core systems.
 
-*   **Input Sources:**
-*   **WAV Files:** Reads 8-bit and 16-bit complex (I/Q) WAV files.
-*   **Raw Files:** Reads headerless files containing raw, interleaved I/Q samples. Requires the input sample rate and format to be explicitly specified.
-*   **SDRplay:** Supports SDRplay RSP devices.
-*   **HackRF:** Supports HackRF One devices.
+* **Input Sources:**
+* * **WAV Files:** Reads 8-bit and 16-bit complex (I/Q) WAV files.
+* * **Raw Files:** Reads headerless files containing raw, interleaved I/Q samples. Requires the input sample rate and format to be explicitly specified.
+* * **SDRplay:** Supports SDRplay RSP devices.
+* * **HackRF:** Supports HackRF One devices.
+
 
 * **Metadata Handling (WAV Files):**
 * * **Intelligent Frequency Adjustment:** For WAV files, when using `--wav-center-target-frequency`, the tool calculates the required frequency shift. This is done by reading embedded frequency metadata, a feature relevant for aligning NRSC-5 (HD Radio) captures.
