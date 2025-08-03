@@ -22,7 +22,7 @@ While the tool is functional and has been refined, its unique development proces
 *   **Edge Cases:** The tool may not gracefully handle all possible inputs, file formats, or command-line argument combinations.
 *   **Security:** No formal security audit has been performed. Use caution with untrusted input files.
 
-## Please use this tool with this context in mind and review the code if you intend to use it for any critical purpose.
+## Please use this tool with this context in mind and review the code if you intend to use it for any critical purpose. For such use cases it's suggested to use a more stable platform like [GNU Radio](https://github.com/gnuradio/gnuradio).
 ---
 
 ### Key Features 
