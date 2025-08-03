@@ -195,7 +195,6 @@ static void print_usage_processing_options_section(int option_width) {
             fprintf(stderr, "  %-*s     %-15s %s\n", option_width, "", preset_label, p->description);
         }
     }
-    fprintf(stderr, "\n");
 }
 
 
