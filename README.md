@@ -18,7 +18,7 @@ While the tool is functional and has been refined, its unique development proces
 
 **Please be aware of the following:**
 *   **Active Development & Instability:** The codebase is currently undergoing significant changes, with major features and refactors being actively added. Expect frequent updates, potential API changes, and periods of instability.
-*   **Potential for Bugs:** Issues are still likely present. Subtle bugs, logical errors, or memory management issues may exist.
+*   **Potential for Bugs:** Issues are still likely present. bugs, logical errors, or memory management issues may exist.
 *   **Edge Cases:** The tool may not gracefully handle all possible inputs, file formats, or command-line argument combinations.
 *   **Security:** No formal security audit has been performed. Use caution with untrusted input files.
 
@@ -29,10 +29,11 @@ While the tool is functional and has been refined, its unique development proces
 
 * **Multi-Threaded Processing:** Employs a reader -> processor -> writer pipeline for data throughput on multi-core systems.
 
-* **Input Sources:**
-* * **SDRplay:** Supports SDRplay RSP devices.
-* * **HackRF:** Supports HackRF One devices.
-* * **WAV Files:** Reads 8-bit and 16-bit complex (I/Q) WAV files.
+*   **Input Sources:**
+*   **WAV Files:** Reads 8-bit and 16-bit complex (I/Q) WAV files.
+*   **Raw Files:** Reads headerless files containing raw, interleaved I/Q samples. Requires the input sample rate and format to be explicitly specified.
+*   **SDRplay:** Supports SDRplay RSP devices.
+*   **HackRF:** Supports HackRF One devices.
 
 * **Metadata Handling (WAV Files):**
 * * **Intelligent Frequency Adjustment:** For WAV files, when using `--wav-center-target-frequency`, the tool calculates the required frequency shift. This is done by reading embedded frequency metadata, a feature relevant for aligning NRSC-5 (HD Radio) captures.
