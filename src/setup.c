@@ -256,7 +256,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     fprintf(stderr, "--- Output Details ---\n");
     const char* output_type_str;
     switch (config->output_type) {
-        case OUTPUT_TYPE_RAW:      output_type_str = "Raw"; break;
+        case OUTPUT_TYPE_RAW:      output_type_str = "RAW"; break;
         case OUTPUT_TYPE_WAV:      output_type_str = "WAV"; break;
         case OUTPUT_TYPE_WAV_RF64: output_type_str = "WAV (RF64)"; break;
         default:                   output_type_str = "Unknown"; break;
