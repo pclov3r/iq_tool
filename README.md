@@ -186,23 +186,23 @@ Processing Options:
 **Example 1: Basic File Resampling**
 Resample a WAV file to a 16-bit RF64 (large WAV) file with a custom output rate.
 ```bash
-iq_resample_tool -i my_capture.wav --file my_capture_resampled.wav --output-container wav-rf64 --output-sample-format cs16 --output-rate 240000
+iq_resample_tool --input wav --file my_capture_resampled.wav --output-container wav-rf64 --output-sample-format cs16 --output-rate 240000
 ```
 
 **Example 2: Piping to a Decoder with a Preset (WAV Input)**
 Use the `cu8-nrsc5` preset to resample and automatically correct the frequency, then pipe it to `nrsc5`. (Assumes the WAV has frequency metadata).
 ```bash
-iq_resample_tool -i sdrsharp_capture.wav --wav-center-target-frequency 97.3e6 --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
+iq_resample_tool --input wav --wav-center-target-frequency 97.3e6 --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
 ```
 
 **Example 3: Streaming from a HackRF Device with Preset**
-Tune a HackRF to 98.5 MHz, set LNA and VGA gain, and pipe the output to another program using the `cu8-nrsc5` preset.
+Tune a HackRF to 98.5 MHz, set LNA and VGA gain, and pipe the output to nrsc5 using the `cu8-nrsc5` preset.
 ```bash
-iq_resample_tool -i hackrf --rf-freq 98.5e6 --hackrf-lna-gain 24 --hackrf-vga-gain 16 --preset cu8-nrsc5 --stdout | other_tool
+iq_resample_tool -i hackrf --rf-freq 98.5e6 --hackrf-lna-gain 24 --hackrf-vga-gain 16 --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
 ```
 
 **Example 4: Streaming from an SDRplay Device with Preset**
-Tune an SDRplay RSPdx to 102.5 MHz, set a manual gain level and select a specific antenna port before piping to a decoder using the `cu8-nrsc5` preset.
+Tune an SDRplay RSPdx to 102.5 MHz, set a manual gain level and select a specific antenna port before piping to nrsc5 using the `cu8-nrsc5` preset.
 ```bash
 iq_resample_tool -i sdrplay --rf-freq 102.5e6 --sdrplay-gain-level 20 --sdrplay-antenna B --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
 ```
@@ -210,13 +210,13 @@ iq_resample_tool -i sdrplay --rf-freq 102.5e6 --sdrplay-gain-level 20 --sdrplay-
 **Example 5: Manual Frequency Correction (WAV Input)**
 Apply a direct -400 kHz frequency shift to a file that lacks metadata, using the `cu8-nrsc5` preset.
 ```bash
-iq_resample_tool -i capture_no_meta.wav --wav-shift-frequency -400e3 --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
+iq_resample_tool --input wav capture_no_meta.wav --wav-shift-frequency -400e3 --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
 ```
 
 **Example 6: Workaround for Narrow Sideband Recordings (WAV Input)**
 Use the `--wav-shift-after-resample` flag to process a narrow HD I/Q recording where the desired signal is off-center after resampling, using the `cu8-nrsc5` preset.
 ```bash
-iq_resample_tool -i narrow_capture.wav --wav-center-target-frequency 97.3e6 --preset cu8-nrsc5 --wav-shift-after-resample --stdout | nrsc5 -r - 0
+iq_resample_tool --input wav narrow_capture.wav --wav-center-target-frequency 97.3e6 --preset cu8-nrsc5 --wav-shift-after-resample --stdout | nrsc5 -r - 0
 ```
 
 ### Configuration via Presets
