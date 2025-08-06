@@ -2,27 +2,28 @@
 #include "input_wav.h"
 #include "log.h"
 #include "signal_handler.h" // For is_shutdown_requested
-#include "utils.h"          // For get_basename_for_parsing, sdr_software_type_to_string, format_file_size
-#include "config.h"         // For BUFFER_SIZE_SAMPLES, MAX_PATH_LEN
-#include "platform.h"       // For platform-specific path handling (e.g., _WIN32)
+#include "utils.h"
+#include "config.h"
+#include "platform.h"
+#include "sample_convert.h" // For get_bytes_per_sample
 
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
 #include <sndfile.h>
-#include <pthread.h> // For pthread_mutex_lock/unlock
-#include <sys/stat.h> // For stat() to get file size
-#include <stdarg.h> // For va_list, va_start, va_end
+#include <pthread.h>
+#include <sys/stat.h>
+#include <stdarg.h>
 
-// --- ADDED: Includes from metadata.c ---
+// --- Includes from metadata.c ---
 #include <stdlib.h>
 #include <stdbool.h>
 #include <ctype.h>
 #include <time.h>
 #include <limits.h>
 #include <expat.h>
-#include <stddef.h> // Required for offsetof macro
-#include <math.h>   // For isfinite()
+#include <stddef.h>
+#include <math.h>
 
 // =================================================================================
 // START: Merged code from metadata.c
@@ -416,27 +417,6 @@ static bool _parse_auxi_xml_expat(const unsigned char *chunk_data, sf_count_t ch
 
 
 /**
- * @brief A helper to safely add a new key-value pair to the summary info struct.
- */
-static void add_summary_item(InputSummaryInfo* info, const char* label, const char* value_fmt, ...) {
-    if (info->count >= MAX_SUMMARY_ITEMS) {
-        return; // Prevent buffer overflow
-    }
-    SummaryItem* item = &info->items[info->count];
-    strncpy(item->label, label, sizeof(item->label) - 1);
-    item->label[sizeof(item->label) - 1] = '\0';
-
-    va_list args;
-    va_start(args, value_fmt);
-    vsnprintf(item->value, sizeof(item->value), value_fmt, args);
-    va_end(args);
-    item->value[sizeof(item->value) - 1] = '\0';
-
-    info->count++;
-}
-
-
-/**
  * @brief Populates the InputSummaryInfo struct with details for a WAV file source.
  */
 static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
@@ -452,23 +432,19 @@ static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo
 
     add_summary_item(info, "Input File", "%s", display_path);
 
-    // MODIFIED: This now uses a clean switch statement on our new pcmformat enum.
     const char *format_str;
-    switch (resources->input_pcm_format) {
-        case PCM_FORMAT_S16: format_str = "16-bit Signed PCM";   break;
-        case PCM_FORMAT_S8:  format_str = "8-bit Signed PCM";    break;
-        case PCM_FORMAT_U8:  format_str = "8-bit Unsigned PCM";  break;
-        // NOTE: U16 is intentionally omitted from the summary as this module cannot detect it.
-        default:             format_str = "Unknown PCM";         break;
+    switch (resources->input_format) {
+        case CS16: format_str = "16-bit Signed Complex PCM (cs16)"; break;
+        case CU8:  format_str = "8-bit Unsigned Complex PCM (cu8)"; break;
+        default:   format_str = "Unknown PCM"; break;
     }
     add_summary_item(info, "Input Format", "%s", format_str);
-    // MODIFIED: Read samplerate from our new generic struct.
     add_summary_item(info, "Input Rate", "%.1f Hz", (double)resources->source_info.samplerate);
 
     long long input_file_size = -1LL;
     #ifdef _WIN32
         struct __stat64 stat_buf64;
-        if (_stat64(display_path, &stat_buf64) == 0) input_file_size = stat_buf64.st_size;
+        if (_wstat64(config->effective_input_filename_w, &stat_buf64) == 0) input_file_size = stat_buf64.st_size;
     #else
         struct stat stat_buf;
         if (stat(display_path, &stat_buf) == 0) input_file_size = stat_buf.st_size;
@@ -514,18 +490,12 @@ static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo
 }
 
 static bool wav_validate_options(const AppConfig* config) {
-    // The checks for --rf-freq and --bias-t are now moved to cli.c
-    // The checks for mutually exclusive frequency shifts and --shift-after requiring a shift
-    // are also handled comprehensively and earlier in cli.c.
-
-    // So, for WAV input, no specific validation is needed here anymore,
-    // as all relevant checks are handled globally in cli.c.
-    (void)config; // Suppress unused parameter warning if no checks remain.
+    (void)config;
     return true;
 }
 
 static bool wav_is_sdr_hardware(void) {
-    return false; // WAV files are not SDR hardware
+    return false;
 }
 
 
@@ -536,19 +506,18 @@ static bool wav_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
 
-    const char* input_path_for_libsndfile;
 #ifdef _WIN32
-    input_path_for_libsndfile = config->effective_input_filename_utf8;
-#else
-    input_path_for_libsndfile = config->effective_input_filename;
-#endif
-
-    log_info("Opening WAV input file: %s", input_path_for_libsndfile);
-
-    // MODIFIED: We now use a temporary SF_INFO struct.
+    log_info("Opening WAV input file: %s", config->effective_input_filename_utf8);
     SF_INFO sfinfo;
     memset(&sfinfo, 0, sizeof(SF_INFO));
-    resources->infile = sf_open(input_path_for_libsndfile, SFM_READ, &sfinfo);
+    resources->infile = sf_wchar_open(config->effective_input_filename_w, SFM_READ, &sfinfo);
+#else
+    log_info("Opening WAV input file: %s", config->effective_input_filename);
+    SF_INFO sfinfo;
+    memset(&sfinfo, 0, sizeof(SF_INFO));
+    resources->infile = sf_open(config->effective_input_filename, SFM_READ, &sfinfo);
+#endif
+
     if (!resources->infile) {
         log_fatal("Error opening input file: %s", sf_strerror(NULL));
         return false;
@@ -562,36 +531,24 @@ static bool wav_initialize(InputSourceContext* ctx) {
         return false;
     }
 
-    // MODIFIED: This block translates the libsndfile format into our internal,
-    // generic pcmformat enum and sets properties accordingly.
     int sf_subtype = (sfinfo.format & SF_FORMAT_SUBMASK);
     switch (sf_subtype) {
-        case SF_FORMAT_PCM_S8:
-            resources->input_pcm_format = PCM_FORMAT_S8;
-            resources->input_bit_depth = 8;
-            resources->input_bytes_per_sample = sizeof(int8_t);
+        case SF_FORMAT_PCM_16:
+            resources->input_format = CS16;
             break;
         case SF_FORMAT_PCM_U8:
-            resources->input_pcm_format = PCM_FORMAT_U8;
-            resources->input_bit_depth = 8;
-            resources->input_bytes_per_sample = sizeof(uint8_t);
+            resources->input_format = CU8;
             break;
-        case SF_FORMAT_PCM_16:
-            resources->input_pcm_format = PCM_FORMAT_S16;
-            resources->input_bit_depth = 16;
-            resources->input_bytes_per_sample = sizeof(int16_t);
-            break;
-        // NOTE: U16 case is removed as libsndfile does not define a constant for it.
         default:
-            // --- MODIFIED MESSAGE ---
             log_fatal("Error: Input WAV file uses an unsupported PCM subtype (0x%04X). "
-                      "Supported WAV PCM subtypes are 8-bit Unsigned (U8), 8-bit Signed (S8), "
-                      "and 16-bit Signed (S16).", sf_subtype);
-            // --- END MODIFIED MESSAGE ---
+                      "Supported WAV PCM subtypes are 16-bit Signed (cs16) and 8-bit Unsigned (cu8).", sf_subtype);
             sf_close(resources->infile);
             resources->infile = NULL;
             return false;
     }
+
+    // Set the size of the full I/Q pair based on the detected format
+    resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
 
     if (sfinfo.samplerate <= 0) {
         log_fatal("Error: Invalid input sample rate (%d Hz).",
@@ -605,14 +562,10 @@ static bool wav_initialize(InputSourceContext* ctx) {
         log_warn("Warning: Input file appears to be empty (0 frames).");
     }
 
-    // MODIFIED: Copy the essential information from the libsndfile-specific struct
-    // into our new generic application struct. This is the abstraction step.
     resources->source_info.samplerate = sfinfo.samplerate;
     resources->source_info.frames = sfinfo.frames;
 
-    // The metadata parsing calls are unchanged.
     init_sdr_metadata(&resources->sdr_info);
-    // Note: We pass the temporary sfinfo struct here as the function signature requires it.
     resources->sdr_info_present = parse_sdr_metadata_chunks(resources->infile, &sfinfo, &resources->sdr_info);
     char basename_buffer[MAX_PATH_LEN];
     const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer));
@@ -629,8 +582,7 @@ static bool wav_initialize(InputSourceContext* ctx) {
  */
 static void* wav_start_stream(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
-    size_t bytes_per_input_frame = 2 * resources->input_bytes_per_sample;
-    size_t bytes_to_read_per_chunk = (size_t)BUFFER_SIZE_SAMPLES * bytes_per_input_frame;
+    size_t bytes_to_read_per_chunk = (size_t)BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
 
     while (!is_shutdown_requested() && !resources->error_occurred) {
         WorkItem *current_item = (WorkItem*)queue_dequeue(resources->free_pool_q);
@@ -638,7 +590,6 @@ static void* wav_start_stream(InputSourceContext* ctx) {
             break;
         }
 
-        // MODIFIED: The return type of sf_read_raw is sf_count_t, which is compatible with int64_t.
         int64_t bytes_read = sf_read_raw(resources->infile, current_item->raw_input_buffer, bytes_to_read_per_chunk);
         if (bytes_read < 0) {
             log_fatal("libsndfile read error: %s", sf_strerror(resources->infile));
@@ -651,7 +602,7 @@ static void* wav_start_stream(InputSourceContext* ctx) {
             break;
         }
 
-        current_item->frames_read = bytes_read / bytes_per_input_frame;
+        current_item->frames_read = bytes_read / resources->input_bytes_per_sample_pair;
         current_item->is_last_chunk = (current_item->frames_read == 0);
 
         if (!current_item->is_last_chunk) {

@@ -1,6 +1,8 @@
+
 #include "presets_loader.h"
 #include "log.h"
 #include "config.h" // Include config.h for APP_NAME, PRESETS_FILENAME, and MAX_PATH_BUFFER
+#include "utils.h"  // For trim_whitespace
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,15 +30,11 @@
 #define MAX_LINE_LENGTH 1024 // A reasonable limit for a single line in the config file
 #define MAX_PRESETS 128      // A sanity limit on the total number of presets to load
 
-// MAX_PATH_BUFFER is now defined in config.h
-
 
 // --- Helper function declarations ---
-static char* trim_whitespace(char* str);
 static bool check_file_exists(const char* full_path);
 static void free_dynamic_paths(char** paths, int count);
 
-// get_executable_dir definition is now ONLY compiled for Windows
 #ifdef _WIN32
 /**
  * @brief Helper function to get the executable's directory (Windows specific).
@@ -67,30 +65,6 @@ static bool get_executable_dir(char* buffer, size_t buffer_size) {
     return true;
 }
 #endif // _WIN32
-
-/**
- * @brief Helper function to trim leading/trailing whitespace from a string in-place.
- */
-static char* trim_whitespace(char* str) {
-    if (!str) return NULL;
-    char* end;
-
-    // Trim leading space
-    while (isspace((unsigned char)*str)) str++;
-
-    if (*str == 0) { // All spaces?
-        return str;
-    }
-
-    // Trim trailing space
-    end = str + strlen(str) - 1;
-    while (end > str && isspace((unsigned char)*end)) end--;
-
-    // Write new null terminator
-    end[1] = '\0';
-
-    return str;
-}
 
 /**
  * @brief Helper function to check if a file exists at the given path.
@@ -143,41 +117,47 @@ bool presets_load_from_file(AppConfig* config) {
 #ifdef _WIN32
     // 1. Executable directory
     char exe_dir[MAX_PATH_BUFFER];
-    if (get_executable_dir(exe_dir, sizeof(exe_dir))) { // Call to get_executable_dir is here
+    if (get_executable_dir(exe_dir, sizeof(exe_dir))) {
         search_paths_list[current_path_idx++] = exe_dir;
-    } else {
-        // Error already logged in get_executable_dir, no need to log here again.
     }
 
     // 2. %APPDATA%\APP_NAME
-    wchar_t appdata_path_w[MAX_PATH_BUFFER];
+    wchar_t* appdata_path_w = NULL;
     if (SHGetKnownFolderPath(&FOLDERID_RoamingAppData, 0, NULL, &appdata_path_w) == S_OK) {
-        PathAppendW(appdata_path_w, L"\\" APP_NAME);
+        wchar_t full_appdata_path_w[MAX_PATH_BUFFER];
+        wcsncpy(full_appdata_path_w, appdata_path_w, MAX_PATH_BUFFER - 1);
+        full_appdata_path_w[MAX_PATH_BUFFER - 1] = L'\0';
+        CoTaskMemFree(appdata_path_w); // Free the path returned by the function
+
+        PathAppendW(full_appdata_path_w, L"\\" APP_NAME);
         char* appdata_path_utf8 = (char*)malloc(MAX_PATH_BUFFER);
-        if (appdata_path_utf8) { // Check malloc success
-            if (WideCharToMultiByte(CP_UTF8, 0, appdata_path_w, -1, appdata_path_utf8, MAX_PATH_BUFFER, NULL, NULL) > 0) {
+        if (appdata_path_utf8) {
+            if (WideCharToMultiByte(CP_UTF8, 0, full_appdata_path_w, -1, appdata_path_utf8, MAX_PATH_BUFFER, NULL, NULL) > 0) {
                 dynamic_paths[dynamic_paths_count++] = appdata_path_utf8;
                 search_paths_list[current_path_idx++] = appdata_path_utf8;
             } else {
-                free(appdata_path_utf8); // Free if malloc succeeded but conversion failed
+                free(appdata_path_utf8);
                 log_warn("Failed to convert AppData path to UTF-8 for presets.");
             }
         } else {
-            log_fatal("Failed to allocate memory for AppData path."); // Fatal if malloc fails
+            log_fatal("Failed to allocate memory for AppData path.");
             free_dynamic_paths(dynamic_paths, dynamic_paths_count);
             return false;
         }
-    } else {
-        log_warn("SHGetKnownFolderPath for FOLDERID_RoamingAppData failed for presets.");
     }
 
     // 3. %PROGRAMDATA%\APP_NAME
-    wchar_t programdata_path_w[MAX_PATH_BUFFER];
+    wchar_t* programdata_path_w = NULL;
     if (SHGetKnownFolderPath(&FOLDERID_ProgramData, 0, NULL, &programdata_path_w) == S_OK) {
-        PathAppendW(programdata_path_w, L"\\" APP_NAME);
+        wchar_t full_programdata_path_w[MAX_PATH_BUFFER];
+        wcsncpy(full_programdata_path_w, programdata_path_w, MAX_PATH_BUFFER - 1);
+        full_programdata_path_w[MAX_PATH_BUFFER - 1] = L'\0';
+        CoTaskMemFree(programdata_path_w);
+
+        PathAppendW(full_programdata_path_w, L"\\" APP_NAME);
         char* programdata_path_utf8 = (char*)malloc(MAX_PATH_BUFFER);
-        if (programdata_path_utf8) { // Check malloc success
-            if (WideCharToMultiByte(CP_UTF8, 0, programdata_path_w, -1, programdata_path_utf8, MAX_PATH_BUFFER, NULL, NULL) > 0) {
+        if (programdata_path_utf8) {
+            if (WideCharToMultiByte(CP_UTF8, 0, full_programdata_path_w, -1, programdata_path_utf8, MAX_PATH_BUFFER, NULL, NULL) > 0) {
                 dynamic_paths[dynamic_paths_count++] = programdata_path_utf8;
                 search_paths_list[current_path_idx++] = programdata_path_utf8;
             } else {
@@ -185,12 +165,10 @@ bool presets_load_from_file(AppConfig* config) {
                 log_warn("Failed to convert ProgramData path to UTF-8 for presets.");
             }
         } else {
-            log_fatal("Failed to allocate memory for ProgramData path."); // Fatal if malloc fails
+            log_fatal("Failed to allocate memory for ProgramData path.");
             free_dynamic_paths(dynamic_paths, dynamic_paths_count);
             return false;
         }
-    } else {
-        log_warn("SHGetKnownFolderPath for FOLDERID_ProgramData failed for presets.");
     }
 #else // POSIX
     // 1. Current working directory
@@ -204,30 +182,27 @@ bool presets_load_from_file(AppConfig* config) {
         free_dynamic_paths(dynamic_paths, dynamic_paths_count);
         return false;
     }
-    if (xdg_config_home) {
+    if (xdg_config_home && xdg_config_home[0] != '\0') {
         snprintf(xdg_path, MAX_PATH_BUFFER, "%s/%s", xdg_config_home, APP_NAME);
     } else {
-        // Fallback to ~/.config/APP_NAME if XDG_CONFIG_HOME not set
-        snprintf(xdg_path, MAX_PATH_BUFFER, "~/.config/%s", APP_NAME);
+        // Fallback to ~/.config/APP_NAME if XDG_CONFIG_HOME not set or is empty
+        const char* home_dir = getenv("HOME");
+        if (home_dir) {
+            snprintf(xdg_path, MAX_PATH_BUFFER, "%s/.config/%s", home_dir, APP_NAME);
+        } else {
+            // No HOME, can't form path, so free and skip
+            free(xdg_path);
+            xdg_path = NULL;
+        }
     }
-    dynamic_paths[dynamic_paths_count++] = xdg_path;
-    search_paths_list[current_path_idx++] = xdg_path;
-
-    // 3. Older dotfile style (user-specific)
-    char* home_app_path = (char*)malloc(MAX_PATH_BUFFER);
-    if (!home_app_path) {
-        log_fatal("Failed to allocate memory for home app path.");
-        free_dynamic_paths(dynamic_paths, dynamic_paths_count);
-        return false;
+    if (xdg_path) {
+        dynamic_paths[dynamic_paths_count++] = xdg_path;
+        search_paths_list[current_path_idx++] = xdg_path;
     }
-    snprintf(home_app_path, MAX_PATH_BUFFER, "~/.%s", APP_NAME);
-    dynamic_paths[dynamic_paths_count++] = home_app_path;
-    search_paths_list[current_path_idx++] = home_app_path;
 
-    // 4. System-wide config locations
+    // 3. System-wide config locations
     search_paths_list[current_path_idx++] = "/etc/" APP_NAME;
     search_paths_list[current_path_idx++] = "/usr/local/etc/" APP_NAME;
-    search_paths_list[current_path_idx++] = "/usr/share/" APP_NAME;
 #endif
 
     // --- Search for the presets file in all defined locations ---
@@ -235,42 +210,8 @@ bool presets_load_from_file(AppConfig* config) {
         const char* base_dir = search_paths_list[i];
         if (base_dir == NULL) continue;
 
-        char current_base_dir_expanded[MAX_PATH_BUFFER];
-        strncpy(current_base_dir_expanded, base_dir, sizeof(current_base_dir_expanded) - 1);
-        current_base_dir_expanded[sizeof(current_base_dir_expanded) - 1] = '\0';
-
-#ifndef _WIN32
-        // Expand tilde for POSIX paths
-        if (current_base_dir_expanded[0] == '~') {
-            wordexp_t p;
-            if (wordexp(current_base_dir_expanded, &p, 0) == 0 && p.we_wordc > 0) {
-                strncpy(current_base_dir_expanded, p.we_wordv[0], sizeof(current_base_dir_expanded) - 1);
-                current_base_dir_expanded[sizeof(current_base_dir_expanded) - 1] = '\0';
-                wordfree(&p);
-            } else {
-                log_warn("Failed to expand tilde in path: %s", base_dir);
-                if (p.we_wordc > 0) wordfree(&p); // Ensure cleanup even on partial failure
-                continue;
-            }
-        }
-#endif
-        // Determine path separator
-        char path_separator;
-#ifdef _WIN32
-        path_separator = '\\';
-#else
-        path_separator = '/';
-#endif
-
         // Construct full path
-        int written = snprintf(full_path_buffer, sizeof(full_path_buffer), "%s%c%s", current_base_dir_expanded,
-                               path_separator, PRESETS_FILENAME);
-
-        if (written < 0 || (size_t)written >= sizeof(full_path_buffer)) {
-            log_warn("Path buffer too small for '%s%c%s'. Skipping.", current_base_dir_expanded,
-                     path_separator, PRESETS_FILENAME);
-            continue;
-        }
+        snprintf(full_path_buffer, sizeof(full_path_buffer), "%s/%s", base_dir, PRESETS_FILENAME);
 
         if (check_file_exists(full_path_buffer)) {
             if (num_found_files < (int)(sizeof(found_preset_files) / sizeof(found_preset_files[0]))) {
@@ -278,13 +219,10 @@ bool presets_load_from_file(AppConfig* config) {
                 if (!found_preset_files[num_found_files]) {
                     log_fatal("Failed to duplicate found preset file path string.");
                     free_dynamic_paths(dynamic_paths, dynamic_paths_count);
-                    // Free already duplicated found_preset_files
                     for(int j=0; j<num_found_files; ++j) free(found_preset_files[j]);
                     return false;
                 }
                 num_found_files++;
-            } else {
-                log_warn("Too many preset files found. Ignoring additional conflicts beyond %zu.", sizeof(found_preset_files) / sizeof(found_preset_files[0]));
             }
         }
     }
@@ -294,28 +232,28 @@ bool presets_load_from_file(AppConfig* config) {
         log_warn("Conflicting presets files found. No presets will be loaded. Please resolve the conflict by keeping only one of the following files:");
         for (int i = 0; i < num_found_files; ++i) {
             log_warn("  - %s", found_preset_files[i]);
-            free(found_preset_files[i]); // Free duplicated path
+            free(found_preset_files[i]);
         }
         free_dynamic_paths(dynamic_paths, dynamic_paths_count);
-        return true; // Not a fatal error, but no presets loaded
+        return true;
     } else if (num_found_files == 0) {
         log_info("No presets file '%s' found in any standard location. No external presets will be available.", PRESETS_FILENAME);
         free_dynamic_paths(dynamic_paths, dynamic_paths_count);
-        return true; // Not a fatal error
+        return true;
     }
 
     // --- Load the single found presets file ---
     FILE* fp = fopen(found_preset_files[0], "r");
     if (!fp) {
         log_fatal("Error opening presets file '%s': %s", found_preset_files[0], strerror(errno));
-        free(found_preset_files[0]); // Free duplicated path
+        free(found_preset_files[0]);
         free_dynamic_paths(dynamic_paths, dynamic_paths_count);
         return false;
     }
 
     char line[MAX_LINE_LENGTH];
     PresetDefinition* current_preset = NULL;
-    int capacity = 8; // Start with capacity for 8 presets
+    int capacity = 8;
 
     config->presets = malloc(capacity * sizeof(PresetDefinition));
     if (!config->presets) {
@@ -331,27 +269,23 @@ bool presets_load_from_file(AppConfig* config) {
         line_num++;
         char* trimmed_line = trim_whitespace(line);
 
-        // Skip comments and blank lines
         if (trimmed_line[0] == '#' || trimmed_line[0] == ';' || trimmed_line[0] == '\0') {
             continue;
         }
 
-        // Check for a new preset section header
         if (trimmed_line[0] == '[' && strstr(trimmed_line, "preset:")) {
-            // Enforce the preset limit to prevent Denial of Service
             if (config->num_presets >= MAX_PRESETS) {
                 log_warn("Maximum number of presets (%d) reached at line %d. Ignoring further presets.", MAX_PRESETS, line_num);
-                current_preset = NULL; // Stop processing until the next valid section
+                current_preset = NULL;
                 continue;
             }
 
-            // Resize the presets array if necessary
             if (config->num_presets == capacity) {
                 capacity *= 2;
                 PresetDefinition* new_presets = realloc(config->presets, capacity * sizeof(PresetDefinition));
                 if (!new_presets) {
                     log_fatal("Failed to reallocate memory for presets.");
-                    presets_free_loaded(config); // Free already loaded presets
+                    presets_free_loaded(config);
                     fclose(fp);
                     free(found_preset_files[0]);
                     free_dynamic_paths(dynamic_paths, dynamic_paths_count);
@@ -379,12 +313,12 @@ bool presets_load_from_file(AppConfig* config) {
                 config->num_presets++;
             } else {
                 log_warn("Malformed preset header at line %d: %s", line_num, trimmed_line);
-                current_preset = NULL; // Invalidate current preset
+                current_preset = NULL;
             }
-        } else if (current_preset && strchr(trimmed_line, '=')) { // Key-value pair
+        } else if (current_preset && strchr(trimmed_line, '=')) {
             char* key = strtok(trimmed_line, "=");
             char* value = strtok(NULL, "");
-            
+
             if (!key || !value) {
                 log_warn("Malformed key-value pair at line %d.", line_num);
                 continue;
@@ -407,7 +341,7 @@ bool presets_load_from_file(AppConfig* config) {
                 current_preset->target_rate = strtod(value, &endptr);
                 if (*endptr != '\0' || current_preset->target_rate <= 0 || !isfinite(current_preset->target_rate)) {
                     log_warn("Invalid value for 'target_rate' in preset '%s' at line %d: '%s'", current_preset->name, line_num, value);
-                    current_preset->target_rate = 0.0; // Mark as invalid
+                    current_preset->target_rate = 0.0;
                 }
             } else if (strcasecmp(key, "sample_format_name") == 0) {
                 current_preset->sample_format_name = strdup(value);
@@ -433,7 +367,7 @@ bool presets_load_from_file(AppConfig* config) {
     }
 
     fclose(fp);
-    free(found_preset_files[0]); // Free the single duplicated path that was loaded
+    free(found_preset_files[0]);
     free_dynamic_paths(dynamic_paths, dynamic_paths_count);
     return true;
 }

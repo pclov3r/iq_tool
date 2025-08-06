@@ -37,7 +37,6 @@ bool shift_create_nco(AppConfig *config, AppResources *resources) {
         return true;
     }
 
-    // MODIFIED: Read samplerate from our new generic source_info struct.
     double rate_for_nco_setup = config->shift_after_resample ? config->target_rate : (double)resources->source_info.samplerate;
 
     if (fabs(resources->actual_nco_shift_hz) > (SHIFT_FACTOR_LIMIT * rate_for_nco_setup)) {
@@ -100,7 +99,6 @@ bool shift_check_nyquist_warning(const AppConfig *config, const AppResources *re
         return true;
     }
 
-    // MODIFIED: Read samplerate from our new generic source_info struct.
     double rate_for_nyquist_check = config->shift_after_resample ? config->target_rate : (double)resources->source_info.samplerate;
     double nyquist_freq = rate_for_nyquist_check / 2.0;
 

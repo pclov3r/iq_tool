@@ -1,16 +1,19 @@
 // --- Includes for the main implementation ---
 #include "input_sdrplay.h" // Its own header
 #include "log.h"
-#include "signal_handler.h"
+#include "signal_handler.h" // For is_shutdown_requested and handle_fatal_thread_error
 #include "config.h"
 #include "types.h"
 #include "spectrum_shift.h"
+#include "utils.h"
+#include "sample_convert.h" // For get_bytes_per_sample
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
 #include <errno.h>
-#include <stdarg.h> // For va_list, va_start, va_end
+#include <stdarg.h>
 
 // --- Platform-specific includes ---
 #if defined(_WIN32)
@@ -116,22 +119,6 @@ const char* get_sdrplay_device_name(uint8_t hwVer) {
     }
 }
 
-static void handle_fatal_sdr_error(const char* error_msg, AppResources *resources) {
-    pthread_mutex_lock(&resources->progress_mutex);
-    if (resources->error_occurred) {
-        pthread_mutex_unlock(&resources->progress_mutex);
-        return;
-    }
-    resources->error_occurred = true;
-    pthread_mutex_unlock(&resources->progress_mutex);
-
-    log_fatal("%s", error_msg);
-    log_info("Signaling all threads to shut down...");
-    if (resources->input_q) queue_signal_shutdown(resources->input_q);
-    if (resources->output_q) queue_signal_shutdown(resources->output_q);
-    if (resources->free_pool_q) queue_signal_shutdown(resources->free_pool_q);
-}
-
 /**
  * @brief Gets the precise number of LNA states (gain levels) available for a given
  *        SDRplay device at a specific RF frequency and port selection.
@@ -229,6 +216,13 @@ void sdrplay_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *
         return;
     }
 
+    // The number of bytes to copy is the number of samples (frames) * size of a cs16 pair
+    size_t bytes_to_copy = numSamples * resources->input_bytes_per_sample_pair;
+    if (bytes_to_copy > (BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair)) {
+        log_warn("SDRplay callback provided more samples than buffer can hold. Truncating.");
+        numSamples = BUFFER_SIZE_SAMPLES;
+    }
+
     int16_t *raw_buffer = (int16_t*)item->raw_input_buffer;
     for (unsigned int i = 0; i < numSamples; i++) {
         raw_buffer[i * 2]     = xi[i];
@@ -257,10 +251,10 @@ void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT
 
     switch (eventId) {
         case sdrplay_api_DeviceRemoved:
-            handle_fatal_sdr_error("SDRplay device has been removed.", resources);
+            handle_fatal_thread_error("SDRplay device has been removed.", resources);
             break;
         case sdrplay_api_DeviceFailure:
-            handle_fatal_sdr_error("A generic SDRplay device failure has occurred.", resources);
+            handle_fatal_thread_error("A generic SDRplay device failure has occurred.", resources);
             break;
         case sdrplay_api_PowerOverloadChange: {
             sdrplay_api_PowerOverloadCbEventIdT overload_state = params->powerOverloadParams.powerOverloadChangeType;
@@ -295,23 +289,6 @@ void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT
 
 // --- InputSourceOps Implementations for SDRplay ---
 
-static void add_summary_item(InputSummaryInfo* info, const char* label, const char* value_fmt, ...) {
-    if (info->count >= MAX_SUMMARY_ITEMS) {
-        return;
-    }
-    SummaryItem* item = &info->items[info->count];
-    strncpy(item->label, label, sizeof(item->label) - 1);
-    item->label[sizeof(item->label) - 1] = '\0';
-
-    va_list args;
-    va_start(args, value_fmt);
-    vsnprintf(item->value, sizeof(item->value), value_fmt, args);
-    va_end(args);
-    item->value[sizeof(item->value) - 1] = '\0';
-
-    info->count++;
-}
-
 static void sdrplay_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppResources *resources = ctx->resources;
@@ -324,12 +301,10 @@ static void sdrplay_get_summary_info(const InputSourceContext* ctx, InputSummary
              resources->sdr_device->SerNo);
     add_summary_item(info, "Input Source", "%s", source_name_buf);
 
-    add_summary_item(info, "Input Format", "16-bit Signed PCM");
+    add_summary_item(info, "Input Format", "16-bit Signed Complex (cs16)");
     add_summary_item(info, "Input Rate", "%.3f Msps", (double)resources->source_info.samplerate / 1e6);
-    // --- ADDED ---
     double active_bw = config->sdrplay.bandwidth_provided ? config->sdrplay.bandwidth_hz : SDRPLAY_DEFAULT_BANDWIDTH_HZ;
     add_summary_item(info, "Bandwidth", "%.3f MHz", active_bw / 1e6);
-    // -------------
     add_summary_item(info, "RF Frequency", "%.6f MHz", config->sdr.rf_freq_hz / 1e6);
 
     if (config->sdrplay.gain_level_provided) {
@@ -371,8 +346,7 @@ static bool sdrplay_validate_options(const AppConfig* config) {
         log_fatal("Option --sdrplay-hdr-bw requires --sdrplay-hdr-mode to be specified.");
         return false;
     }
-    
-    // --- MODIFIED: Full validation for sample rate and bandwidth ---
+
     double sample_rate = config->sdrplay.sample_rate_provided ? config->sdrplay.sample_rate_hz : SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
     double bandwidth = config->sdrplay.bandwidth_provided ? config->sdrplay.bandwidth_hz : SDRPLAY_DEFAULT_BANDWIDTH_HZ;
 
@@ -390,7 +364,6 @@ static bool sdrplay_validate_options(const AppConfig* config) {
         log_fatal("Bandwidth (%.0f Hz) cannot be greater than the sample rate (%.0f Hz).", bandwidth, sample_rate);
         return false;
     }
-    // ----------------------------------------------------------------
 
     return true;
 }
@@ -466,16 +439,14 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
     sdrplay_api_RxChannelParamsT *chParams = resources->sdr_device_params->rxChannelA;
     sdrplay_api_DevParamsT *devParams = resources->sdr_device_params->devParams;
 
-    // --- START: MODIFIED SECTION for Sample Rate and Bandwidth ---
     double sample_rate_to_set = config->sdrplay.sample_rate_provided ? config->sdrplay.sample_rate_hz : SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
     double bandwidth_to_set = config->sdrplay.bandwidth_provided ? config->sdrplay.bandwidth_hz : SDRPLAY_DEFAULT_BANDWIDTH_HZ;
-    
+
     sdrplay_api_Bw_MHzT bw_enum = map_bw_hz_to_enum(bandwidth_to_set);
 
     devParams->fsFreq.fsHz = sample_rate_to_set;
     chParams->tunerParams.bwType = bw_enum;
     chParams->tunerParams.ifType = sdrplay_api_IF_Zero; // Always use Zero-IF mode
-    // --- END: MODIFIED SECTION ---
 
     chParams->tunerParams.rfFreq.rfHz = config->sdr.rf_freq_hz;
 
@@ -573,7 +544,7 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
                 break;
         }
     }
-    
+
     if (config->sdrplay.antenna_port_name && !antenna_request_handled) { log_warn("Antenna selection not applicable for the detected device."); }
     if (config->sdr.bias_t_enable && !biast_request_handled) { log_warn("Bias-T is not supported on the detected device."); }
 
@@ -588,11 +559,10 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
         chParams->tunerParams.gain.LNAstate = num_lna_states - 1 - config->sdrplay.gain_level;
     }
 
-    resources->input_bit_depth = 16;
-    resources->input_bytes_per_sample = sizeof(int16_t);
+    resources->input_format = CS16;
+    resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
     resources->source_info.samplerate = (int)sample_rate_to_set;
     resources->source_info.frames = -1;
-    resources->input_pcm_format = PCM_FORMAT_S16;
 
     return true;
 }
@@ -614,7 +584,7 @@ static void* sdrplay_start_stream(InputSourceContext* ctx) {
         if (errorInfo && strlen(errorInfo->message) > 0) {
             snprintf(error_buf + strlen(error_buf), sizeof(error_buf) - strlen(error_buf), " - API Message: %s", errorInfo->message);
         }
-        handle_fatal_sdr_error(error_buf, resources);
+        handle_fatal_thread_error(error_buf, resources);
     } else {
         while (!is_shutdown_requested() && !resources->error_occurred) {
             #ifdef _WIN32

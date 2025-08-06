@@ -3,11 +3,8 @@
 #define INPUT_HACKRF_H_
 
 #include <stdbool.h>
-#include <hackrf.h> // This provides hackrf_transfer, hackrf_device, etc.
-#include "input_source.h" // ADDED: Include the generic input source interface
-
-// REMOVED: bool hackrf_initialize_device(struct AppConfig *config, struct AppResources *resources);
-// REMOVED: void hackrf_cleanup_device(struct AppResources *resources);
+#include <hackrf.h>
+#include "input_source.h"
 
 /**
  * @brief Returns a pointer to the InputSourceOps struct that implements

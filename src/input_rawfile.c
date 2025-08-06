@@ -6,6 +6,7 @@
 #include "utils.h"
 #include "config.h"
 #include "platform.h"
+#include "sample_convert.h" // For get_bytes_per_sample
 
 #include <stdio.h>
 #include <string.h>
@@ -15,7 +16,6 @@
 #include <sys/stat.h>
 #include <stdarg.h>
 
-// --- ADDED: Include strings.h for strcasecmp on POSIX ---
 #ifndef _WIN32
 #include <strings.h>
 #endif
@@ -32,20 +32,7 @@ static void rawfile_cleanup(InputSourceContext* ctx);
 static void rawfile_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
 static bool rawfile_validate_options(const AppConfig* config);
 static bool rawfile_is_sdr_hardware(void);
-
-// --- Helper to add summary items ---
-static void add_summary_item(InputSummaryInfo* info, const char* label, const char* value_fmt, ...) {
-    if (info->count >= MAX_SUMMARY_ITEMS) return;
-    SummaryItem* item = &info->items[info->count];
-    strncpy(item->label, label, sizeof(item->label) - 1);
-    item->label[sizeof(item->label) - 1] = '\0';
-    va_list args;
-    va_start(args, value_fmt);
-    vsnprintf(item->value, sizeof(item->value), value_fmt, args);
-    va_end(args);
-    item->value[sizeof(item->value) - 1] = '\0';
-    info->count++;
-}
+static format_t get_format_from_string(const char *name);
 
 // --- The single instance of InputSourceOps for raw files ---
 static InputSourceOps raw_file_ops = {
@@ -68,41 +55,42 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
 
-    // 1. Create and manually populate the SF_INFO struct from user arguments
+    // 1. Parse the user-provided format string into our enum
+    resources->input_format = get_format_from_string(config->raw_file.format_str);
+    if (resources->input_format == FORMAT_UNKNOWN) {
+        log_fatal("Invalid raw input format '%s'. See --help for valid formats.", config->raw_file.format_str);
+        return false;
+    }
+
+    // 2. Get the size of the full I/Q sample pair for this format
+    resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
+    if (resources->input_bytes_per_sample_pair == 0) {
+        log_fatal("Internal error: could not determine sample size for format '%s'.", config->raw_file.format_str);
+        return false;
+    }
+
+    // 3. Create and manually populate the SF_INFO struct to TELL libsndfile what to expect
     SF_INFO sfinfo;
     memset(&sfinfo, 0, sizeof(SF_INFO));
     sfinfo.samplerate = (int)config->raw_file.sample_rate_hz;
-    sfinfo.channels = 2; // Hard-coded for I/Q data
+    sfinfo.channels = 2;
 
-    // 2. Determine the format code and set internal format properties
-    int format_code = SF_FORMAT_RAW; // Major format is RAW
-    if (strcasecmp(config->raw_file.format_str, "cs16") == 0) {
-        format_code |= SF_FORMAT_PCM_16;
-        resources->input_pcm_format = PCM_FORMAT_S16;
-        resources->input_bit_depth = 16;
-        resources->input_bytes_per_sample = sizeof(int16_t);
-    } else if (strcasecmp(config->raw_file.format_str, "cu16") == 0) {
-        format_code |= SF_FORMAT_PCM_U8; // Per docs, PCM_U8 is the flag for unsigned
-        resources->input_pcm_format = PCM_FORMAT_U16;
-        resources->input_bit_depth = 16;
-        resources->input_bytes_per_sample = sizeof(uint16_t);
-    } else if (strcasecmp(config->raw_file.format_str, "cs8") == 0) {
-        format_code |= SF_FORMAT_PCM_S8;
-        resources->input_pcm_format = PCM_FORMAT_S8;
-        resources->input_bit_depth = 8;
-        resources->input_bytes_per_sample = sizeof(int8_t);
-    } else if (strcasecmp(config->raw_file.format_str, "cu8") == 0) {
-        format_code |= SF_FORMAT_PCM_U8;
-        resources->input_pcm_format = PCM_FORMAT_U8;
-        resources->input_bit_depth = 8;
-        resources->input_bytes_per_sample = sizeof(uint8_t);
-    } else {
-        log_fatal("Invalid raw input format '%s'. Valid formats are cs16, cu16, cs8, cu8.", config->raw_file.format_str);
-        return false;
+    int format_code = SF_FORMAT_RAW;
+    switch (resources->input_format) {
+        case CS16: format_code |= SF_FORMAT_PCM_16; break;
+        case CU16: format_code |= SF_FORMAT_PCM_16; break;
+        case CS8:  format_code |= SF_FORMAT_PCM_S8; break;
+        case CU8:  format_code |= SF_FORMAT_PCM_U8; break;
+        case CS32: format_code |= SF_FORMAT_PCM_32; break;
+        case CU32: format_code |= SF_FORMAT_PCM_32; break;
+        case CF32: format_code |= SF_FORMAT_FLOAT; break;
+        default:
+            log_fatal("Internal error: unhandled format enum in rawfile_initialize.");
+            return false;
     }
     sfinfo.format = format_code;
 
-    // 3. Open the file using the STANDARD sf_open() function, which will detect the pre-filled SF_INFO
+    // 4. Open the file
 #ifdef _WIN32
     resources->infile = sf_wchar_open(config->effective_input_filename_w, SFM_READ, &sfinfo);
 #else
@@ -114,8 +102,7 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
         return false;
     }
 
-    // 4. Copy the info into our generic application structs
-    // We need to re-query sfinfo because libsndfile calculates the frame count for us.
+    // 5. Copy info into our generic application structs
     sf_command(resources->infile, SFC_GET_CURRENT_SF_INFO, &sfinfo, sizeof(sfinfo));
     resources->source_info.samplerate = sfinfo.samplerate;
     resources->source_info.frames = sfinfo.frames;
@@ -130,13 +117,12 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
 
 static void* rawfile_start_stream(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
-    size_t bytes_per_input_frame = 2 * resources->input_bytes_per_sample;
-    size_t bytes_to_read_per_chunk = (size_t)BUFFER_SIZE_SAMPLES * bytes_per_input_frame;
+    size_t bytes_to_read_per_chunk = (size_t)BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
 
     while (!is_shutdown_requested() && !resources->error_occurred) {
         WorkItem *current_item = (WorkItem*)queue_dequeue(resources->free_pool_q);
         if (!current_item) {
-            break; // Shutdown signaled
+            break;
         }
 
         int64_t bytes_read = sf_read_raw(resources->infile, current_item->raw_input_buffer, bytes_to_read_per_chunk);
@@ -151,7 +137,7 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
             break;
         }
 
-        current_item->frames_read = bytes_read / bytes_per_input_frame;
+        current_item->frames_read = bytes_read / resources->input_bytes_per_sample_pair;
         current_item->is_last_chunk = (current_item->frames_read == 0);
 
         if (!current_item->is_last_chunk) {
@@ -162,18 +148,18 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
 
         if (!queue_enqueue(resources->input_q, current_item)) {
              queue_enqueue(resources->free_pool_q, current_item);
-             break; // Shutdown signaled
+             break;
         }
 
         if (current_item->is_last_chunk) {
-            break; // End of file
+            break;
         }
     }
     return NULL;
 }
 
 static void rawfile_stop_stream(InputSourceContext* ctx) {
-    (void)ctx; // No-op for file-based input
+    (void)ctx;
 }
 
 static void rawfile_cleanup(InputSourceContext* ctx) {
@@ -202,7 +188,7 @@ static void rawfile_get_summary_info(const InputSourceContext* ctx, InputSummary
     add_summary_item(info, "Input Rate", "%.1f Hz", config->raw_file.sample_rate_hz);
 
     char size_buf[40];
-    long long file_size_bytes = resources->source_info.frames * resources->input_bytes_per_sample * 2;
+    long long file_size_bytes = resources->source_info.frames * resources->input_bytes_per_sample_pair;
     add_summary_item(info, "Input File Size", "%s", format_file_size(file_size_bytes, size_buf, sizeof(size_buf)));
 }
 
@@ -213,4 +199,22 @@ static bool rawfile_validate_options(const AppConfig* config) {
 
 static bool rawfile_is_sdr_hardware(void) {
     return false;
+}
+
+static format_t get_format_from_string(const char *name) {
+    if (strcasecmp(name, "s8") == 0) return S8;
+    if (strcasecmp(name, "u8") == 0) return U8;
+    if (strcasecmp(name, "s16") == 0) return S16;
+    if (strcasecmp(name, "u16") == 0) return U16;
+    if (strcasecmp(name, "s32") == 0) return S32;
+    if (strcasecmp(name, "u32") == 0) return U32;
+    if (strcasecmp(name, "f32") == 0) return F32;
+    if (strcasecmp(name, "cs8") == 0) return CS8;
+    if (strcasecmp(name, "cu8") == 0) return CU8;
+    if (strcasecmp(name, "cs16") == 0) return CS16;
+    if (strcasecmp(name, "cu16") == 0) return CU16;
+    if (strcasecmp(name, "cs32") == 0) return CS32;
+    if (strcasecmp(name, "cu32") == 0) return CU32;
+    if (strcasecmp(name, "cf32") == 0) return CF32;
+    return FORMAT_UNKNOWN;
 }

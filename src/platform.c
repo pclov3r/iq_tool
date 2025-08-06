@@ -1,7 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "platform.h"
-#include "log.h" // MODIFIED: Include the logging library header
+#include "log.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -25,7 +25,6 @@
  */
 bool set_stdout_binary(void) {
     if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
-        // MODIFIED: Use the logging library
         log_error("Failed to set stdout to binary mode: %s", strerror(errno));
         return false;
     }
@@ -40,11 +39,9 @@ void print_win_error(const char* context, DWORD error_code) {
     size_t size = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
                                  NULL, error_code, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPWSTR)&messageBuffer, 0, NULL);
     if (messageBuffer && size > 0) {
-        // MODIFIED: Use the logging library
         log_error("%hs failed. Code: %lu, Message: %ls", context, error_code, messageBuffer);
         LocalFree(messageBuffer);
     } else {
-        // MODIFIED: Use the logging library
         log_error("%s failed. Code: %lu (Could not retrieve error message)", context, error_code);
     }
 }
@@ -204,7 +201,6 @@ wchar_t* platform_get_sdrplay_dll_path(void) {
     }
 
     if (!path_found) {
-        // MODIFIED: Use the logging library
         log_error("Could not find SDRplay API installation path in the registry.");
         log_error("Please ensure the SDRplay API service is installed correctly.");
         return NULL;

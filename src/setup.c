@@ -1,3 +1,4 @@
+// setup.c
 #define _POSIX_C_SOURCE 200809L
 
 #include "setup.h"
@@ -9,6 +10,9 @@
 #include "log.h"
 #include "input_source.h"
 #include "file_writer.h"
+#include "sample_convert.h" // For get_bytes_per_sample
+#include "iq_correct.h"
+#include "dc_block.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,7 +71,6 @@ bool resolve_file_paths(AppConfig *config) {
 bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *resources, float *out_ratio) {
      if (!config || !resources || !out_ratio) return false;
 
-    // --- ADDED: Handle --no-resample (passthrough) mode ---
     if (config->no_resample) {
         log_info("Passthrough mode enabled: output rate will match input rate.");
         config->target_rate = (double)resources->source_info.samplerate;
@@ -75,7 +78,6 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *reso
     } else {
         resources->is_passthrough = false;
     }
-    // ------------------------------------------------------
 
     double input_rate_d = (double)resources->source_info.samplerate;
     float r = (float)(config->target_rate / input_rate_d);
@@ -103,13 +105,13 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
          return false;
     }
 
-    size_t raw_input_bytes_per_item = BUFFER_SIZE_SAMPLES * 2 * resources->input_bytes_per_sample;
+    size_t raw_input_bytes_per_item = BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
     size_t complex_elements_per_input_item = BUFFER_SIZE_SAMPLES;
     size_t complex_elements_per_output_item = resources->max_out_samples;
     bool shift_requested = config->freq_shift_requested || config->set_center_frequency_target_hz;
     size_t complex_elements_per_shifted_item = shift_requested ? (config->shift_after_resample ? complex_elements_per_output_item : complex_elements_per_input_item) : 0;
-    
-    resources->output_bytes_per_sample_pair = (config->sample_format == SAMPLE_TYPE_CU8 || config->sample_format == SAMPLE_TYPE_CS8) ? (sizeof(uint8_t) * 2) : (sizeof(int16_t) * 2);
+
+    resources->output_bytes_per_sample_pair = get_bytes_per_sample(config->output_format);
     size_t output_buffer_bytes_per_item = complex_elements_per_output_item * resources->output_bytes_per_sample_pair;
 
     resources->work_item_pool = malloc(NUM_BUFFERS * sizeof(WorkItem));
@@ -153,7 +155,6 @@ bool create_dsp_components(AppConfig *config, AppResources *resources, float res
         return false;
     }
 
-    // --- MODIFIED: Skip creating the resampler in passthrough mode ---
     if (!resources->is_passthrough) {
         resources->resampler = msresamp_crcf_create(resample_ratio, STOPBAND_ATTENUATION_DB);
         if (!resources->resampler) {
@@ -162,7 +163,6 @@ bool create_dsp_components(AppConfig *config, AppResources *resources, float res
             return false;
         }
     }
-    // -----------------------------------------------------------------
 
     return true;
 }
@@ -232,7 +232,11 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
         }
     }
 
-    const char* base_output_labels[] = { "Output Type", "Sample Type", "Output Rate", "Scale Factor", "Frequency Shift", "Output Target", "Resampling" };
+    // Base output labels
+    const char* base_output_labels[] = {
+        "Output Type", "Sample Type", "Output Rate", "Gain",
+        "Frequency Shift", "I/Q Correction", "DC Block", "Resampling", "Output Target"
+    };
     for (size_t i = 0; i < sizeof(base_output_labels) / sizeof(base_output_labels[0]); i++) {
         int len = (int)strlen(base_output_labels[i]);
         if (len > max_label_len) {
@@ -264,30 +268,50 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     fprintf(stderr, "  %-*s : %s\n", max_label_len, "Output Type", output_type_str);
 
     const char* sample_type_str;
-    switch (config->sample_format) {
-        case SAMPLE_TYPE_CU8:  sample_type_str = "cu8 (Unsigned 8-bit Complex)"; break;
-        case SAMPLE_TYPE_CS8:  sample_type_str = "cs8 (Signed 8-bit Complex)";   break;
-        case SAMPLE_TYPE_CS16: sample_type_str = "cs16 (Signed 16-bit Complex)"; break;
-        default:               sample_type_str = "Unknown";                      break;
+    switch (config->output_format) {
+        case CU8:  sample_type_str = "cu8 (Unsigned 8-bit Complex)"; break;
+        case CS8:  sample_type_str = "cs8 (Signed 8-bit Complex)";   break;
+        case CU16: sample_type_str = "cu16 (Unsigned 16-bit Complex)"; break;
+        case CS16: sample_type_str = "cs16 (Signed 16-bit Complex)"; break;
+        case CU32: sample_type_str = "cu32 (Unsigned 32-bit Complex)"; break;
+        case CS32: sample_type_str = "cs32 (Signed 32-bit Complex)"; break;
+        case CF32: sample_type_str = "cf32 (32-bit Float Complex)"; break;
+        default:   sample_type_str = "Unknown"; break;
     }
     fprintf(stderr, "  %-*s : %s\n", max_label_len, "Sample Type", sample_type_str);
     fprintf(stderr, "  %-*s : %.1f Hz\n", max_label_len, "Output Rate", config->target_rate);
-    
-    // --- ADDED: Show resampling status ---
-    if (resources->is_passthrough) {
-        fprintf(stderr, "  %-*s : %s\n", max_label_len, "Resampling", "Disabled (Passthrough Mode)");
-    }
-    // -------------------------------------
 
-    fprintf(stderr, "  %-*s : %.5f\n", max_label_len, "Scale Factor", config->scale_value);
+    fprintf(stderr, "  %-*s : %.5f\n", max_label_len, "Gain", config->gain);
+
     if (config->set_center_frequency_target_hz) {
         fprintf(stderr, "  %-*s : %.6f MHz\n", max_label_len, "Target Frequency", config->center_frequency_target_hz / 1e6);
     }
-    char shift_buf[64];
-    snprintf(shift_buf, sizeof(shift_buf), "%+.2f Hz%s",
-             resources->actual_nco_shift_hz,
-             config->shift_after_resample ? " (Post-Resample)" : "");
-    fprintf(stderr, "  %-*s : %s\n", max_label_len, "Frequency Shift", shift_buf);
+
+    if (fabs(resources->actual_nco_shift_hz) > 1e-9) {
+        char shift_buf[64];
+        snprintf(shift_buf, sizeof(shift_buf), "%+.2f Hz%s",
+                 resources->actual_nco_shift_hz,
+                 config->shift_after_resample ? " (Post-Resample)" : "");
+        fprintf(stderr, "  %-*s : %s\n", max_label_len, "Frequency Shift", shift_buf);
+    }
+
+    if (config->iq_correction.enable) {
+        fprintf(stderr, "  %-*s : Enabled\n", max_label_len, "I/Q Correction");
+    } else {
+        fprintf(stderr, "  %-*s : Disabled\n", max_label_len, "I/Q Correction");
+    }
+
+    if (config->dc_block.enable) {
+        fprintf(stderr, "  %-*s : Enabled\n", max_label_len, "DC Block");
+    } else {
+        fprintf(stderr, "  %-*s : Disabled\n", max_label_len, "DC Block");
+    }
+
+    if (resources->is_passthrough) {
+        fprintf(stderr, "  %-*s : Disabled (Passthrough Mode)\n", max_label_len, "Resampling");
+    } else {
+        fprintf(stderr, "  %-*s : Enabled\n", max_label_len, "Resampling");
+    }
 
     const char* output_path_for_messages;
 #ifdef _WIN32

@@ -77,7 +77,6 @@ static bool raw_open(FileWriterContext* ctx, const AppConfig* config, AppResourc
         return true;
     }
 
-    // MODIFIED: Use the correct filename member based on the platform.
 #ifdef _WIN32
     const char* out_path = config->effective_output_filename_utf8;
 #else
@@ -121,7 +120,6 @@ static bool raw_open(FileWriterContext* ctx, const AppConfig* config, AppResourc
     }
 
     ctx->private_data = data;
-    fprintf(stderr, "\nStarting Resample...\n\n");
     return true;
 }
 
@@ -151,7 +149,6 @@ static void raw_close(FileWriterContext* ctx) {
 static bool wav_open(FileWriterContext* ctx, const AppConfig* config, AppResources* resources) {
     (void)resources;
 
-    // MODIFIED: Use the correct filename member based on the platform.
 #ifdef _WIN32
     const char* out_path = config->effective_output_filename_utf8;
 #else
@@ -181,7 +178,6 @@ static bool wav_open(FileWriterContext* ctx, const AppConfig* config, AppResourc
     sfinfo.samplerate = (int)config->target_rate;
     sfinfo.channels = 2;
 
-    // MODIFIED: Choose the container format based on the AppConfig setting
     int format;
     if (config->output_type == OUTPUT_TYPE_WAV) {
         format = SF_FORMAT_WAV;
@@ -189,26 +185,16 @@ static bool wav_open(FileWriterContext* ctx, const AppConfig* config, AppResourc
         format = SF_FORMAT_RF64;
     }
 
-    switch (config->sample_format) {
-        case SAMPLE_TYPE_CS16:
-            format |= SF_FORMAT_PCM_16;
-            break;
-        case SAMPLE_TYPE_CS8:
-            format |= SF_FORMAT_PCM_S8;
-            break;
-        // MODIFIED: This now creates a literal unsigned 8-bit WAV, as requested.
-        case SAMPLE_TYPE_CU8:
-            format |= SF_FORMAT_PCM_U8;
-            break;
+    switch (config->output_format) {
+        case CS16: format |= SF_FORMAT_PCM_16; break;
+        case CU8:  format |= SF_FORMAT_PCM_U8; break;
+        // CS8 is intentionally not handled here as it's invalid for WAV
+        // and already validated in cli.c
         default:
-            log_fatal("Internal Error: Cannot create WAV file for invalid sample type.");
+            log_fatal("Internal Error: Cannot create WAV file for invalid sample type '%s'.", config->sample_type_name);
             return false;
     }
     sfinfo.format = format;
-
-    // --- REMOVED THE CHECK FROM HERE ---
-    // This check will now be in cli.c
-    // --- END REMOVED CHECK ---
 
     if (!sf_format_check(&sfinfo)) {
         log_fatal("libsndfile does not support the requested WAV format (Rate: %d, Format: 0x%08X).", sfinfo.samplerate, sfinfo.format);
@@ -234,7 +220,6 @@ static bool wav_open(FileWriterContext* ctx, const AppConfig* config, AppResourc
     }
 
     ctx->private_data = data;
-    fprintf(stderr, "\nStarting Resample...\n\n");
     return true;
 }
 

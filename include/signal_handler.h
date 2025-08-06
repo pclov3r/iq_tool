@@ -1,3 +1,5 @@
+// signal_handler.h
+
 #ifndef SIGNAL_HANDLER_H_
 #define SIGNAL_HANDLER_H_
 
@@ -33,5 +35,26 @@ bool is_shutdown_requested(void);
  * without a full process restart (e.g., in some testing environments).
  */
 void reset_shutdown_flag(void);
+
+/**
+ * @brief Programmatically requests a graceful shutdown.
+ *
+ * This function sets the internal shutdown flag and signals the queues,
+ * mimicking the behavior of a Ctrl+C event. It is thread-safe.
+ */
+void request_shutdown(void);
+
+/**
+ * @brief Handles a fatal error that occurs within a thread.
+ *
+ * This is the central, thread-safe function for reporting a fatal error.
+ * It ensures the error is logged, a global error flag is set, and a
+ * graceful shutdown is initiated via request_shutdown().
+ *
+ * @param context_msg A descriptive error message string.
+ * @param resources A pointer to the main AppResources struct.
+ */
+void handle_fatal_thread_error(const char* context_msg, AppResources* resources);
+
 
 #endif // SIGNAL_HANDLER_H_

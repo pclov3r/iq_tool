@@ -1,3 +1,4 @@
+// signal_handler.c
 #include "signal_handler.h"
 #include "log.h"
 #include "types.h"
@@ -14,10 +15,10 @@
 #include <unistd.h>  // Required for isatty() and fileno()
 #endif
 
-// --- FIX: Add an external declaration for the global console mutex defined in main.c ---
+// --- Add an external declaration for the global console mutex defined in main.c ---
 extern pthread_mutex_t g_console_mutex;
 
-// --- FIX: Define a sequence to clear the current line on a terminal ---
+// --- Define a sequence to clear the current line on a terminal ---
 #define LINE_CLEAR_SEQUENCE "\r                                                                                \r"
 
 // This static global is the standard way to give a signal/console handler
@@ -35,21 +36,13 @@ static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
         case CTRL_CLOSE_EVENT:
         case CTRL_SHUTDOWN_EVENT:
             if (!g_shutdown_flag) {
-                // --- FIX: Lock the console for the entire atomic operation ---
                 pthread_mutex_lock(&g_console_mutex);
                 if (_isatty(_fileno(stderr))) {
                     fprintf(stderr, LINE_CLEAR_SEQUENCE);
                 }
                 log_info("Ctrl+C detected, initiating graceful shutdown...");
                 pthread_mutex_unlock(&g_console_mutex);
-
-                g_shutdown_flag = 1;
-
-                if (g_resources_for_signal_handler) {
-                    if (g_resources_for_signal_handler->input_q) queue_signal_shutdown(g_resources_for_signal_handler->input_q);
-                    if (g_resources_for_signal_handler->output_q) queue_signal_shutdown(g_resources_for_signal_handler->output_q);
-                    if (g_resources_for_signal_handler->free_pool_q) queue_signal_shutdown(g_resources_for_signal_handler->free_pool_q);
-                }
+                request_shutdown();
             }
             return TRUE;
         default:
@@ -61,7 +54,8 @@ static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
 // --- POSIX (LINUX) IMPLEMENTATION ---
 
 void* signal_handler_thread(void *arg) {
-    AppResources *resources = (AppResources*)arg;
+    // This argument is now implicitly used via the global g_resources_for_signal_handler
+    (void)arg;
     sigset_t signal_set;
     int sig;
 
@@ -70,21 +64,13 @@ void* signal_handler_thread(void *arg) {
     sigaddset(&signal_set, SIGTERM);
 
     if (sigwait(&signal_set, &sig) == 0) {
-        // --- FIX: Lock the console for the entire atomic operation ---
         pthread_mutex_lock(&g_console_mutex);
         if (isatty(fileno(stderr))) {
             fprintf(stderr, LINE_CLEAR_SEQUENCE);
         }
         log_info("Signal %d (%s) received, initiating graceful shutdown...", sig, strsignal(sig));
         pthread_mutex_unlock(&g_console_mutex);
-
-        g_shutdown_flag = 1;
-
-        if (resources) {
-            if (resources->input_q) queue_signal_shutdown(resources->input_q);
-            if (resources->output_q) queue_signal_shutdown(resources->output_q);
-            if (resources->free_pool_q) queue_signal_shutdown(resources->free_pool_q);
-        }
+        request_shutdown();
     }
     return NULL;
 }
@@ -116,4 +102,41 @@ bool is_shutdown_requested(void) {
 
 void reset_shutdown_flag(void) {
     g_shutdown_flag = 0;
+}
+
+void request_shutdown(void) {
+    // Check if a shutdown is already in progress to avoid redundant signaling
+    if (g_shutdown_flag) {
+        return;
+    }
+    g_shutdown_flag = 1;
+
+    if (g_resources_for_signal_handler) {
+        if (g_resources_for_signal_handler->input_q) queue_signal_shutdown(g_resources_for_signal_handler->input_q);
+        if (g_resources_for_signal_handler->output_q) queue_signal_shutdown(g_resources_for_signal_handler->output_q);
+        if (g_resources_for_signal_handler->free_pool_q) queue_signal_shutdown(g_resources_for_signal_handler->free_pool_q);
+    }
+}
+
+/**
+ * @brief Handles a fatal error that occurs within a thread.
+ *
+ * This is the central, thread-safe function for reporting a fatal error.
+ * It ensures the error is logged, a global error flag is set, and a
+ * graceful shutdown is initiated via request_shutdown().
+ *
+ * @param context_msg A descriptive error message string.
+ * @param resources A pointer to the main AppResources struct.
+ */
+void handle_fatal_thread_error(const char* context_msg, AppResources* resources) {
+    pthread_mutex_lock(&resources->progress_mutex);
+    if (resources->error_occurred) {
+        pthread_mutex_unlock(&resources->progress_mutex);
+        return; // Error is already being handled by another thread.
+    }
+    resources->error_occurred = true;
+    pthread_mutex_unlock(&resources->progress_mutex);
+
+    log_fatal("%s", context_msg);
+    request_shutdown(); // Use the central shutdown mechanism
 }

@@ -18,22 +18,9 @@
 bool resolve_file_paths(AppConfig *config);
 
 /**
- * @brief Opens the input WAV file using libsndfile and validates its format.
- *
- * Checks for 2 channels, supported PCM subtypes, a valid sample rate, and
- * ensures the file is not empty. Populates relevant fields in AppResources
- * (infile, sfinfo, input_bit_depth, etc.).
- *
- * @param config Pointer to the AppConfig struct (read-only).
- * @param resources Pointer to the AppResources struct to be populated.
- * @return true on success, false if file cannot be opened or format is invalid.
- */
-bool open_and_validate_input_file(AppConfig *config, AppResources *resources);
-
-/**
  * @brief Calculates the resampling ratio and validates it against acceptable limits.
  * @param config Pointer to the AppConfig struct (read-only, needs target_rate).
- * @param resources Pointer to the AppResources struct (read-only, needs sfinfo.samplerate).
+ * @param resources Pointer to the AppResources struct (read-only, needs source_info.samplerate).
  * @param out_ratio Pointer to a float where the calculated ratio will be stored.
  * @return true if the ratio is valid, false otherwise.
  */

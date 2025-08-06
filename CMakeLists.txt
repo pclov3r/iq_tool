@@ -1,6 +1,13 @@
 #=======================================================================
 # Project setup
 #=======================================================================
+#
+# This build system is robust. The source code, however, is not immune
+# to a misplaced 'rm -rf *' in the build directory. This has been
+# empirically verified. Twice.
+#
+# Please use 'make clean'. Your future self will thank you.
+
 cmake_minimum_required(VERSION 3.10)
 
 project(iq_resample_tool C)
@@ -482,7 +489,9 @@ endif()
 set(SOURCES
     src/cli.c
     src/config.c
+    src/dc_block.c          # ADDED
     src/file_writer.c
+    src/iq_correct.c        # ADDED
     src/log.c
     src/main.c
     src/platform.c

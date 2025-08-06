@@ -1,5 +1,5 @@
 #include "queue.h"
-#include "log.h" // MODIFIED: Include the logging library header
+#include "log.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -25,21 +25,18 @@ struct ThreadSafeQueue {
  */
 Queue* queue_create(size_t capacity) {
     if (capacity == 0) {
-        // MODIFIED: Use the logging library
         log_error("Queue capacity cannot be zero.");
         return NULL;
     }
 
     Queue* q = (Queue*)malloc(sizeof(Queue));
     if (!q) {
-        // MODIFIED: Use the logging library
         log_fatal("Failed to allocate memory for queue structure: %s", strerror(errno));
         return NULL;
     }
 
     q->buffer = (void**)malloc(capacity * sizeof(void*));
     if (!q->buffer) {
-        // MODIFIED: Use the logging library
         log_fatal("Failed to allocate memory for queue buffer: %s", strerror(errno));
         free(q);
         return NULL;
@@ -53,7 +50,6 @@ Queue* queue_create(size_t capacity) {
 
     int ret;
     if ((ret = pthread_mutex_init(&q->mutex, NULL)) != 0) {
-        // MODIFIED: Use the logging library
         log_fatal("pthread_mutex_init failed: %s", strerror(ret));
         free(q->buffer);
         free(q);
@@ -61,7 +57,6 @@ Queue* queue_create(size_t capacity) {
     }
 
     if ((ret = pthread_cond_init(&q->not_empty_cond, NULL)) != 0) {
-        // MODIFIED: Use the logging library
         log_fatal("pthread_cond_init (not_empty) failed: %s", strerror(ret));
         pthread_mutex_destroy(&q->mutex);
         free(q->buffer);
@@ -70,7 +65,6 @@ Queue* queue_create(size_t capacity) {
     }
 
     if ((ret = pthread_cond_init(&q->not_full_cond, NULL)) != 0) {
-        // MODIFIED: Use the logging library
         log_fatal("pthread_cond_init (not_full) failed: %s", strerror(ret));
         pthread_cond_destroy(&q->not_empty_cond);
         pthread_mutex_destroy(&q->mutex);

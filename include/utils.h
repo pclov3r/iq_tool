@@ -1,4 +1,3 @@
-// utils.h
 #ifndef UTILS_H_
 #define UTILS_H_
 
@@ -29,6 +28,7 @@ uint8_t float_to_uchar(float v);
  * @return The corresponding int8_t value.
  */
 int8_t float_to_schar(float v);
+
 
 /**
  * @brief Clears the standard input buffer up to the next newline or EOF.
@@ -72,5 +72,30 @@ const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size
  * @return A constant string representing the software type.
  */
 const char* sdr_software_type_to_string(SdrSoftwareType type);
+
+/**
+ * @brief A helper to safely add a new key-value pair to the summary info struct.
+ * @param info A pointer to the summary struct to be populated.
+ * @param label The label for the summary item.
+ * @param value_fmt A printf-style format string for the value.
+ * @param ... Additional arguments for the format string.
+ */
+void add_summary_item(InputSummaryInfo* info, const char* label, const char* value_fmt, ...);
+
+/**
+ * @brief Helper function to trim leading/trailing whitespace from a string in-place.
+ * @param str The string to trim.
+ * @return A pointer to the beginning of the trimmed string.
+ */
+char* trim_whitespace(char* str);
+
+/**
+ * @brief Formats a duration in seconds into a human-readable HH:MM:SS string.
+ * @param total_seconds The duration in seconds.
+ * @param buffer A character buffer to write the formatted string into.
+ * @param buffer_size The size of the provided buffer.
+ */
+void format_duration(double total_seconds, char* buffer, size_t buffer_size);
+
 
 #endif // UTILS_H_

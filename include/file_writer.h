@@ -1,12 +1,9 @@
 #ifndef FILE_WRITER_H_
 #define FILE_WRITER_H_
 
-#include "types.h" // This already defines FileWriterContext and FileWriterOps
+#include "types.h"
 #include <stdbool.h>
 #include <stddef.h>
-
-// REMOVED: All struct definitions and forward declarations are gone from here.
-// They now live exclusively in types.h, which fixes all redefinition errors.
 
 /**
  * @brief Initializes the file writer context based on user configuration.

@@ -1,5 +1,3 @@
-// types.h
-
 #ifndef TYPES_H_
 #define TYPES_H_
 
@@ -41,13 +39,27 @@ struct FileWriterContext;
 
 // --- Enums ---
 
-/** @brief Defines the output sample format type. */
+/**
+ * @brief Defines all supported sample formats, inspired by convert-samples.
+ */
 typedef enum {
-    SAMPLE_TYPE_CU8,  // Unsigned 8-bit complex
-    SAMPLE_TYPE_CS16, // Signed 16-bit complex
-    SAMPLE_TYPE_CS8,  // Signed 8-bit complex
-    SAMPLE_TYPE_INVALID
-} sample_format_t;
+    FORMAT_UNKNOWN,
+    S8,
+    U8,
+    S16,
+    U16,
+    S32,
+    U32,
+    F32,
+    CS8,
+    CU8,
+    CS16,
+    CU16,
+    CS32,
+    CU32,
+    CF32
+} format_t;
+
 
 /** @brief Defines the output container type. */
 typedef enum {
@@ -65,20 +77,32 @@ typedef enum {
     SDR_CONNECT,
 } SdrSoftwareType;
 
-/** @brief Defines the internal representation of the input PCM format. */
-typedef enum {
-    PCM_FORMAT_UNKNOWN,
-    PCM_FORMAT_S16, // Signed 16-bit
-    PCM_FORMAT_U16, // Unsigned 16-bit
-    PCM_FORMAT_S8,  // Signed 8-bit
-    PCM_FORMAT_U8   // Unsigned 8-bit
-} pcmformat;
-
 
 // --- Structs & Typedefs ---
 
 /** @brief A convenient alias for a single-precision complex float. */
 typedef float complex complex_float_t;
+
+/**
+ * @brief A union to hold any type of sample, inspired by convert-samples.
+ */
+typedef union {
+  char s8;
+  unsigned char u8;
+  short int s16;
+  unsigned short int u16;
+  int s32;
+  unsigned int u32;
+  float f32;
+  char cs8[2];
+  unsigned char cu8[2];
+  short int cs16[2];
+  unsigned short int cu16[2];
+  int cs32[2];
+  unsigned int cu32[2];
+  float complex cf32;
+} sample_t;
+
 
 /** @brief Represents a single preset loaded from the configuration file. */
 typedef struct {
@@ -141,6 +165,17 @@ typedef struct FileWriterContext {
     long long total_bytes_written;
 } FileWriterContext;
 
+// --- I/Q Correction Configuration (for AppConfig) ---
+typedef struct {
+    bool enable;
+} IqCorrectionConfig;
+
+// --- DC Block Configuration (for AppConfig) ---
+typedef struct {
+    bool enable;
+} DcBlockConfig;
+
+
 /** @brief Holds all application configuration settings parsed from the command line. */
 typedef struct AppConfig {
     // --- Input & Output Arguments ---
@@ -154,17 +189,22 @@ typedef struct AppConfig {
 
     // --- Processing Arguments ---
     char *preset_name;
-    float scale_value;
-    bool scale_provided;
+    float gain;
+    bool gain_provided;
     double freq_shift_hz;
     bool freq_shift_requested;
     double center_frequency_target_hz;
     bool set_center_frequency_target_hz;
     bool shift_after_resample;
-    bool native_8bit_path;
     bool no_resample;
     double user_defined_target_rate;
     bool user_rate_provided;
+
+    // --- I/Q Correction Configuration ---
+    IqCorrectionConfig iq_correction;
+
+    // --- DC Block Configuration ---
+    DcBlockConfig dc_block;
 
     // --- SDR General Arguments ---
 #if defined(WITH_SDRPLAY) || defined(WITH_HACKRF)
@@ -217,7 +257,7 @@ typedef struct AppConfig {
 
     // --- Resolved/Derived Configuration ---
     OutputType output_type;
-    sample_format_t sample_format;
+    format_t output_format;
     double target_rate;
     bool help_requested;
 
@@ -250,33 +290,53 @@ typedef struct WorkItem {
     bool is_last_chunk;
 } WorkItem;
 
-/** @brief Function pointer type for sample conversion functions. */
-typedef bool (*sample_converter_t)(struct AppConfig *config, struct AppResources *resources, struct WorkItem *item);
-
 /** @brief Function pointer type for the progress update callback. */
 typedef void (*ProgressUpdateFn)(unsigned long long current_read_frames, long long total_input_frames, unsigned long long total_output_frames, void* udata);
 
+// --- I/Q Correction Resources (for AppResources) ---
+typedef struct {
+    float current_mag;
+    float current_phase;
+    fftplan fft_plan;
+    complex_float_t* fft_input_buffer;  // Buffer for FFT input (linked to plan)
+    complex_float_t* fft_output_buffer; // Buffer for FFT output (linked to plan)
+    complex_float_t* tmp_signal_buffer; // Temporary buffer for corrected signal during optimization
+    complex_float_t* optimization_accum_buffer; // Buffer to accumulate samples for optimization
+    unsigned long long samples_accumulated_for_optimize; // Counter for periodic optimization
+} IqCorrectionResources;
+
+// --- DC Block Resources (for AppResources) ---
+typedef struct {
+    iirfilt_crcf dc_block_filter; // liquid-dsp IIR filter object
+} DcBlockResources;
+
+
 /** @brief Holds all runtime resources, state, and handles for the application. */
 typedef struct AppResources {
+    const struct AppConfig* config;
     // --- DSP Components ---
     msresamp_crcf resampler;
     nco_crcf shifter_nco;
     double actual_nco_shift_hz;
     bool is_passthrough; // True if --no-resample is used
 
+    // --- I/Q Correction Resources ---
+    IqCorrectionResources iq_correction;
+
+    // --- DC Block Resources ---
+    DcBlockResources dc_block;
+
     // --- Input Source Info & State ---
     struct InputSourceOps* selected_input_ops;
     InputSourceInfo source_info;
-    int input_bit_depth;
-    pcmformat input_pcm_format;
-    size_t input_bytes_per_sample;
+    format_t input_format;
+    size_t input_bytes_per_sample_pair;
     SdrMetadata sdr_info;
     bool sdr_info_present;
-    sample_converter_t converter;
     SNDFILE *infile; // Used for both WAV and Raw File input
 
     // --- Output State ---
-    FileWriterContext writer_ctx; // <--- THIS IS THE MISSING MEMBER
+    FileWriterContext writer_ctx;
     size_t output_bytes_per_sample_pair;
 
     // --- SDR Device Handles ---

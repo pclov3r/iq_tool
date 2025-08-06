@@ -44,6 +44,17 @@
 #define MAX_PATH_BUFFER PATH_MAX // Use system PATH_MAX if defined
 #endif
 
+// --- I/Q Correction Configuration ---
+#define IQ_CORRECTION_FFT_SIZE      1024
+#define IQ_CORRECTION_FFT_COUNT     4
+#define IQ_CORRECTION_MAX_ITER      25
+// The number of samples to process between running the optimization algorithm.
+// A value of 2,000,000 corresponds to once per second at a 2 Msps sample rate.
+#define IQ_CORRECTION_DEFAULT_PERIOD 2000000
+
+// --- DC Block Configuration ---
+#define DC_BLOCK_FILTER_ORDER       4
+#define DC_BLOCK_CUTOFF_HZ          10.0f
 
 #if defined(WITH_SDRPLAY)
 // --- Default SDRplay Configuration ---

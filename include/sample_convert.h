@@ -1,44 +1,39 @@
-// sample_convert.h
 #ifndef SAMPLE_CONVERT_H_
 #define SAMPLE_CONVERT_H_
 
-#include "types.h" // For AppConfig, AppResources, WorkItem
+#include "types.h" // For format_t, complex_float_t
 
 /**
- * @brief Selects the appropriate sample conversion function based on the input format
- *        and user options, then stores it in the AppResources struct. This should be
- *        called once during initialization.
- *
- * @param config Pointer to the application configuration, used to check for flags
- *               like 'native_8bit_path'.
- * @param resources Pointer to the application resources. The input_pcm_format field
- *                  must be set before calling this function. The 'converter' member
- *                  will be populated with the correct function pointer.
+ * @brief Gets the number of bytes for a single sample of the given format.
+ *        For complex formats, this is the size of the I/Q pair.
+ * @param format The sample format.
+ * @return The size in bytes, or 0 for unknown formats.
  */
-void setup_sample_converter(AppConfig *config, AppResources *resources);
+size_t get_bytes_per_sample(format_t format);
 
 /**
- * @brief Dispatches to the pre-selected function to convert raw input samples
- *        into a standardized floating-point complex format.
+ * @brief Converts a block of raw input samples into normalized complex floats.
+ *        This function normalizes all input formats to a [-1.0, 1.0] float range
+ *        and then applies the user-specified gain.
  *
- * This function is called in the hot loop and delegates the actual work to the
- * function pointer set by setup_sample_converter().
- *
- * @param config Pointer to the application configuration.
- * @param resources Pointer to the application resources.
- * @param item Pointer to the WorkItem containing the raw input and complex buffers.
- * @return true on successful conversion, false if a fatal error occurred.
+ * @param input_buffer Pointer to the raw input data.
+ * @param output_buffer Pointer to the destination buffer for complex float data.
+ * @param num_frames The number of frames (I/Q pairs) to convert.
+ * @param input_format The format of the raw input data.
+ * @param gain The linear gain multiplier to apply after normalization.
+ * @return true on success, false if the input format is unhandled.
  */
-bool convert_raw_input_to_complex(AppConfig *config, AppResources *resources, WorkItem *item);
+bool convert_block_to_cf32(const void* input_buffer, complex_float_t* output_buffer, size_t num_frames, format_t input_format, float gain);
 
 /**
- * @brief Converts the final complex float samples into the specified output byte format.
+ * @brief Converts a block of normalized complex floats into the specified output byte format.
  *
- * @param config Pointer to the application configuration.
- * @param resources Pointer to the application resources.
- * @param item Pointer to the WorkItem containing the final complex data and the output buffer.
- * @param num_frames The number of complex frames to convert.
+ * @param input_buffer Pointer to the source complex float data.
+ * @param output_buffer Pointer to the destination buffer for raw output data.
+ * @param num_frames The number of frames (I/Q pairs) to convert.
+ * @param output_format The target format for the raw output data.
+ * @return true on success, false if the output format is unhandled.
  */
-void convert_complex_to_output_format(AppConfig *config, AppResources *resources, WorkItem *item, unsigned int num_frames);
+bool convert_cf32_to_block(const complex_float_t* input_buffer, void* output_buffer, size_t num_frames, format_t output_format);
 
 #endif // SAMPLE_CONVERT_H_

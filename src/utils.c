@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+#include <stdarg.h> // For va_list, va_start, va_end
+#include <ctype.h>  // For isspace
 
 #ifdef _WIN32
 #include <shlwapi.h>
@@ -112,4 +114,73 @@ const char* sdr_software_type_to_string(SdrSoftwareType type) {
         case SDR_CONNECT:          return "SDRconnect";
         default:                   return "Invalid Type";
     }
+}
+
+/**
+ * @brief A helper to safely add a new key-value pair to the summary info struct.
+ */
+void add_summary_item(InputSummaryInfo* info, const char* label, const char* value_fmt, ...) {
+    if (info->count >= MAX_SUMMARY_ITEMS) {
+        return; // Prevent buffer overflow
+    }
+    SummaryItem* item = &info->items[info->count];
+    strncpy(item->label, label, sizeof(item->label) - 1);
+    item->label[sizeof(item->label) - 1] = '\0';
+
+    va_list args;
+    va_start(args, value_fmt);
+    vsnprintf(item->value, sizeof(item->value), value_fmt, args);
+    va_end(args);
+    item->value[sizeof(item->value) - 1] = '\0';
+
+    info->count++;
+}
+
+/**
+ * @brief Helper function to trim leading/trailing whitespace from a string in-place.
+ */
+char* trim_whitespace(char* str) {
+    if (!str) return NULL;
+    char* end;
+
+    // Trim leading space
+    while (isspace((unsigned char)*str)) str++;
+
+    if (*str == 0) { // All spaces?
+        return str;
+    }
+
+    // Trim trailing space
+    end = str + strlen(str) - 1;
+    while (end > str && isspace((unsigned char)*end)) end--;
+
+    // Write new null terminator
+    end[1] = '\0';
+
+    return str;
+}
+
+/**
+ * @brief Formats a duration in seconds into a human-readable HH:MM:SS string.
+ */
+void format_duration(double total_seconds, char* buffer, size_t buffer_size) {
+    if (!isfinite(total_seconds) || total_seconds < 0) {
+        snprintf(buffer, buffer_size, "N/A");
+        return;
+    }
+    if (total_seconds > 0 && total_seconds < 1.0) {
+        total_seconds = 1.0; // Report at least 1 second for very short runs
+    }
+
+    int hours = (int)(total_seconds / 3600);
+    total_seconds -= hours * 3600;
+    int minutes = (int)(total_seconds / 60);
+    total_seconds -= minutes * 60;
+    int seconds = (int)round(total_seconds);
+
+    // Handle potential rounding carry-over
+    if (seconds >= 60) { minutes++; seconds = 0; }
+    if (minutes >= 60) { hours++; minutes = 0; }
+
+    snprintf(buffer, buffer_size, "%02d:%02d:%02d", hours, minutes, seconds);
 }

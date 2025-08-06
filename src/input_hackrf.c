@@ -1,14 +1,18 @@
+// input_hackrf.c
 #include "input_hackrf.h" // Its own header, which now includes input_source.h
 #include "config.h"         // For HACKRF_DEFAULT_SAMPLE_RATE, BUFFER_SIZE_SAMPLES
 #include "types.h"          // For AppResources, AppConfig, WorkItem, Queue
-#include "signal_handler.h" // For is_shutdown_requested
+#include "signal_handler.h" // For is_shutdown_requested and handle_fatal_thread_error
 #include "log.h"            // For logging
 #include "spectrum_shift.h" // For shift_reset_nco in callbacks
+#include "utils.h"
+#include "sample_convert.h" // For get_bytes_per_sample
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <stdarg.h> // For va_list, va_start, va_end
+#include <stdarg.h>
 
 #ifdef _WIN32
 #include <windows.h> // For Sleep()
@@ -19,24 +23,6 @@
 
 // Add an external declaration for the global console mutex defined in main.c
 extern pthread_mutex_t g_console_mutex;
-
-// --- Helper Function ---
-
-static void handle_fatal_sdr_error(const char* error_msg, AppResources *resources) {
-    pthread_mutex_lock(&resources->progress_mutex);
-    if (resources->error_occurred) {
-        pthread_mutex_unlock(&resources->progress_mutex);
-        return;
-    }
-    resources->error_occurred = true;
-    pthread_mutex_unlock(&resources->progress_mutex);
-
-    log_fatal("%s", error_msg);
-    log_info("Signaling all threads to shut down...");
-    if (resources->input_q) queue_signal_shutdown(resources->input_q);
-    if (resources->output_q) queue_signal_shutdown(resources->output_q);
-    if (resources->free_pool_q) queue_signal_shutdown(resources->free_pool_q);
-}
 
 // --- HackRF API Callback Function (remains public as it's called by libhackrf) ---
 
@@ -60,15 +46,15 @@ int hackrf_stream_callback(hackrf_transfer* transfer) {
         }
 
         size_t chunk_size = transfer->valid_length - bytes_processed;
-        size_t pipeline_buffer_size = BUFFER_SIZE_SAMPLES * 2;
+        const size_t pipeline_buffer_size = BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
 
         if (chunk_size > pipeline_buffer_size) {
             chunk_size = pipeline_buffer_size;
         }
 
         memcpy(item->raw_input_buffer, transfer->buffer + bytes_processed, chunk_size);
-        
-        item->frames_read = chunk_size / 2;
+
+        item->frames_read = chunk_size / resources->input_bytes_per_sample_pair;
         item->is_last_chunk = false;
 
         if (item->frames_read > 0) {
@@ -91,26 +77,6 @@ int hackrf_stream_callback(hackrf_transfer* transfer) {
 // --- InputSourceOps Implementations for HackRF ---
 
 /**
- * @brief A helper to safely add a new key-value pair to the summary info struct.
- */
-static void add_summary_item(InputSummaryInfo* info, const char* label, const char* value_fmt, ...) {
-    if (info->count >= MAX_SUMMARY_ITEMS) {
-        return; // Prevent buffer overflow
-    }
-    SummaryItem* item = &info->items[info->count];
-    strncpy(item->label, label, sizeof(item->label) - 1);
-    item->label[sizeof(item->label) - 1] = '\0';
-
-    va_list args;
-    va_start(args, value_fmt);
-    vsnprintf(item->value, sizeof(item->value), value_fmt, args);
-    va_end(args);
-    item->value[sizeof(item->value) - 1] = '\0';
-
-    info->count++;
-}
-
-/**
  * @brief Populates the InputSummaryInfo struct with details for a HackRF source.
  */
 static void hackrf_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
@@ -118,7 +84,7 @@ static void hackrf_get_summary_info(const InputSourceContext* ctx, InputSummaryI
     const AppResources *resources = ctx->resources;
 
     add_summary_item(info, "Input Source", "HackRF One");
-    add_summary_item(info, "Input Format", "8-bit Signed PCM");
+    add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
     add_summary_item(info, "Input Rate", "%.3f Msps", (double)resources->source_info.samplerate / 1e6);
     add_summary_item(info, "RF Frequency", "%.6f MHz", config->sdr.rf_freq_hz / 1e6);
     add_summary_item(info, "Gain", "LNA: %u dB, VGA: %u dB", config->hackrf.lna_gain, config->hackrf.vga_gain);
@@ -188,7 +154,6 @@ static bool hackrf_initialize(InputSourceContext* ctx) {
     if (config->hackrf.sample_rate_provided) {
         sample_rate_to_set = config->hackrf.sample_rate_hz;
     } else {
-        // --- THIS LINE IS THE FIX ---
         sample_rate_to_set = HACKRF_DEFAULT_SAMPLE_RATE;
     }
 
@@ -230,11 +195,10 @@ static bool hackrf_initialize(InputSourceContext* ctx) {
         }
     }
 
-    resources->input_bit_depth = 8;
-    resources->input_bytes_per_sample = sizeof(int8_t);
+    resources->input_format = CS8;
+    resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
     resources->source_info.samplerate = (int)sample_rate_to_set;
     resources->source_info.frames = -1;
-    resources->input_pcm_format = PCM_FORMAT_S8;
 
     return true;
 }
@@ -251,7 +215,7 @@ static void* hackrf_start_stream(InputSourceContext* ctx) {
     if (result != HACKRF_SUCCESS) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "hackrf_start_rx() failed: %s (%d)", hackrf_error_name(result), result);
-        handle_fatal_sdr_error(error_buf, resources);
+        handle_fatal_thread_error(error_buf, resources);
         return NULL;
     }
 

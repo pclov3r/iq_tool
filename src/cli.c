@@ -10,6 +10,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
+#include <limits.h> // For INT_MIN, INT_MAX
 
 #ifdef _WIN32
 #include <getopt.h>
@@ -26,6 +27,21 @@
 // --- Add an external declaration for the global config defined in main.c ---
 extern AppConfig g_config;
 
+// --- Enum for long options without a short equivalent ---
+enum {
+    OPT_START = 256,
+    OPT_GAIN, OPT_OUTPUT_CONTAINER, OPT_OUTPUT_SAMPLE_FORMAT, OPT_OUTPUT_RATE,
+    OPT_NO_RESAMPLE, OPT_WAV_CENTER_TARGET_FREQUENCY,
+    OPT_WAV_SHIFT_FREQUENCY, OPT_WAV_SHIFT_AFTER_RESAMPLE, OPT_RAW_FILE_INPUT_RATE,
+    OPT_RAW_FILE_INPUT_SAMPLE_FORMAT, OPT_SDR_RF_FREQ, OPT_SDR_BIAS_T,
+    OPT_SDRPLAY_DEVICE_IDX, OPT_SDRPLAY_GAIN_LEVEL, OPT_SDRPLAY_ANTENNA,
+    OPT_SDRPLAY_HDR_MODE, OPT_SDRPLAY_HDR_BW, OPT_SDRPLAY_SAMPLE_RATE,
+    OPT_SDRPLAY_BANDWIDTH, OPT_HACKRF_LNA_GAIN, OPT_HACKRF_VGA_GAIN,
+    OPT_HACKRF_AMP_ENABLE, OPT_HACKRF_SAMPLE_RATE,
+    OPT_IQ_CORRECTION, // All other IQ options (period, initial mag/phase) have been removed.
+    OPT_DC_BLOCK,
+    OPT_PRESET,
+};
 
 // --- Forward declarations for helper functions ---
 static void print_usage_input_section(int option_width);
@@ -37,6 +53,7 @@ static void print_usage_sdr_general_options_section(int option_width);
 static void print_usage_sdrplay_specific_options_section(int option_width);
 static void print_usage_hackrf_specific_options_section(int option_width);
 static void print_usage_processing_options_section(int option_width);
+static format_t get_format(const char *name);
 
 // --- Forward declarations for validation functions ---
 static bool validate_input_source(AppConfig *config, int argc, char *argv[], int *optind_ptr);
@@ -46,6 +63,74 @@ static bool validate_sdr_specific_options(const AppConfig *config);
 static bool validate_wav_specific_options(const AppConfig *config);
 static bool validate_raw_file_specific_options(const AppConfig *config);
 static bool validate_processing_options(AppConfig *config);
+static bool validate_iq_correction_options(AppConfig *config);
+
+
+// --- Argument Parsing Helper Functions ---
+
+static bool parse_double_arg(const char* optarg, const char* opt_name, double* out_val, bool allow_negative, bool allow_zero) {
+    char *endptr;
+    errno = 0;
+    *out_val = strtod(optarg, &endptr);
+
+    if (errno != 0 || *endptr != '\0' || !isfinite(*out_val)) {
+        log_fatal("Invalid numeric value for %s: '%s'. Must be a valid number.", opt_name, optarg);
+        return false;
+    }
+    if (!allow_zero && *out_val == 0.0) {
+        log_fatal("Value for %s cannot be zero.", opt_name);
+        return false;
+    }
+    if (!allow_negative && *out_val < 0.0) {
+        log_fatal("Value for %s must be a positive number.", opt_name);
+        return false;
+    }
+    return true;
+}
+
+static bool parse_float_arg(const char* optarg, const char* opt_name, float* out_val, bool allow_negative, bool allow_zero) {
+    double temp_double;
+    if (!parse_double_arg(optarg, opt_name, &temp_double, allow_negative, allow_zero)) {
+        return false;
+    }
+    *out_val = (float)temp_double;
+    return true;
+}
+
+// This function is only needed if SDR support is compiled in.
+#if defined(WITH_SDRPLAY) || defined(WITH_HACKRF)
+static bool parse_long_arg(const char* optarg, const char* opt_name, long* out_val, bool allow_negative) {
+    char *endptr;
+    errno = 0;
+    *out_val = strtol(optarg, &endptr, 10);
+
+    if (errno != 0 || *endptr != '\0') {
+        log_fatal("Invalid integer value for %s: '%s'.", opt_name, optarg);
+        return false;
+    }
+    if (!allow_negative && *out_val < 0) {
+        log_fatal("Value for %s must be a non-negative integer.", opt_name);
+        return false;
+    }
+    return true;
+}
+#endif
+
+// parse_uint32_arg is only used by HackRF options, so it can be conditional
+#if defined(WITH_HACKRF)
+static bool parse_uint32_arg(const char* optarg, const char* opt_name, uint32_t* out_val) {
+    long temp_long;
+    if (!parse_long_arg(optarg, opt_name, &temp_long, false)) { // Disallow negative
+        return false;
+    }
+    if (temp_long > UINT32_MAX) {
+        log_fatal("Value for %s is too large.", opt_name);
+        return false;
+    }
+    *out_val = (uint32_t)temp_long;
+    return true;
+}
+#endif
 
 
 /**
@@ -61,16 +146,11 @@ void print_usage(const char *prog_name) {
     print_usage_input_section(option_width);
     print_usage_output_destination_section(option_width);
     print_usage_output_options_section(option_width);
-
-    // --- Group file-based options together ---
     print_usage_wav_specific_options_section(option_width);
     print_usage_raw_file_specific_options_section(option_width);
-
-    // --- Group SDR-based options together ---
     print_usage_sdr_general_options_section(option_width);
     print_usage_sdrplay_specific_options_section(option_width);
     print_usage_hackrf_specific_options_section(option_width);
-
     print_usage_processing_options_section(option_width);
 }
 
@@ -102,9 +182,8 @@ static void print_usage_output_options_section(int option_width) {
     fprintf(stderr, "  %-*s   %s\n\n", option_width, "", "wav-rf64: RF64/BW64 format for large files and high sample rates.");
 
     fprintf(stderr, "  %-*s %s\n", option_width, "--output-sample-format <format>", "Sample format for output data. (Defaults to cs16 for file output).");
-    fprintf(stderr, "  %-*s   %s\n", option_width, "", "cu8:   Unsigned 8-bit complex (WAV/RF64 output is unsigned 0-255, center 128).");
-    fprintf(stderr, "  %-*s   %s\n", option_width, "", "cs8:   Signed 8-bit complex (Only for 'raw' output. WAV/RF64 does NOT support signed 8-bit).");
-    fprintf(stderr, "  %-*s   %s\n\n", option_width, "", "cs16:  Signed 16-bit complex (Recommended for WAV/RF64 I/Q output).");
+    fprintf(stderr, "  %-*s   %s\n", option_width, "", "cs8, cu8, cs16, cu16, cs32, cu32, cf32");
+    fprintf(stderr, "  %-*s   %s\n\n", option_width, "", "(Not all formats are compatible with WAV containers).");
 }
 
 static void print_usage_wav_specific_options_section(int option_width) {
@@ -114,7 +193,7 @@ static void print_usage_wav_specific_options_section(int option_width) {
     fprintf(stderr, "  %-*s %s\n", option_width, "--wav-shift-frequency <hz>", "Apply a direct frequency shift in Hz.");
     fprintf(stderr, "  %-*s   %s\n", option_width, "", "(Use if WAV input lacks metadata or for manual correction).");
     fprintf(stderr, "  %-*s %s\n", option_width, "--wav-shift-after-resample", "Apply frequency shift AFTER resampling (default is before).");
-    fprintf(stderr, "  %-*s   %s\n", option_width, "", "(A workaround for narrow I/Q WAV recordings where only a single");
+    fprintf(stderr, "  %-*s   %s\n\n", option_width, "", "(A workaround for narrow I/Q WAV recordings where only a single");
     fprintf(stderr, "  %-*s   %s\n\n", option_width, "", " HD sideband is present).");
 }
 
@@ -122,7 +201,7 @@ static void print_usage_raw_file_specific_options_section(int option_width) {
     fprintf(stderr, "Raw File Input Options (Only valid with '--input raw-file'):\n");
     fprintf(stderr, "  %-*s %s\n", option_width, "--raw-file-input-rate <hz>", "(Required) The sample rate of the raw input file.");
     fprintf(stderr, "  %-*s %s\n", option_width, "--raw-file-input-sample-format <format>", "(Required) The sample format of the raw input file.");
-    fprintf(stderr, "  %-*s   %s\n", option_width, "", "Valid formats: cs16, cu16, cs8, cu8.");
+    fprintf(stderr, "  %-*s   %s\n", option_width, "", "Valid formats: cs8, cu8, cs16, cu16, cs32, cu32, cf32");
     fprintf(stderr, "  %-*s   %s\n\n", option_width, "", "(File is assumed to be 2-channel interleaved I/Q data).");
 }
 
@@ -165,13 +244,17 @@ static void print_usage_processing_options_section(int option_width) {
     fprintf(stderr, "Processing Options:\n");
     fprintf(stderr, "  %-*s %s\n", option_width, "--output-rate <hz>", "Output sample rate in Hz. (Required if no preset is used).");
     fprintf(stderr, "  %-*s   %s\n\n", option_width, "", "(Cannot be used with --preset or --no-resample).");
-    fprintf(stderr, "  %-*s %s\n\n", option_width, "--scale <value>", "Scaling factor for input samples (Default: 0.02 for 8-bit, 0.5 for 16-bit).");
+    fprintf(stderr, "  %-*s %s\n\n", option_width, "--gain <multiplier>", "Apply a linear gain multiplier to the samples (Default: 1.0).");
     fprintf(stderr, "  %-*s %s\n", option_width, "--no-resample", "Disable the resampler (passthrough mode).");
     fprintf(stderr, "  %-*s   %s\n\n", option_width, "", "Output sample rate will be the same as the input rate.");
-    fprintf(stderr, "  %-*s %s\n", option_width, "--no-8-to-16", "Use a native 8-bit processing path, skipping internal scaling.");
-    fprintf(stderr, "  %-*s   %s\n", option_width, "", "(Only valid for 8-bit input and an 8-bit output mode).");
-    fprintf(stderr, "  %-*s   %s\n\n", option_width, "", "(May provide a minor performance improvement).");
 
+    // I/Q Correction Options (Simplified)
+    fprintf(stderr, "  %-*s %s\n\n", option_width, "--iq-correction", "(Optional) Enable automatic I/Q imbalance correction.");
+
+    // DC Block Option
+    fprintf(stderr, "  %-*s %s\n\n", option_width, "--dc-block", "(Optional) Enable DC offset removal (high-pass filter).");
+
+    // Preset option (moved to last)
     fprintf(stderr, "  %-*s %s\n", option_width, "--preset <name>", "Use a preset for a common target.");
     fprintf(stderr, "  %-*s   %s\n", option_width, "", "(Cannot be used with --no-resample).");
 
@@ -193,9 +276,8 @@ static void print_usage_processing_options_section(int option_width) {
 bool parse_arguments(int argc, char *argv[], AppConfig *config) {
     int opt;
     int long_index = 0;
-    const char* short_opts = "i:of:h"; // Short options string
+    const char* short_opts = "i:of:h";
 
-    // --- CRUCIAL: Reset getopt_long's internal state for re-entry ---
     optind = 1;
     opterr = 1;
 
@@ -204,31 +286,32 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
         {"stdout",                    no_argument,       0, 'o'},
         {"file",                      required_argument, 0, 'f'},
         {"help",                      no_argument,       0, 'h'},
-        {"output-container",          required_argument, 0, 3002},
-        {"output-sample-format",      required_argument, 0, 3003},
-        {"scale",                     required_argument, 0, 3001},
-        {"rf-freq",                   required_argument, 0, 1001},
-        {"bias-t",                    no_argument,       0, 1002},
-        {"sdrplay-device-idx",        required_argument, 0, 1003},
-        {"sdrplay-gain-level",        required_argument, 0, 1004},
-        {"sdrplay-antenna",           required_argument, 0, 1005},
-        {"sdrplay-hdr-mode",          no_argument,       0, 1006},
-        {"sdrplay-hdr-bw",            required_argument, 0, 1007},
-        {"sdrplay-sample-rate",       required_argument, 0, 1015},
-        {"sdrplay-bandwidth",         required_argument, 0, 1016},
-        {"hackrf-lna-gain",           required_argument, 0, 1008},
-        {"hackrf-vga-gain",           required_argument, 0, 1009},
-        {"hackrf-amp-enable",         no_argument,       0, 1010},
-        {"hackrf-sample-rate",        required_argument, 0, 1014},
-        {"wav-center-target-frequency", required_argument, 0, 2001},
-        {"wav-shift-frequency",       required_argument, 0, 2002},
-        {"wav-shift-after-resample",  no_argument,       0, 2003},
-        {"raw-file-input-rate",       required_argument, 0, 5001},
-        {"raw-file-input-sample-format", required_argument, 0, 5002},
-        {"output-rate",               required_argument, 0, 1012},
-        {"preset",                    required_argument, 0, 1013},
-        {"no-resample",               no_argument,       0, 1017},
-        {"no-8-to-16",                no_argument,       0, 1011},
+        {"output-container",          required_argument, 0, OPT_OUTPUT_CONTAINER},
+        {"output-sample-format",      required_argument, 0, OPT_OUTPUT_SAMPLE_FORMAT},
+        {"gain",                      required_argument, 0, OPT_GAIN},
+        {"rf-freq",                   required_argument, 0, OPT_SDR_RF_FREQ},
+        {"bias-t",                    no_argument,       0, OPT_SDR_BIAS_T},
+        {"sdrplay-device-idx",        required_argument, 0, OPT_SDRPLAY_DEVICE_IDX},
+        {"sdrplay-gain-level",        required_argument, 0, OPT_SDRPLAY_GAIN_LEVEL},
+        {"sdrplay-antenna",           required_argument, 0, OPT_SDRPLAY_ANTENNA},
+        {"sdrplay-hdr-mode",          no_argument,       0, OPT_SDRPLAY_HDR_MODE},
+        {"sdrplay-hdr-bw",            required_argument, 0, OPT_SDRPLAY_HDR_BW},
+        {"sdrplay-sample-rate",       required_argument, 0, OPT_SDRPLAY_SAMPLE_RATE},
+        {"sdrplay-bandwidth",         required_argument, 0, OPT_SDRPLAY_BANDWIDTH},
+        {"hackrf-lna-gain",           required_argument, 0, OPT_HACKRF_LNA_GAIN},
+        {"hackrf-vga-gain",           required_argument, 0, OPT_HACKRF_VGA_GAIN},
+        {"hackrf-amp-enable",         no_argument,       0, OPT_HACKRF_AMP_ENABLE},
+        {"hackrf-sample-rate",        required_argument, 0, OPT_HACKRF_SAMPLE_RATE},
+        {"wav-center-target-frequency", required_argument, 0, OPT_WAV_CENTER_TARGET_FREQUENCY},
+        {"wav-shift-frequency",       required_argument, 0, OPT_WAV_SHIFT_FREQUENCY},
+        {"wav-shift-after-resample",  no_argument,       0, OPT_WAV_SHIFT_AFTER_RESAMPLE},
+        {"raw-file-input-rate",       required_argument, 0, OPT_RAW_FILE_INPUT_RATE},
+        {"raw-file-input-sample-format", required_argument, 0, OPT_RAW_FILE_INPUT_SAMPLE_FORMAT},
+        {"output-rate",               required_argument, 0, OPT_OUTPUT_RATE},
+        {"no-resample",               no_argument,       0, OPT_NO_RESAMPLE},
+        {"iq-correction",             no_argument,       0, OPT_IQ_CORRECTION},
+        {"dc-block",                  no_argument,       0, OPT_DC_BLOCK},
+        {"preset",                    required_argument, 0, OPT_PRESET},
         {0, 0, 0, 0}
     };
 
@@ -240,99 +323,71 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
             case 'h':
                 config->help_requested = true;
                 return true;
-            case 3001: // --scale
-                {
-                    char *endptr;
-                    errno = 0;
-                    config->scale_value = strtof(optarg, &endptr);
-                    if (errno != 0 || *endptr != '\0' || !isfinite(config->scale_value) || config->scale_value <= 0) {
-                        log_fatal("Invalid scaling factor '%s'. Must be a positive finite number.", optarg);
-                        return false;
-                    }
-                    config->scale_provided = true;
+
+            case OPT_GAIN:
+                if (config->gain_provided) {
+                    log_fatal("Option --gain cannot be specified more than once.");
+                    return false;
                 }
+                if (!parse_float_arg(optarg, "--gain", &config->gain, false, false)) return false;
+                config->gain_provided = true;
                 break;
-            case 2002: // --wav-shift-frequency
-                {
-                    char *endptr;
-                    errno = 0;
-                    config->freq_shift_hz = strtod(optarg, &endptr);
-                    if (errno != 0 || *endptr != '\0' || !isfinite(config->freq_shift_hz)) {
-                        log_fatal("Invalid frequency shift value '%s'. Must be a valid finite number.", optarg);
-                        return false;
-                    }
-                    config->freq_shift_requested = true;
-                }
+
+            case OPT_WAV_SHIFT_FREQUENCY:
+                if (!parse_double_arg(optarg, "--wav-shift-frequency", &config->freq_shift_hz, true, true)) return false;
+                config->freq_shift_requested = true;
                 break;
-            case 2001: // --wav-center-target-frequency
-                {
-                    char *endptr;
-                    errno = 0;
-                    config->center_frequency_target_hz = strtod(optarg, &endptr);
-                    if (errno != 0 || *endptr != '\0' || !isfinite(config->center_frequency_target_hz)) {
-                        log_fatal("Invalid target frequency value '%s'. Must be a valid finite number.", optarg);
-                        return false;
-                    }
-                    config->set_center_frequency_target_hz = true;
-                }
+
+            case OPT_WAV_CENTER_TARGET_FREQUENCY:
+                if (!parse_double_arg(optarg, "--wav-center-target-frequency", &config->center_frequency_target_hz, true, true)) return false;
+                config->set_center_frequency_target_hz = true;
                 break;
-            case 3003: // --output-sample-format
+
+            case OPT_OUTPUT_SAMPLE_FORMAT:
                 config->sample_type_name = optarg;
                 break;
-            case 2003: // --wav-shift-after-resample
+            case OPT_WAV_SHIFT_AFTER_RESAMPLE:
                 config->shift_after_resample = true;
                 break;
-            case 3002: // --output-container
+            case OPT_OUTPUT_CONTAINER:
                 config->output_type_name = optarg;
                 config->output_type_provided = true;
                 break;
-            case 1001: // --rf-freq
+
+            case OPT_SDR_RF_FREQ:
 #if defined(WITH_SDRPLAY) || defined(WITH_HACKRF)
-                {
-                    char *endptr;
-                    errno = 0;
-                    config->sdr.rf_freq_hz = strtod(optarg, &endptr);
-                    if (errno != 0 || *endptr != '\0' || !isfinite(config->sdr.rf_freq_hz) || config->sdr.rf_freq_hz <= 0) {
-                        log_fatal("Invalid RF frequency '%s'. Must be a positive number.", optarg);
-                        return false;
-                    }
-                    config->sdr.rf_freq_provided = true;
-                }
+                if (!parse_double_arg(optarg, "--rf-freq", &config->sdr.rf_freq_hz, false, false)) return false;
+                config->sdr.rf_freq_provided = true;
 #else
                 log_warn("Option --rf-freq ignored: No SDR hardware devices enabled in this build.");
 #endif
                 break;
-            case 1002: // --bias-t
+
+            case OPT_SDR_BIAS_T:
 #if defined(WITH_SDRPLAY) || defined(WITH_HACKRF)
                 config->sdr.bias_t_enable = true;
 #else
                 log_warn("Option --bias-t ignored: No SDR hardware devices enabled in this build.");
 #endif
                 break;
-            case 1003: // --sdrplay-device-idx
+
+            case OPT_SDRPLAY_DEVICE_IDX:
 #if defined(WITH_SDRPLAY)
                 {
-                    char *endptr;
-                    long val = strtol(optarg, &endptr, 10);
-                    if (*endptr != '\0' || val < 0) {
-                        log_fatal("--sdrplay-device-idx must be a non-negative integer.");
-                        return false;
-                    }
+                    long val;
+                    if (!parse_long_arg(optarg, "--sdrplay-device-idx", &val, false)) return false;
                     config->sdrplay.device_index = (int)val;
                 }
 #else
                 log_warn("Option --sdrplay-device-idx ignored: SDRplay support not enabled in this build.");
 #endif
                 break;
-            case 1004: // --sdrplay-gain-level
+
+            case OPT_SDRPLAY_GAIN_LEVEL:
 #if defined(WITH_SDRPLAY)
                 {
-                    char *endptr;
-                    long val = strtol(optarg, &endptr, 10);
-                    if (*endptr != '\0' || val < 0) {
-                        log_fatal("--sdrplay-gain-level must be a non-negative integer.");
-                        return false;
-                    }
+                    long val;
+                    if (!parse_long_arg(optarg, "--sdrplay-gain-level", &val, false)) return false;
                     config->sdrplay.gain_level = (int)val;
                     config->sdrplay.gain_level_provided = true;
                 }
@@ -340,21 +395,24 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
                 log_warn("Option --sdrplay-gain-level ignored: SDRplay support not enabled in this build.");
 #endif
                 break;
-            case 1005: // --sdrplay-antenna
+
+            case OPT_SDRPLAY_ANTENNA:
 #if defined(WITH_SDRPLAY)
                 config->sdrplay.antenna_port_name = optarg;
 #else
                 log_warn("Option --sdrplay-antenna ignored: SDRplay support not enabled in this build.");
 #endif
                 break;
-            case 1006: // --sdrplay-hdr-mode
+
+            case OPT_SDRPLAY_HDR_MODE:
 #if defined(WITH_SDRPLAY)
                 config->sdrplay.use_hdr_mode = true;
 #else
                 log_warn("Option --sdrplay-hdr-mode ignored: SDRplay support not enabled in this build.");
 #endif
                 break;
-            case 1007: // --sdrplay-hdr-bw
+
+            case OPT_SDRPLAY_HDR_BW:
 #if defined(WITH_SDRPLAY)
                 {
                     const char* bw_str = optarg;
@@ -372,130 +430,91 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
                 log_warn("Option --sdrplay-hdr-bw ignored: SDRplay support not enabled in this build.");
 #endif
                 break;
-            case 1008: // --hackrf-lna-gain
+
+            case OPT_HACKRF_LNA_GAIN:
 #if defined(WITH_HACKRF)
-                {
-                    char *endptr;
-                    long val = strtol(optarg, &endptr, 10);
-                    if (*endptr != '\0' || val < 0) {
-                        log_fatal("--hackrf-lna-gain must be a non-negative integer.");
-                        return false;
-                    }
-                    config->hackrf.lna_gain = (uint32_t)val;
-                    config->hackrf.lna_gain_provided = true;
-                }
+                if (!parse_uint32_arg(optarg, "--hackrf-lna-gain", &config->hackrf.lna_gain)) return false;
+                config->hackrf.lna_gain_provided = true;
 #else
                 log_warn("Option --hackrf-lna-gain ignored: HackRF support not enabled in this build.");
 #endif
                 break;
-            case 1009: // --hackrf-vga-gain
+
+            case OPT_HACKRF_VGA_GAIN:
 #if defined(WITH_HACKRF)
-                {
-                    char *endptr;
-                    long val = strtol(optarg, &endptr, 10);
-                    if (*endptr != '\0' || val < 0) {
-                        log_fatal("--hackrf-vga-gain must be a non-negative integer.");
-                        return false;
-                    }
-                    config->hackrf.vga_gain = (uint32_t)val;
-                    config->hackrf.vga_gain_provided = true;
-                }
+                if (!parse_uint32_arg(optarg, "--hackrf-vga-gain", &config->hackrf.vga_gain)) return false;
+                config->hackrf.vga_gain_provided = true;
 #else
                 log_warn("Option --hackrf-vga-gain ignored: HackRF support not enabled in this build.");
 #endif
                 break;
-            case 1010: // --hackrf-amp-enable
+
+            case OPT_HACKRF_AMP_ENABLE:
 #if defined(WITH_HACKRF)
                 config->hackrf.amp_enable = true;
 #else
                 log_warn("Option --hackrf-amp-enable ignored: HackRF support not enabled in this build.");
 #endif
                 break;
-            case 1011: // --no-8-to-16
-                config->native_8bit_path = true;
+
+            case OPT_OUTPUT_RATE:
+                if (!parse_double_arg(optarg, "--output-rate", &config->user_defined_target_rate, false, false)) return false;
+                config->user_rate_provided = true;
                 break;
-            case 1012: // --output-rate
-                {
-                    char *endptr;
-                    errno = 0;
-                    config->user_defined_target_rate = strtod(optarg, &endptr);
-                    if (errno != 0 || *endptr != '\0' || !isfinite(config->user_defined_target_rate) || config->user_defined_target_rate <= 0) {
-                        log_fatal("Invalid output rate '%s'. Must be a positive number.", optarg);
-                        return false;
-                    }
-                    config->user_rate_provided = true;
-                }
-                break;
-            case 1013: // --preset
-                config->preset_name = optarg;
-                break;
-            case 1014: // --hackrf-sample-rate
+
+            case OPT_HACKRF_SAMPLE_RATE:
 #if defined(WITH_HACKRF)
-                {
-                    char *endptr;
-                    errno = 0;
-                    config->hackrf.sample_rate_hz = strtod(optarg, &endptr);
-                    if (errno != 0 || *endptr != '\0' || !isfinite(config->hackrf.sample_rate_hz) || config->hackrf.sample_rate_hz <= 0) {
-                        log_fatal("Invalid HackRF sample rate '%s'. Must be a positive number.", optarg);
-                        return false;
-                    }
-                    config->hackrf.sample_rate_provided = true;
-                }
+                if (!parse_double_arg(optarg, "--hackrf-sample-rate", &config->hackrf.sample_rate_hz, false, false)) return false;
+                config->hackrf.sample_rate_provided = true;
 #else
                 log_warn("Option --hackrf-sample-rate ignored: HackRF support not enabled in this build.");
 #endif
                 break;
-            case 1015: // --sdrplay-sample-rate
+
+            case OPT_SDRPLAY_SAMPLE_RATE:
 #if defined(WITH_SDRPLAY)
-                {
-                    char *endptr;
-                    errno = 0;
-                    config->sdrplay.sample_rate_hz = strtod(optarg, &endptr);
-                    if (errno != 0 || *endptr != '\0' || !isfinite(config->sdrplay.sample_rate_hz) || config->sdrplay.sample_rate_hz <= 0) {
-                        log_fatal("Invalid SDRplay sample rate '%s'. Must be a positive number.", optarg);
-                        return false;
-                    }
-                    config->sdrplay.sample_rate_provided = true;
-                }
+                if (!parse_double_arg(optarg, "--sdrplay-sample-rate", &config->sdrplay.sample_rate_hz, false, false)) return false;
+                config->sdrplay.sample_rate_provided = true;
 #else
                 log_warn("Option --sdrplay-sample-rate ignored: SDRplay support not enabled in this build.");
 #endif
                 break;
-            case 1016: // --sdrplay-bandwidth
+
+            case OPT_SDRPLAY_BANDWIDTH:
 #if defined(WITH_SDRPLAY)
-                {
-                    char *endptr;
-                    errno = 0;
-                    config->sdrplay.bandwidth_hz = strtod(optarg, &endptr);
-                    if (errno != 0 || *endptr != '\0' || !isfinite(config->sdrplay.bandwidth_hz) || config->sdrplay.bandwidth_hz <= 0) {
-                        log_fatal("Invalid SDRplay bandwidth '%s'. Must be a positive number.", optarg);
-                        return false;
-                    }
-                    config->sdrplay.bandwidth_provided = true;
-                }
+                if (!parse_double_arg(optarg, "--sdrplay-bandwidth", &config->sdrplay.bandwidth_hz, false, false)) return false;
+                config->sdrplay.bandwidth_provided = true;
 #else
                 log_warn("Option --sdrplay-bandwidth ignored: SDRplay support not enabled in this build.");
 #endif
                 break;
-            case 1017: // --no-resample
+
+            case OPT_NO_RESAMPLE:
                 config->no_resample = true;
                 break;
-            case 5001: // --raw-file-input-rate
-                {
-                    char *endptr;
-                    errno = 0;
-                    config->raw_file.sample_rate_hz = strtod(optarg, &endptr);
-                    if (errno != 0 || *endptr != '\0' || !isfinite(config->raw_file.sample_rate_hz) || config->raw_file.sample_rate_hz <= 0) {
-                        log_fatal("Invalid raw input rate '%s'. Must be a positive number.", optarg);
-                        return false;
-                    }
-                    config->raw_file.sample_rate_provided = true;
-                }
+
+            case OPT_RAW_FILE_INPUT_RATE:
+                if (!parse_double_arg(optarg, "--raw-file-input-rate", &config->raw_file.sample_rate_hz, false, false)) return false;
+                config->raw_file.sample_rate_provided = true;
                 break;
-            case 5002: // --raw-file-input-sample-format
+
+            case OPT_RAW_FILE_INPUT_SAMPLE_FORMAT:
                 config->raw_file.format_str = optarg;
                 config->raw_file.format_provided = true;
                 break;
+
+            case OPT_IQ_CORRECTION:
+                config->iq_correction.enable = true;
+                break;
+
+            case OPT_DC_BLOCK:
+                config->dc_block.enable = true;
+                break;
+
+            case OPT_PRESET:
+                config->preset_name = optarg;
+                break;
+
             case '?': // Unknown option or missing argument
                 return false;
             default:
@@ -512,6 +531,7 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
     if (!validate_wav_specific_options(config)) return false;
     if (!validate_raw_file_specific_options(config)) return false;
     if (!validate_processing_options(config)) return false;
+    if (!validate_iq_correction_options(config)) return false;
 
     // Check for any leftover, non-option arguments
     if (optind < argc) {
@@ -644,18 +664,10 @@ static bool validate_output_type_and_sample_format(AppConfig *config) {
         }
     }
 
-    // --- Step 5: Parse sample format name and set defaults ---
-    if (strcmp(config->sample_type_name, "cu8") == 0) {
-        config->sample_format = SAMPLE_TYPE_CU8;
-        if (!config->scale_provided) config->scale_value = DEFAULT_SCALE_FACTOR_CU8;
-    } else if (strcmp(config->sample_type_name, "cs8") == 0) {
-        config->sample_format = SAMPLE_TYPE_CS8;
-        if (!config->scale_provided) config->scale_value = DEFAULT_SCALE_FACTOR_CU8;
-    } else if (strcmp(config->sample_type_name, "cs16") == 0) {
-        config->sample_format = SAMPLE_TYPE_CS16;
-        if (!config->scale_provided) config->scale_value = DEFAULT_SCALE_FACTOR_CS16;
-    } else {
-        log_fatal("Invalid sample format '%s'. Valid types are: cu8, cs8, cs16.", config->sample_type_name);
+    // --- Step 5: Parse sample format name ---
+    config->output_format = get_format(config->sample_type_name);
+    if (config->output_format == FORMAT_UNKNOWN) {
+        log_fatal("Invalid sample format '%s'. See --help for valid formats.", config->sample_type_name);
         return false;
     }
 
@@ -665,17 +677,18 @@ static bool validate_output_type_and_sample_format(AppConfig *config) {
         return false;
     }
 
-    if ((config->output_type == OUTPUT_TYPE_WAV || config->output_type == OUTPUT_TYPE_WAV_RF64) &&
-        config->sample_format == SAMPLE_TYPE_CS8) {
-        log_fatal("Error: Signed 8-bit PCM (cs8) is not supported for WAV or RF64 output.");
-        return false;
+    if (config->output_type == OUTPUT_TYPE_WAV || config->output_type == OUTPUT_TYPE_WAV_RF64) {
+        if (config->output_format != CS16 && config->output_format != CU8) {
+            log_fatal("Invalid sample format '%s' for WAV container. Only 'cs16' and 'cu8' are supported for WAV output.", config->sample_type_name);
+            return false;
+        }
     }
 
     return true;
 }
 
 static bool validate_sdr_specific_options(const AppConfig *config) {
-    bool is_file_input = (config->input_type_str && 
+    bool is_file_input = (config->input_type_str &&
                           (strcasecmp(config->input_type_str, "wav") == 0 ||
                            strcasecmp(config->input_type_str, "raw-file") == 0));
     if (is_file_input) {
@@ -738,17 +751,39 @@ static bool validate_processing_options(AppConfig *config) {
         }
     }
 
-    if (config->native_8bit_path) {
-        if (config->sample_format != SAMPLE_TYPE_CU8 && config->sample_format != SAMPLE_TYPE_CS8) {
-            log_fatal("Invalid option: --no-8-to-16 is only valid with an 8-bit sample format (cu8 or cs8).");
-            return false;
-        }
-    }
-
     if (config->target_rate <= 0 && !config->no_resample) {
         log_fatal("Missing required argument: you must specify an --output-rate or use a preset.");
         return false;
     }
 
     return true;
+}
+
+static bool validate_iq_correction_options(AppConfig *config) {
+    // This function is now a placeholder but is kept for structural consistency.
+    // It can be used for future validation if new options are added.
+    (void)config; // Suppress unused parameter warning
+    return true;
+}
+
+
+/**
+ * @brief Parses a format string name into a format_t enum.
+ */
+static format_t get_format(const char *name) {
+    if (strcasecmp(name, "s8") == 0) return S8;
+    if (strcasecmp(name, "u8") == 0) return U8;
+    if (strcasecmp(name, "s16") == 0) return S16;
+    if (strcasecmp(name, "u16") == 0) return U16;
+    if (strcasecmp(name, "s32") == 0) return S32;
+    if (strcasecmp(name, "u32") == 0) return U32;
+    if (strcasecmp(name, "f32") == 0) return F32;
+    if (strcasecmp(name, "cs8") == 0) return CS8;
+    if (strcasecmp(name, "cu8") == 0) return CU8;
+    if (strcasecmp(name, "cs16") == 0) return CS16;
+    if (strcasecmp(name, "cu16") == 0) return CU16;
+    if (strcasecmp(name, "cs32") == 0) return CS32;
+    if (strcasecmp(name, "cu32") == 0) return CU32;
+    if (strcasecmp(name, "cf32") == 0) return CF32;
+    return FORMAT_UNKNOWN;
 }
