@@ -2,7 +2,7 @@
 
 A multi-threaded command-line tool for resampling, shifting, and correcting I/Q data streams.
 
-I originally built this tool for a very specific need: processing NRSC-5 (HD Radio) captures for use with the awesome `nrsc5` decoder. This means it's particularly good at handling the frequency shifts and metadata found in WAV files from SDR software, but it has grown into a more general-purpose utility for prepping I/Q data for any downstream tool.
+I originally built this tool for a very specific need: processing NRSC-5 (HD Radio) captures for use with the awesome [NRSC5](https://github.com/theori-io/nrsc5) decoder. This means it's particularly good at handling the frequency shifts and metadata found in WAV files from SDR software, but it has grown into a more general-purpose utility for prepping I/Q data for any downstream tool.
 
 ---
 
