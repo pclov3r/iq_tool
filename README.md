@@ -31,7 +31,7 @@ Let's be upfront: a large language model (AI) helped write a significant portion
 *   **Powerful Processing:**
     *   **High-Quality Resampling:** Uses `liquid-dsp` under the hood.
     *   **Precise Frequency Shifting:** Apply shifts before or after resampling—handy for those weird, narrow I/Q captures.
-    *   **Automatic I/Q Correction:** Can optionally find and fix I/Q imbalance on the fly.
+    *   **Automatic I/Q Correction:** Can optionally find and fix I/Q imbalance on the fly. *This is very experimental and being refined. It may make things worse currently.* 
     *   **DC Blocking:** A simple filter to remove the pesky DC offset.
 *   **Versatile Outputs:**
     *   **Container Formats:** `raw` (for piping), standard `wav`, and `wav-rf64` (for files >4GB).
@@ -236,6 +236,7 @@ This tool is a work in progress.
 *   **Known Issues:**
     *   It's experimental. Expect bugs.
     *   Windows builds are 64-bit only. I see no reason to post 32-bit ones given Windows 10 is end of life soon and Windows 11 is 64-bit only. If I'm wrong and it's required open an issue.
+    *   As mentioned, IQ correction may not be functioning correctly. 
 
 *   **Roadmap:**
     *   [ ] Add RTL-SDR support.
