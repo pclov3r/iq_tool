@@ -84,9 +84,18 @@ static void* processor_thread_func(void* arg) {
             break;
         }
 
-        if (config->iq_correction.enable) {
-            pthread_mutex_lock(&resources->dsp_mutex);
+        // Apply DC Block FIRST (if enabled)
+        if (config->dc_block.enable) {
+            pthread_mutex_lock(&resources->dsp_mutex); // Protects dc_block_filter state
+            dc_block_apply(resources, item->complex_buffer_scaled, item->frames_read);
+            pthread_mutex_unlock(&resources->dsp_mutex);
+        }
 
+        // Now, I/Q Correction (both optimization and application) operates on DC-blocked data.
+        if (config->iq_correction.enable) {
+            pthread_mutex_lock(&resources->dsp_mutex); // Protects IQ correction DSP state
+
+            // Accumulate samples for I/Q optimization from the DC-blocked buffer
             int samples_to_copy = item->frames_read;
             unsigned long long remaining_space = (unsigned long long)IQ_CORRECTION_DEFAULT_PERIOD - resources->iq_correction.samples_accumulated_for_optimize;
 
@@ -96,11 +105,12 @@ static void* processor_thread_func(void* arg) {
 
             if (samples_to_copy > 0) {
                 memcpy(resources->iq_correction.optimization_accum_buffer + resources->iq_correction.samples_accumulated_for_optimize,
-                       item->complex_buffer_scaled,
+                       item->complex_buffer_scaled, // This buffer now contains DC-blocked data
                        samples_to_copy * sizeof(complex_float_t));
                 resources->iq_correction.samples_accumulated_for_optimize += samples_to_copy;
             }
 
+            // Run optimization if enough samples accumulated
             if (resources->iq_correction.samples_accumulated_for_optimize >= (unsigned long long)IQ_CORRECTION_DEFAULT_PERIOD) {
                 const complex_float_t* analysis_data_start = resources->iq_correction.optimization_accum_buffer +
                                                              resources->iq_correction.samples_accumulated_for_optimize -
@@ -108,17 +118,11 @@ static void* processor_thread_func(void* arg) {
                 iq_correct_run_optimization(resources, analysis_data_start, samples_for_analysis);
                 resources->iq_correction.samples_accumulated_for_optimize = 0;
             }
-            pthread_mutex_unlock(&resources->dsp_mutex);
-        }
 
-        if (config->iq_correction.enable) {
+            // Apply I/Q Correction to the DC-blocked data
             iq_correct_apply(resources, item->complex_buffer_scaled, item->frames_read);
-        }
 
-        if (config->dc_block.enable) {
-            pthread_mutex_lock(&resources->dsp_mutex);
-            dc_block_apply(resources, item->complex_buffer_scaled, item->frames_read);
-            pthread_mutex_unlock(&resources->dsp_mutex);
+            pthread_mutex_unlock(&resources->dsp_mutex); // Release mutex after all IQ/DC ops
         }
 
         complex_float_t *input_for_resampler_stage = item->complex_buffer_scaled;

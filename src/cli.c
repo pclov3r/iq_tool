@@ -760,9 +760,13 @@ static bool validate_processing_options(AppConfig *config) {
 }
 
 static bool validate_iq_correction_options(AppConfig *config) {
-    // This function is now a placeholder but is kept for structural consistency.
-    // It can be used for future validation if new options are added.
-    (void)config; // Suppress unused parameter warning
+    // If I/Q correction is enabled, ensure DC block is also enabled.
+    if (config->iq_correction.enable) {
+        if (!config->dc_block.enable) {
+            log_fatal("Option --iq-correction requires --dc-block to be enabled for optimal performance and stability.");
+            return false;
+        }
+    }
     return true;
 }
 
