@@ -9,14 +9,7 @@
 // Buffer sizes and processing parameters
 #define BUFFER_SIZE_SAMPLES       8192 // Samples PER I/Q PAIR for input chunk processing
 #define PROGRESS_UPDATE_INTERVAL  50   // Update progress message every N write loops
-#define NUM_BUFFERS               4    // Number of WorkItem buffers for the pipeline (Min: Stages+1=4)
-
-// Default scaling factors if not provided by user
-#define DEFAULT_SCALE_FACTOR_CS16 0.50f
-#define DEFAULT_SCALE_FACTOR_CU8  0.02f
-
-// Scaling factor for converting 8-bit input to internal float range
-#define SCALE_8_TO_16             256.0f
+#define NUM_BUFFERS               4    // Number of WorkItem buffers for the pipeline
 
 // Resampling ratio limits
 #define MIN_ACCEPTABLE_RATIO      0.001f
@@ -46,18 +39,11 @@
 
 // --- I/Q Correction Configuration ---
 #define IQ_CORRECTION_FFT_SIZE      1024
-#define IQ_CORRECTION_FFT_COUNT     4
-#define IQ_CORRECTION_MAX_ITER      25
 // The number of samples to process between running the optimization algorithm.
 // A value of 2,000,000 corresponds to once per second at a 2 Msps sample rate.
 #define IQ_CORRECTION_DEFAULT_PERIOD 2000000
-// NEW: Bandwidth (one-sided) around DC for correlation calculation.
-// This should be a small fraction of the sample rate, e.g., 10-20 kHz.
-// A value of 20000.0f means +/- 20 kHz around DC.
-#define IQ_CORRECTION_CORRELATION_BANDWIDTH_HZ 20000.0f
 
 // --- DC Block Configuration ---
-#define DC_BLOCK_FILTER_ORDER       4
 #define DC_BLOCK_CUTOFF_HZ          10.0f
 
 #if defined(WITH_SDRPLAY)

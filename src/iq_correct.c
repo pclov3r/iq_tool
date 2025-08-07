@@ -19,60 +19,45 @@
  */
 
 /*
- *  --- Code Provenance and Attribution ---
  *
- *  The I/Q correction algorithm in this file is a derivative work, adapted
- *  from 'iqbal.c' in the libosmo-dsp project by Sylvain Munaut.
+ *  The I/Q correction algorithm in this file is a C port of the
+ *  randomized hill-climbing algorithm from the SDR# project.
  *
- *  The following descriptive block is adapted from the original 'iqbal.c'
- *  header to preserve its attribution and context:
+ *  The original C# code is licensed under the MIT license, and its
+ *  copyright and permission notice is included below as required.
  *
- *  "The actual algorithm used for estimation of the imbalance and its
- *   optimization is inspired by the IQ balancer of SDR# by Youssef Touil
- *   and described here :
+ *  Copyright (c) 2012 Youssef Touil and other contributors,
+ *  http://sdrsharp.com/
  *
- *   https://web.archive.org/web/20140209125600/http://sdrsharp.com/index.php/automatic-iq-correction-algorithm
+ *  Permission is hereby granted, free of charge, to any person obtaining
+ *  a copy of this software and associated documentation files (the
+ *  "Software"), to deal in the Software without restriction, including
+ *  without limitation the rights to use, copy, modify, merge, publish,
+ *  distribute, sublicense, and/or sell copies of the Software, and to
+ *  permit persons to whom the Software is furnished to do so, subject to
+ *  the following conditions:
  *
- *   The main differences are:
- *    - Objective function uses complex correlation of left/right side of FFT
- *    - Optimization based on steepest gradient with dynamic step size"
+ *  The above copyright notice and this permission notice shall be
+ *  included in all copies or substantial portions of the Software.
  *
- *  Further modifications in this file include the use of liquid-dsp for
- *  FFT operations and adaptation for continuous stream processing.
+ *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ *  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ *  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ *  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  *
- *  The original source repository for libosmo-dsp is:
- *      https://github.com/osmocom/libosmo-dsp
- *
- *  The original copyright and license notice from 'iqbal.c' is preserved
- *  below as required by its license.
- */
-
-/*
- * Copyright (C) 2013  Sylvain Munaut <tnt@246tNt.com>
- * All Rights Reserved
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 2110-1301 USA.
  */
 
 #include "iq_correct.h"
 #include "log.h"
-#include "config.h" // For IQ_CORRECTION_FFT_SIZE, IQ_CORRECTION_FFT_COUNT, etc.
+#include "config.h"
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>   // For M_PI, fabs, isfinite
+#include <math.h>
 #include <errno.h>
+#include <time.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -84,205 +69,111 @@
 #include <liquid/liquid.h>
 #endif
 
-// --- Internal Helper Functions (derived from libosmo-dsp's iqbal.c) ---
+// --- Algorithm Tuning Constants ---
+#define IQ_BASE_INCREMENT     0.0001f
+#define IQ_MAX_PASSES         25
 
-static inline float _osmo_normsqf(complex_float_t x) {
-    return crealf(x)*crealf(x) + cimagf(x)*cimagf(x);
-}
+// --- Forward Declarations for Static Helper Functions ---
+static void _apply_correction_to_buffer(complex_float_t* buffer, int length, float gain_adj, float phase_adj);
+static float _calculate_imbalance_metric(IqCorrectionResources* iq_res, const complex_float_t* signal_block, float gain_adj, float phase_adj);
+static void _estimate_power(IqCorrectionResources* iq_res, const complex_float_t* signal_block);
+static float _get_random_direction(void);
+static void _calculate_power_spectrum(IqCorrectionResources* iq_res, const complex_float_t* signal_block, float gain_adj, float phase_adj);
 
-// Modified signature to accept j_max_corr
-static float _iq_balance_calculate_estimate(const complex_float_t *data, int fft_size, int fft_count, fftplan plan, complex_float_t* fft_input_buffer, complex_float_t* fft_output_buffer, int j_max_corr) {
-    float est = 0.0f;
-    int i, j;
 
-    for (i = 0; i < fft_count; i++) {
-        complex_float_t corr = 0.0f;
-        memcpy(fft_input_buffer, &data[i * fft_size], sizeof(complex_float_t) * fft_size);
-        fft_execute(plan);
-        // MODIFIED LOOP: Correlate over the specified limited bandwidth
-        for (j = 1; j < j_max_corr; j++) {
-            corr += fft_output_buffer[fft_size - j] * conjf(fft_output_buffer[j]);
-        }
-        est += _osmo_normsqf(corr);
-    }
-    return est;
-}
-
-static inline float _iqbal_objfn_value(IqCorrectionResources* iq_res, const complex_float_t* original_signal, int signal_len, float x[2]) {
-    const float magp1 = 1.0f + x[0];
-    const float phase = x[1];
-
-    for (int i = 0; i < signal_len; ++i) {
-        complex_float_t v = original_signal[i];
-        iq_res->tmp_signal_buffer[i] = (crealf(v) * magp1) + (cimagf(v) + phase * crealf(v)) * I;
-    }
-    // Pass iq_res->correlation_j_max to the estimate function
-    return _iq_balance_calculate_estimate(iq_res->tmp_signal_buffer, IQ_CORRECTION_FFT_SIZE, IQ_CORRECTION_FFT_COUNT, iq_res->fft_plan, iq_res->fft_input_buffer, iq_res->fft_output_buffer, iq_res->correlation_j_max);
-}
-
-static void _iqbal_objfn_gradient(IqCorrectionResources* iq_res, const complex_float_t* original_signal, int signal_len, float x[2], float v, float grad[2]) {
-    const float GRAD_STEP = 1e-6f;
-    float xd[2], vd[2];
-
-    xd[0] = x[0] + GRAD_STEP; xd[1] = x[1];
-    vd[0] = _iqbal_objfn_value(iq_res, original_signal, signal_len, xd);
-
-    xd[0] = x[0]; xd[1] = x[1] + GRAD_STEP;
-    vd[1] = _iqbal_objfn_value(iq_res, original_signal, signal_len, xd);
-
-    grad[0] = (vd[0] - v) / GRAD_STEP;
-    grad[1] = (vd[1] - v) / GRAD_STEP;
-}
-
-static inline float _iqbal_objfn_val_gradient(IqCorrectionResources* iq_res, const complex_float_t* original_signal, int signal_len, float x[2], float grad[2]) {
-    float v = _iqbal_objfn_value(iq_res, original_signal, signal_len, x);
-    _iqbal_objfn_gradient(iq_res, original_signal, signal_len, x, v, grad);
-    return v;
-}
+// --- Public API Functions ---
 
 bool iq_correct_init(AppConfig* config, AppResources* resources) {
     if (!config->iq_correction.enable) {
         resources->iq_correction.fft_plan = NULL;
-        resources->iq_correction.fft_input_buffer = NULL;
-        resources->iq_correction.fft_output_buffer = NULL;
-        resources->iq_correction.tmp_signal_buffer = NULL;
-        resources->iq_correction.optimization_accum_buffer = NULL;
         return true;
     }
-
+    srand((unsigned int)time(NULL));
     const unsigned int nfft = IQ_CORRECTION_FFT_SIZE;
-    const unsigned int total_samples_for_optimize = IQ_CORRECTION_FFT_SIZE * IQ_CORRECTION_FFT_COUNT;
 
-    resources->iq_correction.fft_input_buffer = (complex_float_t*)fft_malloc(nfft * sizeof(complex_float_t));
-    resources->iq_correction.fft_output_buffer = (complex_float_t*)fft_malloc(nfft * sizeof(complex_float_t));
-    resources->iq_correction.tmp_signal_buffer = (complex_float_t*)malloc(total_samples_for_optimize * sizeof(complex_float_t));
+    resources->iq_correction.fft_buffer = (complex_float_t*)fft_malloc(nfft * sizeof(complex_float_t));
+    resources->iq_correction.fft_shift_buffer = (complex_float_t*)fft_malloc(nfft * sizeof(complex_float_t));
+    resources->iq_correction.spectrum_buffer = (float*)malloc(nfft * sizeof(float));
+    resources->iq_correction.window_coeffs = (float*)malloc(nfft * sizeof(float));
+    resources->iq_correction.optimization_accum_buffer = (complex_float_t*)malloc(IQ_CORRECTION_FFT_SIZE * sizeof(complex_float_t));
 
-    // The accumulation buffer must be large enough to hold the default period
-    resources->iq_correction.optimization_accum_buffer = (complex_float_t*)malloc(IQ_CORRECTION_DEFAULT_PERIOD * sizeof(complex_float_t));
-
-    if (!resources->iq_correction.fft_input_buffer || !resources->iq_correction.fft_output_buffer ||
-        !resources->iq_correction.tmp_signal_buffer || !resources->iq_correction.optimization_accum_buffer) {
+    if (!resources->iq_correction.fft_buffer || !resources->iq_correction.fft_shift_buffer || !resources->iq_correction.spectrum_buffer ||
+        !resources->iq_correction.window_coeffs || !resources->iq_correction.optimization_accum_buffer) {
         log_fatal("Failed to allocate memory for I/Q correction buffers: %s", strerror(errno));
         iq_correct_cleanup(resources);
         return false;
     }
 
-    resources->iq_correction.fft_plan = fft_create_plan(nfft, resources->iq_correction.fft_input_buffer, resources->iq_correction.fft_output_buffer, LIQUID_FFT_FORWARD, 0);
+    resources->iq_correction.fft_plan = fft_create_plan(nfft, resources->iq_correction.fft_buffer, resources->iq_correction.fft_buffer, LIQUID_FFT_FORWARD, 0);
     if (!resources->iq_correction.fft_plan) {
         log_fatal("Failed to create liquid-dsp FFT plan for I/Q correction.");
         iq_correct_cleanup(resources);
         return false;
     }
 
-    // Calculate correlation_j_max based on the input sample rate
-    float fft_bin_width_hz = (float)resources->source_info.samplerate / nfft;
-    int j_max_calculated = (int)roundf(IQ_CORRECTION_CORRELATION_BANDWIDTH_HZ / 2.0f / fft_bin_width_hz);
+    for (unsigned int i = 0; i < nfft; i++) {
+        resources->iq_correction.window_coeffs[i] = 0.54f - 0.46f * cosf(2.0f * (float)M_PI * (float)i / (float)(nfft - 1));
+    }
 
-    // Ensure j_max is at least 1 and not more than fft_size / 2 - 1
-    if (j_max_calculated < 1) j_max_calculated = 1;
-    // Fix: Cast nfft / 2 to int to resolve signedness warning
-    if (j_max_calculated >= (int)(nfft / 2)) j_max_calculated = (int)(nfft / 2) - 1; // Don't include Nyquist bin
-
-    resources->iq_correction.correlation_j_max = j_max_calculated;
-
-    // Initialize correction parameters to 0.0f, representing "no correction".
-    // This is a fundamental constant, not a configurable "magic number".
     resources->iq_correction.current_mag = 0.0f;
     resources->iq_correction.current_phase = 0.0f;
-    resources->iq_correction.samples_accumulated_for_optimize = 0;
+    resources->iq_correction.average_power = 0.0f;
+    resources->iq_correction.power_range = 0.0f;
+    resources->iq_correction.samples_in_accum = 0;
 
-    log_info("I/Q Correction enabled (using default internal parameters). Correlation bandwidth: +/-%.1f Hz", IQ_CORRECTION_CORRELATION_BANDWIDTH_HZ / 2.0f);
-
+    log_info("I/Q Correction enabled");
     return true;
 }
 
 void iq_correct_apply(AppResources* resources, complex_float_t* samples, int num_samples) {
-    if (!resources->config->iq_correction.enable) {
-        return;
-    }
-
-    const float magp1 = 1.0f + resources->iq_correction.current_mag;
-    const float phase = resources->iq_correction.current_phase;
-
-    // Optimization: if correction is negligible, skip the loop.
-    if (fabs(resources->iq_correction.current_mag) < 1e-6f && fabs(resources->iq_correction.current_phase) < 1e-6f) {
-        return;
-    }
-
-    for (int i = 0; i < num_samples; i++) {
-        complex_float_t v = samples[i];
-        samples[i] = (crealf(v) * magp1) + (cimagf(v) + phase * crealf(v)) * I;
-    }
+    if (!resources->config->iq_correction.enable) return;
+    _apply_correction_to_buffer(samples, num_samples, resources->iq_correction.current_mag, resources->iq_correction.current_phase);
 }
 
-void iq_correct_run_optimization(AppResources* resources, const complex_float_t* optimization_data, int num_optimization_samples) {
-    if (!resources->config->iq_correction.enable) {
+void iq_correct_run_optimization(AppResources* resources, const complex_float_t* optimization_data) {
+    if (!resources->config->iq_correction.enable) return;
+    
+    log_debug("IQ_OPT_PROBE: Optimization function was called.");
+
+    _estimate_power(&resources->iq_correction, optimization_data);
+
+    const float absolute_peak_threshold_db = -60.0f;
+    float peak_power = resources->iq_correction.average_power + resources->iq_correction.power_range;
+
+    log_debug("IQ_OPT_PROBE: Peak power estimated at %.2f dB (Threshold is %.1f dB)", 
+              peak_power, absolute_peak_threshold_db);
+
+    if (peak_power < absolute_peak_threshold_db) {
+        log_debug("IQ_OPT_PROBE: Skipping optimization pass, no significant signal peak detected.");
         return;
     }
 
-    if (num_optimization_samples < (IQ_CORRECTION_FFT_SIZE * IQ_CORRECTION_FFT_COUNT)) {
-        log_warn("IQ_OPT: Not enough samples provided (%d) to run optimization. Required: %d.",
-                 num_optimization_samples, (IQ_CORRECTION_FFT_SIZE * IQ_CORRECTION_FFT_COUNT));
-        return;
-    }
+    log_debug("IQ_OPT_PROBE: Signal is strong enough, starting optimization...");
+    float current_gain = resources->iq_correction.current_mag;
+    float current_phase = resources->iq_correction.current_phase;
+    float best_metric = _calculate_imbalance_metric(&resources->iq_correction, optimization_data, current_gain, current_phase);
+    
+    log_debug("IQ_OPT_PROBE: Initial metric (error score) is %.4e", best_metric);
 
-    float current_params[2];
-    float grad[2];
-    float cv, nv, step;
-    float nx[2];
-    float p;
-    int i;
-
-    current_params[0] = resources->iq_correction.current_mag;
-    current_params[1] = resources->iq_correction.current_phase;
-
-    // Fix: Use optimization_data instead of undeclared original_signal
-    cv = _iqbal_objfn_val_gradient(&resources->iq_correction, optimization_data, num_optimization_samples, current_params, grad);
-
-    const float EPSILON = 1e-12f;
-    float grad_mag_sum = fabs(grad[0]) + fabs(grad[1]);
-    step = cv / (grad_mag_sum + EPSILON);
-
-    log_debug("IQ_OPT: Initial: mag=%.4f, phase=%.4f, cv=%.2e, grad=[%.2e,%.2e], step=%.2e",
-              current_params[0], current_params[1], cv, grad[0], grad[1], step);
-
-    for (i = 0; i < IQ_CORRECTION_MAX_ITER; i++) {
-        float grad_norm_denom = (fabs(grad[0]) + fabs(grad[1])) + EPSILON;
-        nx[0] = current_params[0] - step * (grad[0] / grad_norm_denom);
-        nx[1] = current_params[1] - step * (grad[1] / grad_norm_denom);
-
-        // Fix: Use optimization_data instead of undeclared original_signal
-        nv = _iqbal_objfn_value(&resources->iq_correction, optimization_data, num_optimization_samples, nx);
-
-        if (!isfinite(nv)) {
-            log_error("IQ_OPT: Non-finite value (NaN/Inf) detected for nv at iteration %d. Stopping optimization.", i);
-            break;
-        }
-
-        if (nv <= cv) {
-            p = (cv - nv) / (cv + EPSILON);
-            current_params[0] = nx[0];
-            current_params[1] = nx[1];
-            cv = nv;
-            // Fix: Use optimization_data instead of undeclared original_signal
-            _iqbal_objfn_gradient(&resources->iq_correction, optimization_data, num_optimization_samples, current_params, cv, grad);
-
-            if (!isfinite(grad[0]) || !isfinite(grad[1])) {
-                log_error("IQ_OPT: Non-finite gradient detected at iteration %d. Stopping optimization.", i);
-                break;
-            }
-
-            if (p < 0.01f) {
-                break;
-            }
-        } else {
-            step /= 2.0 * (nv / (cv + EPSILON));
+    for (int i = 0; i < IQ_MAX_PASSES; i++) {
+        float candidate_gain = current_gain + IQ_BASE_INCREMENT * _get_random_direction();
+        float candidate_phase = current_phase + IQ_BASE_INCREMENT * _get_random_direction();
+        float candidate_metric = _calculate_imbalance_metric(&resources->iq_correction, optimization_data, candidate_gain, candidate_phase);
+        if (candidate_metric < best_metric) {
+            best_metric = candidate_metric;
+            current_gain = candidate_gain;
+            current_phase = candidate_phase;
         }
     }
 
-    resources->iq_correction.current_mag = (0.95f * resources->iq_correction.current_mag) + (current_params[0] * 0.05f);
-    resources->iq_correction.current_phase = (0.95f * resources->iq_correction.current_phase) + (current_params[1] * 0.05f);
-
+    log_debug("IQ_OPT_PROBE: Optimization finished. Best metric found: %.4e", best_metric);
+    log_debug("IQ_OPT_PROBE: Final raw params for this pass: mag=%.6f, phase=%.6f", current_gain, current_phase);
+    
+    resources->iq_correction.current_mag = (0.95f * resources->iq_correction.current_mag) + (0.05f * current_gain);
+    resources->iq_correction.current_phase = (0.95f * resources->iq_correction.current_phase) + (0.05f * current_phase);
+    
+    log_debug("IQ_OPT_PROBE: Smoothed global params updated to: mag=%.6f, phase=%.6f", 
+              resources->iq_correction.current_mag, resources->iq_correction.current_phase);
 }
 
 void iq_correct_cleanup(AppResources* resources) {
@@ -290,16 +181,99 @@ void iq_correct_cleanup(AppResources* resources) {
         fft_destroy_plan(resources->iq_correction.fft_plan);
         resources->iq_correction.fft_plan = NULL;
     }
-    if (resources->iq_correction.fft_input_buffer) {
-        fft_free(resources->iq_correction.fft_input_buffer);
-        resources->iq_correction.fft_input_buffer = NULL;
+    if (resources->iq_correction.fft_buffer) {
+        fft_free(resources->iq_correction.fft_buffer);
+        resources->iq_correction.fft_buffer = NULL;
     }
-    if (resources->iq_correction.fft_output_buffer) {
-        fft_free(resources->iq_correction.fft_output_buffer);
-        resources->iq_correction.fft_output_buffer = NULL;
+    if (resources->iq_correction.fft_shift_buffer) {
+        fft_free(resources->iq_correction.fft_shift_buffer);
+        resources->iq_correction.fft_shift_buffer = NULL;
     }
-    free(resources->iq_correction.tmp_signal_buffer);
-    resources->iq_correction.tmp_signal_buffer = NULL;
+    free(resources->iq_correction.spectrum_buffer);
+    resources->iq_correction.spectrum_buffer = NULL;
+    free(resources->iq_correction.window_coeffs);
+    resources->iq_correction.window_coeffs = NULL;
     free(resources->iq_correction.optimization_accum_buffer);
     resources->iq_correction.optimization_accum_buffer = NULL;
+}
+
+
+// --- Internal Helper Functions ---
+
+static void _apply_correction_to_buffer(complex_float_t* buffer, int length, float gain_adj, float phase_adj) {
+    const float magp1 = 1.0f + gain_adj;
+    for (int i = 0; i < length; i++) {
+        complex_float_t v = buffer[i];
+        buffer[i] = (crealf(v) * magp1) + (cimagf(v) + phase_adj * crealf(v)) * I;
+    }
+}
+
+static void _calculate_power_spectrum(IqCorrectionResources* iq_res, const complex_float_t* signal_block, float gain_adj, float phase_adj) {
+    const int nfft = IQ_CORRECTION_FFT_SIZE;
+    const int half_nfft = nfft / 2;
+
+    memcpy(iq_res->fft_buffer, signal_block, nfft * sizeof(complex_float_t));
+    _apply_correction_to_buffer(iq_res->fft_buffer, nfft, gain_adj, phase_adj);
+    for (int i = 0; i < nfft; i++) {
+        iq_res->fft_buffer[i] *= iq_res->window_coeffs[i];
+    }
+    fft_execute(iq_res->fft_plan);
+
+    memcpy(iq_res->fft_shift_buffer, iq_res->fft_buffer + half_nfft, half_nfft * sizeof(complex_float_t));
+    memcpy(iq_res->fft_shift_buffer + half_nfft, iq_res->fft_buffer, half_nfft * sizeof(complex_float_t));
+
+    for (int i = 0; i < nfft; i++) {
+        float mag = cabsf(iq_res->fft_shift_buffer[i]);
+        mag /= (float)nfft;
+        iq_res->spectrum_buffer[i] = 20.0f * log10f(mag + 1e-12f);
+    }
+}
+
+static float _calculate_imbalance_metric(IqCorrectionResources* iq_res, const complex_float_t* signal_block, float gain_adj, float phase_adj) {
+    const int nfft = IQ_CORRECTION_FFT_SIZE;
+    const int half_nfft = nfft / 2;
+    _calculate_power_spectrum(iq_res, signal_block, gain_adj, phase_adj);
+    float total_error = 0.0f;
+    const int lower_bound = (int)(0.05f * half_nfft);
+    const int upper_bound = (int)(0.95f * half_nfft);
+    for (int i = lower_bound; i < upper_bound; i++) {
+        float p_neg = iq_res->spectrum_buffer[i];
+        float p_pos = iq_res->spectrum_buffer[nfft - 1 - i];
+        
+        if (p_pos > -60.0f || p_neg > -60.0f) {
+            float difference = p_pos - p_neg;
+            total_error += difference * difference;
+        }
+    }
+    return total_error;
+}
+
+static void _estimate_power(IqCorrectionResources* iq_res, const complex_float_t* signal_block) {
+    const int nfft = IQ_CORRECTION_FFT_SIZE;
+    const int half_nfft = nfft / 2;
+    _calculate_power_spectrum(iq_res, signal_block, 0.0f, 0.0f);
+    float max_power = -1000.0f;
+    double avg_power_sum = 0.0;
+    int count = 0;
+    const int lower_bound = (int)(0.05f * half_nfft);
+    const int upper_bound = (int)(0.95f * half_nfft);
+    for (int i = lower_bound; i < upper_bound; i++) {
+        float p_neg = iq_res->spectrum_buffer[i];
+        float p_pos = iq_res->spectrum_buffer[nfft - 1 - i];
+        if (p_pos > max_power) max_power = p_pos;
+        if (p_neg > max_power) max_power = p_neg;
+        avg_power_sum += p_pos + p_neg;
+        count += 2;
+    }
+    if (count > 0) {
+        iq_res->average_power = (float)(avg_power_sum / count);
+        iq_res->power_range = max_power - iq_res->average_power;
+    } else {
+        iq_res->average_power = 0.0f;
+        iq_res->power_range = 0.0f;
+    }
+}
+
+static float _get_random_direction(void) {
+    return (rand() > (RAND_MAX / 2)) ? 1.0f : -1.0f;
 }

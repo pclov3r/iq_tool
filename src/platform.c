@@ -1,5 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
-
 #include "platform.h"
 #include "log.h"
 #include <stdio.h>

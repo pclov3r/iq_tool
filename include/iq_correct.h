@@ -20,7 +20,8 @@ bool iq_correct_init(AppConfig* config, AppResources* resources);
  * @brief Applies the current I/Q imbalance correction to a block of samples.
  *
  * This function implements the formula:
- * out[i] = (crealf(v) * (1.0f + mag)) + (cimagf(v) + phase * crealf(v)) * I;
+ * out.I = in.I * (1 + gain);
+ * out.Q = in.Q + in.I * phase;
  *
  * @param resources Pointer to the application resources (to get current_mag/phase).
  * @param samples Pointer to the complex float samples (modified in-place).
@@ -31,15 +32,14 @@ void iq_correct_apply(AppResources* resources, complex_float_t* samples, int num
 /**
  * @brief Runs the I/Q imbalance optimization algorithm on a block of samples.
  *
- * This function should be called periodically by the processing thread. It
- * runs the optimization algorithm to update the `current_mag` and `current_phase`
- * estimates based on the provided sample data.
+ * This function runs the optimization algorithm to update the `current_mag` and
+ * `current_phase` estimates based on the provided sample data. It assumes
+ * the provided buffer is of the correct size (IQ_CORRECTION_FFT_SIZE).
  *
  * @param resources Pointer to the application resources.
  * @param optimization_data Pointer to the block of complex float samples to analyze.
- * @param num_optimization_samples The number of samples in the optimization_data block.
  */
-void iq_correct_run_optimization(AppResources* resources, const complex_float_t* optimization_data, int num_optimization_samples);
+void iq_correct_run_optimization(AppResources* resources, const complex_float_t* optimization_data);
 
 /**
  * @brief Cleans up resources allocated by the I/Q correction module.

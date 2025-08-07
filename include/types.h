@@ -294,17 +294,29 @@ typedef struct WorkItem {
 typedef void (*ProgressUpdateFn)(unsigned long long current_read_frames, long long total_input_frames, unsigned long long total_output_frames, void* udata);
 
 // --- I/Q Correction Resources (for AppResources) ---
+// This struct holds the state for the SDR#-style I/Q correction algorithm.
 typedef struct {
+    // --- Correction Parameters ---
     float current_mag;
     float current_phase;
+
+    // --- FFT & Buffers ---
     fftplan fft_plan;
-    complex_float_t* fft_input_buffer;  // Buffer for FFT input (linked to plan)
-    complex_float_t* fft_output_buffer; // Buffer for FFT output (linked to plan)
-    complex_float_t* tmp_signal_buffer; // Temporary buffer for corrected signal during optimization
-    complex_float_t* optimization_accum_buffer; // Buffer to accumulate samples for optimization
-    unsigned long long samples_accumulated_for_optimize; // Counter for periodic optimization
-    int correlation_j_max; // NEW: Max FFT bin index for correlation
+    complex_float_t* fft_buffer;
+    complex_float_t* fft_shift_buffer;
+    float*           spectrum_buffer;
+    float*           window_coeffs;
+
+    // --- Optimization State ---
+    float average_power;
+    float power_range;
+
+    // --- Accumulator for Optimization ---
+    complex_float_t* optimization_accum_buffer;
+    int              samples_in_accum;
+
 } IqCorrectionResources;
+
 
 // --- DC Block Resources (for AppResources) ---
 typedef struct {
