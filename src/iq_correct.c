@@ -90,7 +90,8 @@ static inline float _osmo_normsqf(complex_float_t x) {
     return crealf(x)*crealf(x) + cimagf(x)*cimagf(x);
 }
 
-static float _iq_balance_calculate_estimate(const complex_float_t *data, int fft_size, int fft_count, fftplan plan, complex_float_t* fft_input_buffer, complex_float_t* fft_output_buffer) {
+// Modified signature to accept j_max_corr
+static float _iq_balance_calculate_estimate(const complex_float_t *data, int fft_size, int fft_count, fftplan plan, complex_float_t* fft_input_buffer, complex_float_t* fft_output_buffer, int j_max_corr) {
     float est = 0.0f;
     int i, j;
 
@@ -98,7 +99,8 @@ static float _iq_balance_calculate_estimate(const complex_float_t *data, int fft
         complex_float_t corr = 0.0f;
         memcpy(fft_input_buffer, &data[i * fft_size], sizeof(complex_float_t) * fft_size);
         fft_execute(plan);
-        for (j = 1; j < fft_size / 2; j++) {
+        // MODIFIED LOOP: Correlate over the specified limited bandwidth
+        for (j = 1; j < j_max_corr; j++) {
             corr += fft_output_buffer[fft_size - j] * conjf(fft_output_buffer[j]);
         }
         est += _osmo_normsqf(corr);
@@ -114,7 +116,8 @@ static inline float _iqbal_objfn_value(IqCorrectionResources* iq_res, const comp
         complex_float_t v = original_signal[i];
         iq_res->tmp_signal_buffer[i] = (crealf(v) * magp1) + (cimagf(v) + phase * crealf(v)) * I;
     }
-    return _iq_balance_calculate_estimate(iq_res->tmp_signal_buffer, IQ_CORRECTION_FFT_SIZE, IQ_CORRECTION_FFT_COUNT, iq_res->fft_plan, iq_res->fft_input_buffer, iq_res->fft_output_buffer);
+    // Pass iq_res->correlation_j_max to the estimate function
+    return _iq_balance_calculate_estimate(iq_res->tmp_signal_buffer, IQ_CORRECTION_FFT_SIZE, IQ_CORRECTION_FFT_COUNT, iq_res->fft_plan, iq_res->fft_input_buffer, iq_res->fft_output_buffer, iq_res->correlation_j_max);
 }
 
 static void _iqbal_objfn_gradient(IqCorrectionResources* iq_res, const complex_float_t* original_signal, int signal_len, float x[2], float v, float grad[2]) {
@@ -171,13 +174,24 @@ bool iq_correct_init(AppConfig* config, AppResources* resources) {
         return false;
     }
 
+    // Calculate correlation_j_max based on the input sample rate
+    float fft_bin_width_hz = (float)resources->source_info.samplerate / nfft;
+    int j_max_calculated = (int)roundf(IQ_CORRECTION_CORRELATION_BANDWIDTH_HZ / 2.0f / fft_bin_width_hz);
+
+    // Ensure j_max is at least 1 and not more than fft_size / 2 - 1
+    if (j_max_calculated < 1) j_max_calculated = 1;
+    // Fix: Cast nfft / 2 to int to resolve signedness warning
+    if (j_max_calculated >= (int)(nfft / 2)) j_max_calculated = (int)(nfft / 2) - 1; // Don't include Nyquist bin
+
+    resources->iq_correction.correlation_j_max = j_max_calculated;
+
     // Initialize correction parameters to 0.0f, representing "no correction".
     // This is a fundamental constant, not a configurable "magic number".
     resources->iq_correction.current_mag = 0.0f;
     resources->iq_correction.current_phase = 0.0f;
     resources->iq_correction.samples_accumulated_for_optimize = 0;
 
-    log_info("I/Q Correction enabled (using default internal parameters).");
+    log_info("I/Q Correction enabled (using default internal parameters). Correlation bandwidth: +/-%.1f Hz", IQ_CORRECTION_CORRELATION_BANDWIDTH_HZ / 2.0f);
 
     return true;
 }
@@ -222,6 +236,7 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
     current_params[0] = resources->iq_correction.current_mag;
     current_params[1] = resources->iq_correction.current_phase;
 
+    // Fix: Use optimization_data instead of undeclared original_signal
     cv = _iqbal_objfn_val_gradient(&resources->iq_correction, optimization_data, num_optimization_samples, current_params, grad);
 
     const float EPSILON = 1e-12f;
@@ -236,6 +251,7 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
         nx[0] = current_params[0] - step * (grad[0] / grad_norm_denom);
         nx[1] = current_params[1] - step * (grad[1] / grad_norm_denom);
 
+        // Fix: Use optimization_data instead of undeclared original_signal
         nv = _iqbal_objfn_value(&resources->iq_correction, optimization_data, num_optimization_samples, nx);
 
         if (!isfinite(nv)) {
@@ -248,6 +264,7 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
             current_params[0] = nx[0];
             current_params[1] = nx[1];
             cv = nv;
+            // Fix: Use optimization_data instead of undeclared original_signal
             _iqbal_objfn_gradient(&resources->iq_correction, optimization_data, num_optimization_samples, current_params, cv, grad);
 
             if (!isfinite(grad[0]) || !isfinite(grad[1])) {

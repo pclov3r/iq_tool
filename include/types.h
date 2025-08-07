@@ -303,6 +303,7 @@ typedef struct {
     complex_float_t* tmp_signal_buffer; // Temporary buffer for corrected signal during optimization
     complex_float_t* optimization_accum_buffer; // Buffer to accumulate samples for optimization
     unsigned long long samples_accumulated_for_optimize; // Counter for periodic optimization
+    int correlation_j_max; // NEW: Max FFT bin index for correlation
 } IqCorrectionResources;
 
 // --- DC Block Resources (for AppResources) ---

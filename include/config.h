@@ -51,6 +51,10 @@
 // The number of samples to process between running the optimization algorithm.
 // A value of 2,000,000 corresponds to once per second at a 2 Msps sample rate.
 #define IQ_CORRECTION_DEFAULT_PERIOD 2000000
+// NEW: Bandwidth (one-sided) around DC for correlation calculation.
+// This should be a small fraction of the sample rate, e.g., 10-20 kHz.
+// A value of 20000.0f means +/- 20 kHz around DC.
+#define IQ_CORRECTION_CORRELATION_BANDWIDTH_HZ 20000.0f
 
 // --- DC Block Configuration ---
 #define DC_BLOCK_FILTER_ORDER       4
