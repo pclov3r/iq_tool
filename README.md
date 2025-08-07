@@ -20,7 +20,7 @@ Let's be upfront: a large language model (AI) helped write a significant portion
 
 ### What It Can Do
 
-*   **Fast, Multi-Threaded Pipeline:** Designed to chew through data on multi-core systems using a reader -> processor -> writer model.
+*   **Multi-Threaded Pipeline:** It uses a Reader -> Processor -> Writer model.
 *   **Flexible Inputs:**
     *   **WAV Files:** Reads standard 8-bit and 16-bit complex (I/Q) WAV files.
     *   **Raw I/Q Files:** Just point it at a headerless file, but you have to tell it the sample rate and format.
