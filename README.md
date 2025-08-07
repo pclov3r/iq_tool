@@ -8,7 +8,7 @@ I originally built this tool for a very specific need: processing NRSC-5 (HD Rad
 
 ### ⚠️  A Quick Word of Warning: This is an AI-Assisted Project ⚠️
 
-Let's be upfront: a large language model (AI) helped write a significant portion of this code. *I guided it, reviewed its output, and tested the result, but this project didn't evolve through the typical trial-and-error of a human-only endeavor. Even this README you're reading was drafted by the AI based on the source code, then edited and refined by me.*
+Let's be upfront: a large language model (AI) helped write a significant portion of this code. I guided it, reviewed its output, and tested the result, but this project didn't evolve through the typical trial-and-error of a human-only endeavor. Even this README you're reading was drafted by the AI based on the source code, then edited and refined by me.
 
 *What does this mean for you?*
 
