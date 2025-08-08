@@ -1,13 +1,11 @@
-// input_hackrf.c
-#include "input_hackrf.h" // Its own header, which now includes input_source.h
-#include "config.h"         // For HACKRF_DEFAULT_SAMPLE_RATE, BUFFER_SIZE_SAMPLES
-#include "types.h"          // For AppResources, AppConfig, WorkItem, Queue
-#include "signal_handler.h" // For is_shutdown_requested and handle_fatal_thread_error
-#include "log.h"            // For logging
-#include "spectrum_shift.h" // For shift_reset_nco in callbacks
+#include "input_hackrf.h"
+#include "config.h"
+#include "types.h"
+#include "signal_handler.h"
+#include "log.h"
+#include "spectrum_shift.h"
 #include "utils.h"
-#include "sample_convert.h" // For get_bytes_per_sample
-
+#include "sample_convert.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -15,45 +13,46 @@
 #include <stdarg.h>
 
 #ifdef _WIN32
-#include <windows.h> // For Sleep()
+#include <windows.h>
 #else
-#include <unistd.h>  // For nanosleep()
-#include <time.h>    // For nanosleep()
+#include <unistd.h>
+#include <time.h>
 #endif
 
-// Add an external declaration for the global console mutex defined in main.c
 extern pthread_mutex_t g_console_mutex;
 
-// --- HackRF API Callback Function (remains public as it's called by libhackrf) ---
+
+// --- HackRF API Callback Function ---
 
 int hackrf_stream_callback(hackrf_transfer* transfer) {
     AppResources *resources = (AppResources*)transfer->rx_ctx;
 
     if (is_shutdown_requested() || resources->error_occurred) {
-        return -1; // Signal to libhackrf to stop streaming
+        return -1;
     }
 
     if (transfer->valid_length == 0) {
-        return 0; // Continue streaming
+        return 0;
     }
 
     size_t bytes_processed = 0;
     while (bytes_processed < (size_t)transfer->valid_length) {
-        WorkItem *item = (WorkItem*)queue_dequeue(resources->free_pool_q);
+        SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
         if (!item) {
             log_warn("Processor queue full. Dropping %zu bytes.", (size_t)transfer->valid_length - bytes_processed);
             return 0;
         }
 
+        // *** FIX: Explicitly initialize flags for this SampleChunk ***
+        item->stream_discontinuity_event = false;
+
         size_t chunk_size = transfer->valid_length - bytes_processed;
         const size_t pipeline_buffer_size = BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
-
         if (chunk_size > pipeline_buffer_size) {
             chunk_size = pipeline_buffer_size;
         }
 
-        memcpy(item->raw_input_buffer, transfer->buffer + bytes_processed, chunk_size);
-
+        memcpy(item->raw_input_data, transfer->buffer + bytes_processed, chunk_size);
         item->frames_read = chunk_size / resources->input_bytes_per_sample_pair;
         item->is_last_chunk = false;
 
@@ -63,26 +62,21 @@ int hackrf_stream_callback(hackrf_transfer* transfer) {
             pthread_mutex_unlock(&resources->progress_mutex);
         }
 
-        if (!queue_enqueue(resources->input_q, item)) {
-            queue_enqueue(resources->free_pool_q, item);
+        if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
+            queue_enqueue(resources->free_sample_chunk_queue, item);
             return -1;
         }
-
         bytes_processed += chunk_size;
     }
-
     return 0;
 }
 
+
 // --- InputSourceOps Implementations for HackRF ---
 
-/**
- * @brief Populates the InputSummaryInfo struct with details for a HackRF source.
- */
 static void hackrf_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppResources *resources = ctx->resources;
-
     add_summary_item(info, "Input Source", "HackRF One");
     add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
     add_summary_item(info, "Input Rate", "%.3f Msps", (double)resources->source_info.samplerate / 1e6);
@@ -123,13 +117,9 @@ static bool hackrf_validate_options(const AppConfig* config) {
 }
 
 static bool hackrf_is_sdr_hardware(void) {
-    return true; // HackRF is SDR hardware
+    return true;
 }
 
-
-/**
- * @brief Initializes the HackRF device and library.
- */
 static bool hackrf_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
@@ -147,7 +137,6 @@ static bool hackrf_initialize(InputSourceContext* ctx) {
         hackrf_exit();
         return false;
     }
-
     log_info("Found HackRF One.");
 
     double sample_rate_to_set;
@@ -203,9 +192,6 @@ static bool hackrf_initialize(InputSourceContext* ctx) {
     return true;
 }
 
-/**
- * @brief Starts the HackRF stream. This function runs in the reader thread.
- */
 static void* hackrf_start_stream(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
     int result;
@@ -220,19 +206,16 @@ static void* hackrf_start_stream(InputSourceContext* ctx) {
     }
 
     while (!is_shutdown_requested() && !resources->error_occurred) {
-        #ifdef _WIN32
-            Sleep(100);
-        #else
-            struct timespec sleep_time = {0, 100000000L};
-            nanosleep(&sleep_time, NULL);
-        #endif
+#ifdef _WIN32
+        Sleep(100);
+#else
+        struct timespec sleep_time = {0, 100000000L};
+        nanosleep(&sleep_time, NULL);
+#endif
     }
     return NULL;
 }
 
-/**
- * @brief Stops the HackRF stream.
- */
 static void hackrf_stop_stream(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
     if (resources->hackrf_dev && hackrf_is_streaming(resources->hackrf_dev) == HACKRF_TRUE) {
@@ -244,9 +227,6 @@ static void hackrf_stop_stream(InputSourceContext* ctx) {
     }
 }
 
-/**
- * @brief Cleans up HackRF resources.
- */
 static void hackrf_cleanup(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
     if (resources->hackrf_dev) {
@@ -258,7 +238,6 @@ static void hackrf_cleanup(InputSourceContext* ctx) {
     hackrf_exit();
 }
 
-// The single instance of InputSourceOps for HackRF
 static InputSourceOps hackrf_ops = {
     .initialize = hackrf_initialize,
     .start_stream = hackrf_start_stream,
@@ -269,9 +248,6 @@ static InputSourceOps hackrf_ops = {
     .is_sdr_hardware = hackrf_is_sdr_hardware
 };
 
-/**
- * @brief Public function to get the HackRF input source operations.
- */
 InputSourceOps* get_hackrf_input_ops(void) {
     return &hackrf_ops;
 }

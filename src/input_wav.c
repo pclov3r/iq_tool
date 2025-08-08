@@ -1,4 +1,3 @@
-// input_wav.c
 #include "input_wav.h"
 #include "log.h"
 #include "signal_handler.h" // For is_shutdown_requested
@@ -6,7 +5,6 @@
 #include "config.h"
 #include "platform.h"
 #include "sample_convert.h" // For get_bytes_per_sample
-
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -25,10 +23,10 @@
 #include <stddef.h>
 #include <math.h>
 
+
 // =================================================================================
 // START: Merged code from metadata.c
 // =================================================================================
-
 // --- Constants ---
 #define SDRC_AUXI_CHUNK_ID_STR "auxi"
 #define MAX_METADATA_CHUNK_SIZE (1024 * 1024)
@@ -47,9 +45,7 @@ typedef struct {
 } SdrUnoSystemTime;
 #pragma pack(pop)
 
-
 // --- Data-Driven XML Parsing ---
-
 // Enum to identify the data type of an XML attribute
 typedef enum {
     ATTR_TYPE_STRING,
@@ -62,10 +58,11 @@ typedef enum {
 typedef struct {
     const char* name;
     AttrType type;
-    size_t offset; // Offset of the data field in SdrMetadata
+    size_t offset;              // Offset of the data field in SdrMetadata
     size_t present_flag_offset; // Offset of the boolean 'present' flag
-    size_t buffer_size; // For string types
+    size_t buffer_size;         // For string types
 } AttributeParser;
+
 
 // --- Forward Declarations for Static Functions ---
 static void XMLCALL expat_start_element_handler(void *userData, const XML_Char *name, const XML_Char **atts);
@@ -76,7 +73,6 @@ static void init_sdr_metadata(SdrMetadata *metadata);
 static bool parse_sdr_metadata_chunks(SNDFILE *infile, const SF_INFO *sfinfo, SdrMetadata *metadata);
 static bool parse_sdr_metadata_from_filename(const char* base_filename, SdrMetadata *metadata);
 
-
 // --- Polyfill for strcasestr (if not available) ---
 #ifndef HAVE_STRCASESTR
 static char *strcasestr(const char *haystack, const char *needle) {
@@ -84,13 +80,17 @@ static char *strcasestr(const char *haystack, const char *needle) {
     while (*haystack) {
         const char *h = haystack;
         const char *n = needle;
-        while (*h && *n && (tolower((unsigned char)*h) == tolower((unsigned char)*n))) { h++; n++; }
+        while (*h && *n && (tolower((unsigned char)*h) == tolower((unsigned char)*n))) {
+            h++;
+            n++;
+        }
         if (!*n) return (char *)haystack;
         haystack++;
     }
     return NULL;
 }
 #endif
+
 
 // --- Public Functions from metadata.c are now static to this module ---
 
@@ -146,6 +146,7 @@ static bool process_specific_chunk(SNDFILE *infile, SdrMetadata *metadata, const
     return parsed_successfully;
 }
 
+
 /**
  * @brief Attempts to parse SDR-specific metadata chunks from a WAV file.
  */
@@ -160,7 +161,6 @@ static bool parse_sdr_metadata_chunks(SNDFILE *infile, const SF_INFO *sfinfo, Sd
  */
 static bool parse_sdr_metadata_from_filename(const char* base_filename, SdrMetadata *metadata) {
     if (!base_filename || !metadata) return false;
-
     bool parsed_something_new = false;
     bool inferred_sdrsharp = false;
 
@@ -172,7 +172,8 @@ static bool parse_sdr_metadata_from_filename(const char* base_filename, SdrMetad
             const char *underscore_ptr = NULL;
             const char *temp_ptr = start_ptr;
             while ((temp_ptr = strchr(temp_ptr, '_')) != NULL && temp_ptr < hz_ptr) {
-                underscore_ptr = temp_ptr; temp_ptr++;
+                underscore_ptr = temp_ptr;
+                temp_ptr++;
             }
             if (underscore_ptr && underscore_ptr + 1 < hz_ptr) {
                 char freq_str[32];
@@ -201,8 +202,12 @@ static bool parse_sdr_metadata_from_filename(const char* base_filename, SdrMetad
             if (strlen(match_start) >= 17 && match_start[9] == '_' && match_start[16] == 'Z' &&
                 sscanf(match_start, "_%4d%2d%2d_%2d%2d%2dZ", &year, &month, &day, &hour, &min, &sec) == 6) {
                 struct tm t = {0};
-                t.tm_year = year - 1900; t.tm_mon = month - 1; t.tm_mday = day;
-                t.tm_hour = hour; t.tm_min = min; t.tm_sec = sec;
+                t.tm_year = year - 1900;
+                t.tm_mon = month - 1;
+                t.tm_mday = day;
+                t.tm_hour = hour;
+                t.tm_min = min;
+                t.tm_sec = sec;
                 time_t timestamp = timegm_portable(&t);
                 if (timestamp != (time_t)-1) {
                     metadata->timestamp_unix = timestamp;
@@ -226,9 +231,9 @@ static bool parse_sdr_metadata_from_filename(const char* base_filename, SdrMetad
         if (inferred_sdrsharp) {
             metadata->source_software = SDR_SHARP;
         } else if (strncmp(base_filename, "SDRuno_", 7) == 0) {
-             metadata->source_software = SDR_UNO;
+            metadata->source_software = SDR_UNO;
         } else if (strncmp(base_filename, "SDRconnect_", 11) == 0) {
-             metadata->source_software = SDR_CONNECT;
+            metadata->source_software = SDR_CONNECT;
         }
         if (metadata->source_software != SDR_SOFTWARE_UNKNOWN && !metadata->software_name_present) {
             snprintf(metadata->software_name, sizeof(metadata->software_name), "%s", sdr_software_type_to_string(metadata->source_software));
@@ -239,6 +244,7 @@ static bool parse_sdr_metadata_from_filename(const char* base_filename, SdrMetad
 
     return parsed_something_new;
 }
+
 
 // --- Private Helper Functions ---
 
@@ -274,7 +280,6 @@ static bool _parse_binary_auxi_data(const unsigned char *chunk_data, sf_count_t 
     if (!chunk_data || !metadata || chunk_size < (sf_count_t)min_req_size) {
         return false;
     }
-
     bool time_parsed = false;
     bool freq_parsed = false;
 
@@ -282,19 +287,22 @@ static bool _parse_binary_auxi_data(const unsigned char *chunk_data, sf_count_t 
     SdrUnoSystemTime st;
     memcpy(&st, chunk_data, sizeof(SdrUnoSystemTime));
     struct tm t = {0};
-    t.tm_year = st.wYear - 1900; t.tm_mon = st.wMonth - 1; t.tm_mday = st.wDay;
-    t.tm_hour = st.wHour; t.tm_min = st.wMinute; t.tm_sec = st.wSecond;
+    t.tm_year = st.wYear - 1900;
+    t.tm_mon = st.wMonth - 1;
+    t.tm_mday = st.wDay;
+    t.tm_hour = st.wHour;
+    t.tm_min = st.wMinute;
+    t.tm_sec = st.wSecond;
     time_t timestamp = timegm_portable(&t);
-
     if (timestamp != (time_t)-1 && !metadata->timestamp_unix_present) {
         metadata->timestamp_unix = timestamp;
         metadata->timestamp_unix_present = true;
         time_parsed = true;
         if (!metadata->timestamp_str_present) {
-             snprintf(metadata->timestamp_str, sizeof(metadata->timestamp_str),
-                      "%04u-%02u-%02u %02u:%02u:%02u UTC",
-                      st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
-             metadata->timestamp_str_present = true;
+            snprintf(metadata->timestamp_str, sizeof(metadata->timestamp_str),
+                     "%04u-%02u-%02u %02u:%02u:%02u UTC",
+                     st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+            metadata->timestamp_str_present = true;
         }
     }
 
@@ -302,23 +310,23 @@ static bool _parse_binary_auxi_data(const unsigned char *chunk_data, sf_count_t 
     uint32_t freq_hz_int;
     memcpy(&freq_hz_int, chunk_data + 32, sizeof(uint32_t)); // Offset 32
     if (freq_hz_int > 0 && !metadata->center_freq_hz_present) {
-         metadata->center_freq_hz = (double)freq_hz_int;
-         metadata->center_freq_hz_present = true;
-         freq_parsed = true;
+        metadata->center_freq_hz = (double)freq_hz_int;
+        metadata->center_freq_hz_present = true;
+        freq_parsed = true;
     }
 
     return time_parsed || freq_parsed;
 }
 
-// --- Data-Driven XML Parsing Implementation ---
 
+// --- Data-Driven XML Parsing Implementation ---
 static const AttributeParser attribute_parsers[] = {
-    {"SoftwareName",    ATTR_TYPE_STRING,         offsetof(SdrMetadata, software_name),    offsetof(SdrMetadata, software_name_present),    sizeof(((SdrMetadata*)0)->software_name)},
-    {"SoftwareVersion", ATTR_TYPE_STRING,         offsetof(SdrMetadata, software_version), offsetof(SdrMetadata, software_version_present), sizeof(((SdrMetadata*)0)->software_version)},
-    {"RadioModel",      ATTR_TYPE_STRING,         offsetof(SdrMetadata, radio_model),      offsetof(SdrMetadata, radio_model_present),      sizeof(((SdrMetadata*)0)->radio_model)},
-    {"RadioCenterFreq", ATTR_TYPE_DOUBLE,         offsetof(SdrMetadata, center_freq_hz),   offsetof(SdrMetadata, center_freq_hz_present),   0},
-    {"UTCSeconds",      ATTR_TYPE_TIME_T_SECONDS, offsetof(SdrMetadata, timestamp_unix),   offsetof(SdrMetadata, timestamp_unix_present),   0},
-    {"CurrentTimeUTC",  ATTR_TYPE_TIME_T_STRING,  offsetof(SdrMetadata, timestamp_str),    offsetof(SdrMetadata, timestamp_str_present),    sizeof(((SdrMetadata*)0)->timestamp_str)}
+    {"SoftwareName",    ATTR_TYPE_STRING,        offsetof(SdrMetadata, software_name),    offsetof(SdrMetadata, software_name_present),    sizeof(((SdrMetadata*)0)->software_name)},
+    {"SoftwareVersion", ATTR_TYPE_STRING,        offsetof(SdrMetadata, software_version), offsetof(SdrMetadata, software_version_present), sizeof(((SdrMetadata*)0)->software_version)},
+    {"RadioModel",      ATTR_TYPE_STRING,        offsetof(SdrMetadata, radio_model),      offsetof(SdrMetadata, radio_model_present),      sizeof(((SdrMetadata*)0)->radio_model)},
+    {"RadioCenterFreq", ATTR_TYPE_DOUBLE,        offsetof(SdrMetadata, center_freq_hz),   offsetof(SdrMetadata, center_freq_hz_present),   0},
+    {"UTCSeconds",      ATTR_TYPE_TIME_T_SECONDS,offsetof(SdrMetadata, timestamp_unix),   offsetof(SdrMetadata, timestamp_unix_present),   0},
+    {"CurrentTimeUTC",  ATTR_TYPE_TIME_T_STRING, offsetof(SdrMetadata, timestamp_str),    offsetof(SdrMetadata, timestamp_str_present),    sizeof(((SdrMetadata*)0)->timestamp_str)}
 };
 static const size_t num_attribute_parsers = sizeof(attribute_parsers) / sizeof(attribute_parsers[0]);
 
@@ -329,29 +337,25 @@ static void XMLCALL expat_start_element_handler(void *userData, const XML_Char *
     for (int i = 0; atts[i] != NULL; i += 2) {
         const char *attr_name = atts[i];
         const char *attr_value = atts[i+1];
-
         for (size_t j = 0; j < num_attribute_parsers; ++j) {
             if (strcmp(attr_name, attribute_parsers[j].name) == 0) {
                 const AttributeParser *parser = &attribute_parsers[j];
                 char *data_ptr = (char*)metadata + parser->offset;
                 bool *present_flag_ptr = (bool*)((char*)metadata + parser->present_flag_offset);
                 errno = 0;
-
                 switch (parser->type) {
                     case ATTR_TYPE_STRING:
                         snprintf(data_ptr, parser->buffer_size, "%s", attr_value);
                         *present_flag_ptr = true;
                         break;
-                    case ATTR_TYPE_DOUBLE:
-                        {
-                            char *endptr;
-                            double d = strtod(attr_value, &endptr);
-                            if (errno == 0 && *endptr == '\0' && isfinite(d)) {
-                                *(double*)data_ptr = d;
-                                *present_flag_ptr = true;
-                            }
+                    case ATTR_TYPE_DOUBLE: {
+                        char *endptr;
+                        double d = strtod(attr_value, &endptr);
+                        if (errno == 0 && *endptr == '\0' && isfinite(d)) {
+                            *(double*)data_ptr = d;
+                            *present_flag_ptr = true;
                         }
-                        break;
+                    } break;
                     case ATTR_TYPE_TIME_T_SECONDS:
                         if (!metadata->timestamp_unix_present) {
                             char *endptr;
@@ -368,8 +372,12 @@ static void XMLCALL expat_start_element_handler(void *userData, const XML_Char *
                         struct tm t = {0};
                         int year, month, day, hour, min, sec;
                         if (sscanf(attr_value, "%d-%d-%d %d:%d:%d", &day, &month, &year, &hour, &min, &sec) == 6) {
-                            t.tm_year = year - 1900; t.tm_mon = month - 1; t.tm_mday = day;
-                            t.tm_hour = hour; t.tm_min = min; t.tm_sec = sec;
+                            t.tm_year = year - 1900;
+                            t.tm_mon = month - 1;
+                            t.tm_mday = day;
+                            t.tm_hour = hour;
+                            t.tm_min = min;
+                            t.tm_sec = sec;
                             time_t timestamp = timegm_portable(&t);
                             if (timestamp != (time_t)-1) {
                                 metadata->timestamp_unix = timestamp;
@@ -386,13 +394,11 @@ static void XMLCALL expat_start_element_handler(void *userData, const XML_Char *
 
 static bool _parse_auxi_xml_expat(const unsigned char *chunk_data, sf_count_t chunk_size, SdrMetadata *metadata) {
     if (!chunk_data || chunk_size <= 0 || !metadata) return false;
-
     XML_Parser parser = XML_ParserCreate(NULL);
     if (!parser) return false;
 
     XML_SetUserData(parser, metadata);
     XML_SetElementHandler(parser, expat_start_element_handler, NULL);
-
     XML_Parse(parser, (const char*)chunk_data, chunk_size, 1);
 
     bool any_data_parsed = metadata->software_name_present ||
@@ -403,14 +409,12 @@ static bool _parse_auxi_xml_expat(const unsigned char *chunk_data, sf_count_t ch
     XML_ParserFree(parser);
 
     if (any_data_parsed && metadata->software_name_present) {
-         if (strstr(metadata->software_name, "SDR Console") != NULL) {
-              metadata->source_software = SDR_CONSOLE;
-         }
+        if (strstr(metadata->software_name, "SDR Console") != NULL) {
+            metadata->source_software = SDR_CONSOLE;
+        }
     }
-
     return any_data_parsed;
 }
-
 // =================================================================================
 // END: Merged code from metadata.c
 // =================================================================================
@@ -422,7 +426,6 @@ static bool _parse_auxi_xml_expat(const unsigned char *chunk_data, sf_count_t ch
 static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppResources *resources = ctx->resources;
-
     const char* display_path = config->input_filename_arg;
 #ifdef _WIN32
     if (config->effective_input_filename_utf8) {
@@ -442,13 +445,15 @@ static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo
     add_summary_item(info, "Input Rate", "%.1f Hz", (double)resources->source_info.samplerate);
 
     long long input_file_size = -1LL;
-    #ifdef _WIN32
-        struct __stat64 stat_buf64;
-        if (_wstat64(config->effective_input_filename_w, &stat_buf64) == 0) input_file_size = stat_buf64.st_size;
-    #else
-        struct stat stat_buf;
-        if (stat(display_path, &stat_buf) == 0) input_file_size = stat_buf.st_size;
-    #endif
+#ifdef _WIN32
+    struct __stat64 stat_buf64;
+    if (_wstat64(config->effective_input_filename_w, &stat_buf64) == 0)
+        input_file_size = stat_buf64.st_size;
+#else
+    struct stat stat_buf;
+    if (stat(display_path, &stat_buf) == 0)
+        input_file_size = stat_buf.st_size;
+#endif
     char size_buf[40];
     add_summary_item(info, "Input File Size", "%s", format_file_size(input_file_size, size_buf, sizeof(size_buf)));
 
@@ -456,33 +461,30 @@ static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo
         if (resources->sdr_info.timestamp_unix_present) {
             char time_buf[64];
             struct tm time_info;
-            #ifdef _WIN32
+#ifdef _WIN32
             if (gmtime_s(&time_info, &resources->sdr_info.timestamp_unix) == 0) {
                 strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC", &time_info);
                 add_summary_item(info, "Timestamp", "%s", time_buf);
             }
-            #else
+#else
             if (gmtime_r(&resources->sdr_info.timestamp_unix, &time_info)) {
                 strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC", &time_info);
                 add_summary_item(info, "Timestamp", "%s", time_buf);
             }
-            #endif
+#endif
         } else if (resources->sdr_info.timestamp_str_present) {
             add_summary_item(info, "Timestamp", "%s", resources->sdr_info.timestamp_str);
         }
-
         if (resources->sdr_info.center_freq_hz_present) {
             add_summary_item(info, "Center Frequency", "%.6f MHz", resources->sdr_info.center_freq_hz / 1e6);
         }
-
         if (resources->sdr_info.software_name_present) {
-             char sw_buf[128];
-             snprintf(sw_buf, sizeof(sw_buf), "%s %s",
-                      resources->sdr_info.software_name,
-                      resources->sdr_info.software_version_present ? resources->sdr_info.software_version : "");
-             add_summary_item(info, "SDR Software", "%s", sw_buf);
+            char sw_buf[128];
+            snprintf(sw_buf, sizeof(sw_buf), "%s %s",
+                     resources->sdr_info.software_name,
+                     resources->sdr_info.software_version_present ? resources->sdr_info.software_version : "");
+            add_summary_item(info, "SDR Software", "%s", sw_buf);
         }
-
         if (resources->sdr_info.radio_model_present) {
             add_summary_item(info, "Radio Model", "%s", resources->sdr_info.radio_model);
         }
@@ -498,10 +500,6 @@ static bool wav_is_sdr_hardware(void) {
     return false;
 }
 
-
-/**
- * @brief Initializes the WAV input source.
- */
 static bool wav_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
@@ -524,8 +522,7 @@ static bool wav_initialize(InputSourceContext* ctx) {
     }
 
     if (sfinfo.channels != 2) {
-        log_fatal("Error: Input file must have 2 channels (I/Q), but found %d.",
-                sfinfo.channels);
+        log_fatal("Error: Input file must have 2 channels (I/Q), but found %d.", sfinfo.channels);
         sf_close(resources->infile);
         resources->infile = NULL;
         return false;
@@ -533,12 +530,8 @@ static bool wav_initialize(InputSourceContext* ctx) {
 
     int sf_subtype = (sfinfo.format & SF_FORMAT_SUBMASK);
     switch (sf_subtype) {
-        case SF_FORMAT_PCM_16:
-            resources->input_format = CS16;
-            break;
-        case SF_FORMAT_PCM_U8:
-            resources->input_format = CU8;
-            break;
+        case SF_FORMAT_PCM_16: resources->input_format = CS16; break;
+        case SF_FORMAT_PCM_U8: resources->input_format = CU8; break;
         default:
             log_fatal("Error: Input WAV file uses an unsupported PCM subtype (0x%04X). "
                       "Supported WAV PCM subtypes are 16-bit Signed (cs16) and 8-bit Unsigned (cu8).", sf_subtype);
@@ -547,12 +540,10 @@ static bool wav_initialize(InputSourceContext* ctx) {
             return false;
     }
 
-    // Set the size of the full I/Q pair based on the detected format
     resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
 
     if (sfinfo.samplerate <= 0) {
-        log_fatal("Error: Invalid input sample rate (%d Hz).",
-                sfinfo.samplerate);
+        log_fatal("Error: Invalid input sample rate (%d Hz).", sfinfo.samplerate);
         sf_close(resources->infile);
         resources->infile = NULL;
         return false;
@@ -567,6 +558,7 @@ static bool wav_initialize(InputSourceContext* ctx) {
 
     init_sdr_metadata(&resources->sdr_info);
     resources->sdr_info_present = parse_sdr_metadata_chunks(resources->infile, &sfinfo, &resources->sdr_info);
+
     char basename_buffer[MAX_PATH_LEN];
     const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer));
     if (base_filename) {
@@ -577,28 +569,27 @@ static bool wav_initialize(InputSourceContext* ctx) {
     return true;
 }
 
-/**
- * @brief Starts streaming data from the WAV file.
- */
 static void* wav_start_stream(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
     size_t bytes_to_read_per_chunk = (size_t)BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
 
     while (!is_shutdown_requested() && !resources->error_occurred) {
-        WorkItem *current_item = (WorkItem*)queue_dequeue(resources->free_pool_q);
+        SampleChunk *current_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
         if (!current_item) {
             break;
         }
 
-        int64_t bytes_read = sf_read_raw(resources->infile, current_item->raw_input_buffer, bytes_to_read_per_chunk);
+        // *** FIX: Explicitly initialize flags for this SampleChunk ***
+        current_item->stream_discontinuity_event = false;
+
+        int64_t bytes_read = sf_read_raw(resources->infile, current_item->raw_input_data, bytes_to_read_per_chunk);
         if (bytes_read < 0) {
             log_fatal("libsndfile read error: %s", sf_strerror(resources->infile));
             pthread_mutex_lock(&resources->progress_mutex);
             resources->error_occurred = true;
             pthread_mutex_unlock(&resources->progress_mutex);
-            queue_signal_shutdown(resources->input_q);
-            queue_signal_shutdown(resources->output_q);
-            queue_enqueue(resources->free_pool_q, current_item);
+            request_shutdown();
+            queue_enqueue(resources->free_sample_chunk_queue, current_item);
             break;
         }
 
@@ -606,14 +597,14 @@ static void* wav_start_stream(InputSourceContext* ctx) {
         current_item->is_last_chunk = (current_item->frames_read == 0);
 
         if (!current_item->is_last_chunk) {
-             pthread_mutex_lock(&resources->progress_mutex);
-             resources->total_frames_read += current_item->frames_read;
-             pthread_mutex_unlock(&resources->progress_mutex);
+            pthread_mutex_lock(&resources->progress_mutex);
+            resources->total_frames_read += current_item->frames_read;
+            pthread_mutex_unlock(&resources->progress_mutex);
         }
 
-        if (!queue_enqueue(resources->input_q, current_item)) {
-             queue_enqueue(resources->free_pool_q, current_item);
-             break;
+        if (!queue_enqueue(resources->raw_to_pre_process_queue, current_item)) {
+            queue_enqueue(resources->free_sample_chunk_queue, current_item);
+            break;
         }
 
         if (current_item->is_last_chunk) {
@@ -623,16 +614,10 @@ static void* wav_start_stream(InputSourceContext* ctx) {
     return NULL;
 }
 
-/**
- * @brief Stops the WAV stream. (No-op for WAV).
- */
 static void wav_stop_stream(InputSourceContext* ctx) {
     (void)ctx;
 }
 
-/**
- * @brief Cleans up the WAV input source.
- */
 static void wav_cleanup(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
     if (resources->infile) {
@@ -642,7 +627,6 @@ static void wav_cleanup(InputSourceContext* ctx) {
     }
 }
 
-// The single instance of InputSourceOps for WAV files
 static InputSourceOps wav_ops = {
     .initialize = wav_initialize,
     .start_stream = wav_start_stream,
@@ -653,9 +637,6 @@ static InputSourceOps wav_ops = {
     .is_sdr_hardware = wav_is_sdr_hardware
 };
 
-/**
- * @brief Public function to get the WAV input source operations.
- */
 InputSourceOps* get_wav_input_ops(void) {
     return &wav_ops;
 }

@@ -57,9 +57,9 @@ size_t get_bytes_per_sample(format_t format) {
 }
 
 /**
- * @brief Converts a block of raw input samples into normalized complex floats.
+ * @brief Converts a block of raw input samples into normalized, gain-adjusted complex floats.
  */
-bool convert_block_to_cf32(const void* input_buffer, complex_float_t* output_buffer, size_t num_frames, format_t input_format, float gain) {
+bool convert_raw_to_cf32(const void* input_buffer, complex_float_t* output_buffer, size_t num_frames, format_t input_format, float gain) {
     size_t i;
 
     switch (input_format) {
@@ -125,7 +125,7 @@ bool convert_block_to_cf32(const void* input_buffer, complex_float_t* output_buf
             break;
         }
         default:
-            log_error("Unhandled input format in convert_block_to_cf32: %d", input_format);
+            log_error("Unhandled input format in convert_raw_to_cf32: %d", input_format);
             return false;
     }
     return true;

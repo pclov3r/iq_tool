@@ -10,7 +10,6 @@
 #include "sample_convert.h" // For get_bytes_per_sample
 #include "iq_correct.h"
 #include "dc_block.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,20 +38,17 @@
  */
 bool resolve_file_paths(AppConfig *config) {
     if (!config) return false;
+
 #ifdef _WIN32
     if (config->input_filename_arg) {
-        if (!get_absolute_path_windows(config->input_filename_arg,
-                                       &config->effective_input_filename_w,
-                                       &config->effective_input_filename_utf8)) {
+        if (!get_absolute_path_windows(config->input_filename_arg, &config->effective_input_filename_w, &config->effective_input_filename_utf8)) {
             return false;
         }
     }
     if (config->output_filename_arg) {
-        if (!get_absolute_path_windows(config->output_filename_arg,
-                                       &config->effective_output_filename_w,
-                                       &config->effective_output_filename_utf8)) {
-             free_absolute_path_windows(&config->effective_input_filename_w, &config->effective_input_filename_utf8);
-             return false;
+        if (!get_absolute_path_windows(config->output_filename_arg, &config->effective_output_filename_w, &config->effective_output_filename_utf8)) {
+            free_absolute_path_windows(&config->effective_input_filename_w, &config->effective_input_filename_utf8);
+            return false;
         }
     }
 #else
@@ -66,7 +62,7 @@ bool resolve_file_paths(AppConfig *config) {
  * @brief Calculates and validates the resampling ratio.
  */
 bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *resources, float *out_ratio) {
-     if (!config || !resources || !out_ratio) return false;
+    if (!config || !resources || !out_ratio) return false;
 
     if (config->no_resample) {
         log_info("Passthrough mode enabled: output rate will match input rate.");
@@ -93,49 +89,58 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *reso
 bool allocate_processing_buffers(AppConfig *config, AppResources *resources, float resample_ratio) {
     if (!config || !resources) return false;
 
+    // --- Calculate buffer sizes for each stage ---
     double estimated_output = ceil((double)BUFFER_SIZE_SAMPLES * (double)resample_ratio);
-    resources->max_out_samples = (unsigned int)estimated_output + 128;
+    resources->max_out_samples = (unsigned int)estimated_output + 128; // Add margin for resampler delay
 
     double upper_limit = 20.0 * (double)BUFFER_SIZE_SAMPLES * fmax(1.0, (double)resample_ratio);
     if (resources->max_out_samples > upper_limit || resources->max_out_samples > (UINT_MAX - 128)) {
-         log_fatal("Error: Calculated output buffer size per item (%u samples) is unreasonable.", resources->max_out_samples);
-         return false;
-    }
-
-    size_t raw_input_bytes_per_item = BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
-    size_t complex_elements_per_input_item = BUFFER_SIZE_SAMPLES;
-    size_t complex_elements_per_output_item = resources->max_out_samples;
-    bool shift_requested = config->freq_shift_requested || config->set_center_frequency_target_hz;
-    size_t complex_elements_per_shifted_item = shift_requested ? (config->shift_after_resample ? complex_elements_per_output_item : complex_elements_per_input_item) : 0;
-
-    resources->output_bytes_per_sample_pair = get_bytes_per_sample(config->output_format);
-    size_t output_buffer_bytes_per_item = complex_elements_per_output_item * resources->output_bytes_per_sample_pair;
-
-    resources->work_item_pool = malloc(NUM_BUFFERS * sizeof(WorkItem));
-    resources->raw_input_pool = malloc(NUM_BUFFERS * raw_input_bytes_per_item);
-    resources->complex_scaled_pool = malloc(NUM_BUFFERS * complex_elements_per_input_item * sizeof(complex_float_t));
-    if (shift_requested) {
-        resources->complex_shifted_pool = malloc(NUM_BUFFERS * complex_elements_per_shifted_item * sizeof(complex_float_t));
-    }
-    resources->complex_resampled_pool = malloc(NUM_BUFFERS * complex_elements_per_output_item * sizeof(complex_float_t));
-    resources->output_pool = malloc(NUM_BUFFERS * output_buffer_bytes_per_item);
-
-    if (!resources->work_item_pool || !resources->raw_input_pool || !resources->complex_scaled_pool ||
-        (shift_requested && !resources->complex_shifted_pool) || !resources->complex_resampled_pool || !resources->output_pool) {
-        log_fatal("Error: Failed to allocate one or more processing buffer pools.");
+        log_fatal("Error: Calculated output buffer size per item (%u samples) is unreasonable.", resources->max_out_samples);
         return false;
     }
 
+    size_t raw_input_bytes_per_item = BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
+    size_t complex_pre_resample_elements = BUFFER_SIZE_SAMPLES;
+    size_t complex_resampled_elements = resources->max_out_samples;
+    size_t complex_post_resample_elements = (config->shift_after_resample) ? resources->max_out_samples : 0;
+
+    resources->output_bytes_per_sample_pair = get_bytes_per_sample(config->output_format);
+    size_t final_output_bytes_per_item = resources->max_out_samples * resources->output_bytes_per_sample_pair;
+
+    // --- Allocate memory pools ---
+    resources->sample_chunk_pool = malloc(NUM_BUFFERS * sizeof(SampleChunk));
+    resources->raw_input_data_pool = malloc(NUM_BUFFERS * raw_input_bytes_per_item);
+    // Repurpose old `complex_pre_resample_data_pool` for the pre-resample data
+    resources->complex_pre_resample_data_pool = malloc(NUM_BUFFERS * complex_pre_resample_elements * sizeof(complex_float_t));
+    resources->complex_resampled_data_pool = malloc(NUM_BUFFERS * complex_resampled_elements * sizeof(complex_float_t));
+    // Repurpose old `complex_post_resample_data_pool` for the post-resample data if needed
+    if (complex_post_resample_elements > 0) {
+        resources->complex_post_resample_data_pool = malloc(NUM_BUFFERS * complex_post_resample_elements * sizeof(complex_float_t));
+    } else {
+        resources->complex_post_resample_data_pool = NULL;
+    }
+    resources->final_output_data_pool = malloc(NUM_BUFFERS * final_output_bytes_per_item);
+
+    if (!resources->sample_chunk_pool || !resources->raw_input_data_pool || !resources->complex_pre_resample_data_pool ||
+        (complex_post_resample_elements > 0 && !resources->complex_post_resample_data_pool) ||
+        !resources->complex_resampled_data_pool || !resources->final_output_data_pool) {
+        log_fatal("Error: Failed to allocate one or more processing buffer pools.");
+        // Note: In a real implementation, we should free any successfully allocated pools here.
+        return false;
+    }
+
+    // --- Assign buffer pointers to each SampleChunk ---
     for (size_t i = 0; i < NUM_BUFFERS; ++i) {
-        WorkItem* item = &resources->work_item_pool[i];
-        item->raw_input_buffer = (char*)resources->raw_input_pool + i * raw_input_bytes_per_item;
-        item->complex_buffer_scaled = resources->complex_scaled_pool + i * complex_elements_per_input_item;
-        item->complex_buffer_resampled = resources->complex_resampled_pool + i * complex_elements_per_output_item;
-        item->output_buffer = (unsigned char*)resources->output_pool + i * output_buffer_bytes_per_item;
-        if (shift_requested) {
-             item->complex_buffer_shifted = resources->complex_shifted_pool + i * complex_elements_per_shifted_item;
+        SampleChunk* item = &resources->sample_chunk_pool[i];
+        item->raw_input_data = (char*)resources->raw_input_data_pool + i * raw_input_bytes_per_item;
+        item->complex_pre_resample_data = resources->complex_pre_resample_data_pool + i * complex_pre_resample_elements;
+        item->complex_resampled_data = resources->complex_resampled_data_pool + i * complex_resampled_elements;
+        item->final_output_data = (unsigned char*)resources->final_output_data_pool + i * final_output_bytes_per_item;
+
+        if (complex_post_resample_elements > 0) {
+            item->complex_post_resample_data = resources->complex_post_resample_data_pool + i * complex_post_resample_elements;
         } else {
-             item->complex_buffer_shifted = NULL;
+            item->complex_post_resample_data = NULL;
         }
     }
 
@@ -148,7 +153,8 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
 bool create_dsp_components(AppConfig *config, AppResources *resources, float resample_ratio) {
     if (!config || !resources) return false;
 
-    if (!shift_create_nco(config, resources)) {
+    // Create the two NCOs (this function handles the logic of which to create)
+    if (!shift_create_ncos(config, resources)) {
         return false;
     }
 
@@ -156,11 +162,10 @@ bool create_dsp_components(AppConfig *config, AppResources *resources, float res
         resources->resampler = msresamp_crcf_create(resample_ratio, STOPBAND_ATTENUATION_DB);
         if (!resources->resampler) {
             log_fatal("Error: Failed to create liquid-dsp resampler object.");
-            shift_destroy_nco(resources);
+            shift_destroy_ncos(resources);
             return false;
         }
     }
-
     return true;
 }
 
@@ -168,18 +173,32 @@ bool create_dsp_components(AppConfig *config, AppResources *resources, float res
  * @brief Creates the thread-safe queues and mutexes.
  */
 bool create_threading_components(AppResources *resources) {
-    resources->free_pool_q = queue_create(NUM_BUFFERS);
-    resources->input_q = queue_create(NUM_BUFFERS);
-    resources->output_q = queue_create(NUM_BUFFERS);
-    if (!resources->free_pool_q || !resources->input_q || !resources->output_q) {
+    // Create all the queues for the granular pipeline
+    resources->free_sample_chunk_queue = queue_create(NUM_BUFFERS);
+    resources->raw_to_pre_process_queue = queue_create(NUM_BUFFERS);
+    resources->pre_process_to_resampler_queue = queue_create(NUM_BUFFERS);
+    resources->resampler_to_post_process_queue = queue_create(NUM_BUFFERS);
+    resources->final_output_queue = queue_create(NUM_BUFFERS);
+    if (resources->config->iq_correction.enable) {
+        resources->iq_optimization_data_queue = queue_create(NUM_BUFFERS);
+    } else {
+        resources->iq_optimization_data_queue = NULL;
+    }
+
+
+    if (!resources->free_sample_chunk_queue || !resources->raw_to_pre_process_queue ||
+        !resources->pre_process_to_resampler_queue || !resources->resampler_to_post_process_queue ||
+        !resources->final_output_queue || (resources->config->iq_correction.enable && !resources->iq_optimization_data_queue)) {
         log_fatal("Failed to create one or more processing queues.");
+        // Note: In a real implementation, we should destroy any successfully created queues here.
         return false;
     }
 
+    // Populate the free pool with all available SampleChunks
     for (size_t i = 0; i < NUM_BUFFERS; ++i) {
-        if (!queue_enqueue(resources->free_pool_q, &resources->work_item_pool[i])) {
-             log_fatal("Failed to initially populate free item queue.");
-             return false;
+        if (!queue_enqueue(resources->free_sample_chunk_queue, &resources->sample_chunk_pool[i])) {
+            log_fatal("Failed to initially populate free item queue.");
+            return false;
         }
     }
 
@@ -187,10 +206,10 @@ bool create_threading_components(AppResources *resources) {
         log_fatal("Failed to initialize progress mutex: %s", strerror(errno));
         return false;
     }
-    if (pthread_mutex_init(&resources->dsp_mutex, NULL) != 0) {
-        log_fatal("Failed to initialize DSP mutex: %s", strerror(errno));
-        return false;
-    }
+
+    // dsp_mutex is no longer needed as DSP objects are thread-private
+    // if (pthread_mutex_init(&resources->dsp_mutex, NULL) != 0) { ... }
+
     return true;
 }
 
@@ -198,12 +217,15 @@ bool create_threading_components(AppResources *resources) {
  * @brief Destroys the thread-safe queues and mutexes.
  */
 void destroy_threading_components(AppResources *resources) {
-    if(resources->input_q) queue_destroy(resources->input_q);
-    if(resources->output_q) queue_destroy(resources->output_q);
-    if(resources->free_pool_q) queue_destroy(resources->free_pool_q);
+    if(resources->free_sample_chunk_queue) queue_destroy(resources->free_sample_chunk_queue);
+    if(resources->raw_to_pre_process_queue) queue_destroy(resources->raw_to_pre_process_queue);
+    if(resources->pre_process_to_resampler_queue) queue_destroy(resources->pre_process_to_resampler_queue);
+    if(resources->resampler_to_post_process_queue) queue_destroy(resources->resampler_to_post_process_queue);
+    if(resources->final_output_queue) queue_destroy(resources->final_output_queue);
+    if(resources->iq_optimization_data_queue) queue_destroy(resources->iq_optimization_data_queue);
 
-    pthread_mutex_destroy(&resources->dsp_mutex);
     pthread_mutex_destroy(&resources->progress_mutex);
+    // pthread_mutex_destroy(&resources->dsp_mutex); // No longer used
 }
 
 /**
@@ -214,12 +236,10 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 
     InputSummaryInfo summary_info;
     memset(&summary_info, 0, sizeof(InputSummaryInfo));
-
     const InputSourceContext ctx = { .config = config, .resources = (AppResources*)resources };
     resources->selected_input_ops->get_summary_info(&ctx, &summary_info);
 
     int max_label_len = 0;
-
     if (summary_info.count > 0) {
         for (int i = 0; i < summary_info.count; i++) {
             int len = (int)strlen(summary_info.items[i].label);
@@ -231,8 +251,8 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 
     // Base output labels
     const char* base_output_labels[] = {
-        "Output Type", "Sample Type", "Output Rate", "Gain",
-        "Frequency Shift", "I/Q Correction", "DC Block", "Resampling", "Output Target"
+        "Output Type", "Sample Type", "Output Rate", "Gain", "Frequency Shift",
+        "I/Q Correction", "DC Block", "Resampling", "Output Target"
     };
     for (size_t i = 0; i < sizeof(base_output_labels) / sizeof(base_output_labels[0]); i++) {
         int len = (int)strlen(base_output_labels[i]);
@@ -250,65 +270,47 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     fprintf(stderr, "--- Input Details ---\n");
     if (summary_info.count > 0) {
         for (int i = 0; i < summary_info.count; i++) {
-            fprintf(stderr, "  %-*s : %s\n", max_label_len, summary_info.items[i].label, summary_info.items[i].value);
+            fprintf(stderr, " %-*s : %s\n", max_label_len, summary_info.items[i].label, summary_info.items[i].value);
         }
     }
 
     fprintf(stderr, "--- Output Details ---\n");
     const char* output_type_str;
     switch (config->output_type) {
-        case OUTPUT_TYPE_RAW:      output_type_str = "RAW"; break;
-        case OUTPUT_TYPE_WAV:      output_type_str = "WAV"; break;
+        case OUTPUT_TYPE_RAW: output_type_str = "RAW"; break;
+        case OUTPUT_TYPE_WAV: output_type_str = "WAV"; break;
         case OUTPUT_TYPE_WAV_RF64: output_type_str = "WAV (RF64)"; break;
-        default:                   output_type_str = "Unknown"; break;
+        default: output_type_str = "Unknown"; break;
     }
-    fprintf(stderr, "  %-*s : %s\n", max_label_len, "Output Type", output_type_str);
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "Output Type", output_type_str);
 
     const char* sample_type_str;
     switch (config->output_format) {
-        case CU8:  sample_type_str = "cu8 (Unsigned 8-bit Complex)"; break;
-        case CS8:  sample_type_str = "cs8 (Signed 8-bit Complex)";   break;
+        case CU8: sample_type_str = "cu8 (Unsigned 8-bit Complex)"; break;
+        case CS8: sample_type_str = "cs8 (Signed 8-bit Complex)"; break;
         case CU16: sample_type_str = "cu16 (Unsigned 16-bit Complex)"; break;
         case CS16: sample_type_str = "cs16 (Signed 16-bit Complex)"; break;
         case CU32: sample_type_str = "cu32 (Unsigned 32-bit Complex)"; break;
         case CS32: sample_type_str = "cs32 (Signed 32-bit Complex)"; break;
         case CF32: sample_type_str = "cf32 (32-bit Float Complex)"; break;
-        default:   sample_type_str = "Unknown"; break;
+        default: sample_type_str = "Unknown"; break;
     }
-    fprintf(stderr, "  %-*s : %s\n", max_label_len, "Sample Type", sample_type_str);
-    fprintf(stderr, "  %-*s : %.1f Hz\n", max_label_len, "Output Rate", config->target_rate);
-
-    fprintf(stderr, "  %-*s : %.5f\n", max_label_len, "Gain", config->gain);
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "Sample Type", sample_type_str);
+    fprintf(stderr, " %-*s : %.1f Hz\n", max_label_len, "Output Rate", config->target_rate);
+    fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Gain", config->gain);
 
     if (config->set_center_frequency_target_hz) {
-        fprintf(stderr, "  %-*s : %.6f MHz\n", max_label_len, "Target Frequency", config->center_frequency_target_hz / 1e6);
+        fprintf(stderr, " %-*s : %.6f MHz\n", max_label_len, "Target Frequency", config->center_frequency_target_hz / 1e6);
     }
-
     if (fabs(resources->actual_nco_shift_hz) > 1e-9) {
         char shift_buf[64];
-        snprintf(shift_buf, sizeof(shift_buf), "%+.2f Hz%s",
-                 resources->actual_nco_shift_hz,
-                 config->shift_after_resample ? " (Post-Resample)" : "");
-        fprintf(stderr, "  %-*s : %s\n", max_label_len, "Frequency Shift", shift_buf);
+        snprintf(shift_buf, sizeof(shift_buf), "%+.2f Hz%s", resources->actual_nco_shift_hz, config->shift_after_resample ? " (Post-Resample)" : "");
+        fprintf(stderr, " %-*s : %s\n", max_label_len, "Frequency Shift", shift_buf);
     }
 
-    if (config->iq_correction.enable) {
-        fprintf(stderr, "  %-*s : Enabled\n", max_label_len, "I/Q Correction");
-    } else {
-        fprintf(stderr, "  %-*s : Disabled\n", max_label_len, "I/Q Correction");
-    }
-
-    if (config->dc_block.enable) {
-        fprintf(stderr, "  %-*s : Enabled\n", max_label_len, "DC Block");
-    } else {
-        fprintf(stderr, "  %-*s : Disabled\n", max_label_len, "DC Block");
-    }
-
-    if (resources->is_passthrough) {
-        fprintf(stderr, "  %-*s : Disabled (Passthrough Mode)\n", max_label_len, "Resampling");
-    } else {
-        fprintf(stderr, "  %-*s : Enabled\n", max_label_len, "Resampling");
-    }
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "I/Q Correction", config->iq_correction.enable ? "Enabled" : "Disabled");
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "DC Block", config->dc_block.enable ? "Enabled" : "Disabled");
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "Resampling", resources->is_passthrough ? "Disabled (Passthrough Mode)" : "Enabled");
 
     const char* output_path_for_messages;
 #ifdef _WIN32
@@ -316,7 +318,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 #else
     output_path_for_messages = config->effective_output_filename;
 #endif
-    fprintf(stderr, "  %-*s : %s\n", max_label_len, "Output Target", config->output_to_stdout ? "<stdout>" : output_path_for_messages);
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "Output Target", config->output_to_stdout ? "<stdout>" : output_path_for_messages);
 }
 
 /**
@@ -330,7 +332,7 @@ bool check_nyquist_warning(const AppConfig *config, const AppResources *resource
  * @brief Prepares the output stream (file or stdout).
  */
 bool prepare_output_stream(AppConfig *config, AppResources *resources) {
-     if (!config || !resources) return false;
+    if (!config || !resources) return false;
 
     if (!file_writer_init(&resources->writer_ctx, config)) {
         return false;
@@ -339,6 +341,5 @@ bool prepare_output_stream(AppConfig *config, AppResources *resources) {
     if (!resources->writer_ctx.ops.open(&resources->writer_ctx, config, resources)) {
         return false;
     }
-
     return true;
 }

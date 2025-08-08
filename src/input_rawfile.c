@@ -1,5 +1,3 @@
-// input_rawfile.c
-
 #include "input_rawfile.h"
 #include "log.h"
 #include "signal_handler.h"
@@ -7,7 +5,6 @@
 #include "config.h"
 #include "platform.h"
 #include "sample_convert.h" // For get_bytes_per_sample
-
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -34,6 +31,7 @@ static bool rawfile_validate_options(const AppConfig* config);
 static bool rawfile_is_sdr_hardware(void);
 static format_t get_format_from_string(const char *name);
 
+
 // --- The single instance of InputSourceOps for raw files ---
 static InputSourceOps raw_file_ops = {
     .initialize = rawfile_initialize,
@@ -55,26 +53,22 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
 
-    // 1. Parse the user-provided format string into our enum
     resources->input_format = get_format_from_string(config->raw_file.format_str);
     if (resources->input_format == FORMAT_UNKNOWN) {
         log_fatal("Invalid raw input format '%s'. See --help for valid formats.", config->raw_file.format_str);
         return false;
     }
 
-    // 2. Get the size of the full I/Q sample pair for this format
     resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
     if (resources->input_bytes_per_sample_pair == 0) {
         log_fatal("Internal error: could not determine sample size for format '%s'.", config->raw_file.format_str);
         return false;
     }
 
-    // 3. Create and manually populate the SF_INFO struct to TELL libsndfile what to expect
     SF_INFO sfinfo;
     memset(&sfinfo, 0, sizeof(SF_INFO));
     sfinfo.samplerate = (int)config->raw_file.sample_rate_hz;
     sfinfo.channels = 2;
-
     int format_code = SF_FORMAT_RAW;
     switch (resources->input_format) {
         case CS16: format_code |= SF_FORMAT_PCM_16; break;
@@ -83,14 +77,13 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
         case CU8:  format_code |= SF_FORMAT_PCM_U8; break;
         case CS32: format_code |= SF_FORMAT_PCM_32; break;
         case CU32: format_code |= SF_FORMAT_PCM_32; break;
-        case CF32: format_code |= SF_FORMAT_FLOAT; break;
+        case CF32: format_code |= SF_FORMAT_FLOAT;  break;
         default:
             log_fatal("Internal error: unhandled format enum in rawfile_initialize.");
             return false;
     }
     sfinfo.format = format_code;
 
-    // 4. Open the file
 #ifdef _WIN32
     resources->infile = sf_wchar_open(config->effective_input_filename_w, SFM_READ, &sfinfo);
 #else
@@ -102,15 +95,12 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
         return false;
     }
 
-    // 5. Copy info into our generic application structs
     sf_command(resources->infile, SFC_GET_CURRENT_SF_INFO, &sfinfo, sizeof(sfinfo));
     resources->source_info.samplerate = sfinfo.samplerate;
     resources->source_info.frames = sfinfo.frames;
 
     log_info("Opened raw file with format %s, rate %.1f Hz, and %lld frames.",
-             config->raw_file.format_str,
-             (double)resources->source_info.samplerate,
-             (long long)resources->source_info.frames);
+             config->raw_file.format_str, (double)resources->source_info.samplerate, (long long)resources->source_info.frames);
 
     return true;
 }
@@ -120,20 +110,22 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
     size_t bytes_to_read_per_chunk = (size_t)BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
 
     while (!is_shutdown_requested() && !resources->error_occurred) {
-        WorkItem *current_item = (WorkItem*)queue_dequeue(resources->free_pool_q);
+        SampleChunk *current_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
         if (!current_item) {
             break;
         }
 
-        int64_t bytes_read = sf_read_raw(resources->infile, current_item->raw_input_buffer, bytes_to_read_per_chunk);
+        // *** FIX: Explicitly initialize flags for this SampleChunk ***
+        current_item->stream_discontinuity_event = false;
+
+        int64_t bytes_read = sf_read_raw(resources->infile, current_item->raw_input_data, bytes_to_read_per_chunk);
         if (bytes_read < 0) {
             log_fatal("libsndfile read error: %s", sf_strerror(resources->infile));
             pthread_mutex_lock(&resources->progress_mutex);
             resources->error_occurred = true;
             pthread_mutex_unlock(&resources->progress_mutex);
-            queue_signal_shutdown(resources->input_q);
-            queue_signal_shutdown(resources->output_q);
-            queue_enqueue(resources->free_pool_q, current_item);
+            request_shutdown();
+            queue_enqueue(resources->free_sample_chunk_queue, current_item);
             break;
         }
 
@@ -141,14 +133,14 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
         current_item->is_last_chunk = (current_item->frames_read == 0);
 
         if (!current_item->is_last_chunk) {
-             pthread_mutex_lock(&resources->progress_mutex);
-             resources->total_frames_read += current_item->frames_read;
-             pthread_mutex_unlock(&resources->progress_mutex);
+            pthread_mutex_lock(&resources->progress_mutex);
+            resources->total_frames_read += current_item->frames_read;
+            pthread_mutex_unlock(&resources->progress_mutex);
         }
 
-        if (!queue_enqueue(resources->input_q, current_item)) {
-             queue_enqueue(resources->free_pool_q, current_item);
-             break;
+        if (!queue_enqueue(resources->raw_to_pre_process_queue, current_item)) {
+            queue_enqueue(resources->free_sample_chunk_queue, current_item);
+            break;
         }
 
         if (current_item->is_last_chunk) {
@@ -174,7 +166,6 @@ static void rawfile_cleanup(InputSourceContext* ctx) {
 static void rawfile_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppResources *resources = ctx->resources;
-
     const char* display_path = config->input_filename_arg;
 #ifdef _WIN32
     if (config->effective_input_filename_utf8) {

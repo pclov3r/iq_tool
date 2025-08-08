@@ -41,17 +41,16 @@
 #include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <signal.h> // Required for SIGPIPE handling
+#include <signal.h>
 #else
 #include <sys/stat.h>
-#include <io.h> // For _isatty
+#include <io.h>
 #endif
 
 #include "types.h"
 #include "config.h"
 #include "cli.h"
 #include "setup.h"
-#include "resample.h"
 #include "utils.h"
 #include "spectrum_shift.h"
 #include "signal_handler.h"
@@ -63,16 +62,14 @@
 #include "platform.h"
 #include "iq_correct.h"
 #include "dc_block.h"
+#include "io_threads.h"
+#include "processing_threads.h"
+
 
 // --- Global Variable Definitions ---
-
-// Define a single, global, recursive mutex for all console output.
-// It is declared 'extern' in signal_handler.c so it can be used there.
 pthread_mutex_t g_console_mutex;
-
-// Define the global configuration struct.
-// It is declared 'extern' in cli.c so it can be populated there.
 AppConfig g_config;
+
 
 // --- Forward Declarations for Static Helper Functions ---
 static void initialize_resource_struct(AppResources *resources);
@@ -81,8 +78,8 @@ static bool initialize_application(AppConfig *config, AppResources *resources);
 static void cleanup_application(AppConfig *config, AppResources *resources);
 static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success);
 
+
 // --- Logger Lock Function ---
-// Provides the logging library with a way to use our global mutex.
 static void console_lock_function(bool lock, void *udata) {
     pthread_mutex_t *mutex = (pthread_mutex_t *)udata;
     if (lock) {
@@ -93,29 +90,26 @@ static void console_lock_function(bool lock, void *udata) {
 }
 
 // --- Progress Update Callback ---
-// This function is passed to the processing pipeline to report progress.
 static void application_progress_callback(unsigned long long current_read_frames, long long total_input_frames, unsigned long long total_output_frames, void* udata) {
-    (void)total_output_frames; // This parameter is currently unused.
+    (void)total_output_frames;
     pthread_mutex_t *console_mutex = (pthread_mutex_t *)udata;
     pthread_mutex_lock(console_mutex);
 
-    // Only print progress if stderr is a terminal.
-    #ifdef _WIN32
+#ifdef _WIN32
     if (_isatty(_fileno(stderr))) {
-        fprintf(stderr, "\r                                                                               \r");
+        fprintf(stderr, "\r \r");
     }
-    #else
+#else
     if (isatty(fileno(stderr))) {
-        fprintf(stderr, "\r                                                                               \r");
+        fprintf(stderr, "\r \r");
     }
-    #endif
+#endif
 
-    if (total_input_frames > 0) { // Finite source (e.g., WAV file)
+    if (total_input_frames > 0) {
         double percentage = ((double)current_read_frames / (double)total_input_frames) * 100.0;
         if (percentage > 100.0) percentage = 100.0;
-        fprintf(stderr, "\rProcessed %llu / %lld input frames (%.1f%%)...",
-                current_read_frames, total_input_frames, percentage);
-    } else { // Infinite source (e.g., SDR stream)
+        fprintf(stderr, "\rProcessed %llu / %lld input frames (%.1f%%)...", current_read_frames, total_input_frames, percentage);
+    } else {
         fprintf(stderr, "\rProcessed %llu input frames...", current_read_frames);
     }
     fflush(stderr);
@@ -125,72 +119,53 @@ static void application_progress_callback(unsigned long long current_read_frames
 
 // --- Main Application Entry Point ---
 int main(int argc, char *argv[]) {
-    #ifndef _WIN32
-        // Ignore the SIGPIPE signal. This is crucial for pipeline tools.
-        // When a downstream process closes the pipe, we get an EPIPE error on write()
-        // instead of a signal that would terminate the process by default.
-        signal(SIGPIPE, SIG_IGN);
-    #endif
+#ifndef _WIN32
+    signal(SIGPIPE, SIG_IGN);
+#endif
 
-    // Initialize mutex attributes for a recursive mutex, allowing the same
-    // thread to lock it multiple times without deadlocking.
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
     pthread_mutex_init(&g_console_mutex, &attr);
     pthread_mutexattr_destroy(&attr);
 
-    // Configure the logger to use our global mutex for thread-safe output.
     log_set_lock(console_lock_function, &g_console_mutex);
-    log_set_level(LOG_INFO); // Set the default logging level.
+    log_set_level(LOG_INFO);
 
     AppResources resources;
     int exit_status = EXIT_FAILURE;
 
-    // --- CRUCIAL: Explicitly reset all global/static state ---
-    // This ensures a clean state if main() were ever called multiple times
-    // without a full process exit (e.g., in a testing harness).
     memset(&g_config, 0, sizeof(AppConfig));
     g_config.help_requested = false;
     initialize_resource_struct(&resources);
     reset_shutdown_flag();
 
-    // Load presets from file at the very beginning. This function handles
-    // finding the file and logs info/warnings; it only returns false on a
-    // fatal, unrecoverable error like a memory allocation failure.
     if (!presets_load_from_file(&g_config)) {
         presets_free_loaded(&g_config);
         pthread_mutex_destroy(&g_console_mutex);
         return EXIT_FAILURE;
     }
 
-    // Set up signal handlers (Ctrl+C) for graceful shutdown.
     setup_signal_handlers(&resources);
 
-    // Parse command-line arguments.
     if (!parse_arguments(argc, argv, &g_config)) {
-        // A 'false' return here indicates a genuine parsing error (e.g., unknown
-        // option, missing value), not a help request.
         print_usage(argv[0]);
         presets_free_loaded(&g_config);
         pthread_mutex_destroy(&g_console_mutex);
         return EXIT_FAILURE;
     }
 
-    // If --help was used, parse_arguments returns true and sets this flag.
     if (g_config.help_requested) {
         print_usage(argv[0]);
         presets_free_loaded(&g_config);
         pthread_mutex_destroy(&g_console_mutex);
-        return EXIT_SUCCESS; // Exit cleanly with success code.
+        return EXIT_SUCCESS;
     }
 
-    // Set default gain if not provided by user
     if (!g_config.gain_provided) {
         g_config.gain = 1.0f;
     }
 
-    // Get the correct set of input operations (WAV, SDRplay, etc.).
     resources.selected_input_ops = get_input_ops_by_name(g_config.input_type_str);
     if (!resources.selected_input_ops) {
         log_fatal("Input type '%s' is not supported or not enabled in this build.", g_config.input_type_str);
@@ -199,14 +174,12 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    // Validate the combination of options.
     if (!validate_configuration(&g_config, &resources)) {
         presets_free_loaded(&g_config);
         pthread_mutex_destroy(&g_console_mutex);
         return EXIT_FAILURE;
     }
 
-    // Initialize all application resources (buffers, DSP, threads, etc.).
     if (!initialize_application(&g_config, &resources)) {
         presets_free_loaded(&g_config);
         pthread_mutex_destroy(&g_console_mutex);
@@ -215,89 +188,95 @@ int main(int argc, char *argv[]) {
 
     resources.start_time = time(NULL);
 
-    // On POSIX systems, spawn a dedicated, detached thread to wait for signals.
-    #ifndef _WIN32
-        pthread_t sig_thread_id;
-        pthread_attr_t sig_thread_attr;
-
-        if (pthread_attr_init(&sig_thread_attr) != 0) {
-            log_fatal("Failed to initialize signal thread attributes.");
-            cleanup_application(&g_config, &resources);
-            presets_free_loaded(&g_config);
-            pthread_mutex_destroy(&g_console_mutex);
-            return EXIT_FAILURE;
-        }
-
-        if (pthread_attr_setdetachstate(&sig_thread_attr, PTHREAD_CREATE_DETACHED) != 0) {
-            log_fatal("Failed to set signal thread to detached state.");
-            pthread_attr_destroy(&sig_thread_attr);
-            cleanup_application(&g_config, &resources);
-            presets_free_loaded(&g_config);
-            pthread_mutex_destroy(&g_console_mutex);
-            return EXIT_FAILURE;
-        }
-
-        if (pthread_create(&sig_thread_id, &sig_thread_attr, signal_handler_thread, &resources) != 0) {
-            log_fatal("Failed to create detached signal handler thread.");
-            pthread_attr_destroy(&sig_thread_attr);
-            cleanup_application(&g_config, &resources);
-            presets_free_loaded(&g_config);
-            pthread_mutex_destroy(&g_console_mutex);
-            return EXIT_FAILURE;
-        }
-
-        pthread_attr_destroy(&sig_thread_attr);
-    #endif
-
-    // Start the main processing pipeline threads.
-    if (!run_processing_threads(&g_config, &resources)) {
-        log_fatal("Failed to start processing threads.");
+#ifndef _WIN32
+    pthread_t sig_thread_id;
+    pthread_attr_t sig_thread_attr;
+    if (pthread_attr_init(&sig_thread_attr) != 0) {
+        log_fatal("Failed to initialize signal thread attributes.");
         cleanup_application(&g_config, &resources);
         presets_free_loaded(&g_config);
         pthread_mutex_destroy(&g_console_mutex);
         return EXIT_FAILURE;
     }
+    if (pthread_attr_setdetachstate(&sig_thread_attr, PTHREAD_CREATE_DETACHED) != 0) {
+        log_fatal("Failed to set signal thread to detached state.");
+        pthread_attr_destroy(&sig_thread_attr);
+        cleanup_application(&g_config, &resources);
+        presets_free_loaded(&g_config);
+        pthread_mutex_destroy(&g_console_mutex);
+        return EXIT_FAILURE;
+    }
+    if (pthread_create(&sig_thread_id, &sig_thread_attr, signal_handler_thread, &resources) != 0) {
+        log_fatal("Failed to create detached signal handler thread.");
+        pthread_attr_destroy(&sig_thread_attr);
+        cleanup_application(&g_config, &resources);
+        presets_free_loaded(&g_config);
+        pthread_mutex_destroy(&g_console_mutex);
+        return EXIT_FAILURE;
+    }
+    pthread_attr_destroy(&sig_thread_attr);
+#endif
 
-    // Wait for the processing pipeline to complete.
-    pthread_join(resources.processor_thread, NULL);
-    pthread_join(resources.writer_thread, NULL);
+    static PipelineContext thread_args;
+    thread_args.config = &g_config;
+    thread_args.resources = &resources;
 
-    // Clear the progress line from the console if it was being displayed.
+    log_info("Starting processing threads...");
+    if (pthread_create(&resources.reader_thread_handle, NULL, reader_thread_func, &thread_args) != 0 ||
+        pthread_create(&resources.pre_processor_thread_handle, NULL, pre_processor_thread_func, &thread_args) != 0 ||
+        pthread_create(&resources.resampler_thread_handle, NULL, resampler_thread_func, &thread_args) != 0 ||
+        pthread_create(&resources.post_processor_thread_handle, NULL, post_processor_thread_func, &thread_args) != 0 ||
+        pthread_create(&resources.writer_thread_handle, NULL, writer_thread_func, &thread_args) != 0 ||
+        (g_config.iq_correction.enable && pthread_create(&resources.iq_optimization_thread_handle, NULL, iq_optimization_thread_func, &thread_args) != 0))
+    {
+        handle_fatal_thread_error("In Main: Failed to create one or more threads.", &resources);
+    } else {
+        pthread_join(resources.post_processor_thread_handle, NULL);
+        log_info("Post-processor thread has joined.");
+
+        pthread_join(resources.writer_thread_handle, NULL);
+        log_info("Writer thread has joined.");
+
+        pthread_join(resources.resampler_thread_handle, NULL);
+        log_info("Resampler thread has joined.");
+
+        pthread_join(resources.pre_processor_thread_handle, NULL);
+        log_info("Pre-processor thread has joined.");
+
+        if (g_config.iq_correction.enable) {
+            pthread_join(resources.iq_optimization_thread_handle, NULL);
+            log_info("IQ optimization thread has joined.");
+        }
+
+        pthread_join(resources.reader_thread_handle, NULL);
+        log_info("Reader thread has joined.");
+    }
+
     if (!g_config.output_to_stdout) {
         pthread_mutex_lock(&g_console_mutex);
-        #ifdef _WIN32
-        if (_isatty(_fileno(stderr))) { fprintf(stderr, "\r                                                                               \r"); }
-        #else
-        if (isatty(fileno(stderr))) { fprintf(stderr, "\r                                                                               \r"); }
-        #endif
+#ifdef _WIN32
+        if (_isatty(_fileno(stderr))) {
+            fprintf(stderr, "\r \r");
+        }
+#else
+        if (isatty(fileno(stderr))) {
+            fprintf(stderr, "\r \r");
+        }
+#endif
         pthread_mutex_unlock(&g_console_mutex);
     }
 
-    log_info("Processor and writer threads have joined.");
-    pthread_join(resources.reader_thread, NULL);
-    log_info("Reader thread has joined.");
-
-    // Release all allocated resources.
     cleanup_application(&g_config, &resources);
 
-    // Determine final exit status.
     bool processing_ok = !resources.error_occurred;
-
-    // Only print the final summary if the process was NOT stopped by an error.
-    // A user-initiated shutdown (Ctrl+C) is considered a normal exit, so we still want a summary.
-    if (processing_ok || is_shutdown_requested()) {
-        print_final_summary(&g_config, &resources, processing_ok);
-    }
-
+    print_final_summary(&g_config, &resources, processing_ok);
+    
     exit_status = (processing_ok || is_shutdown_requested()) ? EXIT_SUCCESS : EXIT_FAILURE;
 
     fflush(stderr);
-
-    // Free memory used by presets.
     presets_free_loaded(&g_config);
-
-    // Destroy the global mutex.
     pthread_mutex_destroy(&g_console_mutex);
+
     return exit_status;
 }
 
@@ -310,14 +289,13 @@ static void initialize_resource_struct(AppResources *resources) {
     resources->selected_input_ops = NULL;
     resources->progress_callback = NULL;
     resources->progress_callback_udata = NULL;
+    resources->natural_completion = false;
 #if defined(WITH_SDRPLAY)
     resources->sdr_api_is_open = false;
 #endif
 #if defined(WITH_HACKRF)
     resources->hackrf_dev = NULL;
 #endif
-
-    // Initialize config defaults
     g_config.iq_correction.enable = false;
     g_config.dc_block.enable = false;
 }
@@ -332,34 +310,17 @@ static bool validate_configuration(const AppConfig *config, const AppResources *
 }
 
 static bool initialize_application(AppConfig *config, AppResources *resources) {
-    bool success = false; // Assume failure until all steps complete
+    bool success = false;
     resources->config = config;
     InputSourceContext ctx = { .config = config, .resources = resources };
     float resample_ratio = 0.0f;
 
-    if (!resolve_file_paths(config)) {
-        goto cleanup;
-    }
-
-    if (!resources->selected_input_ops->initialize(&ctx)) {
-        goto cleanup;
-    }
-
-    if (!calculate_and_validate_resample_ratio(config, resources, &resample_ratio)) {
-        goto cleanup;
-    }
-
-    if (!allocate_processing_buffers(config, resources, resample_ratio)) {
-        goto cleanup;
-    }
-
-    if (!create_dsp_components(config, resources, resample_ratio)) {
-        goto cleanup;
-    }
-
-    if (!create_threading_components(resources)) {
-        goto cleanup;
-    }
+    if (!resolve_file_paths(config)) goto cleanup;
+    if (!resources->selected_input_ops->initialize(&ctx)) goto cleanup;
+    if (!calculate_and_validate_resample_ratio(config, resources, &resample_ratio)) goto cleanup;
+    if (!allocate_processing_buffers(config, resources, resample_ratio)) goto cleanup;
+    if (!create_dsp_components(config, resources, resample_ratio)) goto cleanup;
+    if (!create_threading_components(resources)) goto cleanup;
 
     resources->progress_callback = application_progress_callback;
     resources->progress_callback_udata = &g_console_mutex;
@@ -371,76 +332,35 @@ static bool initialize_application(AppConfig *config, AppResources *resources) {
         }
     }
 
-    if (!prepare_output_stream(config, resources)) {
-        goto cleanup;
-    }
+    if (!prepare_output_stream(config, resources)) goto cleanup;
 
-    // Initialize DC Block module
     if (config->dc_block.enable) {
-        if (!dc_block_init(config, resources)) {
-            goto cleanup;
-        }
+        if (!dc_block_init(config, resources)) goto cleanup;
     }
 
-    // Initialize I/Q Correction module
     if (config->iq_correction.enable) {
-        if (!iq_correct_init(config, resources)) {
-            goto cleanup;
-        }
+        if (!iq_correct_init(config, resources)) goto cleanup;
     }
 
-    // If we reached here, all initialization steps were successful
     success = true;
 
 cleanup:
     if (!success) {
         log_error("Application initialization failed. Cleaning up partially initialized resources.");
-        // This block is now the single point of cleanup for a failed initialization.
-        // It calls the same functions that cleanup_application would, ensuring no leaks.
-        if (config->dc_block.enable) {
-            dc_block_cleanup(resources);
-        }
-        if (config->iq_correction.enable) {
-            iq_correct_cleanup(resources);
-        }
-        destroy_threading_components(resources);
-        shift_destroy_nco(resources);
-        if (resources->resampler) {
-            msresamp_crcf_destroy(resources->resampler);
-            resources->resampler = NULL;
-        }
-        free(resources->work_item_pool);
-        free(resources->raw_input_pool);
-        free(resources->complex_scaled_pool);
-        free(resources->complex_shifted_pool);
-        free(resources->complex_resampled_pool);
-        free(resources->output_pool);
-    }
-
-    // Print the context-aware startup message only on success
-    if (success && !g_config.output_to_stdout) {
+        cleanup_application(config, resources);
+    } else if (!g_config.output_to_stdout) {
         bool is_sdr = resources->selected_input_ops->is_sdr_hardware();
         if (is_sdr) {
-            if (g_config.no_resample) {
-                log_info("Starting capture (passthrough mode)...");
-            } else {
-                log_info("Starting SDR capture...");
-            }
-        } else { // It's a file input
-            if (g_config.no_resample) {
-                log_info("Starting passthrough processing...");
-            } else {
-                log_info("Starting resampling process...");
-            }
+            log_info("Starting SDR capture...");
+        } else {
+            log_info("Starting file processing...");
         }
     }
-
     return success;
 }
 
 static void cleanup_application(AppConfig *config, AppResources *resources) {
     if (!resources) return;
-
     InputSourceContext ctx = { .config = config, .resources = resources };
 
     if (resources->selected_input_ops && resources->selected_input_ops->cleanup) {
@@ -454,60 +374,59 @@ static void cleanup_application(AppConfig *config, AppResources *resources) {
         resources->final_output_size_bytes = resources->writer_ctx.ops.get_total_bytes_written(&resources->writer_ctx);
     }
 
-    // Cleanup DC Block module
     if (config->dc_block.enable) {
         dc_block_cleanup(resources);
     }
-
-    // Cleanup I/Q Correction module
     if (config->iq_correction.enable) {
         iq_correct_cleanup(resources);
     }
 
     destroy_threading_components(resources);
-    shift_destroy_nco(resources);
+    shift_destroy_ncos(resources);
+
     if (resources->resampler) {
         msresamp_crcf_destroy(resources->resampler);
         resources->resampler = NULL;
     }
 
-    free(resources->work_item_pool);
-    free(resources->raw_input_pool);
-    free(resources->complex_scaled_pool);
-    free(resources->complex_shifted_pool);
-    free(resources->complex_resampled_pool);
-    free(resources->output_pool);
+    free(resources->sample_chunk_pool);
+    free(resources->raw_input_data_pool);
+    free(resources->complex_pre_resample_data_pool);
+    free(resources->complex_post_resample_data_pool);
+    free(resources->complex_resampled_data_pool);
+    free(resources->final_output_data_pool);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     free_absolute_path_windows(&config->effective_input_filename_w, &config->effective_input_filename_utf8);
     free_absolute_path_windows(&config->effective_output_filename_w, &config->effective_output_filename_utf8);
-    #endif
+#endif
 }
 
 static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success) {
     if (config->output_to_stdout) {
-        return; // Don't print summary for stdout piping
+        return;
     }
-
     const int label_width = 32;
     char size_buf[40];
     char duration_buf[40];
+
     format_file_size(resources->final_output_size_bytes, size_buf, sizeof(size_buf));
     double duration_secs = difftime(time(NULL), resources->start_time);
     format_duration(duration_secs, duration_buf, sizeof(duration_buf));
     unsigned long long total_output_samples = resources->total_output_frames * 2;
 
     fprintf(stderr, "\n--- Final Summary ---\n");
-
-    if (success && !is_shutdown_requested()) {
+    if (!success) {
+        fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Stopped Due to Error");
+        log_error("Processing stopped after %llu input frames.", resources->total_frames_read);
+        fprintf(stderr, "%-*s %s (possibly incomplete)\n", label_width, "Output File Size:", size_buf);
+    } else if (resources->natural_completion) {
         fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Completed Successfully");
         fprintf(stderr, "%-*s %s\n", label_width, "Processing Duration:", duration_buf);
-        fprintf(stderr, "%-*s %lld / %lld (100.0%%)\n", label_width, "Input Frames Processed:",
-                (long long)resources->source_info.frames, (long long)resources->source_info.frames);
+        fprintf(stderr, "%-*s %llu / %lld (100.0%%)\n", label_width, "Input Frames Processed:", resources->total_frames_read, (long long)resources->source_info.frames);
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Generated:", resources->total_output_frames);
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Generated:", total_output_samples);
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
-
     } else if (is_shutdown_requested()) {
         bool is_sdr_input = resources->selected_input_ops->is_sdr_hardware();
         if (is_sdr_input) {
@@ -517,7 +436,6 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
         }
         const char* duration_label = is_sdr_input ? "Capture Duration:" : "Processing Duration:";
         fprintf(stderr, "%-*s %s\n", label_width, duration_label, duration_buf);
-
         if (is_sdr_input) {
             fprintf(stderr, "%-*s %llu\n", label_width, "Input Frames Processed:", resources->total_frames_read);
         } else {
@@ -525,17 +443,11 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
             if (resources->source_info.frames > 0) {
                 percentage = ((double)resources->total_frames_read / (double)resources->source_info.frames) * 100.0;
             }
-            fprintf(stderr, "%-*s %llu / %lld (%.1f%%)\n", label_width, "Input Frames Processed:",
-                    resources->total_frames_read, (long long)resources->source_info.frames, percentage);
+            fprintf(stderr, "%-*s %llu / %lld (%.1f%%)\n", label_width, "Input Frames Processed:", resources->total_frames_read, (long long)resources->source_info.frames, percentage);
         }
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Generated:", resources->total_output_frames);
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Generated:", total_output_samples);
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
-
-    } else { // Error occurred
-        fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Stopped Due to Error");
-        log_error("Processing stopped after %llu input frames.", resources->total_frames_read);
-        fprintf(stderr, "%-*s %s (possibly incomplete)\n", label_width, "Output File Size:", size_buf);
     }
     fprintf(stderr, "\n");
 }

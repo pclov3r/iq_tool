@@ -47,4 +47,5 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
  */
 void iq_correct_cleanup(AppResources* resources);
 
+
 #endif // IQ_CORRECT_H_

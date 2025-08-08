@@ -1,4 +1,3 @@
-// signal_handler.c
 #include "signal_handler.h"
 #include "log.h"
 #include "types.h"
@@ -8,27 +7,28 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <io.h>      // Required for _isatty() and _fileno()
+#include <io.h> // Required for _isatty() and _fileno()
 #else
 #include <signal.h>
 #include <pthread.h>
-#include <unistd.h>  // Required for isatty() and fileno()
+#include <unistd.h> // Required for isatty() and fileno()
 #endif
+
 
 // --- Add an external declaration for the global console mutex defined in main.c ---
 extern pthread_mutex_t g_console_mutex;
 
 // --- Define a sequence to clear the current line on a terminal ---
-#define LINE_CLEAR_SEQUENCE "\r                                                                                \r"
+#define LINE_CLEAR_SEQUENCE "\r \r"
 
 // This static global is the standard way to give a signal/console handler
 // access to the application's state.
 static AppResources *g_resources_for_signal_handler = NULL;
 static volatile sig_atomic_t g_shutdown_flag = 0;
 
+
 #ifdef _WIN32
 // --- WINDOWS IMPLEMENTATION ---
-
 static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
     switch (dwCtrlType) {
         case CTRL_C_EVENT:
@@ -52,7 +52,6 @@ static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
 
 #else
 // --- POSIX (LINUX) IMPLEMENTATION ---
-
 void* signal_handler_thread(void *arg) {
     // This argument is now implicitly used via the global g_resources_for_signal_handler
     (void)arg;
@@ -76,9 +75,9 @@ void* signal_handler_thread(void *arg) {
 }
 #endif
 
+
 void setup_signal_handlers(AppResources *resources) {
     g_resources_for_signal_handler = resources;
-
 #ifdef _WIN32
     if (!SetConsoleCtrlHandler(console_ctrl_handler, TRUE)) {
         log_warn("Failed to register console control handler.");
@@ -88,7 +87,6 @@ void setup_signal_handlers(AppResources *resources) {
     sigemptyset(&signal_set);
     sigaddset(&signal_set, SIGINT);
     sigaddset(&signal_set, SIGTERM);
-
     if (pthread_sigmask(SIG_BLOCK, &signal_set, NULL) != 0) {
         fprintf(stderr, "FATAL: Failed to set signal mask.\n");
         exit(EXIT_FAILURE);
@@ -112,9 +110,19 @@ void request_shutdown(void) {
     g_shutdown_flag = 1;
 
     if (g_resources_for_signal_handler) {
-        if (g_resources_for_signal_handler->input_q) queue_signal_shutdown(g_resources_for_signal_handler->input_q);
-        if (g_resources_for_signal_handler->output_q) queue_signal_shutdown(g_resources_for_signal_handler->output_q);
-        if (g_resources_for_signal_handler->free_pool_q) queue_signal_shutdown(g_resources_for_signal_handler->free_pool_q);
+        // Signal ALL queues to ensure every thread wakes up
+        if (g_resources_for_signal_handler->free_sample_chunk_queue)
+            queue_signal_shutdown(g_resources_for_signal_handler->free_sample_chunk_queue);
+        if (g_resources_for_signal_handler->raw_to_pre_process_queue)
+            queue_signal_shutdown(g_resources_for_signal_handler->raw_to_pre_process_queue);
+        if (g_resources_for_signal_handler->pre_process_to_resampler_queue)
+            queue_signal_shutdown(g_resources_for_signal_handler->pre_process_to_resampler_queue);
+        if (g_resources_for_signal_handler->resampler_to_post_process_queue)
+            queue_signal_shutdown(g_resources_for_signal_handler->resampler_to_post_process_queue);
+        if (g_resources_for_signal_handler->final_output_queue)
+            queue_signal_shutdown(g_resources_for_signal_handler->final_output_queue);
+        if (g_resources_for_signal_handler->iq_optimization_data_queue)
+            queue_signal_shutdown(g_resources_for_signal_handler->iq_optimization_data_queue);
     }
 }
 

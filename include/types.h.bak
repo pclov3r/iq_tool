@@ -1,5 +1,3 @@
-// types.h
-
 #ifndef TYPES_H_
 #define TYPES_H_
 
@@ -24,6 +22,8 @@
 #if __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_ATOMICS__)
 #include <stdatomic.h>
 #else
+// Fallback for older compilers - this will require a mutex in practice
+// but for the structure definition, we can use a volatile int.
 #define _Atomic volatile
 #endif
 
@@ -43,21 +43,26 @@
 struct InputSourceOps;
 struct AppConfig;
 struct AppResources;
-struct SampleChunk;
+struct WorkItem;
 struct FileWriterContext;
 
 // --- Enums ---
+/**
+ * @brief Defines all supported sample formats, inspired by convert-samples.
+ */
 typedef enum {
     FORMAT_UNKNOWN, S8, U8, S16, U16, S32, U32, F32,
     CS8, CU8, CS16, CU16, CS32, CU32, CF32
 } format_t;
 
+/** @brief Defines the output container type. */
 typedef enum {
     OUTPUT_TYPE_RAW,
     OUTPUT_TYPE_WAV,
     OUTPUT_TYPE_WAV_RF64
 } OutputType;
 
+/** @brief Identifies the software that created a WAV file from metadata. */
 typedef enum {
     SDR_SOFTWARE_UNKNOWN,
     SDR_CONSOLE,
@@ -68,8 +73,12 @@ typedef enum {
 
 // --- Structs & Typedefs ---
 
+/** @brief A convenient alias for a single-precision complex float. */
 typedef float complex complex_float_t;
 
+/**
+ * @brief A union to hold any type of sample, inspired by convert-samples.
+ */
 typedef union {
     char s8;
     unsigned char u8;
@@ -87,6 +96,7 @@ typedef union {
     float complex cf32;
 } sample_t;
 
+/** @brief Represents a single preset loaded from the configuration file. */
 typedef struct {
     char* name;
     char* description;
@@ -95,11 +105,13 @@ typedef struct {
     OutputType output_type;
 } PresetDefinition;
 
+/** @brief Stores basic information about the input source. */
 typedef struct {
     int64_t frames;
     int samplerate;
 } InputSourceInfo;
 
+/** @brief Stores metadata parsed from WAV file chunks or filenames. */
 typedef struct {
     SdrSoftwareType source_software;
     char software_name[64];
@@ -118,16 +130,19 @@ typedef struct {
 
 #define MAX_SUMMARY_ITEMS 16
 
+/** @brief A single key-value pair for the configuration summary. */
 typedef struct {
     char label[64];
     char value[128];
 } SummaryItem;
 
+/** @brief A collection of summary items for display. */
 typedef struct {
     SummaryItem items[MAX_SUMMARY_ITEMS];
     int count;
 } InputSummaryInfo;
 
+/** @brief Defines the function pointer interface for file writer operations. */
 typedef struct {
     bool (*open)(struct FileWriterContext* ctx, const struct AppConfig* config, struct AppResources* resources);
     size_t (*write)(struct FileWriterContext* ctx, const void* buffer, size_t bytes_to_write);
@@ -135,21 +150,26 @@ typedef struct {
     long long (*get_total_bytes_written)(const struct FileWriterContext* ctx);
 } FileWriterOps;
 
+/** @brief The context for a file writer, holding its state and operations. */
 typedef struct FileWriterContext {
     void* private_data;
     FileWriterOps ops;
     long long total_bytes_written;
 } FileWriterContext;
 
+// --- I/Q Correction Configuration (for AppConfig) ---
 typedef struct {
     bool enable;
 } IqCorrectionConfig;
 
+// --- DC Block Configuration (for AppConfig) ---
 typedef struct {
     bool enable;
 } DcBlockConfig;
 
+/** @brief Holds all application configuration settings parsed from the command line. */
 typedef struct AppConfig {
+    // --- Input & Output Arguments ---
     char *input_type_str;
     char *input_filename_arg;
     char *output_filename_arg;
@@ -157,6 +177,8 @@ typedef struct AppConfig {
     char *output_type_name;
     bool output_type_provided;
     bool output_to_stdout;
+
+    // --- Processing Arguments ---
     char *preset_name;
     float gain;
     bool gain_provided;
@@ -168,8 +190,14 @@ typedef struct AppConfig {
     bool no_resample;
     double user_defined_target_rate;
     bool user_rate_provided;
+
+    // --- I/Q Correction Configuration ---
     IqCorrectionConfig iq_correction;
+
+    // --- DC Block Configuration ---
     DcBlockConfig dc_block;
+
+    // --- SDR General Arguments ---
 #if defined(WITH_SDRPLAY) || defined(WITH_HACKRF)
     struct {
         double rf_freq_hz;
@@ -177,6 +205,8 @@ typedef struct AppConfig {
         bool bias_t_enable;
     } sdr;
 #endif
+
+    // --- SDRplay-Specific Arguments ---
 #if defined(WITH_SDRPLAY)
     struct {
         bool use_sdrplay_input;
@@ -193,6 +223,8 @@ typedef struct AppConfig {
         bool bandwidth_provided;
     } sdrplay;
 #endif
+
+    // --- HackRF-Specific Arguments ---
 #if defined(WITH_HACKRF)
     struct {
         bool use_hackrf_input;
@@ -205,16 +237,22 @@ typedef struct AppConfig {
         bool sample_rate_provided;
     } hackrf;
 #endif
+
+    // --- Raw File Input Arguments ---
     struct {
         double sample_rate_hz;
         bool sample_rate_provided;
         char *format_str;
         bool format_provided;
     } raw_file;
+
+    // --- Resolved/Derived Configuration ---
     OutputType output_type;
     format_t output_format;
     double target_rate;
     bool help_requested;
+
+    // --- Effective Paths (Platform-Specific) ---
 #ifdef _WIN32
     wchar_t *effective_input_filename_w;
     wchar_t *effective_output_filename_w;
@@ -224,66 +262,103 @@ typedef struct AppConfig {
     char *effective_input_filename;
     char *effective_output_filename;
 #endif
+
+    // --- Loaded Presets ---
     PresetDefinition* presets;
     int num_presets;
+
 } AppConfig;
 
-typedef struct SampleChunk {
-    void* raw_input_data;
-    complex_float_t* complex_pre_resample_data;
-    complex_float_t* complex_resampled_data;
-    complex_float_t* complex_post_resample_data;
-    unsigned char* final_output_data;
+/** @brief Represents a single chunk of work passing through the pipeline. */
+typedef struct WorkItem {
+    // --- Renamed buffers to reflect their stage in the granular pipeline ---
+    void* raw_input_data;                 // From Reader
+    complex_float_t* complex_pre_resample_data; // From Pre-Processor
+    complex_float_t* complex_resampled_data;    // From Resampler
+    complex_float_t* complex_post_resample_data; // From Post-Processor (if post-shift)
+    unsigned char* final_output_data;           // From Post-Processor
+
+    // --- Metadata for the chunk ---
     int64_t frames_read;
     unsigned int frames_to_write;
     bool is_last_chunk;
-    bool stream_discontinuity_event;
-} SampleChunk;
+
+} WorkItem;
 
 
+/** @brief Function pointer type for the progress update callback. */
 typedef void (*ProgressUpdateFn)(unsigned long long current_read_frames, long long total_input_frames, unsigned long long total_output_frames, void* udata);
 
+
+// --- I/Q Correction Resources (for AppResources) ---
+
+/** @brief A struct to hold the I/Q correction factor pair for atomic updates. */
 typedef struct {
     float mag;
     float phase;
 } IqCorrectionFactors;
 
+// This struct holds the state for the SDR#-style I/Q correction algorithm.
 typedef struct {
+    // --- Double-buffering mechanism for thread-safe factor updates ---
     IqCorrectionFactors factors_buffer[2];
-    _Atomic int active_buffer_idx;
+    _Atomic int active_buffer_idx; // 0 or 1
+
+    // --- FFT & Buffers (now private to the IQ Optimization Thread) ---
     fftplan fft_plan;
     complex_float_t* fft_buffer;
     complex_float_t* fft_shift_buffer;
     float* spectrum_buffer;
     float* window_coeffs;
+
+    // --- Optimization State ---
     float average_power;
     float power_range;
+
+    // --- Accumulator for Optimization ---
     complex_float_t* optimization_accum_buffer;
     int samples_in_accum;
+
 } IqCorrectionResources;
 
+
+// --- DC Block Resources (for AppResources) ---
 typedef struct {
-    iirfilt_crcf dc_block_filter;
+    iirfilt_crcf dc_block_filter; // liquid-dsp IIR filter object
 } DcBlockResources;
 
+
+/** @brief Holds all runtime resources, state, and handles for the application. */
 typedef struct AppResources {
     const struct AppConfig* config;
+
+    // --- DSP Components ---
     msresamp_crcf resampler;
-    nco_crcf pre_resample_nco;
-    nco_crcf post_resample_nco;
+    nco_crcf pre_resample_nco;  // For pre-resample frequency shift
+    nco_crcf post_resample_nco; // For post-resample frequency shift
     double actual_nco_shift_hz;
-    bool is_passthrough;
+    bool is_passthrough; // True if --no-resample is used
+
+    // --- I/Q Correction Resources ---
     IqCorrectionResources iq_correction;
+
+    // --- DC Block Resources ---
     DcBlockResources dc_block;
+
+    // --- Input Source Info & State ---
     struct InputSourceOps* selected_input_ops;
     InputSourceInfo source_info;
     format_t input_format;
     size_t input_bytes_per_sample_pair;
     SdrMetadata sdr_info;
     bool sdr_info_present;
-    SNDFILE *infile;
+    SNDFILE *infile; // Used for both WAV and Raw File input
+
+    // --- Output State ---
     FileWriterContext writer_ctx;
     size_t output_bytes_per_sample_pair;
+
+    // --- SDR Device Handles ---
 #if defined(WITH_SDRPLAY)
     sdrplay_api_DeviceT *sdr_device;
     sdrplay_api_DeviceParamsT *sdr_device_params;
@@ -292,34 +367,44 @@ typedef struct AppResources {
 #if defined(WITH_HACKRF)
     hackrf_device* hackrf_dev;
 #endif
-    SampleChunk* sample_chunk_pool;
-    void* raw_input_data_pool;
-    complex_float_t* complex_pre_resample_data_pool;
-    complex_float_t* complex_post_resample_data_pool;
-    complex_float_t* complex_resampled_data_pool;
-    unsigned char* final_output_data_pool;
+
+    // --- Buffer Pools ---
+    WorkItem* work_item_pool;
+    void* raw_input_pool;
+    complex_float_t* complex_scaled_pool; // Will be renamed/repurposed
+    complex_float_t* complex_shifted_pool; // Will be renamed/repurposed
+    complex_float_t* complex_resampled_pool;
+    unsigned char* output_pool;
     unsigned int max_out_samples;
-    pthread_t reader_thread_handle;
-    pthread_t pre_processor_thread_handle;
-    pthread_t resampler_thread_handle;
-    pthread_t post_processor_thread_handle;
-    pthread_t writer_thread_handle;
-    pthread_t iq_optimization_thread_handle;
-    Queue* free_sample_chunk_queue;
+
+    // --- Threading & Synchronization ---
+    pthread_t reader_thread;
+    pthread_t pre_processor_thread; // New
+    pthread_t resampler_thread;     // Was processor_thread
+    pthread_t post_processor_thread;// New
+    pthread_t writer_thread;
+    pthread_t iq_optimization_thread; // New
+
+    // --- Renamed and new queues for the granular pipeline ---
+    Queue* free_work_item_queue;
     Queue* raw_to_pre_process_queue;
     Queue* pre_process_to_resampler_queue;
     Queue* resampler_to_post_process_queue;
     Queue* final_output_queue;
     Queue* iq_optimization_data_queue;
+
     pthread_mutex_t progress_mutex;
+    pthread_mutex_t dsp_mutex; // Role will be reduced/eliminated
     bool error_occurred;
-    bool natural_completion; // *** NEW FLAG ***
+
+    // --- Progress Tracking & Statistics ---
     unsigned long long total_frames_read;
     unsigned long long total_output_frames;
     long long final_output_size_bytes;
     time_t start_time;
     ProgressUpdateFn progress_callback;
     void* progress_callback_udata;
+
 } AppResources;
 
 #endif // TYPES_H_

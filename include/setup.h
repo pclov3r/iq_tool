@@ -29,7 +29,7 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *reso
 /**
  * @brief Allocates all necessary processing buffer pools.
  *
- * Calculates required sizes for each WorkItem and allocates large contiguous
+ * Calculates required sizes for each SampleChunk and allocates large contiguous
  * memory pools for raw input, scaled complex data, shifted data (if needed),
  * resampled data, and final output data.
  *
@@ -41,7 +41,7 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *reso
 bool allocate_processing_buffers(AppConfig *config, AppResources *resources, float resample_ratio);
 
 /**
- * @brief Creates and initializes the liquid-dsp NCO (if needed) and Resampler objects.
+ * @brief Creates and initializes the liquid-dsp NCOs (if needed) and Resampler objects.
  * @param config Pointer to the AppConfig struct (read-only).
  * @param resources Pointer to the AppResources struct to be populated with DSP objects.
  * @param resample_ratio The calculated resampling ratio for the resampler.
@@ -82,7 +82,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
  * @param config Pointer to the AppConfig struct.
  * @param resources Pointer to the AppResources struct.
  * @return true if the user chooses to continue or no warning is needed, false
- *         if the user cancels the operation.
+ * if the user cancels the operation.
  */
 bool check_nyquist_warning(const AppConfig *config, const AppResources *resources);
 
@@ -97,5 +97,6 @@ bool check_nyquist_warning(const AppConfig *config, const AppResources *resource
  * @return true on success, false on failure (e.g., cannot open file, user cancels).
  */
 bool prepare_output_stream(AppConfig *config, AppResources *resources);
+
 
 #endif // SETUP_H_

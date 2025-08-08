@@ -489,23 +489,24 @@ endif()
 set(SOURCES
     src/cli.c
     src/config.c
-    src/dc_block.c          # ADDED
+    src/dc_block.c
     src/file_writer.c
-    src/iq_correct.c        # ADDED
+    src/input_manager.c
+    src/input_rawfile.c
+    src/input_wav.c
+    src/io_threads.c
+    src/iq_correct.c
     src/log.c
     src/main.c
     src/platform.c
     src/presets_loader.c
+    src/processing_threads.c
     src/queue.c
-    src/resample.c
     src/sample_convert.c
-    src/spectrum_shift.c
-    src/signal_handler.c
     src/setup.c
+    src/signal_handler.c
+    src/spectrum_shift.c
     src/utils.c
-    src/input_manager.c
-    src/input_rawfile.c
-    src/input_wav.c
 )
 
 if(WITH_SDRPLAY)

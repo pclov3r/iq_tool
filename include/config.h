@@ -9,7 +9,7 @@
 // Buffer sizes and processing parameters
 #define BUFFER_SIZE_SAMPLES       8192 // Samples PER I/Q PAIR for input chunk processing
 #define PROGRESS_UPDATE_INTERVAL  50   // Update progress message every N write loops
-#define NUM_BUFFERS               4    // Number of WorkItem buffers for the pipeline
+#define NUM_BUFFERS               4    // Number of SampleChunk buffers for the pipeline
 
 // Resampling ratio limits
 #define MIN_ACCEPTABLE_RATIO      0.001f
