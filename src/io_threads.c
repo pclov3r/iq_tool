@@ -25,7 +25,7 @@ void* reader_thread_func(void* arg) {
 
     if (!is_shutdown_requested()) {
         log_debug("Reader thread finished naturally. Initiating pipeline shutdown.");
-        resources->natural_completion = true;
+        resources->end_of_stream_reached = true;
         request_shutdown();
     }
 

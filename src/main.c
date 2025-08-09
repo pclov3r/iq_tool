@@ -231,40 +231,29 @@ int main(int argc, char *argv[]) {
     {
         handle_fatal_thread_error("In Main: Failed to create one or more threads.", &resources);
     } else {
+        // Wait for all threads to complete.
         pthread_join(resources.post_processor_thread_handle, NULL);
-        log_info("Post-processor thread has joined.");
-
         pthread_join(resources.writer_thread_handle, NULL);
-        log_info("Writer thread has joined.");
-
         pthread_join(resources.resampler_thread_handle, NULL);
-        log_info("Resampler thread has joined.");
-
         pthread_join(resources.pre_processor_thread_handle, NULL);
-        log_info("Pre-processor thread has joined.");
-
         if (g_config.iq_correction.enable) {
             pthread_join(resources.iq_optimization_thread_handle, NULL);
-            log_info("IQ optimization thread has joined.");
         }
-
         pthread_join(resources.reader_thread_handle, NULL);
-        log_info("Reader thread has joined.");
     }
 
-    if (!g_config.output_to_stdout) {
+    // After all threads are joined, finalize the progress bar line ONLY on natural completion.
+    // On Ctrl+C, the signal handler's log message already adds a newline.
+    if (resources.end_of_stream_reached && !g_config.output_to_stdout) {
         pthread_mutex_lock(&g_console_mutex);
-#ifdef _WIN32
-        if (_isatty(_fileno(stderr))) {
-            fprintf(stderr, "\r \r");
-        }
-#else
         if (isatty(fileno(stderr))) {
-            fprintf(stderr, "\r \r");
+            fprintf(stderr, "\n");
+            fflush(stderr);
         }
-#endif
         pthread_mutex_unlock(&g_console_mutex);
     }
+
+    log_info("All processing threads have joined.");
 
     cleanup_application(&g_config, &resources);
 
@@ -289,7 +278,7 @@ static void initialize_resource_struct(AppResources *resources) {
     resources->selected_input_ops = NULL;
     resources->progress_callback = NULL;
     resources->progress_callback_udata = NULL;
-    resources->natural_completion = false;
+    resources->end_of_stream_reached = false;
 #if defined(WITH_SDRPLAY)
     resources->sdr_api_is_open = false;
 #endif
@@ -420,7 +409,7 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
         fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Stopped Due to Error");
         log_error("Processing stopped after %llu input frames.", resources->total_frames_read);
         fprintf(stderr, "%-*s %s (possibly incomplete)\n", label_width, "Output File Size:", size_buf);
-    } else if (resources->natural_completion) {
+    } else if (resources->end_of_stream_reached) {
         fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Completed Successfully");
         fprintf(stderr, "%-*s %s\n", label_width, "Processing Duration:", duration_buf);
         fprintf(stderr, "%-*s %llu / %lld (100.0%%)\n", label_width, "Input Frames Processed:", resources->total_frames_read, (long long)resources->source_info.frames);

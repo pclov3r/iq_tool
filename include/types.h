@@ -313,7 +313,7 @@ typedef struct AppResources {
     Queue* iq_optimization_data_queue;
     pthread_mutex_t progress_mutex;
     bool error_occurred;
-    bool natural_completion; // *** NEW FLAG ***
+    bool end_of_stream_reached; // *** NEW FLAG ***
     unsigned long long total_frames_read;
     unsigned long long total_output_frames;
     long long final_output_size_bytes;
