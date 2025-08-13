@@ -115,7 +115,7 @@ bool shift_check_nyquist_warning(const AppConfig *config, const AppResources *re
             clear_stdin_buffer();
             response = tolower(response);
             if (response == 'n') {
-                log_info("Operation cancelled by user.");
+                log_debug("Operation cancelled by user.");
                 return false;
             }
         } while (response != 'y');

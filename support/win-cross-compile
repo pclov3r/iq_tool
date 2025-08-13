@@ -16,11 +16,17 @@ LIQUID_LIB_BASE_PATH="${DEPS_BASE_PATH}/liquid-dsp"
 EXPAT_INCLUDE_DIR="${DEPS_BASE_PATH}/libexpat/expat/lib"
 EXPAT_LIBRARY="${DEPS_BASE_PATH}/libexpat/expat/build-win64/libexpat.dll.a"
 
+RTLSDR_INCLUDE_DIR="${DEPS_BASE_PATH}/rtl-sdr/include"
+RTLSDR_LIBRARY="${DEPS_BASE_PATH}/rtl-sdr/build-win64/src/librtlsdr.dll.a"
+
 SDRPLAY_INCLUDE_DIR="${DEPS_BASE_PATH}/sdrplay_api/include"
 SDRPLAY_LIBRARY="${DEPS_BASE_PATH}/sdrplay_api/x64/sdrplay_api.lib"
 
 HACKRF_INCLUDE_DIR="${DEPS_BASE_PATH}/hackrf/host/libhackrf/src/"
 HACKRF_LIBRARY="${DEPS_BASE_PATH}/hackrf/host/build-win64/libhackrf/src/libhackrf.dll.a"
+
+BLADERF_INCLUDE_DIR="${DEPS_BASE_PATH}/bladeRF/include"
+BLADERF_LIBRARY="${DEPS_BASE_PATH}/bladeRF/x64/bladeRF.lib"
 
 LIBUSB_INCLUDE_DIR="${DEPS_BASE_PATH}/libusb/build-win64/include/libusb-1.0/"
 LIBUSB_LIBRARY="${DEPS_BASE_PATH}/libusb/build-win64/lib/libusb-1.0.dll.a"
@@ -36,8 +42,10 @@ usage() {
     echo "                     This also sets the target CPU architecture to x86-64-v3."
     echo
     echo "Optional Build Options:"
+    echo "  --with-rtlsdr      Enable and link RTL-SDR support."
     echo "  --with-sdrplay     Enable and link SDRplay support."
     echo "  --with-hackrf      Enable and link HackRF support."
+    echo "  --with-bladerf     Enable and link bladeRF support."
     echo
     echo "Argument Passthrough:"
     echo "  --cmake-args \"...\" Pass additional quoted arguments to CMake."
@@ -57,8 +65,10 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
         --avx) BUILD_TYPE="avx";;
         --avx2) BUILD_TYPE="avx2";;
+        --with-rtlsdr) WITH_RTLSDR="ON";;
         --with-sdrplay) WITH_SDRPLAY="ON";;
         --with-hackrf) WITH_HACKRF="ON";;
+        --with-bladerf) WITH_BLADERF="ON";;
         --cmake-args) CMAKE_EXTRA_ARGS="$2"; shift;; # Consume argument value
         -h|--help) usage;;
         *)
@@ -104,17 +114,22 @@ host=x86_64-w64-mingw32
 
 # Construct a unique build directory name based on the selected options
 build_suffix="${BUILD_TYPE}"
+if [ -n "$WITH_RTLSDR" ]; then
+    build_suffix+="-rtlsdr"
+fi
 if [ -n "$WITH_SDRPLAY" ]; then
     build_suffix+="-sdrplay"
 fi
 if [ -n "$WITH_HACKRF" ]; then
     build_suffix+="-hackrf"
 fi
+if [ -n "$WITH_BLADERF" ]; then
+    build_suffix+="-bladerf"
+fi
 prefix=${root}/build-win64-${build_suffix}
 
 
 # --- Set up base CMake options in an array ---
-# CORRECTED: All -D flags now use the consistently named variables.
 cmake_opts=(
     -D CMAKE_SYSTEM_NAME=Windows
     -D CMAKE_C_COMPILER=${host}-gcc
@@ -134,6 +149,17 @@ cmake_opts+=(-D LIQUID_LIBRARY=${liquid_library_path})
 # Add the CPU_TARGET_ARCHITECTURE if determined
 if [ -n "$CPU_TARGET_ARCHITECTURE" ]; then
     cmake_opts+=(-D CPU_TARGET_ARCHITECTURE=${CPU_TARGET_ARCHITECTURE})
+fi
+
+# Add RTL-SDR support if the flag was used
+if [ -n "$WITH_RTLSDR" ]; then
+    cmake_opts+=(
+        -D WITH_RTLSDR=ON
+        -D RTLSDR_INCLUDE_DIR=${RTLSDR_INCLUDE_DIR}
+        -D RTLSDR_LIBRARY=${RTLSDR_LIBRARY}
+        -D LIBUSB_INCLUDE_DIR=${LIBUSB_INCLUDE_DIR}
+        -D LIBUSB_LIBRARY=${LIBUSB_LIBRARY}
+    )
 fi
 
 # Add SDRplay support if the flag was used
@@ -156,11 +182,19 @@ if [ -n "$WITH_HACKRF" ]; then
     )
 fi
 
+# Add bladeRF support if the flag was used
+if [ -n "$WITH_BLADERF" ]; then
+    cmake_opts+=(
+        -D WITH_BLADERF=ON
+        -D BLADERF_INCLUDE_DIR=${BLADERF_INCLUDE_DIR}
+        -D BLADERF_LIBRARY=${BLADERF_LIBRARY}
+        -D LIBUSB_INCLUDE_DIR=${LIBUSB_INCLUDE_DIR}
+        -D LIBUSB_LIBRARY=${LIBUSB_LIBRARY}
+    )
+fi
+
 # Add any extra CMake arguments passed by the user
 if [ -n "$CMAKE_EXTRA_ARGS" ]; then
-    # CMAKE_EXTRA_ARGS is already quoted, so we need to expand it carefully
-    # using eval or by ensuring it's treated as separate words.
-    # For simplicity and robustness with spaces, let's re-parse it into an array.
     read -r -a CMAKE_EXTRA_ARGS_ARRAY <<< "$CMAKE_EXTRA_ARGS"
     cmake_opts+=("${CMAKE_EXTRA_ARGS_ARRAY[@]}")
 fi
@@ -169,7 +203,6 @@ fi
 mkdir -p "${prefix}"
 cd "${prefix}"
 
-# Corrected cmake command
 cmake "${cmake_opts[@]}" ..
 
 make "${MAKE_ARGS[@]}"

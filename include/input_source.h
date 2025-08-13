@@ -1,4 +1,5 @@
-// input_source.h
+// src/input_source.h
+
 #ifndef INPUT_SOURCE_H_
 #define INPUT_SOURCE_H_
 
@@ -53,19 +54,19 @@ typedef struct InputSourceOps {
     void (*get_summary_info)(const InputSourceContext* ctx, InputSummaryInfo* info);
 
     /**
-     * @brief Validates the command-line options specific to this input source.
-     * @param config A read-only pointer to the application configuration.
+     * @brief Validates and post-processes the command-line options specific to this input source.
+     * @param config A pointer to the application configuration, which can be modified.
      * @return true if the options are valid, false otherwise.
      */
-    bool (*validate_options)(const AppConfig* config);
+    bool (*validate_options)(AppConfig* config); // <<< MODIFIED: config is now non-const
 
     /**
-     * @brief Reports whether the input source is a piece of SDR hardware.
+     * @brief Reports whether the input source has a known, finite length (like a file).
      *        This helps generic functions determine if the source is a live stream
      *        versus a finite file.
-     * @return true if the source is SDR hardware, false otherwise.
+     * @return true if the source has a known length, false otherwise (e.g., for a live SDR stream).
      */
-    bool (*is_sdr_hardware)(void);
+    bool (*has_known_length)(void);
 
 } InputSourceOps;
 

@@ -73,7 +73,7 @@ AppConfig g_config;
 
 // --- Forward Declarations for Static Helper Functions ---
 static void initialize_resource_struct(AppResources *resources);
-static bool validate_configuration(const AppConfig *config, const AppResources *resources);
+static bool validate_configuration(AppConfig *config, const AppResources *resources);
 static bool initialize_application(AppConfig *config, AppResources *resources);
 static void cleanup_application(AppConfig *config, AppResources *resources);
 static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success);
@@ -90,8 +90,8 @@ static void console_lock_function(bool lock, void *udata) {
 }
 
 // --- Progress Update Callback ---
-static void application_progress_callback(unsigned long long current_read_frames, long long total_input_frames, unsigned long long total_output_frames, void* udata) {
-    (void)total_output_frames;
+static void application_progress_callback(unsigned long long current_output_frames, long long total_output_frames, unsigned long long unused_arg, void* udata) {
+    (void)unused_arg; // This argument is no longer used but kept for signature compatibility
     pthread_mutex_t *console_mutex = (pthread_mutex_t *)udata;
     pthread_mutex_lock(console_mutex);
 
@@ -105,12 +105,13 @@ static void application_progress_callback(unsigned long long current_read_frames
     }
 #endif
 
-    if (total_input_frames > 0) {
-        double percentage = ((double)current_read_frames / (double)total_input_frames) * 100.0;
-        if (percentage > 100.0) percentage = 100.0;
-        fprintf(stderr, "\rProcessed %llu / %lld input frames (%.1f%%)...", current_read_frames, total_input_frames, percentage);
+    if (total_output_frames > 0) {
+        double percentage = ((double)current_output_frames / (double)total_output_frames) * 100.0;
+        if (percentage > 100.0) percentage = 100.0; // Clamp to 100%
+        fprintf(stderr, "\rWriting output frames %llu / %lld (%.1f%% Est.)...", current_output_frames, total_output_frames, percentage);
     } else {
-        fprintf(stderr, "\rProcessed %llu input frames...", current_read_frames);
+        // This handles live streams where the total is unknown
+        fprintf(stderr, "\rWritten %llu output frames...", current_output_frames);
     }
     fflush(stderr);
     pthread_mutex_unlock(console_mutex);
@@ -133,12 +134,38 @@ int main(int argc, char *argv[]) {
     log_set_level(LOG_INFO);
 
     AppResources resources;
-    int exit_status = EXIT_FAILURE;
-
+    
+    // --- Initialize g_config with defaults ---
     memset(&g_config, 0, sizeof(AppConfig));
-    g_config.help_requested = false;
+    input_manager_apply_defaults(&g_config); // Set module-specific defaults
+    g_config.gain = 1.0f;                    // Set global defaults
+
     initialize_resource_struct(&resources);
     reset_shutdown_flag();
+    setup_signal_handlers(&resources);
+
+#ifndef _WIN32
+    pthread_t sig_thread_id;
+    pthread_attr_t sig_thread_attr;
+    if (pthread_attr_init(&sig_thread_attr) != 0) {
+        log_fatal("Failed to initialize signal thread attributes.");
+        pthread_mutex_destroy(&g_console_mutex);
+        return EXIT_FAILURE;
+    }
+    if (pthread_attr_setdetachstate(&sig_thread_attr, PTHREAD_CREATE_DETACHED) != 0) {
+        log_fatal("Failed to set signal thread to detached state.");
+        pthread_attr_destroy(&sig_thread_attr);
+        pthread_mutex_destroy(&g_console_mutex);
+        return EXIT_FAILURE;
+    }
+    if (pthread_create(&sig_thread_id, &sig_thread_attr, signal_handler_thread, &resources) != 0) {
+        log_fatal("Failed to create detached signal handler thread.");
+        pthread_attr_destroy(&sig_thread_attr);
+        pthread_mutex_destroy(&g_console_mutex);
+        return EXIT_FAILURE;
+    }
+    pthread_attr_destroy(&sig_thread_attr);
+#endif
 
     if (!presets_load_from_file(&g_config)) {
         presets_free_loaded(&g_config);
@@ -146,24 +173,19 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    setup_signal_handlers(&resources);
-
-    if (!parse_arguments(argc, argv, &g_config)) {
-        print_usage(argv[0]);
-        presets_free_loaded(&g_config);
-        pthread_mutex_destroy(&g_console_mutex);
-        return EXIT_FAILURE;
-    }
-
-    if (g_config.help_requested) {
+    // If no arguments are provided, show the help screen and exit.
+    if (argc <= 1) {
         print_usage(argv[0]);
         presets_free_loaded(&g_config);
         pthread_mutex_destroy(&g_console_mutex);
         return EXIT_SUCCESS;
     }
 
-    if (!g_config.gain_provided) {
-        g_config.gain = 1.0f;
+    if (!parse_arguments(argc, argv, &g_config)) {
+        // Error messages are printed inside parse_arguments/argparse
+        presets_free_loaded(&g_config);
+        pthread_mutex_destroy(&g_console_mutex);
+        return EXIT_FAILURE;
     }
 
     resources.selected_input_ops = get_input_ops_by_name(g_config.input_type_str);
@@ -181,6 +203,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (!initialize_application(&g_config, &resources)) {
+        cleanup_application(&g_config, &resources);
         presets_free_loaded(&g_config);
         pthread_mutex_destroy(&g_console_mutex);
         return EXIT_FAILURE;
@@ -188,40 +211,11 @@ int main(int argc, char *argv[]) {
 
     resources.start_time = time(NULL);
 
-#ifndef _WIN32
-    pthread_t sig_thread_id;
-    pthread_attr_t sig_thread_attr;
-    if (pthread_attr_init(&sig_thread_attr) != 0) {
-        log_fatal("Failed to initialize signal thread attributes.");
-        cleanup_application(&g_config, &resources);
-        presets_free_loaded(&g_config);
-        pthread_mutex_destroy(&g_console_mutex);
-        return EXIT_FAILURE;
-    }
-    if (pthread_attr_setdetachstate(&sig_thread_attr, PTHREAD_CREATE_DETACHED) != 0) {
-        log_fatal("Failed to set signal thread to detached state.");
-        pthread_attr_destroy(&sig_thread_attr);
-        cleanup_application(&g_config, &resources);
-        presets_free_loaded(&g_config);
-        pthread_mutex_destroy(&g_console_mutex);
-        return EXIT_FAILURE;
-    }
-    if (pthread_create(&sig_thread_id, &sig_thread_attr, signal_handler_thread, &resources) != 0) {
-        log_fatal("Failed to create detached signal handler thread.");
-        pthread_attr_destroy(&sig_thread_attr);
-        cleanup_application(&g_config, &resources);
-        presets_free_loaded(&g_config);
-        pthread_mutex_destroy(&g_console_mutex);
-        return EXIT_FAILURE;
-    }
-    pthread_attr_destroy(&sig_thread_attr);
-#endif
-
     static PipelineContext thread_args;
     thread_args.config = &g_config;
     thread_args.resources = &resources;
 
-    log_info("Starting processing threads...");
+    log_debug("Starting processing threads...");
     if (pthread_create(&resources.reader_thread_handle, NULL, reader_thread_func, &thread_args) != 0 ||
         pthread_create(&resources.pre_processor_thread_handle, NULL, pre_processor_thread_func, &thread_args) != 0 ||
         pthread_create(&resources.resampler_thread_handle, NULL, resampler_thread_func, &thread_args) != 0 ||
@@ -230,39 +224,35 @@ int main(int argc, char *argv[]) {
         (g_config.iq_correction.enable && pthread_create(&resources.iq_optimization_thread_handle, NULL, iq_optimization_thread_func, &thread_args) != 0))
     {
         handle_fatal_thread_error("In Main: Failed to create one or more threads.", &resources);
-    } else {
-        // Wait for all threads to complete.
-        pthread_join(resources.post_processor_thread_handle, NULL);
-        pthread_join(resources.writer_thread_handle, NULL);
-        pthread_join(resources.resampler_thread_handle, NULL);
-        pthread_join(resources.pre_processor_thread_handle, NULL);
-        if (g_config.iq_correction.enable) {
-            pthread_join(resources.iq_optimization_thread_handle, NULL);
-        }
-        pthread_join(resources.reader_thread_handle, NULL);
     }
 
-    // After all threads are joined, finalize the progress bar line ONLY on natural completion.
-    // On Ctrl+C, the signal handler's log message already adds a newline.
+    pthread_join(resources.post_processor_thread_handle, NULL);
+    pthread_join(resources.writer_thread_handle, NULL);
+    pthread_join(resources.resampler_thread_handle, NULL);
+    pthread_join(resources.pre_processor_thread_handle, NULL);
+    if (g_config.iq_correction.enable) {
+        pthread_join(resources.iq_optimization_thread_handle, NULL);
+    }
+    pthread_join(resources.reader_thread_handle, NULL);
+
     if (resources.end_of_stream_reached && !g_config.output_to_stdout) {
         pthread_mutex_lock(&g_console_mutex);
         if (isatty(fileno(stderr))) {
-            fprintf(stderr, "\n");
+            fprintf(stderr, "\r                                                                               \r");
             fflush(stderr);
         }
         pthread_mutex_unlock(&g_console_mutex);
     }
 
-    log_info("All processing threads have joined.");
+    log_debug("All processing threads have joined.");
 
     cleanup_application(&g_config, &resources);
 
     bool processing_ok = !resources.error_occurred;
     print_final_summary(&g_config, &resources, processing_ok);
     
-    exit_status = (processing_ok || is_shutdown_requested()) ? EXIT_SUCCESS : EXIT_FAILURE;
+    int exit_status = (processing_ok || is_shutdown_requested()) ? EXIT_SUCCESS : EXIT_FAILURE;
 
-    fflush(stderr);
     presets_free_loaded(&g_config);
     pthread_mutex_destroy(&g_console_mutex);
 
@@ -270,26 +260,19 @@ int main(int argc, char *argv[]) {
 }
 
 
-// --- Static Helper Function Implementations ---
-
 static void initialize_resource_struct(AppResources *resources) {
     memset(resources, 0, sizeof(AppResources));
-    resources->final_output_size_bytes = -1LL;
-    resources->selected_input_ops = NULL;
-    resources->progress_callback = NULL;
-    resources->progress_callback_udata = NULL;
-    resources->end_of_stream_reached = false;
-#if defined(WITH_SDRPLAY)
-    resources->sdr_api_is_open = false;
-#endif
-#if defined(WITH_HACKRF)
-    resources->hackrf_dev = NULL;
-#endif
+    
+    // All pointers and numeric types in the resources struct are now zero-initialized by memset.
+    // This includes SDR device handles (e.g., resources->hackrf_dev) which are correctly set to NULL,
+    // and flags (e.g., resources->sdr_api_is_open) which are correctly set to false.
+
+    // Explicitly initialize any non-zero default values or global config flags here.
     g_config.iq_correction.enable = false;
     g_config.dc_block.enable = false;
 }
 
-static bool validate_configuration(const AppConfig *config, const AppResources *resources) {
+static bool validate_configuration(AppConfig *config, const AppResources *resources) {
     if (resources->selected_input_ops->validate_options) {
         if (!resources->selected_input_ops->validate_options(config)) {
             return false;
@@ -335,11 +318,10 @@ static bool initialize_application(AppConfig *config, AppResources *resources) {
 
 cleanup:
     if (!success) {
-        log_error("Application initialization failed. Cleaning up partially initialized resources.");
-        cleanup_application(config, resources);
+        log_error("Application initialization failed.");
     } else if (!g_config.output_to_stdout) {
-        bool is_sdr = resources->selected_input_ops->is_sdr_hardware();
-        if (is_sdr) {
+        bool source_has_known_length = resources->selected_input_ops->has_known_length();
+        if (!source_has_known_length) {
             log_info("Starting SDR capture...");
         } else {
             log_info("Starting file processing...");
@@ -407,36 +389,37 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
     fprintf(stderr, "\n--- Final Summary ---\n");
     if (!success) {
         fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Stopped Due to Error");
-        log_error("Processing stopped after %llu input frames.", resources->total_frames_read);
+        if (resources->total_frames_read > 0) {
+            log_error("Processing stopped after %llu input frames.", resources->total_frames_read);
+        }
         fprintf(stderr, "%-*s %s (possibly incomplete)\n", label_width, "Output File Size:", size_buf);
     } else if (resources->end_of_stream_reached) {
         fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Completed Successfully");
         fprintf(stderr, "%-*s %s\n", label_width, "Processing Duration:", duration_buf);
-        fprintf(stderr, "%-*s %llu / %lld (100.0%%)\n", label_width, "Input Frames Processed:", resources->total_frames_read, (long long)resources->source_info.frames);
-        fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Generated:", resources->total_output_frames);
-        fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Generated:", total_output_samples);
+        fprintf(stderr, "%-*s %llu / %lld (100.0%%)\n", label_width, "Input Frames Read:", resources->total_frames_read, (long long)resources->source_info.frames);
+        fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", resources->total_output_frames);
+        fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Written:", total_output_samples);
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
     } else if (is_shutdown_requested()) {
-        bool is_sdr_input = resources->selected_input_ops->is_sdr_hardware();
-        if (is_sdr_input) {
+        bool source_has_known_length = resources->selected_input_ops->has_known_length();
+        if (!source_has_known_length) {
             fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Capture Stopped by User");
         } else {
             fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Processing Cancelled by User");
         }
-        const char* duration_label = is_sdr_input ? "Capture Duration:" : "Processing Duration:";
+        const char* duration_label = !source_has_known_length ? "Capture Duration:" : "Processing Duration:";
         fprintf(stderr, "%-*s %s\n", label_width, duration_label, duration_buf);
-        if (is_sdr_input) {
-            fprintf(stderr, "%-*s %llu\n", label_width, "Input Frames Processed:", resources->total_frames_read);
+        if (!source_has_known_length) {
+            fprintf(stderr, "%-*s %llu\n", label_width, "Input Frames Read:", resources->total_frames_read);
         } else {
             double percentage = 0.0;
             if (resources->source_info.frames > 0) {
                 percentage = ((double)resources->total_frames_read / (double)resources->source_info.frames) * 100.0;
             }
-            fprintf(stderr, "%-*s %llu / %lld (%.1f%%)\n", label_width, "Input Frames Processed:", resources->total_frames_read, (long long)resources->source_info.frames, percentage);
+            fprintf(stderr, "%-*s %llu / %lld (%.1f%%)\n", label_width, "Input Frames Read:", resources->total_frames_read, (long long)resources->source_info.frames, percentage);
         }
-        fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Generated:", resources->total_output_frames);
-        fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Generated:", total_output_samples);
+        fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", resources->total_output_frames);
+        fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Written:", total_output_samples);
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
     }
-    fprintf(stderr, "\n");
 }

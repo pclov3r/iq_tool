@@ -6,11 +6,13 @@
 #include "spectrum_shift.h"
 #include "utils.h"
 #include "sample_convert.h"
+#include "input_common.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <stdarg.h>
+#include "argparse.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -21,11 +23,100 @@
 
 extern pthread_mutex_t g_console_mutex;
 
+// --- Add an external declaration for the global config ---
+extern AppConfig g_config;
+
+// --- Implement the function to set default config values ---
+void hackrf_set_default_config(AppConfig* config) {
+    config->hackrf.lna_gain = 16;
+    config->hackrf.hackrf_lna_gain_arg = 16;
+    config->hackrf.vga_gain = 0;
+    config->hackrf.hackrf_vga_gain_arg = 0;
+    config->hackrf.sample_rate_hz = HACKRF_DEFAULT_SAMPLE_RATE;
+}
+
+// --- Define the CLI options for this module ---
+static const struct argparse_option hackrf_cli_options[] = {
+    OPT_GROUP("HackRF-Specific Options"),
+    OPT_FLOAT(0, "hackrf-sample-rate", &g_config.hackrf.hackrf_sample_rate_hz_arg, "Set sample rate in Hz. (Optional, Default: 8e6)", NULL, 0, 0),
+    OPT_INTEGER(0, "hackrf-lna-gain", &g_config.hackrf.hackrf_lna_gain_arg, "Set LNA (IF) gain in dB. (Optional, Default: 16)", NULL, 0, 0),
+    OPT_INTEGER(0, "hackrf-vga-gain", &g_config.hackrf.hackrf_vga_gain_arg, "Set VGA (Baseband) gain in dB. (Optional, Default: 0)", NULL, 0, 0),
+    OPT_BOOLEAN(0, "hackrf-amp-enable", &g_config.hackrf.amp_enable, "Enable the front-end RF amplifier (+14 dB).", NULL, 0, 0),
+};
+
+// --- Implement the interface function to provide the options ---
+const struct argparse_option* hackrf_get_cli_options(int* count) {
+    *count = sizeof(hackrf_cli_options) / sizeof(hackrf_cli_options[0]);
+    return hackrf_cli_options;
+}
+
+// --- Forward Declarations ---
+static bool hackrf_initialize(InputSourceContext* ctx);
+static void* hackrf_start_stream(InputSourceContext* ctx);
+static void hackrf_stop_stream(InputSourceContext* ctx);
+static void hackrf_cleanup(InputSourceContext* ctx);
+static void hackrf_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
+static bool hackrf_validate_options(AppConfig* config);
+
+// --- Ops struct ---
+static InputSourceOps hackrf_ops = {
+    .initialize = hackrf_initialize,
+    .start_stream = hackrf_start_stream,
+    .stop_stream = hackrf_stop_stream,
+    .cleanup = hackrf_cleanup,
+    .get_summary_info = hackrf_get_summary_info,
+    .validate_options = hackrf_validate_options,
+    .has_known_length = _input_source_has_known_length_false
+};
+
+InputSourceOps* get_hackrf_input_ops(void) {
+    return &hackrf_ops;
+}
+
+// --- Module-specific validation function ---
+static bool hackrf_validate_options(AppConfig* config) {
+    // This function is only called if "hackrf" is the selected input.
+
+    // Post-process and validate LNA gain
+    if (config->hackrf.hackrf_lna_gain_arg != 16) { // 16 is the default
+        long lna_gain = config->hackrf.hackrf_lna_gain_arg;
+        if (lna_gain < 0 || lna_gain > 40 || (lna_gain % 8 != 0)) {
+            log_fatal("Invalid LNA gain %ld dB. Must be 0-40 in 8 dB steps.", lna_gain);
+            return false;
+        }
+        config->hackrf.lna_gain = (uint32_t)lna_gain;
+        config->hackrf.lna_gain_provided = true;
+    }
+
+    // Post-process and validate VGA gain
+    if (config->hackrf.hackrf_vga_gain_arg != 0) { // 0 is the default
+        long vga_gain = config->hackrf.hackrf_vga_gain_arg;
+        if (vga_gain < 0 || vga_gain > 62 || (vga_gain % 2 != 0)) {
+            log_fatal("Invalid VGA gain %ld dB. Must be 0-62 in 2 dB steps.", vga_gain);
+            return false;
+        }
+        config->hackrf.vga_gain = (uint32_t)vga_gain;
+        config->hackrf.vga_gain_provided = true;
+    }
+
+    // Post-process and validate sample rate
+    if (config->hackrf.hackrf_sample_rate_hz_arg != 0.0f) {
+        config->hackrf.sample_rate_hz = (double)config->hackrf.hackrf_sample_rate_hz_arg;
+        if (config->hackrf.sample_rate_hz < 2e6 || config->hackrf.sample_rate_hz > 20e6) {
+            log_fatal("Invalid HackRF sample rate %.0f Hz. Must be between 2,000,000 and 20,000,000.", config->hackrf.sample_rate_hz);
+            return false;
+        }
+        config->hackrf.sample_rate_provided = true;
+    }
+
+    return true;
+}
+
 
 // --- HackRF API Callback Function ---
-
 int hackrf_stream_callback(hackrf_transfer* transfer) {
     AppResources *resources = (AppResources*)transfer->rx_ctx;
+    const AppConfig *config = resources->config;
 
     if (is_shutdown_requested() || resources->error_occurred) {
         return -1;
@@ -43,7 +134,6 @@ int hackrf_stream_callback(hackrf_transfer* transfer) {
             return 0;
         }
 
-        // *** FIX: Explicitly initialize flags for this SampleChunk ***
         item->stream_discontinuity_event = false;
 
         size_t chunk_size = transfer->valid_length - bytes_processed;
@@ -52,7 +142,8 @@ int hackrf_stream_callback(hackrf_transfer* transfer) {
             chunk_size = pipeline_buffer_size;
         }
 
-        memcpy(item->raw_input_data, transfer->buffer + bytes_processed, chunk_size);
+        void* target_buffer = config->no_convert ? item->final_output_data : item->raw_input_data;
+        memcpy(target_buffer, transfer->buffer + bytes_processed, chunk_size);
         item->frames_read = chunk_size / resources->input_bytes_per_sample_pair;
         item->is_last_chunk = false;
 
@@ -62,9 +153,17 @@ int hackrf_stream_callback(hackrf_transfer* transfer) {
             pthread_mutex_unlock(&resources->progress_mutex);
         }
 
-        if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
-            queue_enqueue(resources->free_sample_chunk_queue, item);
-            return -1;
+        if (config->no_convert) {
+            item->frames_to_write = item->frames_read;
+            if (!queue_enqueue(resources->final_output_queue, item)) {
+                queue_enqueue(resources->free_sample_chunk_queue, item);
+                return -1;
+            }
+        } else {
+            if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
+                queue_enqueue(resources->free_sample_chunk_queue, item);
+                return -1;
+            }
         }
         bytes_processed += chunk_size;
     }
@@ -79,45 +178,11 @@ static void hackrf_get_summary_info(const InputSourceContext* ctx, InputSummaryI
     const AppResources *resources = ctx->resources;
     add_summary_item(info, "Input Source", "HackRF One");
     add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
-    add_summary_item(info, "Input Rate", "%.3f Msps", (double)resources->source_info.samplerate / 1e6);
-    add_summary_item(info, "RF Frequency", "%.6f MHz", config->sdr.rf_freq_hz / 1e6);
+    add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
+    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr.rf_freq_hz);
     add_summary_item(info, "Gain", "LNA: %u dB, VGA: %u dB", config->hackrf.lna_gain, config->hackrf.vga_gain);
     add_summary_item(info, "RF Amp", "%s", config->hackrf.amp_enable ? "Enabled" : "Disabled");
     add_summary_item(info, "Bias-T", "%s", config->sdr.bias_t_enable ? "Enabled" : "Disabled");
-}
-
-static bool hackrf_validate_options(const AppConfig* config) {
-    if (!config->sdr.rf_freq_provided) {
-        log_fatal("Option --rf-freq <hz> is required when using an SDR input.");
-        return false;
-    }
-    if (config->set_center_frequency_target_hz || config->freq_shift_requested) {
-        log_fatal("Frequency shifting options (--target-freq, --shift-freq) are only valid for 'wav' input.");
-        return false;
-    }
-    if (config->hackrf.lna_gain_provided) {
-        if (config->hackrf.lna_gain > 40 || (config->hackrf.lna_gain % 8 != 0)) {
-            log_fatal("Invalid LNA gain %u dB. Must be 0-40 in 8 dB steps.", config->hackrf.lna_gain);
-            return false;
-        }
-    }
-    if (config->hackrf.vga_gain_provided) {
-        if (config->hackrf.vga_gain > 62 || (config->hackrf.vga_gain % 2 != 0)) {
-            log_fatal("Invalid VGA gain %u dB. Must be 0-62 in 2 dB steps.", config->hackrf.vga_gain);
-            return false;
-        }
-    }
-    if (config->hackrf.sample_rate_provided) {
-        if (config->hackrf.sample_rate_hz < 2e6 || config->hackrf.sample_rate_hz > 20e6) {
-            log_fatal("Invalid HackRF sample rate %.0f Hz. Must be between 2,000,000 and 20,000,000.", config->hackrf.sample_rate_hz);
-            return false;
-        }
-    }
-    return true;
-}
-
-static bool hackrf_is_sdr_hardware(void) {
-    return true;
 }
 
 static bool hackrf_initialize(InputSourceContext* ctx) {
@@ -189,6 +254,14 @@ static bool hackrf_initialize(InputSourceContext* ctx) {
     resources->source_info.samplerate = (int)sample_rate_to_set;
     resources->source_info.frames = -1;
 
+    if (config->no_convert && resources->input_format != config->output_format) {
+        log_fatal("Option --no-convert requires input and output formats to be identical. HackRF input is 'cs8', but output was set to '%s'.", config->sample_type_name);
+        hackrf_close(resources->hackrf_dev);
+        resources->hackrf_dev = NULL;
+        hackrf_exit();
+        return false;
+    }
+
     return true;
 }
 
@@ -236,18 +309,4 @@ static void hackrf_cleanup(InputSourceContext* ctx) {
     }
     log_info("Exiting HackRF library...");
     hackrf_exit();
-}
-
-static InputSourceOps hackrf_ops = {
-    .initialize = hackrf_initialize,
-    .start_stream = hackrf_start_stream,
-    .stop_stream = hackrf_stop_stream,
-    .cleanup = hackrf_cleanup,
-    .get_summary_info = hackrf_get_summary_info,
-    .validate_options = hackrf_validate_options,
-    .is_sdr_hardware = hackrf_is_sdr_hardware
-};
-
-InputSourceOps* get_hackrf_input_ops(void) {
-    return &hackrf_ops;
 }

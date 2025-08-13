@@ -1,3 +1,5 @@
+// src/input_wav.c
+
 #include "input_wav.h"
 #include "log.h"
 #include "signal_handler.h" // For is_shutdown_requested
@@ -5,6 +7,7 @@
 #include "config.h"
 #include "platform.h"
 #include "sample_convert.h" // For get_bytes_per_sample
+#include "input_common.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -12,6 +15,7 @@
 #include <pthread.h>
 #include <sys/stat.h>
 #include <stdarg.h>
+#include "argparse.h"
 
 // --- Includes from metadata.c ---
 #include <stdlib.h>
@@ -22,6 +26,71 @@
 #include <expat.h>
 #include <stddef.h>
 #include <math.h>
+
+// --- Add an external declaration for the global config ---
+extern AppConfig g_config;
+
+// --- Define the CLI options for this module ---
+static const struct argparse_option wav_cli_options[] = {
+    OPT_GROUP("WAV Input Specific Options"),
+    OPT_FLOAT(0, "wav-center-target-frequency", &g_config.wav_center_target_hz_arg, "Shift signal to a new target center frequency (e.g., 97.3e6)", NULL, 0, 0),
+    OPT_FLOAT(0, "wav-shift-frequency", &g_config.wav_freq_shift_hz_arg, "Apply a direct frequency shift in Hz", NULL, 0, 0),
+    OPT_BOOLEAN(0, "wav-shift-after-resample", &g_config.shift_after_resample, "Apply frequency shift AFTER resampling (default is before)", NULL, 0, 0),
+};
+
+// --- Implement the interface function to provide the options ---
+const struct argparse_option* wav_get_cli_options(int* count) {
+    *count = sizeof(wav_cli_options) / sizeof(wav_cli_options[0]);
+    return wav_cli_options;
+}
+
+// --- Forward Declarations ---
+static bool wav_initialize(InputSourceContext* ctx);
+static void* wav_start_stream(InputSourceContext* ctx);
+static void wav_stop_stream(InputSourceContext* ctx);
+static void wav_cleanup(InputSourceContext* ctx);
+static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
+static bool wav_validate_options(AppConfig* config);
+
+// --- Ops struct ---
+static InputSourceOps wav_ops = {
+    .initialize = wav_initialize,
+    .start_stream = wav_start_stream,
+    .stop_stream = wav_stop_stream,
+    .cleanup = wav_cleanup,
+    .get_summary_info = wav_get_summary_info,
+    .validate_options = wav_validate_options,
+    .has_known_length = _input_source_has_known_length_true
+};
+
+InputSourceOps* get_wav_input_ops(void) {
+    return &wav_ops;
+}
+
+// --- Module-specific validation function ---
+static bool wav_validate_options(AppConfig* config) {
+    // This function is only called if "wav" is the selected input.
+    
+    // Post-process arguments from temporary fields
+    if (config->wav_center_target_hz_arg != 0.0f) {
+        config->center_frequency_target_hz = (double)config->wav_center_target_hz_arg;
+        config->set_center_frequency_target_hz = true;
+    }
+    if (config->wav_freq_shift_hz_arg != 0.0f) {
+        config->freq_shift_hz = (double)config->wav_freq_shift_hz_arg;
+        config->freq_shift_requested = true;
+    }
+
+    // Now perform validation using the final flags
+    if (config->shift_after_resample) {
+        if (!config->freq_shift_requested && !config->set_center_frequency_target_hz) {
+            log_fatal("Option --wav-shift-after-resample specified, but no frequency shift was requested.");
+            return false;
+        }
+    }
+    
+    return true;
+}
 
 
 // =================================================================================
@@ -442,7 +511,7 @@ static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo
         default:   format_str = "Unknown PCM"; break;
     }
     add_summary_item(info, "Input Format", "%s", format_str);
-    add_summary_item(info, "Input Rate", "%.1f Hz", (double)resources->source_info.samplerate);
+    add_summary_item(info, "Input Rate", "%.0f Hz", (double)resources->source_info.samplerate);
 
     long long input_file_size = -1LL;
 #ifdef _WIN32
@@ -476,7 +545,7 @@ static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo
             add_summary_item(info, "Timestamp", "%s", resources->sdr_info.timestamp_str);
         }
         if (resources->sdr_info.center_freq_hz_present) {
-            add_summary_item(info, "Center Frequency", "%.6f MHz", resources->sdr_info.center_freq_hz / 1e6);
+            add_summary_item(info, "Center Frequency", "%.0f Hz", resources->sdr_info.center_freq_hz);
         }
         if (resources->sdr_info.software_name_present) {
             char sw_buf[128];
@@ -489,15 +558,6 @@ static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo
             add_summary_item(info, "Radio Model", "%s", resources->sdr_info.radio_model);
         }
     }
-}
-
-static bool wav_validate_options(const AppConfig* config) {
-    (void)config;
-    return true;
-}
-
-static bool wav_is_sdr_hardware(void) {
-    return false;
 }
 
 static bool wav_initialize(InputSourceContext* ctx) {
@@ -579,7 +639,6 @@ static void* wav_start_stream(InputSourceContext* ctx) {
             break;
         }
 
-        // *** FIX: Explicitly initialize flags for this SampleChunk ***
         current_item->stream_discontinuity_event = false;
 
         int64_t bytes_read = sf_read_raw(resources->infile, current_item->raw_input_data, bytes_to_read_per_chunk);
@@ -625,18 +684,4 @@ static void wav_cleanup(InputSourceContext* ctx) {
         sf_close(resources->infile);
         resources->infile = NULL;
     }
-}
-
-static InputSourceOps wav_ops = {
-    .initialize = wav_initialize,
-    .start_stream = wav_start_stream,
-    .stop_stream = wav_stop_stream,
-    .cleanup = wav_cleanup,
-    .get_summary_info = wav_get_summary_info,
-    .validate_options = wav_validate_options,
-    .is_sdr_hardware = wav_is_sdr_hardware
-};
-
-InputSourceOps* get_wav_input_ops(void) {
-    return &wav_ops;
 }

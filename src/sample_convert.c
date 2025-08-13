@@ -52,6 +52,7 @@ size_t get_bytes_per_sample(format_t format) {
         case CS32: return sizeof(int32_t) * 2;
         case CU32: return sizeof(uint32_t) * 2;
         case CF32: return sizeof(complex_float_t);
+        case SC16Q11: return sizeof(int16_t) * 2;
         default:   return 0;
     }
 }
@@ -86,6 +87,15 @@ bool convert_raw_to_cf32(const void* input_buffer, complex_float_t* output_buffe
             for (i = 0; i < num_frames; ++i) {
                 float i_norm = (float)in[i * 2] / 32768.0f;
                 float q_norm = (float)in[i * 2 + 1] / 32768.0f;
+                output_buffer[i] = (i_norm * gain) + I * (q_norm * gain);
+            }
+            break;
+        }
+        case SC16Q11: {
+            const int16_t* in = (const int16_t*)input_buffer;
+            for (i = 0; i < num_frames; ++i) {
+                float i_norm = (float)in[i * 2] / 2048.0f;
+                float q_norm = (float)in[i * 2 + 1] / 2048.0f;
                 output_buffer[i] = (i_norm * gain) + I * (q_norm * gain);
             }
             break;
@@ -163,6 +173,16 @@ bool convert_cf32_to_block(const complex_float_t* input_buffer, void* output_buf
             for (i = 0; i < num_frames; ++i) {
                 float i_val = crealf(input_buffer[i]) * 32767.0f;
                 float q_val = cimagf(input_buffer[i]) * 32767.0f;
+                out[i * 2]     = (int16_t)fmaxf(-32768.0f, fminf(32767.0f, lrintf(i_val)));
+                out[i * 2 + 1] = (int16_t)fmaxf(-32768.0f, fminf(32767.0f, lrintf(q_val)));
+            }
+            break;
+        }
+        case SC16Q11: {
+            int16_t* out = (int16_t*)output_buffer;
+            for (i = 0; i < num_frames; ++i) {
+                float i_val = crealf(input_buffer[i]) * 2048.0f;
+                float q_val = cimagf(input_buffer[i]) * 2048.0f;
                 out[i * 2]     = (int16_t)fmaxf(-32768.0f, fminf(32767.0f, lrintf(i_val)));
                 out[i * 2 + 1] = (int16_t)fmaxf(-32768.0f, fminf(32767.0f, lrintf(q_val)));
             }

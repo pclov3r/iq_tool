@@ -1,11 +1,10 @@
-// include/input_sdrplay.h
-
 #ifndef INPUT_SDRPLAY_H_
 #define INPUT_SDRPLAY_H_
 
 #include "input_source.h" // Include the generic input source interface
 #include "sdrplay_api.h"  // Needed for sdrplay_api types
 #include <stdint.h>       // For uint8_t
+#include "argparse.h"     // <<< ADDED
 
 // =================================================================================
 // START: Merged Dynamic Loading Declarations for Windows SDRplay API
@@ -64,6 +63,18 @@ void sdrplay_unload_api(void);
  *        the input source interface for SDRplay device input.
  */
 InputSourceOps* get_sdrplay_input_ops(void);
+
+/**
+ * @brief Returns the command-line options specific to the SDRplay module.
+ * @param count A pointer to an integer that will be filled with the number of options.
+ * @return A pointer to a static array of argparse_option structs.
+ */
+const struct argparse_option* sdrplay_get_cli_options(int* count);
+
+/**
+ * @brief Sets the default configuration values for the SDRplay module.
+ */
+void sdrplay_set_default_config(AppConfig* config);
 
 /**
  * @brief Returns the human-readable name of an SDRplay device based on its hardware version.

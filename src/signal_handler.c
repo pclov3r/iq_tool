@@ -1,6 +1,9 @@
+// src/signal_handler.c
+
 #include "signal_handler.h"
 #include "log.h"
 #include "types.h"
+#include "input_source.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -12,6 +15,7 @@
 #include <signal.h>
 #include <pthread.h>
 #include <unistd.h> // Required for isatty() and fileno()
+#include <strings.h> // Required for strcasecmp on POSIX
 #endif
 
 
@@ -35,12 +39,12 @@ static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
         case CTRL_BREAK_EVENT:
         case CTRL_CLOSE_EVENT:
         case CTRL_SHUTDOWN_EVENT:
-            if (!g_shutdown_flag) {
+            if (!is_shutdown_requested()) {
                 pthread_mutex_lock(&g_console_mutex);
                 if (_isatty(_fileno(stderr))) {
                     fprintf(stderr, LINE_CLEAR_SEQUENCE);
                 }
-                log_info("Ctrl+C detected, initiating graceful shutdown...");
+                log_debug("Ctrl+C detected, initiating graceful shutdown...");
                 pthread_mutex_unlock(&g_console_mutex);
                 request_shutdown();
             }
@@ -63,13 +67,15 @@ void* signal_handler_thread(void *arg) {
     sigaddset(&signal_set, SIGTERM);
 
     if (sigwait(&signal_set, &sig) == 0) {
-        pthread_mutex_lock(&g_console_mutex);
-        if (isatty(fileno(stderr))) {
-            fprintf(stderr, LINE_CLEAR_SEQUENCE);
+        if (!is_shutdown_requested()) {
+            pthread_mutex_lock(&g_console_mutex);
+            if (isatty(fileno(stderr))) {
+                fprintf(stderr, LINE_CLEAR_SEQUENCE);
+            }
+            log_debug("Signal %d (%s) received, initiating graceful shutdown...", sig, strsignal(sig));
+            pthread_mutex_unlock(&g_console_mutex);
+            request_shutdown();
         }
-        log_info("Signal %d (%s) received, initiating graceful shutdown...", sig, strsignal(sig));
-        pthread_mutex_unlock(&g_console_mutex);
-        request_shutdown();
     }
     return NULL;
 }
@@ -110,19 +116,31 @@ void request_shutdown(void) {
     g_shutdown_flag = 1;
 
     if (g_resources_for_signal_handler) {
+        AppResources* r = g_resources_for_signal_handler;
+
+        // Special handling for RTL-SDR: its reader thread blocks inside the library
+        // and must be cancelled externally.
+        if (r->config && r->config->input_type_str && strcasecmp(r->config->input_type_str, "rtlsdr") == 0) {
+            if (r->selected_input_ops && r->selected_input_ops->stop_stream) {
+                log_debug("Signal handler is calling stop_stream for RTL-SDR to unblock reader thread.");
+                InputSourceContext ctx = { .config = r->config, .resources = r };
+                r->selected_input_ops->stop_stream(&ctx);
+            }
+        }
+
         // Signal ALL queues to ensure every thread wakes up
-        if (g_resources_for_signal_handler->free_sample_chunk_queue)
-            queue_signal_shutdown(g_resources_for_signal_handler->free_sample_chunk_queue);
-        if (g_resources_for_signal_handler->raw_to_pre_process_queue)
-            queue_signal_shutdown(g_resources_for_signal_handler->raw_to_pre_process_queue);
-        if (g_resources_for_signal_handler->pre_process_to_resampler_queue)
-            queue_signal_shutdown(g_resources_for_signal_handler->pre_process_to_resampler_queue);
-        if (g_resources_for_signal_handler->resampler_to_post_process_queue)
-            queue_signal_shutdown(g_resources_for_signal_handler->resampler_to_post_process_queue);
-        if (g_resources_for_signal_handler->final_output_queue)
-            queue_signal_shutdown(g_resources_for_signal_handler->final_output_queue);
-        if (g_resources_for_signal_handler->iq_optimization_data_queue)
-            queue_signal_shutdown(g_resources_for_signal_handler->iq_optimization_data_queue);
+        if (r->free_sample_chunk_queue)
+            queue_signal_shutdown(r->free_sample_chunk_queue);
+        if (r->raw_to_pre_process_queue)
+            queue_signal_shutdown(r->raw_to_pre_process_queue);
+        if (r->pre_process_to_resampler_queue)
+            queue_signal_shutdown(r->pre_process_to_resampler_queue);
+        if (r->resampler_to_post_process_queue)
+            queue_signal_shutdown(r->resampler_to_post_process_queue);
+        if (r->final_output_queue)
+            queue_signal_shutdown(r->final_output_queue);
+        if (r->iq_optimization_data_queue)
+            queue_signal_shutdown(r->iq_optimization_data_queue);
     }
 }
 

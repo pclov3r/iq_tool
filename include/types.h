@@ -1,4 +1,4 @@
-// types.h
+// include/types.h
 
 #ifndef TYPES_H_
 #define TYPES_H_
@@ -39,6 +39,15 @@
 #include <hackrf.h>
 #endif
 
+#if defined(WITH_BLADERF)
+#include <libbladeRF.h>
+#endif
+
+#if defined(WITH_RTLSDR)
+#include <rtl-sdr.h>
+#endif
+
+
 // --- Forward Declarations to resolve circular dependencies ---
 struct InputSourceOps;
 struct AppConfig;
@@ -49,7 +58,7 @@ struct FileWriterContext;
 // --- Enums ---
 typedef enum {
     FORMAT_UNKNOWN, S8, U8, S16, U16, S32, U32, F32,
-    CS8, CU8, CS16, CU16, CS32, CU32, CF32
+    CS8, CU8, CS16, CU16, CS32, CU32, CF32, SC16Q11
 } format_t;
 
 typedef enum {
@@ -161,21 +170,42 @@ typedef struct AppConfig {
     float gain;
     bool gain_provided;
     double freq_shift_hz;
+    float wav_freq_shift_hz_arg; // For argparse
     bool freq_shift_requested;
     double center_frequency_target_hz;
+    float wav_center_target_hz_arg; // For argparse
     bool set_center_frequency_target_hz;
     bool shift_after_resample;
     bool no_resample;
+    bool no_convert;
     double user_defined_target_rate;
+    float user_defined_target_rate_arg; // For argparse
     bool user_rate_provided;
     IqCorrectionConfig iq_correction;
     DcBlockConfig dc_block;
-#if defined(WITH_SDRPLAY) || defined(WITH_HACKRF)
+#if defined(WITH_SDRPLAY) || defined(WITH_HACKRF) || defined(WITH_BLADERF) || defined(WITH_RTLSDR)
     struct {
         double rf_freq_hz;
+        float sdr_rf_freq_hz_arg; // For argparse
         bool rf_freq_provided;
         bool bias_t_enable;
     } sdr;
+#endif
+#if defined(WITH_RTLSDR)
+    struct {
+        bool use_rtlsdr_input;
+        int device_index;
+        double sample_rate_hz;
+        float rtlsdr_sample_rate_hz_arg; // For argparse
+        bool sample_rate_provided;
+        int gain; // In tenths of a dB
+        bool gain_provided;
+        float rtlsdr_gain_db_arg;
+        int ppm;
+        bool ppm_provided;
+        int direct_sampling_mode;
+        bool direct_sampling_provided;
+    } rtlsdr;
 #endif
 #if defined(WITH_SDRPLAY)
     struct {
@@ -185,11 +215,14 @@ typedef struct AppConfig {
         bool gain_level_provided;
         sdrplay_api_RspDx_HdrModeBwT hdr_bw_mode;
         bool hdr_bw_mode_provided;
+        double sdrplay_hdr_bw_hz_arg;
         bool use_hdr_mode;
         char *antenna_port_name;
         double sample_rate_hz;
+        float sdrplay_sample_rate_hz_arg; // For argparse
         bool sample_rate_provided;
         double bandwidth_hz;
+        float sdrplay_bandwidth_hz_arg; // For argparse
         bool bandwidth_provided;
     } sdrplay;
 #endif
@@ -198,15 +231,39 @@ typedef struct AppConfig {
         bool use_hackrf_input;
         uint32_t lna_gain;
         bool lna_gain_provided;
+        long hackrf_lna_gain_arg;
         uint32_t vga_gain;
         bool vga_gain_provided;
+        long hackrf_vga_gain_arg;
         bool amp_enable;
         double sample_rate_hz;
+        float hackrf_sample_rate_hz_arg; // For argparse
         bool sample_rate_provided;
     } hackrf;
 #endif
+#if defined(WITH_BLADERF)
+    struct {
+        bool use_bladerf_input;
+        int device_index;
+        int channel;
+        int gain;
+        bool gain_provided;
+        long bladerf_gain_arg; // For argparse
+        uint32_t sample_rate_hz;
+        bool sample_rate_provided;
+        double bladerf_sample_rate_hz_arg;
+        uint32_t bandwidth_hz;
+        bool bandwidth_provided;
+        double bladerf_bandwidth_hz_arg;
+        char *fpga_file_path;
+        unsigned int num_buffers;
+        unsigned int buffer_size;
+        unsigned int num_transfers;
+    } bladerf;
+#endif
     struct {
         double sample_rate_hz;
+        float raw_file_sample_rate_hz_arg; // For argparse
         bool sample_rate_provided;
         char *format_str;
         bool format_provided;
@@ -284,6 +341,12 @@ typedef struct AppResources {
     SNDFILE *infile;
     FileWriterContext writer_ctx;
     size_t output_bytes_per_sample_pair;
+#if defined(WITH_RTLSDR)
+    rtlsdr_dev_t *rtlsdr_dev;
+    char rtlsdr_manufact[256];
+    char rtlsdr_product[256];
+    char rtlsdr_serial[256];
+#endif
 #if defined(WITH_SDRPLAY)
     sdrplay_api_DeviceT *sdr_device;
     sdrplay_api_DeviceParamsT *sdr_device_params;
@@ -291,6 +354,13 @@ typedef struct AppResources {
 #endif
 #if defined(WITH_HACKRF)
     hackrf_device* hackrf_dev;
+#endif
+#if defined(WITH_BLADERF)
+    struct bladerf *bladerf_dev;
+    char bladerf_board_name[16];
+    char bladerf_serial[33];
+    char bladerf_display_name[128];
+    bool bladerf_initialized_successfully;
 #endif
     SampleChunk* sample_chunk_pool;
     void* raw_input_data_pool;
@@ -313,10 +383,12 @@ typedef struct AppResources {
     Queue* iq_optimization_data_queue;
     pthread_mutex_t progress_mutex;
     bool error_occurred;
-    bool end_of_stream_reached; // *** NEW FLAG ***
+    bool end_of_stream_reached;
+    bool threads_started;
     unsigned long long total_frames_read;
     unsigned long long total_output_frames;
     long long final_output_size_bytes;
+    long long expected_total_output_frames;
     time_t start_time;
     ProgressUpdateFn progress_callback;
     void* progress_callback_udata;

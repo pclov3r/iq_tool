@@ -6,12 +6,14 @@
 #include "spectrum_shift.h"
 #include "utils.h"
 #include "sample_convert.h"
+#include "input_common.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
 #include <errno.h>
 #include <stdarg.h>
+#include "argparse.h"
 
 #if defined(_WIN32)
 #include "platform.h"
@@ -78,6 +80,114 @@ void sdrplay_unload_api(void) {
 
 extern pthread_mutex_t g_console_mutex;
 #define LINE_CLEAR_SEQUENCE "\r \r"
+
+// --- Add an external declaration for the global config ---
+extern AppConfig g_config;
+
+// --- Implement the function to set default config values ---
+void sdrplay_set_default_config(AppConfig* config) {
+    config->sdrplay.sample_rate_hz = SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
+    config->sdrplay.bandwidth_hz = SDRPLAY_DEFAULT_BANDWIDTH_HZ;
+}
+
+// --- Define the CLI options for this module ---
+static const struct argparse_option sdrplay_cli_options[] = {
+    OPT_GROUP("SDRplay-Specific Options"),
+    OPT_FLOAT(0, "sdrplay-sample-rate", &g_config.sdrplay.sdrplay_sample_rate_hz_arg, "Set sample rate in Hz. (Optional, Default: 2e6)", NULL, 0, 0),
+    OPT_FLOAT(0, "sdrplay-bandwidth", &g_config.sdrplay.sdrplay_bandwidth_hz_arg, "Set analog bandwidth in Hz. (Optional, Default: 1.536e6)", NULL, 0, 0),
+    OPT_INTEGER(0, "sdrplay-device-idx", &g_config.sdrplay.device_index, "Select specific SDRplay device by index (0-indexed). (Default: 0)", NULL, 0, 0),
+    OPT_INTEGER(0, "sdrplay-gain-level", &g_config.sdrplay.gain_level, "Set manual gain level (0=min gain). Disables AGC.", NULL, 0, 0),
+    OPT_STRING(0, "sdrplay-antenna", &g_config.sdrplay.antenna_port_name, "Select antenna port (device-specific).", NULL, 0, 0),
+    OPT_BOOLEAN(0, "sdrplay-hdr-mode", &g_config.sdrplay.use_hdr_mode, "(Optional) Enable HDR mode on RSPdx/RSPdxR2.", NULL, 0, 0),
+    OPT_FLOAT(0, "sdrplay-hdr-bw", &g_config.sdrplay.sdrplay_hdr_bw_hz_arg, "Set bandwidth for HDR mode. Requires --sdrplay-hdr-mode.", NULL, 0, 0),
+};
+
+// --- Implement the interface function to provide the options ---
+const struct argparse_option* sdrplay_get_cli_options(int* count) {
+    *count = sizeof(sdrplay_cli_options) / sizeof(sdrplay_cli_options[0]);
+    return sdrplay_cli_options;
+}
+
+// --- Forward Declarations ---
+static bool sdrplay_initialize(InputSourceContext* ctx);
+static void* sdrplay_start_stream(InputSourceContext* ctx);
+static void sdrplay_stop_stream(InputSourceContext* ctx);
+static void sdrplay_cleanup(InputSourceContext* ctx);
+static void sdrplay_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
+static bool sdrplay_validate_options(AppConfig* config);
+static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz);
+
+// --- Ops struct ---
+static InputSourceOps sdrplay_ops = {
+    .initialize = sdrplay_initialize,
+    .start_stream = sdrplay_start_stream,
+    .stop_stream = sdrplay_stop_stream,
+    .cleanup = sdrplay_cleanup,
+    .get_summary_info = sdrplay_get_summary_info,
+    .validate_options = sdrplay_validate_options,
+    .has_known_length = _input_source_has_known_length_false
+};
+
+InputSourceOps* get_sdrplay_input_ops(void) {
+    return &sdrplay_ops;
+}
+
+// --- Module-specific validation function ---
+static bool sdrplay_validate_options(AppConfig* config) {
+    // This function is only called if "sdrplay" is the selected input.
+    
+    // Post-process flags
+    if (config->sdrplay.gain_level != 0) config->sdrplay.gain_level_provided = true;
+    
+    if (config->sdrplay.sdrplay_sample_rate_hz_arg != 0.0f) {
+        config->sdrplay.sample_rate_hz = (double)config->sdrplay.sdrplay_sample_rate_hz_arg;
+        config->sdrplay.sample_rate_provided = true;
+    }
+
+    if (config->sdrplay.sdrplay_bandwidth_hz_arg != 0.0f) {
+        config->sdrplay.bandwidth_hz = (double)config->sdrplay.sdrplay_bandwidth_hz_arg;
+        config->sdrplay.bandwidth_provided = true;
+    }
+
+    // Post-process and validate HDR bandwidth
+    if (config->sdrplay.sdrplay_hdr_bw_hz_arg != 0.0) {
+        double bw_hz = config->sdrplay.sdrplay_hdr_bw_hz_arg;
+        if      (fabs(bw_hz - 200000.0) < 1.0) config->sdrplay.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_0_200;
+        else if (fabs(bw_hz - 500000.0) < 1.0) config->sdrplay.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_0_500;
+        else if (fabs(bw_hz - 1200000.0) < 1.0) config->sdrplay.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_1_200;
+        else if (fabs(bw_hz - 1700000.0) < 1.0) config->sdrplay.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_1_700;
+        else {
+            log_fatal("Invalid HDR bandwidth '%.0f'. Valid values are 200e3, 500e3, 1.2e6, 1.7e6.", bw_hz);
+            return false;
+        }
+        config->sdrplay.hdr_bw_mode_provided = true;
+    }
+
+    // Validate combinations
+    if (config->sdrplay.hdr_bw_mode_provided && !config->sdrplay.use_hdr_mode) {
+        log_fatal("Option --sdrplay-hdr-bw requires --sdrplay-hdr-mode to be specified.");
+        return false;
+    }
+
+    double sample_rate = config->sdrplay.sample_rate_hz;
+    double bandwidth = config->sdrplay.bandwidth_hz;
+
+    if (sample_rate < 2e6 || sample_rate > 10e6) {
+        log_fatal("Invalid SDRplay sample rate %.0f Hz. Must be between 2,000,000 and 10,000,000.", sample_rate);
+        return false;
+    }
+    
+    if (map_bw_hz_to_enum(bandwidth) == sdrplay_api_BW_Undefined) {
+        log_fatal("Invalid SDRplay bandwidth %.0f Hz. See --help for valid values.", bandwidth);
+        return false;
+    }
+    if (bandwidth > sample_rate) {
+        log_fatal("Bandwidth (%.0f Hz) cannot be greater than the sample rate (%.0f Hz).", bandwidth, sample_rate);
+        return false;
+    }
+
+    return true;
+}
 
 
 const char* get_sdrplay_device_name(uint8_t hwVer) {
@@ -146,6 +256,7 @@ static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz) {
 void sdrplay_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext) {
     (void)params;
     AppResources *resources = (AppResources*)cbContext;
+    const AppConfig *config = resources->config;
 
     if (is_shutdown_requested() || resources->error_occurred) {
         return;
@@ -181,7 +292,6 @@ void sdrplay_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *
         return;
     }
 
-    // *** FIX: Explicitly initialize flags for this SampleChunk ***
     item->stream_discontinuity_event = false;
 
     size_t bytes_to_copy = numSamples * resources->input_bytes_per_sample_pair;
@@ -190,7 +300,8 @@ void sdrplay_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *
         numSamples = BUFFER_SIZE_SAMPLES;
     }
 
-    int16_t *raw_buffer = (int16_t*)item->raw_input_data;
+    void* target_buffer = config->no_convert ? item->final_output_data : item->raw_input_data;
+    int16_t *raw_buffer = (int16_t*)target_buffer;
     for (unsigned int i = 0; i < numSamples; i++) {
         raw_buffer[i * 2] = xi[i];
         raw_buffer[i * 2 + 1] = xq[i];
@@ -205,8 +316,15 @@ void sdrplay_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *
         pthread_mutex_unlock(&resources->progress_mutex);
     }
 
-    if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
-        queue_enqueue(resources->free_sample_chunk_queue, item);
+    if (config->no_convert) {
+        item->frames_to_write = item->frames_read;
+        if (!queue_enqueue(resources->final_output_queue, item)) {
+            queue_enqueue(resources->free_sample_chunk_queue, item);
+        }
+    } else {
+        if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
+            queue_enqueue(resources->free_sample_chunk_queue, item);
+        }
     }
 }
 
@@ -254,7 +372,6 @@ void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT
 
 
 // --- InputSourceOps Implementations for SDRplay ---
-// ... (The rest of the file is unchanged) ...
 
 static void sdrplay_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
@@ -266,11 +383,11 @@ static void sdrplay_get_summary_info(const InputSourceContext* ctx, InputSummary
              get_sdrplay_device_name(resources->sdr_device->hwVer), resources->sdr_device->SerNo);
     add_summary_item(info, "Input Source", "%s", source_name_buf);
     add_summary_item(info, "Input Format", "16-bit Signed Complex (cs16)");
-    add_summary_item(info, "Input Rate", "%.3f Msps", (double)resources->source_info.samplerate / 1e6);
+    add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
 
     double active_bw = config->sdrplay.bandwidth_provided ? config->sdrplay.bandwidth_hz : SDRPLAY_DEFAULT_BANDWIDTH_HZ;
-    add_summary_item(info, "Bandwidth", "%.3f MHz", active_bw / 1e6);
-    add_summary_item(info, "RF Frequency", "%.6f MHz", config->sdr.rf_freq_hz / 1e6);
+    add_summary_item(info, "Bandwidth", "%.0f Hz", active_bw);
+    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr.rf_freq_hz);
 
     if (config->sdrplay.gain_level_provided) {
         add_summary_item(info, "Gain", "%d (Manual)", config->sdrplay.gain_level);
@@ -281,54 +398,18 @@ static void sdrplay_get_summary_info(const InputSourceContext* ctx, InputSummary
         add_summary_item(info, "Antenna Port", "%s", config->sdrplay.antenna_port_name);
     }
     if (config->sdrplay.use_hdr_mode) {
-        const char* bw_str = "1.7";
+        const char* bw_str = "1700000"; // Default
         if (config->sdrplay.hdr_bw_mode_provided) {
             switch(config->sdrplay.hdr_bw_mode) {
-                case sdrplay_api_RspDx_HDRMODE_BW_0_200: bw_str = "0.2"; break;
-                case sdrplay_api_RspDx_HDRMODE_BW_0_500: bw_str = "0.5"; break;
-                case sdrplay_api_RspDx_HDRMODE_BW_1_200: bw_str = "1.2"; break;
-                case sdrplay_api_RspDx_HDRMODE_BW_1_700: bw_str = "1.7"; break;
+                case sdrplay_api_RspDx_HDRMODE_BW_0_200: bw_str = "200000"; break;
+                case sdrplay_api_RspDx_HDRMODE_BW_0_500: bw_str = "500000"; break;
+                case sdrplay_api_RspDx_HDRMODE_BW_1_200: bw_str = "1200000"; break;
+                case sdrplay_api_RspDx_HDRMODE_BW_1_700: bw_str = "1700000"; break;
             }
         }
-        add_summary_item(info, "HDR Mode", "Enabled (BW: %s MHz)", bw_str);
+        add_summary_item(info, "HDR Mode", "Enabled (BW: %s Hz)", bw_str);
     }
     add_summary_item(info, "Bias-T", "%s", config->sdr.bias_t_enable ? "Enabled" : "Disabled");
-}
-
-static bool sdrplay_validate_options(const AppConfig* config) {
-    if (!config->sdr.rf_freq_provided) {
-        log_fatal("Option --rf-freq <hz> is required when using an SDR input.");
-        return false;
-    }
-    if (config->set_center_frequency_target_hz || config->freq_shift_requested) {
-        log_fatal("Frequency shifting options (--target-freq, --shift-freq) are only valid for 'wav' input.");
-        return false;
-    }
-    if (config->sdrplay.hdr_bw_mode_provided && !config->sdrplay.use_hdr_mode) {
-        log_fatal("Option --sdrplay-hdr-bw requires --sdrplay-hdr-mode to be specified.");
-        return false;
-    }
-
-    double sample_rate = config->sdrplay.sample_rate_provided ? config->sdrplay.sample_rate_hz : SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
-    double bandwidth = config->sdrplay.bandwidth_provided ? config->sdrplay.bandwidth_hz : SDRPLAY_DEFAULT_BANDWIDTH_HZ;
-
-    if (sample_rate < 2e6 || sample_rate > 10e6) {
-        log_fatal("Invalid SDRplay sample rate %.0f Hz. Must be between 2,000,000 and 10,000,000.", sample_rate);
-        return false;
-    }
-    if (map_bw_hz_to_enum(bandwidth) == sdrplay_api_BW_Undefined) {
-        log_fatal("Invalid SDRplay bandwidth %.0f Hz. See --help for valid values.", bandwidth);
-        return false;
-    }
-    if (bandwidth > sample_rate) {
-        log_fatal("Bandwidth (%.0f Hz) cannot be greater than the sample rate (%.0f Hz).", bandwidth, sample_rate);
-        return false;
-    }
-    return true;
-}
-
-static bool sdrplay_is_sdr_hardware(void) {
-    return true;
 }
 
 static bool sdrplay_initialize(InputSourceContext* ctx) {
@@ -406,6 +487,11 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
     chParams->tunerParams.bwType = bw_enum;
     chParams->tunerParams.ifType = sdrplay_api_IF_Zero;
     chParams->tunerParams.rfFreq.rfHz = config->sdr.rf_freq_hz;
+
+    // Log the requested vs actual rates to be consistent with other modules.
+    // For the SDRplay API, if Init() succeeds, the actual rate is what we set it to.
+    log_info("SDRplay: API accepting sample rate %.0f Hz.", devParams->fsFreq.fsHz);
+    log_info("SDRplay: API accepting bandwidth %.0f Hz.", bandwidth_to_set);
 
     if (config->sdrplay.use_hdr_mode) {
         if (resources->sdr_device->hwVer != SDRPLAY_RSPdx_ID && resources->sdr_device->hwVer != SDRPLAY_RSPdxR2_ID) {
@@ -525,6 +611,14 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
     resources->source_info.samplerate = (int)sample_rate_to_set;
     resources->source_info.frames = -1;
 
+    if (config->no_convert && resources->input_format != config->output_format) {
+        log_fatal("Option --no-convert requires input and output formats to be identical. SDRplay input is 'cs16', but output was set to '%s'.", config->sample_type_name);
+        sdrplay_api_ReleaseDevice(resources->sdr_device);
+        free(resources->sdr_device);
+        resources->sdr_device = NULL;
+        return false;
+    }
+
     return true;
 }
 
@@ -589,18 +683,4 @@ static void sdrplay_cleanup(InputSourceContext* ctx) {
 #endif
         resources->sdr_api_is_open = false;
     }
-}
-
-static InputSourceOps sdrplay_ops = {
-    .initialize = sdrplay_initialize,
-    .start_stream = sdrplay_start_stream,
-    .stop_stream = sdrplay_stop_stream,
-    .cleanup = sdrplay_cleanup,
-    .get_summary_info = sdrplay_get_summary_info,
-    .validate_options = sdrplay_validate_options,
-    .is_sdr_hardware = sdrplay_is_sdr_hardware
-};
-
-InputSourceOps* get_sdrplay_input_ops(void) {
-    return &sdrplay_ops;
 }

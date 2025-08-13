@@ -23,8 +23,10 @@ include(GNUInstallDirs)
 #=======================================================================
 # Optional Feature Toggles
 #=======================================================================
+option(WITH_RTLSDR "Enable RTL-SDR device support (requires librtlsdr)" OFF)
 option(WITH_SDRPLAY "Enable SDRplay device support (requires SDRplay API library)" OFF)
 option(WITH_HACKRF "Enable HackRF device support (requires libhackrf)" OFF)
+option(WITH_BLADERF "Enable BladeRF device support (requires libbladeRF)" OFF)
 
 #=======================================================================
 # Compiler specific setup & flags
@@ -59,9 +61,6 @@ else()
     add_compile_definitions(_POSIX_C_SOURCE=200809L)
     add_compile_options(-fvisibility=hidden)
 
-    # Removed the direct 'set(CMAKE_C_FLAGS_DEBUG/RELEASE ... FORCE)' here.
-    # Instead, we'll define the flags as lists and apply them with target_compile_options later.
-
     option(FORCE_COLORED_BUILD "Always produce ANSI-colored build output (GNU/Clang only)." FALSE)
     if(FORCE_COLORED_BUILD)
         if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU")
@@ -77,11 +76,22 @@ if(MINGW)
 endif()
 
 # Add the conditional compile definitions if features are enabled
+if(WITH_RTLSDR)
+    add_compile_definitions(WITH_RTLSDR)
+endif()
 if(WITH_SDRPLAY)
     add_compile_definitions(WITH_SDRPLAY)
 endif()
 if(WITH_HACKRF)
     add_compile_definitions(WITH_HACKRF)
+endif()
+if(WITH_BLADERF)
+    add_compile_definitions(WITH_BLADERF)
+endif()
+
+# <<< ADDED: Define ANY_SDR_SUPPORT_ENABLED if any SDR is active >>>
+if(WITH_RTLSDR OR WITH_SDRPLAY OR WITH_HACKRF OR WITH_BLADERF)
+    add_compile_definitions(ANY_SDR_SUPPORT_ENABLED)
 endif()
 
 #=======================================================================
@@ -93,15 +103,25 @@ set(LIQUID_INCLUDE_DIR "" CACHE PATH "Manual include path override for liquid-ds
 set(LIQUID_LIBRARY "" CACHE PATH "Manual library file path override for liquid-dsp")
 set(EXPAT_INCLUDE_DIR "" CACHE PATH "Manual include path override for Expat")
 set(EXPAT_LIBRARY "" CACHE PATH "Manual library file path override for Expat")
+if(WITH_RTLSDR)
+    set(RTLSDR_INCLUDE_DIR "" CACHE PATH "Manual include path override for librtlsdr")
+    set(RTLSDR_LIBRARY "" CACHE PATH "Manual library file path override for librtlsdr")
+endif()
 if(WITH_SDRPLAY)
     set(SDRPLAY_INCLUDE_DIR "" CACHE PATH "Manual include path override for SDRplay API")
     set(SDRPLAY_LIBRARY "" CACHE PATH "Manual library file path override for SDRplay API")
 endif()
+if(WITH_HACKRF OR WITH_BLADERF OR WITH_RTLSDR)
+    set(LIBUSB_INCLUDE_DIR "" CACHE PATH "Manual include path override for libusb-1.0")
+    set(LIBUSB_LIBRARY "" CACHE PATH "Manual library file path override for libusb-1.0")
+endif()
 if(WITH_HACKRF)
     set(HACKRF_INCLUDE_DIR "" CACHE PATH "Manual include path override for libhackrf")
     set(HACKRF_LIBRARY "" CACHE PATH "Manual library file path override for libhackrf")
-    set(LIBUSB_INCLUDE_DIR "" CACHE PATH "Manual include path override for libusb-1.0")
-    set(LIBUSB_LIBRARY "" CACHE PATH "Manual library file path override for libusb-1.0")
+endif()
+if(WITH_BLADERF)
+    set(BLADERF_INCLUDE_DIR "" CACHE PATH "Manual include path override for libbladeRF")
+    set(BLADERF_LIBRARY "" CACHE PATH "Manual library file path override for libbladeRF")
 endif()
 
 #=======================================================================
@@ -294,15 +314,13 @@ if(NOT PTHREADS_FOUND_OVERALL)
      message(FATAL_ERROR "Could not find pthreads library. Ensure your system has pthreads development files installed.")
 endif()
 
-# --- START ADDITION FOR LIBUSB-1.0 ---
-# This block is added to find libusb, which libhackrf depends on.
-# It prioritizes manual paths passed from the build script.
-message(STATUS "Looking for required library: libusb-1.0 (for HackRF support)...")
-set(FINAL_LIBUSB_INCLUDE_DIRS "")
-set(FINAL_LIBUSB_LIBRARIES "")
-set(LIBUSB_FOUND_OVERALL FALSE)
+# --- libusb-1.0 (Dependency for multiple SDRs) ---
+if(WITH_HACKRF OR WITH_BLADERF OR WITH_RTLSDR)
+    message(STATUS "Looking for required library: libusb-1.0...")
+    set(FINAL_LIBUSB_INCLUDE_DIRS "")
+    set(FINAL_LIBUSB_LIBRARIES "")
+    set(LIBUSB_FOUND_OVERALL FALSE)
 
-if(WITH_HACKRF) # Only search for libusb if HackRF is enabled
     if(NOT LIBUSB_INCLUDE_DIR STREQUAL "" AND NOT LIBUSB_LIBRARY STREQUAL "")
         message(STATUS "Checking manual paths for libusb-1.0...")
         set(header_path "${LIBUSB_INCLUDE_DIR}/libusb.h")
@@ -313,12 +331,6 @@ if(WITH_HACKRF) # Only search for libusb if HackRF is enabled
             set(LIBUSB_FOUND_OVERALL TRUE)
         else()
             message(WARNING "Manual libusb-1.0 paths specified but invalid/incomplete. Ignoring.")
-            if(NOT EXISTS "${header_path}")
-                message(WARNING "  -> Header not found at expected path: ${header_path}")
-            endif()
-            if(NOT EXISTS "${LIBUSB_LIBRARY}")
-                message(WARNING "  -> Library not found at expected path: ${LIBUSB_LIBRARY}")
-            endif()
         endif()
         unset(header_path)
     endif()
@@ -342,7 +354,6 @@ if(WITH_HACKRF) # Only search for libusb if HackRF is enabled
         else()
             message(STATUS "Did not find libusb-1.0 via manual paths or pkg-config, trying find_package...")
         endif()
-        # Use find_package for libusb-1.0
         find_package(LibUSB-1.0 QUIET)
         if(LibUSB-1_0_FOUND AND DEFINED LibUSB-1_0_INCLUDE_DIRS AND LibUSB-1_0_INCLUDE_DIRS AND DEFINED LibUSB-1_0_LIBRARIES AND LibUSB-1_0_LIBRARIES)
             message(STATUS "Found libusb-1.0 via find_package.")
@@ -351,19 +362,71 @@ if(WITH_HACKRF) # Only search for libusb if HackRF is enabled
             set(LIBUSB_FOUND_OVERALL TRUE)
         else()
             message(STATUS "Could not find libusb-1.0 via find_package.")
-            if(LibUSB-1_0_FOUND)
-                message(WARNING "find_package(LibUSB-1.0) succeeded but did not set expected variables (LibUSB-1_0_INCLUDE_DIRS, LibUSB-1_0_LIBRARIES).")
-            endif()
         endif()
     endif()
 
     if(NOT LIBUSB_FOUND_OVERALL)
-        message(FATAL_ERROR "Could not find libusb-1.0, which is required for HackRF support. Please install libusb-1.0-dev, set CMAKE_PREFIX_PATH, or set valid LIBUSB_INCLUDE_DIR and LIBUSB_LIBRARY.")
+        message(FATAL_ERROR "Could not find libusb-1.0, which is required for SDR support. Please install libusb-1.0-dev, set CMAKE_PREFIX_PATH, or set valid LIBUSB_INCLUDE_DIR and LIBUSB_LIBRARY.")
     endif()
 else()
-    message(STATUS "libusb-1.0 search skipped (HackRF support not enabled).")
-endif() # End WITH_HACKRF check for libusb search
-# --- END ADDITION FOR LIBUSB-1.0 ---
+    message(STATUS "libusb-1.0 search skipped (no USB-based SDRs enabled).")
+endif()
+
+
+# --- librtlsdr ---
+if(WITH_RTLSDR)
+    message(STATUS "Looking for optional library: librtlsdr...")
+    set(FINAL_RTLSDR_INCLUDE_DIRS "")
+    set(FINAL_RTLSDR_LIBRARIES "")
+    set(RTLSDR_FOUND_OVERALL FALSE)
+
+    if(NOT RTLSDR_INCLUDE_DIR STREQUAL "" AND NOT RTLSDR_LIBRARY STREQUAL "")
+        message(STATUS "Checking manual paths for librtlsdr...")
+        set(header_path "${RTLSDR_INCLUDE_DIR}/rtl-sdr.h")
+        if(EXISTS "${header_path}" AND EXISTS "${RTLSDR_LIBRARY}")
+            message(STATUS "Using manual librtlsdr paths.")
+            set(FINAL_RTLSDR_INCLUDE_DIRS ${RTLSDR_INCLUDE_DIR})
+            set(FINAL_RTLSDR_LIBRARIES ${RTLSDR_LIBRARY})
+            set(RTLSDR_FOUND_OVERALL TRUE)
+        else()
+            message(WARNING "Manual librtlsdr paths specified but invalid/incomplete. Ignoring.")
+        endif()
+        unset(header_path)
+    endif()
+
+    if(NOT RTLSDR_FOUND_OVERALL AND NOT CMAKE_CROSSCOMPILING)
+        if(PKG_CONFIG_FOUND)
+            message(STATUS "Attempting pkg-config for librtlsdr (native build)...")
+            pkg_check_modules(PC_RTLSDR QUIET librtlsdr)
+            if(PC_RTLSDR_FOUND)
+                message(STATUS "Found librtlsdr via pkg-config: ${PC_RTLSDR_VERSION}")
+                set(FINAL_RTLSDR_INCLUDE_DIRS ${PC_RTLSDR_INCLUDE_DIRS})
+                set(FINAL_RTLSDR_LIBRARIES ${PC_RTLSDR_LINK_LIBRARIES})
+                set(RTLSDR_FOUND_OVERALL TRUE)
+            endif()
+        endif()
+    endif()
+
+    if(NOT RTLSDR_FOUND_OVERALL)
+        message(STATUS "Did not find librtlsdr via manual paths or pkg-config, trying explicit search...")
+        find_path(RTLSDR_TEMP_INCLUDE_DIR NAMES rtl-sdr.h HINTS ${CMAKE_FIND_ROOT_PATH}/include ${CMAKE_INSTALL_PREFIX}/include ${CMAKE_PREFIX_PATH}/include PATHS /usr/local/include /usr/include)
+        find_library(RTLSDR_TEMP_LIBRARY NAMES rtlsdr HINTS ${CMAKE_FIND_ROOT_PATH}/lib ${CMAKE_INSTALL_PREFIX}/lib ${CMAKE_PREFIX_PATH}/lib PATHS /usr/local/lib /usr/lib)
+        if(RTLSDR_TEMP_INCLUDE_DIR AND RTLSDR_TEMP_LIBRARY)
+            message(STATUS "Found librtlsdr via explicit search: Include=${RTLSDR_TEMP_INCLUDE_DIR}, Library=${RTLSDR_TEMP_LIBRARY}")
+            set(FINAL_RTLSDR_INCLUDE_DIRS ${RTLSDR_TEMP_INCLUDE_DIR})
+            set(FINAL_RTLSDR_LIBRARIES ${RTLSDR_TEMP_LIBRARY})
+            set(RTLSDR_FOUND_OVERALL TRUE)
+        else()
+            message(STATUS "Could not find librtlsdr via explicit search.")
+        endif()
+        unset(RTLSDR_TEMP_INCLUDE_DIR CACHE)
+        unset(RTLSDR_TEMP_LIBRARY CACHE)
+    endif()
+
+    if(NOT RTLSDR_FOUND_OVERALL)
+        message(FATAL_ERROR "Could not find librtlsdr, but WITH_RTLSDR was enabled. Please install librtlsdr-dev, set CMAKE_PREFIX_PATH, or set valid RTLSDR_INCLUDE_DIR and RTLSDR_LIBRARY.")
+    endif()
+endif()
 
 
 # --- SDRplay API ---
@@ -414,7 +477,7 @@ if(WITH_SDRPLAY)
     if(NOT SDRPLAY_FOUND_OVERALL)
         message(FATAL_ERROR "Could not find SDRplay API, but WITH_SDRPLAY was enabled. Please install the SDRplay API, set CMAKE_PREFIX_PATH, or set valid SDRPLAY_INCLUDE_DIR and SDRPLAY_LIBRARY.")
     endif()
-endif() # End WITH_SDRPLAY block
+endif()
 
 
 # --- libhackrf ---
@@ -468,7 +531,60 @@ if(WITH_HACKRF)
     if(NOT HACKRF_FOUND_OVERALL)
         message(FATAL_ERROR "Could not find libhackrf, but WITH_HACKRF was enabled. Please install libhackrf-dev, set CMAKE_PREFIX_PATH, or set valid HACKRF_INCLUDE_DIR and HACKRF_LIBRARY.")
     endif()
-endif() # End WITH_HACKRF block
+endif()
+
+# --- libbladeRF ---
+if(WITH_BLADERF)
+    message(STATUS "Looking for optional library: libbladeRF...")
+    set(FINAL_BLADERF_INCLUDE_DIRS "")
+    set(FINAL_BLADERF_LIBRARIES "")
+    set(BLADERF_FOUND_OVERALL FALSE)
+
+    if(NOT BLADERF_INCLUDE_DIR STREQUAL "" AND NOT BLADERF_LIBRARY STREQUAL "")
+        message(STATUS "Checking manual paths for libbladeRF...")
+        set(header_path "${BLADERF_INCLUDE_DIR}/libbladeRF.h")
+        if(EXISTS "${header_path}" AND EXISTS "${BLADERF_LIBRARY}")
+            message(STATUS "Using manual libbladeRF paths.")
+            set(FINAL_BLADERF_INCLUDE_DIRS ${BLADERF_INCLUDE_DIR})
+            set(FINAL_BLADERF_LIBRARIES ${BLADERF_LIBRARY})
+            set(BLADERF_FOUND_OVERALL TRUE)
+        else()
+            message(WARNING "Manual libbladeRF paths specified but invalid/incomplete. Ignoring.")
+        endif()
+        unset(header_path)
+    endif()
+
+    if(NOT BLADERF_FOUND_OVERALL AND NOT CMAKE_CROSSCOMPILING)
+        if(PKG_CONFIG_FOUND)
+            message(STATUS "Attempting pkg-config for libbladeRF (native build)...")
+            pkg_check_modules(PC_BLADERF QUIET libbladeRF)
+            if(PC_BLADERF_FOUND)
+                message(STATUS "Found libbladeRF via pkg-config: ${PC_BLADERF_VERSION}")
+                set(FINAL_BLADERF_INCLUDE_DIRS ${PC_BLADERF_INCLUDE_DIRS})
+                set(FINAL_BLADERF_LIBRARIES ${PC_BLADERF_LINK_LIBRARIES})
+                set(BLADERF_FOUND_OVERALL TRUE)
+            endif()
+        endif()
+    endif()
+
+    if(NOT BLADERF_FOUND_OVERALL)
+        message(STATUS "Did not find libbladeRF via manual paths or pkg-config, trying find_package...")
+        find_package(BladeRF QUIET)
+        if(BladeRF_FOUND AND DEFINED BladeRF_INCLUDE_DIRS AND BladeRF_INCLUDE_DIRS AND DEFINED BladeRF_LIBRARIES AND BladeRF_LIBRARIES)
+            message(STATUS "Found libbladeRF via find_package.")
+            set(FINAL_BLADERF_INCLUDE_DIRS ${BladeRF_INCLUDE_DIRS})
+            set(FINAL_BLADERF_LIBRARIES ${BladeRF_LIBRARIES})
+            set(BLADERF_FOUND_OVERALL TRUE)
+        else()
+            message(STATUS "Could not find libbladeRF via find_package.")
+            set(BLADERF_FOUND_OVERALL FALSE)
+        endif()
+    endif()
+
+    if(NOT BLADERF_FOUND_OVERALL)
+        message(FATAL_ERROR "Could not find libbladeRF, but WITH_BLADERF was enabled. Please install libbladeRF-dev, set CMAKE_PREFIX_PATH, or set valid BLADERF_INCLUDE_DIR and BLADERF_LIBRARY.")
+    endif()
+endif()
 
 
 #=======================================================================
@@ -478,6 +594,10 @@ include_directories(include)
 include_directories(${FINAL_SNDFILE_INCLUDE_DIRS})
 include_directories(${FINAL_LIQUIDDSP_INCLUDE_DIRS})
 include_directories(${FINAL_EXPAT_INCLUDE_DIRS})
+if(WITH_RTLSDR)
+    include_directories(${FINAL_RTLSDR_INCLUDE_DIRS})
+    include_directories(${FINAL_LIBUSB_INCLUDE_DIRS})
+endif()
 if(WITH_SDRPLAY)
     include_directories(${FINAL_SDRPLAY_INCLUDE_DIRS})
 endif()
@@ -485,8 +605,13 @@ if(WITH_HACKRF)
     include_directories(${FINAL_HACKRF_INCLUDE_DIRS})
     include_directories(${FINAL_LIBUSB_INCLUDE_DIRS})
 endif()
+if(WITH_BLADERF)
+    include_directories(${FINAL_BLADERF_INCLUDE_DIRS})
+    include_directories(${FINAL_LIBUSB_INCLUDE_DIRS})
+endif()
 
 set(SOURCES
+    src/argparse.c # <<< ADDED
     src/cli.c
     src/config.c
     src/dc_block.c
@@ -509,46 +634,42 @@ set(SOURCES
     src/utils.c
 )
 
+if(WITH_RTLSDR)
+    list(APPEND SOURCES src/input_rtlsdr.c)
+endif()
 if(WITH_SDRPLAY)
     list(APPEND SOURCES src/input_sdrplay.c)
 endif()
 if(WITH_HACKRF)
     list(APPEND SOURCES src/input_hackrf.c)
 endif()
+if(WITH_BLADERF)
+    list(APPEND SOURCES src/input_bladerf.c)
+endif()
 
 add_executable(iq_resample_tool ${SOURCES})
 
-# This copies the source config file to the build directory.
-# The install command will then pick it up from here.
+target_compile_definitions(iq_resample_tool PRIVATE APP_NAME="${PROJECT_NAME}")
+
 configure_file(iq_resample_tool_presets.conf ${CMAKE_CURRENT_BINARY_DIR}/iq_resample_tool_presets.conf COPYONLY)
 
-# Apply build-type specific compile options using generator expressions
-if(NOT MSVC) # These flags are specific to GCC/Clang
-    # Define Debug-specific flags
+if(NOT MSVC)
     set(DEBUG_COMPILE_OPTIONS
         -ggdb
         -fsanitize=undefined
         -fsanitize=address
         -fno-omit-frame-pointer
     )
-
-    # Define Release-specific flags
     set(RELEASE_COMPILE_OPTIONS
         -O3
         -ftree-vectorize
     )
-
-    # Add -march flag based on CPU_TARGET_ARCHITECTURE variable for Release builds
     if(NOT CPU_TARGET_ARCHITECTURE STREQUAL "")
         list(APPEND RELEASE_COMPILE_OPTIONS "-march=${CPU_TARGET_ARCHITECTURE}")
     endif()
-
     target_compile_options(iq_resample_tool PRIVATE
         $<IF:$<CONFIG:Debug>,${DEBUG_COMPILE_OPTIONS},>
         $<IF:$<CONFIG:Release>,${RELEASE_COMPILE_OPTIONS},>
-        # Add other build types if needed, e.g., RelWithDebInfo, MinSizeRel
-        # $<IF:$<CONFIG:RelWithDebInfo>,...,>
-        # $<IF:$<CONFIG:MinSizeRel>,...,>
     )
 endif()
 
@@ -588,20 +709,28 @@ else()
     list(APPEND TARGET_LINK_LIBS m)
 endif()
 
+if(WITH_RTLSDR)
+    list(APPEND TARGET_LINK_LIBS
+        ${FINAL_RTLSDR_LIBRARIES}
+        ${FINAL_LIBUSB_LIBRARIES}
+    )
+endif()
 if(WITH_SDRPLAY)
-    # For Windows, we use explicit linking (LoadLibrary) to avoid a startup
-    # dependency error. Therefore, we DO NOT link sdrplay_api.lib here.
-    # For other platforms (like Linux), we link against the shared library normally.
     if(NOT WIN32)
         list(APPEND TARGET_LINK_LIBS ${FINAL_SDRPLAY_LIBRARIES})
     endif()
 endif()
-
 if(WITH_HACKRF)
     list(APPEND TARGET_LINK_LIBS
         ${FINAL_HACKRF_LIBRARIES}
         ${FINAL_LIBUSB_LIBRARIES}
     )
+endif()
+if(WITH_BLADERF)
+    if(NOT WIN32)
+        list(APPEND TARGET_LINK_LIBS ${FINAL_BLADERF_LIBRARIES})
+    endif()
+    list(APPEND TARGET_LINK_LIBS ${FINAL_LIBUSB_LIBRARIES})
 endif()
 
 target_link_libraries(iq_resample_tool PRIVATE ${TARGET_LINK_LIBS})
@@ -613,16 +742,19 @@ install(TARGETS iq_resample_tool
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-# Install the config file
 if(UNIX)
-    # On UNIX-like systems, install to /usr/local/etc/<APP_NAME>/
-    # This hardcodes /usr/local/etc, ensuring the specific path requested.
-    install(FILES iq_resample_tool_presets.conf DESTINATION "/usr/local/etc/${PROJECT_NAME}")
-    message(STATUS "Installing presets to: /usr/local/etc/${PROJECT_NAME}")
-else() # For Windows
-    # On Windows, install alongside the executable
+    install(FILES iq_resample_tool_presets.conf DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/${PROJECT_NAME})
+    message(STATUS "Installing presets to: ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_SYSCONFDIR}/${PROJECT_NAME}")
+else()
     install(FILES iq_resample_tool_presets.conf DESTINATION ${CMAKE_INSTALL_BINDIR})
-    message(STATUS "Installing presets to: ${CMAKE_INSTALL_BINDIR}")
+    message(STATUS "Installing presets to: ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}")
+endif()
+
+if(WITH_BLADERF)
+    if(UNIX)
+        install(DIRECTORY fpga DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME})
+        message(STATUS "Installing BladeRF FPGA files to: ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/fpga")
+    endif()
 endif()
 
 file(READ "${CMAKE_CURRENT_LIST_DIR}/cmake/uninstall.cmake.in" UNINSTALL_SCRIPT_CONTENT)
@@ -635,6 +767,7 @@ add_custom_target(uninstall
 message(STATUS "--------------------------------------------------")
 message(STATUS "Configuration Summary:")
 message(STATUS "  Build Type:        ${CMAKE_BUILD_TYPE}")
+message(STATUS "  CPU Target Arch:   ${CPU_TARGET_ARCHITECTURE}")
 if(WIN32)
     message(STATUS "  Build Target:      Windows")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -649,6 +782,14 @@ message(STATUS "  libsndfile:        ${FINAL_SNDFILE_LIBRARIES}")
 message(STATUS "  liquid-dsp:        ${FINAL_LIQUIDDSP_LIBRARIES}")
 message(STATUS "  Expat:             ${FINAL_EXPAT_LIBRARIES}")
 message(STATUS "  Threads:           ${FINAL_PTHREADS_LIBRARIES}")
+if(WITH_HACKRF OR WITH_BLADERF OR WITH_RTLSDR)
+    message(STATUS "  libusb:            ${FINAL_LIBUSB_LIBRARIES}")
+endif()
+if(WITH_RTLSDR)
+    message(STATUS "  RTL-SDR Support:   ENABLED (${FINAL_RTLSDR_LIBRARIES})")
+else()
+    message(STATUS "  RTL-SDR Support:   DISABLED (use -DWITH_RTLSDR=ON to enable)")
+endif()
 if(WITH_SDRPLAY)
     message(STATUS "  SDRplay Support:   ENABLED (${FINAL_SDRPLAY_LIBRARIES})")
 else()
@@ -656,9 +797,12 @@ else()
 endif()
 if(WITH_HACKRF)
     message(STATUS "  HackRF Support:    ENABLED (${FINAL_HACKRF_LIBRARIES})")
-    message(STATUS "  libusb:            ${FINAL_LIBUSB_LIBRARIES}")
 else()
     message(STATUS "  HackRF Support:    DISABLED (use -DWITH_HACKRF=ON to enable)")
 endif()
-message(STATUS "  CPU Target Arch:   ${CPU_TARGET_ARCHITECTURE}")
+if(WITH_BLADERF)
+    message(STATUS "  BladeRF Support:   ENABLED (${FINAL_BLADERF_LIBRARIES})")
+else()
+    message(STATUS "  BladeRF Support:   DISABLED (use -DWITH_BLADERF=ON to enable)")
+endif()
 message(STATUS "--------------------------------------------------")
