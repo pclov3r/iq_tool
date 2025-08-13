@@ -66,7 +66,8 @@ You'll need a pretty standard C development environment.
     ```bash
     git clone https://github.com/your-repo/iq_resample_tool.git
     cd iq_resample_tool
-    mkdir build && cd build
+    mkdir build
+    cd build
 
     # Build without any optional SDR support
     cmake ..
