@@ -29,14 +29,20 @@
 
 #if defined(_WIN32) && defined(WITH_SDRPLAY)
 SdrplayApiFunctionPointers sdrplay_api;
+
+// MODIFIED: This new macro is warning-free and standards-compliant.
 #define LOAD_SDRPLAY_FUNC(func_name) \
-    sdrplay_api.func_name = (void*)GetProcAddress(sdrplay_api.dll_handle, "sdrplay_api_" #func_name); \
-    if (!sdrplay_api.func_name) { \
-        log_fatal("Failed to load SDRplay API function: %s", "sdrplay_api_" #func_name); \
-        FreeLibrary(sdrplay_api.dll_handle); \
-        sdrplay_api.dll_handle = NULL; \
-        return false; \
-    }
+    do { \
+        FARPROC proc = GetProcAddress(sdrplay_api.dll_handle, "sdrplay_api_" #func_name); \
+        if (!proc) { \
+            log_fatal("Failed to load SDRplay API function: %s", "sdrplay_api_" #func_name); \
+            FreeLibrary(sdrplay_api.dll_handle); \
+            sdrplay_api.dll_handle = NULL; \
+            return false; \
+        } \
+        /* Use memcpy to safely convert the generic function pointer to the specific one. */ \
+        memcpy(&sdrplay_api.func_name, &proc, sizeof(sdrplay_api.func_name)); \
+    } while (0)
 
 bool sdrplay_load_api(void) {
     if (sdrplay_api.dll_handle) { return true; }
@@ -76,7 +82,6 @@ void sdrplay_unload_api(void) {
     }
 }
 #endif
-
 
 extern pthread_mutex_t g_console_mutex;
 #define LINE_CLEAR_SEQUENCE "\r \r"

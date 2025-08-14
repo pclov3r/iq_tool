@@ -20,9 +20,6 @@
 #include <pathcch.h>
 #include <knownfolders.h>
 #include <shlobj.h>
-#pragma comment(lib, "shlwapi.lib")
-#pragma comment(lib, "pathcch.lib")
-#pragma comment(lib, "shell32.lib")
 #else
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,13 +32,19 @@
 BladerfApiFunctionPointers bladerf_api;
 
 #define LOAD_BLADERF_FUNC(func_name) \
-    bladerf_api.func_name = (void*)GetProcAddress(bladerf_api.dll_handle, "bladerf_" #func_name); \
-    if (!bladerf_api.func_name) { \
-        log_fatal("Failed to load BladeRF API function: %s", "bladerf_" #func_name); \
-        FreeLibrary(bladerf_api.dll_handle); \
-        bladerf_api.dll_handle = NULL; \
-        return false; \
-    }
+    do { \
+        FARPROC proc = GetProcAddress(bladerf_api.dll_handle, "bladerf_" #func_name); \
+        if (!proc) { \
+            log_fatal("Failed to load BladeRF API function: %s", "bladerf_" #func_name); \
+            FreeLibrary(bladerf_api.dll_handle); \
+            bladerf_api.dll_handle = NULL; \
+            return false; \
+        } \
+        /* Use memcpy to safely convert the generic function pointer to the specific one. */ \
+        /* This is the standard-compliant way to avoid the -Wpedantic warnings. */ \
+        memcpy(&bladerf_api.func_name, &proc, sizeof(bladerf_api.func_name)); \
+    } while (0)
+
 
 bool bladerf_load_api(void) {
     if (bladerf_api.dll_handle) { return true; }

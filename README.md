@@ -218,7 +218,7 @@ This tool is a work in progress.
     *   It's experimental. Expect bugs.
     *   Windows builds are 64-bit only. I see no reason to post 32-bit ones given Windows 10 is end of life soon and Windows 11 is 64-bit only. If I'm wrong and it's required open an issue.
     *   As mentioned, IQ correction may not be functioning correctly.
-    *   Log verbosity levels are not yet refined. The output can be noisy, and some messages might not be at the appropriate level (e.g., INFO vs. DEBUG).
+    *   Log verbosity levels are not yet refined. The output is noisy, and some messages might not be at the appropriate level (e.g., INFO vs. DEBUG).
 
 *   **Roadmap:**
     *   [x] Add RTL-SDR support.

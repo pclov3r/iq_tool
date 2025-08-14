@@ -33,6 +33,32 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+// --- Private helper functions, moved from utils.c ---
+// These are implementation details of this module and are not exposed.
+
+/**
+ * @brief (Private) Converts a float value to an unsigned char [0, 255].
+ */
+static uint8_t float_to_uchar(float v) {
+    // Shift the range [-127.5, 127.5] up to [0, 255]
+    v += 127.5f;
+    // Clamp the value to the valid [0.0, 255.0] range
+    v = fmaxf(0.0f, fminf(255.0f, v));
+    // Round to the nearest integer and cast
+    return (uint8_t)(v + 0.5f);
+}
+
+/**
+ * @brief (Private) Converts a float value to a signed char [-128, 127].
+ */
+static int8_t float_to_schar(float v) {
+    // Clamp the value to the valid [-128.0, 127.0] range for int8_t
+    v = fmaxf(-128.0f, fminf(127.0f, v));
+    // Round to the nearest integer and cast
+    return (int8_t)lrintf(v);
+}
+
+
 /**
  * @brief Gets the number of bytes for a single sample of the given format.
  */
@@ -151,20 +177,16 @@ bool convert_cf32_to_block(const complex_float_t* input_buffer, void* output_buf
         case CS8: {
             int8_t* out = (int8_t*)output_buffer;
             for (i = 0; i < num_frames; ++i) {
-                float i_val = crealf(input_buffer[i]) * 127.0f;
-                float q_val = cimagf(input_buffer[i]) * 127.0f;
-                out[i * 2]     = (int8_t)fmaxf(-128.0f, fminf(127.0f, lrintf(i_val)));
-                out[i * 2 + 1] = (int8_t)fmaxf(-128.0f, fminf(127.0f, lrintf(q_val)));
+                out[i * 2]     = float_to_schar(crealf(input_buffer[i]) * 127.0f);
+                out[i * 2 + 1] = float_to_schar(cimagf(input_buffer[i]) * 127.0f);
             }
             break;
         }
         case CU8: {
             uint8_t* out = (uint8_t*)output_buffer;
             for (i = 0; i < num_frames; ++i) {
-                float i_val = (crealf(input_buffer[i]) * 127.0f) + 127.5f;
-                float q_val = (cimagf(input_buffer[i]) * 127.0f) + 127.5f;
-                out[i * 2]     = (uint8_t)fmaxf(0.0f, fminf(255.0f, lrintf(i_val)));
-                out[i * 2 + 1] = (uint8_t)fmaxf(0.0f, fminf(255.0f, lrintf(q_val)));
+                out[i * 2]     = float_to_uchar(crealf(input_buffer[i]) * 127.0f);
+                out[i * 2 + 1] = float_to_uchar(cimagf(input_buffer[i]) * 127.0f);
             }
             break;
         }

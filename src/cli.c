@@ -26,9 +26,9 @@ extern AppConfig g_config;
 static bool validate_output_destination(AppConfig *config);
 static bool validate_output_type_and_sample_format(AppConfig *config);
 static bool validate_sdr_general_options(AppConfig *config);
-static bool validate_processing_options(AppConfig *config);
 static bool validate_iq_correction_options(AppConfig *config);
 static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const char** non_opt_argv);
+static bool resolve_frequency_shift_options(AppConfig *config);
 
 
 void print_usage(const char *prog_name) {
@@ -148,6 +148,49 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
     return true;
 }
 
+// --- NEW: The Final, Generic Resolver Function ---
+// This function contains ALL logic related to frequency shifting.
+// It is the single source of truth.
+static bool resolve_frequency_shift_options(AppConfig *config) {
+    // --- Part 1: Populate the request struct from generic arguments ---
+    if (config->freq_shift_hz_arg != 0.0f) {
+        // Check if a module (like WAV) has already made a request.
+        if (config->frequency_shift_request.type != FREQUENCY_SHIFT_REQUEST_NONE) {
+            log_fatal("Conflicting frequency shift options provided. Cannot use --freq-shift and --wav-center-target-frequency at the same time.");
+            return false;
+        }
+        config->frequency_shift_request.type = FREQUENCY_SHIFT_REQUEST_MANUAL;
+        config->frequency_shift_request.value = (double)config->freq_shift_hz_arg;
+    }
+
+    // --- Part 2: Resolve the single, verified request into the final DSP config ---
+    switch (config->frequency_shift_request.type) {
+        case FREQUENCY_SHIFT_REQUEST_NONE:
+            config->freq_shift_requested = false;
+            break;
+
+        case FREQUENCY_SHIFT_REQUEST_MANUAL:
+            config->freq_shift_requested = true;
+            config->freq_shift_hz = config->frequency_shift_request.value;
+            break;
+
+        case FREQUENCY_SHIFT_REQUEST_METADATA_CALC_TARGET:
+            config->freq_shift_requested = true;
+            config->set_center_frequency_target_hz = true;
+            config->center_frequency_target_hz = config->frequency_shift_request.value;
+            break;
+    }
+
+    // --- Part 3: Final validation of related options ---
+    if (config->shift_after_resample && !config->freq_shift_requested) {
+        log_fatal("Option --shift-after-resample was used, but no frequency shift was requested.");
+        return false;
+    }
+
+    return true;
+}
+
+// --- MODIFIED: The main validation flow ---
 static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const char** non_opt_argv) {
     if (!config->input_type_str) {
         fprintf(stderr, "error: missing required argument --input <type>\n");
@@ -180,19 +223,62 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
         }
     }
 
-    if (!validate_output_destination(config)) return false;
-    if (!validate_output_type_and_sample_format(config)) return false;
-    if (!validate_sdr_general_options(config)) return false;
-    
-    // Run the module-specific validation first
+    // Initialize the request type to NONE before any validation happens.
+    config->frequency_shift_request.type = FREQUENCY_SHIFT_REQUEST_NONE;
+
+    // Run the module-specific validation FIRST to populate the request struct.
     if (selected_ops->validate_options) {
         if (!selected_ops->validate_options(config)) {
             return false;
         }
     }
 
-    // Now run the generic processing validation
-    if (!validate_processing_options(config)) return false;
+    // Run other generic validation functions.
+    if (!validate_output_destination(config)) return false;
+    if (!validate_output_type_and_sample_format(config)) return false;
+    if (!validate_sdr_general_options(config)) return false;
+
+    // Call our new, clean resolver for frequency shifts.
+    if (!resolve_frequency_shift_options(config)) return false;
+
+    // Validate the remaining processing options that are NOT related to frequency shifting.
+    if (config->user_rate_provided && config->preset_name) {
+        log_fatal("Option --output-rate cannot be used with --preset.");
+        return false;
+    }
+    if (config->no_resample) {
+        if (config->user_rate_provided) {
+            log_fatal("Option --no-resample cannot be used with --output-rate.");
+            return false;
+        }
+        if (config->preset_name) {
+            log_fatal("Option --no-resample cannot be used with --preset.");
+            return false;
+        }
+    }
+    if (config->raw_passthrough) {
+        if (!config->no_resample) {
+            log_warn("Option --raw-passthrough implies --no-resample. Forcing resampler off.");
+            config->no_resample = true;
+        }
+        if (config->freq_shift_requested) {
+            log_fatal("Option --raw-passthrough cannot be used with frequency shifting options.");
+            return false;
+        }
+        if (config->iq_correction.enable) {
+            log_fatal("Option --raw-passthrough cannot be used with --iq-correction.");
+            return false;
+        }
+        if (config->dc_block.enable) {
+            log_fatal("Option --raw-passthrough cannot be used with --dc-block.");
+            return false;
+        }
+    }
+    if (config->target_rate <= 0 && !config->no_resample) {
+        log_fatal("Missing required argument: you must specify an --output-rate or use a preset.");
+        return false;
+    }
+
     if (!validate_iq_correction_options(config)) return false;
 
     return true;
@@ -317,76 +403,6 @@ static bool validate_sdr_general_options(AppConfig *config) {
     #else
     (void)config;
     #endif
-    return true;
-}
-
-static bool validate_processing_options(AppConfig *config) {
-    // --- FREQUENCY SHIFT VALIDATION ---
-    
-    // Step 1: Process the generic --freq-shift argument.
-    if (config->freq_shift_hz_arg != 0.0f) {
-        config->freq_shift_hz = (double)config->freq_shift_hz_arg;
-        config->freq_shift_requested = true;
-    }
-
-    // Step 2: Process the WAV-specific --wav-center-target-frequency argument.
-    // The flag `set_center_frequency_target_hz` is set by wav_validate_options().
-    if (config->set_center_frequency_target_hz) {
-        // Conflict check: ensure both shift types aren't used at once.
-        if (config->freq_shift_requested) {
-            log_fatal("Cannot use --freq-shift and --wav-center-target-frequency at the same time.");
-            return false;
-        }
-        // Mark that a shift will be needed. The actual calculation and metadata dependency
-        // check will happen later in the main application logic, after the file is opened.
-        config->freq_shift_requested = true;
-    }
-
-    if (config->shift_after_resample && !config->freq_shift_requested) {
-        log_fatal("Option --shift-after-resample was used, but no frequency shift was requested.");
-        return false;
-    }
-
-    // --- OTHER PROCESSING OPTIONS ---
-    if (config->user_rate_provided && config->preset_name) {
-        log_fatal("Option --output-rate cannot be used with --preset.");
-        return false;
-    }
-    if (config->no_resample) {
-        if (config->user_rate_provided) {
-            log_fatal("Option --no-resample cannot be used with --output-rate.");
-            return false;
-        }
-        if (config->preset_name) {
-            log_fatal("Option --no-resample cannot be used with --preset.");
-            return false;
-        }
-    }
-
-    if (config->raw_passthrough) {
-        if (!config->no_resample) {
-            log_warn("Option --raw-passthrough implies --no-resample. Forcing resampler off.");
-            config->no_resample = true;
-        }
-        if (config->freq_shift_requested) {
-            log_fatal("Option --raw-passthrough cannot be used with frequency shifting options.");
-            return false;
-        }
-        if (config->iq_correction.enable) {
-            log_fatal("Option --raw-passthrough cannot be used with --iq-correction.");
-            return false;
-        }
-        if (config->dc_block.enable) {
-            log_fatal("Option --raw-passthrough cannot be used with --dc-block.");
-            return false;
-        }
-    }
-
-    if (config->target_rate <= 0 && !config->no_resample) {
-        log_fatal("Missing required argument: you must specify an --output-rate or use a preset.");
-        return false;
-    }
-
     return true;
 }
 

@@ -68,16 +68,13 @@ InputSourceOps* get_wav_input_ops(void) {
 
 // --- Module-specific validation function ---
 static bool wav_validate_options(AppConfig* config) {
-    // This function is only called if "wav" is the selected input.
-    
-    // Post-process the WAV-specific argument from its temporary field.
-    // The final validation and conflict checks will happen in the generic
-    // validate_processing_options function, which runs after this one.
+    // This function's ONLY job is to report its request using the generic struct.
     if (config->wav_center_target_hz_arg != 0.0f) {
-        config->center_frequency_target_hz = (double)config->wav_center_target_hz_arg;
-        config->set_center_frequency_target_hz = true;
+        // It doesn't check for conflicts. It just reports what it sees.
+        // The central resolver in cli.c will handle any conflicts.
+        config->frequency_shift_request.type = FREQUENCY_SHIFT_REQUEST_METADATA_CALC_TARGET;
+        config->frequency_shift_request.value = (double)config->wav_center_target_hz_arg;
     }
-    
     return true;
 }
 

@@ -47,7 +47,6 @@ struct AppConfig;
 struct SampleChunk;
 struct FileWriterContext;
 
-// --- FIX: Forward-declare AppResources to break the circular dependency ---
 struct AppResources;
 
 typedef enum {
@@ -139,7 +138,6 @@ typedef struct {
     bool (*open)(struct FileWriterContext* ctx, const struct AppConfig* config, struct AppResources* resources);
     size_t (*write)(struct FileWriterContext* ctx, const void* buffer, size_t bytes_to_write);
     void (*close)(struct FileWriterContext* ctx);
-    // --- FIX: Reverted this signature to its original, correct form ---
     long long (*get_total_bytes_written)(const struct FileWriterContext* ctx);
 } FileWriterOps;
 
@@ -157,6 +155,17 @@ typedef struct {
     bool enable;
 } DcBlockConfig;
 
+typedef enum {
+    FREQUENCY_SHIFT_REQUEST_NONE,
+    FREQUENCY_SHIFT_REQUEST_MANUAL,
+    FREQUENCY_SHIFT_REQUEST_METADATA_CALC_TARGET
+} FrequencyShiftRequestType;
+
+typedef struct {
+    FrequencyShiftRequestType type;
+    double value; // The value associated with the request (e.g., 25000.0 or 97.3e6)
+} FrequencyShiftRequest;
+
 typedef struct AppConfig {
     char *input_type_str;
     char *input_filename_arg;
@@ -168,12 +177,8 @@ typedef struct AppConfig {
     char *preset_name;
     float gain;
     bool gain_provided;
-    double freq_shift_hz;
     float freq_shift_hz_arg;
-    bool freq_shift_requested;
-    double center_frequency_target_hz;
     float wav_center_target_hz_arg;
-    bool set_center_frequency_target_hz;
     bool shift_after_resample;
     bool no_resample;
     bool raw_passthrough;
@@ -181,6 +186,18 @@ typedef struct AppConfig {
     bool user_rate_provided;
     IqCorrectionConfig iq_correction;
     DcBlockConfig dc_block;
+
+    FrequencyShiftRequest frequency_shift_request;
+
+    // The final, simple flags used by the DSP chain.
+    // These will be populated by the resolver in cli.c.
+    double freq_shift_hz;
+    bool freq_shift_requested;
+
+    // The WAV-specific flag is still needed for the metadata logic,
+    // but it's now set by the resolver, not the module.
+    double center_frequency_target_hz;
+    bool set_center_frequency_target_hz;
 
 #if defined(ANY_SDR_SUPPORT_ENABLED)
     struct {

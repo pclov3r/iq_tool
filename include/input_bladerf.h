@@ -3,10 +3,10 @@
 
 #include "input_source.h"
 #include <libbladeRF.h>
-#include "argparse.h" // <<< ADDED
+#include "argparse.h"
 
 #if defined(_WIN32) && defined(WITH_BLADERF)
-#include <windows.h>
+#include <windows.h> // Needed for HINSTANCE and FARPROC
 #include <stdbool.h>
 
 typedef struct {
@@ -63,16 +63,8 @@ void bladerf_unload_api(void);
 
 InputSourceOps* get_bladerf_input_ops(void);
 
-/**
- * @brief Returns the command-line options specific to the BladeRF module.
- * @param count A pointer to an integer that will be filled with the number of options.
- * @return A pointer to a static array of argparse_option structs.
- */
 const struct argparse_option* bladerf_get_cli_options(int* count);
 
-/**
- * @brief Sets the default configuration values for the BladeRF module.
- */
 void bladerf_set_default_config(AppConfig* config);
 
 #endif // INPUT_BLADERF_H_

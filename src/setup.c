@@ -259,19 +259,10 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     }
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Output Type", output_type_str);
 
-    const char* sample_type_str;
-    switch (config->output_format) {
-        case CU8: sample_type_str = "cu8 (Unsigned 8-bit Complex)"; break;
-        case CS8: sample_type_str = "cs8 (Signed 8-bit Complex)"; break;
-        case CU16: sample_type_str = "cu16 (Unsigned 16-bit Complex)"; break;
-        case CS16: sample_type_str = "cs16 (Signed 16-bit Complex)"; break;
-        case CU32: sample_type_str = "cu32 (Unsigned 32-bit Complex)"; break;
-        case CS32: sample_type_str = "cs32 (Signed 32-bit Complex)"; break;
-        case CF32: sample_type_str = "cf32 (32-bit Float Complex)"; break;
-        case SC16Q11: sample_type_str = "sc16q11 (16-bit Signed Complex Q4.11)"; break;
-        default: sample_type_str = "Unknown"; break;
-    }
+    // MODIFIED: Replace the entire switch block with this one line.
+    const char* sample_type_str = utils_get_format_description_string(config->output_format);
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Sample Type", sample_type_str);
+
     fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Output Rate", config->target_rate);
     fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Gain", config->gain);
 

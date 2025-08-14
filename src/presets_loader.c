@@ -13,8 +13,6 @@
 #include <windows.h>
 #include <shlobj.h> // For SHGetKnownFolderPath
 #include <shlwapi.h> // For PathAppendW
-#pragma comment(lib, "shell32.lib") // Link with shell32.lib for SHGetKnownFolderPath
-#pragma comment(lib, "shlwapi.lib") // Link with shlwapi.lib for PathAppendW
 #define strcasecmp _stricmp
 #else
 #include <strings.h> // For strcasecmp

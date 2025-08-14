@@ -1,17 +1,14 @@
 #ifndef INPUT_SDRPLAY_H_
 #define INPUT_SDRPLAY_H_
 
-#include "input_source.h" // Include the generic input source interface
-#include "sdrplay_api.h"  // Needed for sdrplay_api types
-#include <stdint.h>       // For uint8_t
-#include "argparse.h"     // <<< ADDED
+#include "input_source.h"
+#include "sdrplay_api.h"
+#include <stdint.h>
+#include "argparse.h"
 
-// =================================================================================
-// START: Merged Dynamic Loading Declarations for Windows SDRplay API
-// =================================================================================
 #if defined(_WIN32) && defined(WITH_SDRPLAY)
 
-#include <windows.h>
+#include <windows.h> // Needed for HINSTANCE and FARPROC
 #include <stdbool.h>
 
 // A struct to hold all the function pointers we need from the DLL
@@ -38,8 +35,6 @@ bool sdrplay_load_api(void);
 void sdrplay_unload_api(void);
 
 // --- MACRO REDIRECTION ---
-// On Windows, this block transparently redirects all standard API calls
-// to our function pointers.
 #define sdrplay_api_Open          sdrplay_api.Open
 #define sdrplay_api_Close         sdrplay_api.Close
 #define sdrplay_api_GetDevices    sdrplay_api.GetDevices
@@ -53,35 +48,15 @@ void sdrplay_unload_api(void);
 #define sdrplay_api_Uninit        sdrplay_api.Uninit
 
 #endif // defined(_WIN32) && defined(WITH_SDRPLAY)
-// =================================================================================
-// END: Merged Dynamic Loading Declarations
-// =================================================================================
 
-
-/**
- * @brief Returns a pointer to the InputSourceOps struct that implements
- *        the input source interface for SDRplay device input.
- */
 InputSourceOps* get_sdrplay_input_ops(void);
 
-/**
- * @brief Returns the command-line options specific to the SDRplay module.
- * @param count A pointer to an integer that will be filled with the number of options.
- * @return A pointer to a static array of argparse_option structs.
- */
 const struct argparse_option* sdrplay_get_cli_options(int* count);
 
-/**
- * @brief Sets the default configuration values for the SDRplay module.
- */
 void sdrplay_set_default_config(AppConfig* config);
 
-/**
- * @brief Returns the human-readable name of an SDRplay device based on its hardware version.
- */
 const char* get_sdrplay_device_name(uint8_t hwVer);
 
-// SDRplay API callback functions (must remain public for SDRplay API to call them)
 void sdrplay_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext);
 void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext);
 

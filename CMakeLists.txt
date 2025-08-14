@@ -679,61 +679,59 @@ endif()
 #=======================================================================
 message(STATUS "Linking libraries...")
 
-set(TARGET_LINK_LIBS
+# --- MODIFIED SECTION START ---
+# We will now link all libraries directly to the target.
+
+target_link_libraries(iq_resample_tool PRIVATE
     ${FINAL_SNDFILE_LIBRARIES}
     ${FINAL_LIQUIDDSP_LIBRARIES}
     ${FINAL_EXPAT_LIBRARIES}
     ${FINAL_PTHREADS_LIBRARIES}
 )
 
+# --- Platform-specific linking for Windows ---
+# On Windows, we need to link against several system libraries for
+# advanced path handling and shell functions. This block ensures these
+# libraries are linked regardless of whether we are using MSVC or MinGW.
 if(WIN32)
-    find_library(SHLWAPI_LIBRARY NAMES shlwapi Shlwapi)
-    find_library(PATHCCH_LIBRARY NAMES pathcch PathCch)
-    if(NOT SHLWAPI_LIBRARY)
-        set(SHLWAPI_LIBRARY shlwapi)
-        message(STATUS "Assuming linker will find shlwapi")
-    else()
-        message(STATUS "Found Windows library: ${SHLWAPI_LIBRARY}")
-    endif()
-    if(NOT PATHCCH_LIBRARY)
-        set(PATHCCH_LIBRARY pathcch)
-        message(STATUS "Assuming linker will find pathcch")
-    else()
-        message(STATUS "Found Windows library: ${PATHCCH_LIBRARY}")
-    endif()
-    list(APPEND TARGET_LINK_LIBS
-        ${SHLWAPI_LIBRARY}
-        ${PATHCCH_LIBRARY}
+    target_link_libraries(iq_resample_tool PRIVATE
+        shlwapi
+        pathcch
+        shell32
     )
 else()
-    list(APPEND TARGET_LINK_LIBS m)
+    # Link math library on non-Windows systems
+    target_link_libraries(iq_resample_tool PRIVATE m)
 endif()
 
 if(WITH_RTLSDR)
-    list(APPEND TARGET_LINK_LIBS
+    target_link_libraries(iq_resample_tool PRIVATE
         ${FINAL_RTLSDR_LIBRARIES}
         ${FINAL_LIBUSB_LIBRARIES}
     )
 endif()
 if(WITH_SDRPLAY)
+    # SDRplay API is typically a dynamic library on Windows,
+    # but needs to be explicitly linked on other platforms if applicable.
     if(NOT WIN32)
-        list(APPEND TARGET_LINK_LIBS ${FINAL_SDRPLAY_LIBRARIES})
+        target_link_libraries(iq_resample_tool PRIVATE ${FINAL_SDRPLAY_LIBRARIES})
     endif()
 endif()
 if(WITH_HACKRF)
-    list(APPEND TARGET_LINK_LIBS
+    target_link_libraries(iq_resample_tool PRIVATE
         ${FINAL_HACKRF_LIBRARIES}
         ${FINAL_LIBUSB_LIBRARIES}
     )
 endif()
 if(WITH_BLADERF)
-    if(NOT WIN32)
-        list(APPEND TARGET_LINK_LIBS ${FINAL_BLADERF_LIBRARIES})
-    endif()
-    list(APPEND TARGET_LINK_LIBS ${FINAL_LIBUSB_LIBRARIES})
+    # BladeRF library needs to be linked on all platforms.
+    target_link_libraries(iq_resample_tool PRIVATE
+        ${FINAL_BLADERF_LIBRARIES}
+        ${FINAL_LIBUSB_LIBRARIES}
+    )
 endif()
+# --- MODIFIED SECTION END ---
 
-target_link_libraries(iq_resample_tool PRIVATE ${TARGET_LINK_LIBS})
 
 #=======================================================================
 # Installation / Uninstall / Summary

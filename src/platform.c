@@ -15,9 +15,6 @@
 #include <shlwapi.h> // For PathIsRelativeW, PathAppendW
 #include <pathcch.h> // For PathCchCombineEx
 
-#pragma comment(lib, "shlwapi.lib")
-#pragma comment(lib, "Pathcch.lib")
-
 /**
  * @brief Sets stdout to binary mode on Windows.
  */
