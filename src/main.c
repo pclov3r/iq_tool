@@ -235,13 +235,15 @@ int main(int argc, char *argv[]) {
     }
     pthread_join(resources.reader_thread_handle, NULL);
 
+    // --- MODIFIED SECTION ---
+    // Lock the console mutex to ensure the final output is atomic and clean.
+    pthread_mutex_lock(&g_console_mutex);
+
     if (resources.end_of_stream_reached && !g_config.output_to_stdout) {
-        pthread_mutex_lock(&g_console_mutex);
         if (isatty(fileno(stderr))) {
             fprintf(stderr, "\r                                                                               \r");
             fflush(stderr);
         }
-        pthread_mutex_unlock(&g_console_mutex);
     }
 
     log_debug("All processing threads have joined.");
@@ -251,6 +253,10 @@ int main(int argc, char *argv[]) {
     bool processing_ok = !resources.error_occurred;
     print_final_summary(&g_config, &resources, processing_ok);
     
+    // Unlock the console after all final printing is complete.
+    pthread_mutex_unlock(&g_console_mutex);
+    // --- END MODIFIED SECTION ---
+
     int exit_status = (processing_ok || is_shutdown_requested()) ? EXIT_SUCCESS : EXIT_FAILURE;
 
     presets_free_loaded(&g_config);

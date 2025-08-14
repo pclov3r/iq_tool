@@ -139,7 +139,7 @@ static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ct
         bytes_to_copy = pipeline_buffer_size;
     }
 
-    void* target_buffer = config->no_convert ? item->final_output_data : item->raw_input_data;
+    void* target_buffer = config->raw_passthrough ? item->final_output_data : item->raw_input_data;
     memcpy(target_buffer, buf, bytes_to_copy);
     item->frames_read = bytes_to_copy / resources->input_bytes_per_sample_pair;
     item->is_last_chunk = false;
@@ -150,7 +150,7 @@ static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ct
         pthread_mutex_unlock(&resources->progress_mutex);
     }
 
-    if (config->no_convert) {
+    if (config->raw_passthrough) {
         item->frames_to_write = item->frames_read;
         if (!queue_enqueue(resources->final_output_queue, item)) {
             queue_enqueue(resources->free_sample_chunk_queue, item);
@@ -257,7 +257,7 @@ static bool rtlsdr_initialize(InputSourceContext* ctx) {
     resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
     resources->source_info.frames = -1;
 
-    if (config->no_convert && resources->input_format != config->output_format) {
+    if (config->raw_passthrough && resources->input_format != config->output_format) {
         log_fatal("Option --no-convert requires input and output formats to be identical. RTL-SDR input is 'cu8', but output was set to '%s'.", config->sample_type_name);
         rtlsdr_close(resources->rtlsdr_dev);
         return false;

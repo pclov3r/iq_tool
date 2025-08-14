@@ -300,7 +300,7 @@ void sdrplay_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *
         numSamples = BUFFER_SIZE_SAMPLES;
     }
 
-    void* target_buffer = config->no_convert ? item->final_output_data : item->raw_input_data;
+    void* target_buffer = config->raw_passthrough ? item->final_output_data : item->raw_input_data;
     int16_t *raw_buffer = (int16_t*)target_buffer;
     for (unsigned int i = 0; i < numSamples; i++) {
         raw_buffer[i * 2] = xi[i];
@@ -316,7 +316,7 @@ void sdrplay_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *
         pthread_mutex_unlock(&resources->progress_mutex);
     }
 
-    if (config->no_convert) {
+    if (config->raw_passthrough) {
         item->frames_to_write = item->frames_read;
         if (!queue_enqueue(resources->final_output_queue, item)) {
             queue_enqueue(resources->free_sample_chunk_queue, item);
@@ -611,7 +611,7 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
     resources->source_info.samplerate = (int)sample_rate_to_set;
     resources->source_info.frames = -1;
 
-    if (config->no_convert && resources->input_format != config->output_format) {
+    if (config->raw_passthrough && resources->input_format != config->output_format) {
         log_fatal("Option --no-convert requires input and output formats to be identical. SDRplay input is 'cs16', but output was set to '%s'.", config->sample_type_name);
         sdrplay_api_ReleaseDevice(resources->sdr_device);
         free(resources->sdr_device);

@@ -1,5 +1,3 @@
-// src/cli.c
-
 #include "cli.h"
 #include "types.h"
 #include "config.h"
@@ -25,12 +23,12 @@
 extern AppConfig g_config;
 
 // --- Forward Declarations ---
-static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const char** non_opt_argv);
 static bool validate_output_destination(AppConfig *config);
 static bool validate_output_type_and_sample_format(AppConfig *config);
 static bool validate_sdr_general_options(AppConfig *config);
 static bool validate_processing_options(AppConfig *config);
 static bool validate_iq_correction_options(AppConfig *config);
+static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const char** non_opt_argv);
 
 
 void print_usage(const char *prog_name) {
@@ -59,8 +57,10 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
         OPT_GROUP("Processing Options"),
         OPT_FLOAT(0, "output-rate", &g_config.user_defined_target_rate_arg, "Output sample rate in Hz. (Required if no preset is used)", NULL, 0, 0),
         OPT_FLOAT(0, "gain", &g_config.gain, "Apply a linear gain multiplier to the samples (Default: 1.0)", NULL, 0, 0),
-        OPT_BOOLEAN(0, "no-resample", &g_config.no_resample, "Disable the resampler. Output rate will match input rate.", NULL, 0, 0),
-        OPT_BOOLEAN(0, "no-convert", &g_config.no_convert, "True passthrough mode. Bypasses all processing.", NULL, 0, 0),
+        OPT_FLOAT(0, "freq-shift", &g_config.freq_shift_hz_arg, "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0, 0),
+        OPT_BOOLEAN(0, "shift-after-resample", &g_config.shift_after_resample, "Apply frequency shift AFTER resampling (default is before)", NULL, 0, 0),
+        OPT_BOOLEAN(0, "no-resample", &g_config.no_resample, "Process at native input rate. Bypasses the resampler but applies all other DSP.", NULL, 0, 0),
+        OPT_BOOLEAN(0, "raw-passthrough", &g_config.raw_passthrough, "Bypass all processing. Copies raw input bytes directly to output.", NULL, 0, 0),
         OPT_BOOLEAN(0, "iq-correction", &g_config.iq_correction.enable, "(Optional) Enable automatic I/Q imbalance correction.", NULL, 0, 0),
         OPT_BOOLEAN(0, "dc-block", &g_config.dc_block.enable, "(Optional) Enable DC offset removal (high-pass filter).", NULL, 0, 0),
         OPT_STRING(0, "preset", &g_config.preset_name, "Use a preset for a common target.", NULL, 0, 0),
@@ -184,12 +184,14 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
     if (!validate_output_type_and_sample_format(config)) return false;
     if (!validate_sdr_general_options(config)) return false;
     
+    // Run the module-specific validation first
     if (selected_ops->validate_options) {
         if (!selected_ops->validate_options(config)) {
             return false;
         }
     }
 
+    // Now run the generic processing validation
     if (!validate_processing_options(config)) return false;
     if (!validate_iq_correction_options(config)) return false;
 
@@ -221,6 +223,15 @@ static bool validate_output_type_and_sample_format(AppConfig *config) {
                 if (!config->output_type_name) {
                     config->output_type = p->output_type;
                     config->output_type_provided = true;
+                }
+                if (p->gain_provided && config->gain == 1.0f) {
+                    config->gain = p->gain;
+                }
+                if (p->dc_block_provided && !config->dc_block.enable) {
+                    config->dc_block.enable = p->dc_block_enable;
+                }
+                if (p->iq_correction_provided && !config->iq_correction.enable) {
+                    config->iq_correction.enable = p->iq_correction_enable;
                 }
                 preset_found = true;
                 break;
@@ -310,6 +321,33 @@ static bool validate_sdr_general_options(AppConfig *config) {
 }
 
 static bool validate_processing_options(AppConfig *config) {
+    // --- FREQUENCY SHIFT VALIDATION ---
+    
+    // Step 1: Process the generic --freq-shift argument.
+    if (config->freq_shift_hz_arg != 0.0f) {
+        config->freq_shift_hz = (double)config->freq_shift_hz_arg;
+        config->freq_shift_requested = true;
+    }
+
+    // Step 2: Process the WAV-specific --wav-center-target-frequency argument.
+    // The flag `set_center_frequency_target_hz` is set by wav_validate_options().
+    if (config->set_center_frequency_target_hz) {
+        // Conflict check: ensure both shift types aren't used at once.
+        if (config->freq_shift_requested) {
+            log_fatal("Cannot use --freq-shift and --wav-center-target-frequency at the same time.");
+            return false;
+        }
+        // Mark that a shift will be needed. The actual calculation and metadata dependency
+        // check will happen later in the main application logic, after the file is opened.
+        config->freq_shift_requested = true;
+    }
+
+    if (config->shift_after_resample && !config->freq_shift_requested) {
+        log_fatal("Option --shift-after-resample was used, but no frequency shift was requested.");
+        return false;
+    }
+
+    // --- OTHER PROCESSING OPTIONS ---
     if (config->user_rate_provided && config->preset_name) {
         log_fatal("Option --output-rate cannot be used with --preset.");
         return false;
@@ -325,21 +363,21 @@ static bool validate_processing_options(AppConfig *config) {
         }
     }
 
-    if (config->no_convert) {
+    if (config->raw_passthrough) {
         if (!config->no_resample) {
-            log_warn("Option --no-convert implies --no-resample. Forcing resampler off.");
+            log_warn("Option --raw-passthrough implies --no-resample. Forcing resampler off.");
             config->no_resample = true;
         }
-        if (config->freq_shift_requested || config->set_center_frequency_target_hz) {
-            log_fatal("Option --no-convert cannot be used with frequency shifting options.");
+        if (config->freq_shift_requested) {
+            log_fatal("Option --raw-passthrough cannot be used with frequency shifting options.");
             return false;
         }
         if (config->iq_correction.enable) {
-            log_fatal("Option --no-convert cannot be used with --iq-correction.");
+            log_fatal("Option --raw-passthrough cannot be used with --iq-correction.");
             return false;
         }
         if (config->dc_block.enable) {
-            log_fatal("Option --no-convert cannot be used with --dc-block.");
+            log_fatal("Option --raw-passthrough cannot be used with --dc-block.");
             return false;
         }
     }

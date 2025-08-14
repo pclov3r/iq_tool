@@ -87,7 +87,6 @@ void bladerf_unload_api(void) {
 extern AppConfig g_config;
 
 void bladerf_set_default_config(AppConfig* config) {
-    // MODIFIED: Use definitions from config.h instead of hardcoded values.
     config->bladerf.sample_rate_hz = BLADERF_DEFAULT_SAMPLE_RATE_HZ;
     config->bladerf.bandwidth_hz = BLADERF_DEFAULT_BANDWIDTH_HZ;
 }
@@ -412,12 +411,11 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
         rx_channel = BLADERF_CHANNEL_RX(0);
     }
 
-    const unsigned int timeout_ms = 3500;
     status = bladerf_sync_config(dev, layout, BLADERF_FORMAT_SC16_Q11_META,
                                  config->bladerf.num_buffers,
                                  config->bladerf.buffer_size,
                                  config->bladerf.num_transfers,
-                                 timeout_ms);
+                                 BLADERF_SYNC_CONFIG_TIMEOUT_MS);
     if (status != 0) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "bladerf_sync_config() failed: %s", bladerf_strerror(status));
@@ -433,12 +431,12 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
         return NULL;
     }
 
-    if (config->no_convert && resources->input_format != config->output_format) {
-        handle_fatal_thread_error("Option --no-convert requires input and output formats to be identical.", resources);
+    if (config->raw_passthrough && resources->input_format != config->output_format) {
+        handle_fatal_thread_error("Option --raw-passthrough requires input and output formats to be identical.", resources);
         return NULL;
     }
 
-    unsigned int samples_per_transfer = (unsigned int)(resources->source_info.samplerate * 0.25);
+    unsigned int samples_per_transfer = (unsigned int)(resources->source_info.samplerate * BLADERF_TRANSFER_SIZE_SECONDS);
     if (samples_per_transfer > BUFFER_SIZE_SAMPLES) {
         samples_per_transfer = BUFFER_SIZE_SAMPLES;
     }
@@ -455,8 +453,8 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
         memset(&meta, 0, sizeof(meta));
         meta.flags = BLADERF_META_FLAG_RX_NOW;
 
-        void* target_buffer = config->no_convert ? item->final_output_data : item->raw_input_data;
-        status = bladerf_sync_rx(dev, target_buffer, samples_per_transfer, &meta, 5000);
+        void* target_buffer = config->raw_passthrough ? item->final_output_data : item->raw_input_data;
+        status = bladerf_sync_rx(dev, target_buffer, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
         
         if (status != 0) {
             if (!is_shutdown_requested()) {
@@ -483,7 +481,7 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
         resources->total_frames_read += item->frames_read;
         pthread_mutex_unlock(&resources->progress_mutex);
 
-        if (config->no_convert) {
+        if (config->raw_passthrough) {
             item->frames_to_write = item->frames_read;
             if (!queue_enqueue(resources->final_output_queue, item)) {
                 queue_enqueue(resources->free_sample_chunk_queue, item);
@@ -551,20 +549,6 @@ static void bladerf_get_summary_info(const InputSourceContext* ctx, InputSummary
     }
     add_summary_item(info, "Bias-T", "%s", config->sdr.bias_t_enable ? "Enabled" : "Disabled");
 }
-
-#ifdef _WIN32
-static bool get_known_folder_path_win(const KNOWNFOLDERID* rfid, wchar_t* path_buf, size_t path_buf_len) {
-    PWSTR known_path = NULL;
-    HRESULT hr = SHGetKnownFolderPath(rfid, 0, NULL, &known_path);
-    if (SUCCEEDED(hr)) {
-        wcsncpy(path_buf, known_path, path_buf_len - 1);
-        path_buf[path_buf_len - 1] = L'\0';
-        CoTaskMemFree(known_path);
-        return true;
-    }
-    return false;
-}
-#endif
 
 static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev) {
     int status;

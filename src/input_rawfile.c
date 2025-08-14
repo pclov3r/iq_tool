@@ -156,7 +156,7 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     size_t bytes_to_read_per_chunk = (size_t)BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
 
-    if (config->no_convert && resources->input_format != config->output_format) {
+    if (config->raw_passthrough && resources->input_format != config->output_format) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf),
                  "Option --no-convert requires input and output formats to be identical. Input format is '%s', output format is '%s'.",
@@ -173,7 +173,7 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
 
         current_item->stream_discontinuity_event = false;
 
-        void* target_buffer = config->no_convert ? current_item->final_output_data : current_item->raw_input_data;
+        void* target_buffer = config->raw_passthrough ? current_item->final_output_data : current_item->raw_input_data;
         int64_t bytes_read = sf_read_raw(resources->infile, target_buffer, bytes_to_read_per_chunk);
 
         if (bytes_read < 0) {
@@ -195,7 +195,7 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
             pthread_mutex_unlock(&resources->progress_mutex);
         }
 
-        if (config->no_convert) {
+        if (config->raw_passthrough) {
             // <<< CORRECTED: Changed 'item' to 'current_item' >>>
             current_item->frames_to_write = current_item->frames_read;
             if (!queue_enqueue(resources->final_output_queue, current_item)) {

@@ -25,12 +25,6 @@
 #include <libgen.h> // For dirname
 #endif
 
-// --- Security and Robustness Constants ---
-// REMOVED: These are now in config.h
-// #define MAX_LINE_LENGTH 1024 // A reasonable limit for a single line in the config file
-// #define MAX_PRESETS 128      // A sanity limit on the total number of presets to load
-
-
 // --- Helper function declarations ---
 static bool check_file_exists(const char* full_path);
 static void free_dynamic_paths(char** paths, int count);
@@ -360,6 +354,37 @@ bool presets_load_from_file(AppConfig* config) {
                 else {
                     log_warn("Invalid value for 'output_type' in preset '%s' at line %d: '%s'", current_preset->name, line_num, value);
                 }
+            // --- MODIFIED/ADDED SECTION ---
+            } else if (strcasecmp(key, "gain") == 0) {
+                char* endptr;
+                float parsed_gain = strtof(value, &endptr);
+                if (*endptr == '\0' && parsed_gain > 0.0f && isfinite(parsed_gain)) {
+                    current_preset->gain = parsed_gain;
+                    current_preset->gain_provided = true;
+                } else {
+                    log_warn("Invalid value for 'gain' in preset '%s' at line %d: '%s'", current_preset->name, line_num, value);
+                }
+            } else if (strcasecmp(key, "dc_block") == 0) {
+                if (strcasecmp(value, "true") == 0) {
+                    current_preset->dc_block_enable = true;
+                    current_preset->dc_block_provided = true;
+                } else if (strcasecmp(value, "false") == 0) {
+                    current_preset->dc_block_enable = false;
+                    current_preset->dc_block_provided = true;
+                } else {
+                    log_warn("Invalid value for 'dc_block' in preset '%s' at line %d: '%s'. Use 'true' or 'false'.", current_preset->name, line_num, value);
+                }
+            } else if (strcasecmp(key, "iq_correction") == 0) {
+                if (strcasecmp(value, "true") == 0) {
+                    current_preset->iq_correction_enable = true;
+                    current_preset->iq_correction_provided = true;
+                } else if (strcasecmp(value, "false") == 0) {
+                    current_preset->iq_correction_enable = false;
+                    current_preset->iq_correction_provided = true;
+                } else {
+                    log_warn("Invalid value for 'iq_correction' in preset '%s' at line %d: '%s'. Use 'true' or 'false'.", current_preset->name, line_num, value);
+                }
+            // --- END MODIFIED/ADDED SECTION ---
             } else {
                 log_warn("Unknown key '%s' in preset '%s' at line %d.", key, current_preset->name, line_num);
             }

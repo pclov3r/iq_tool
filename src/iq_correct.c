@@ -59,7 +59,6 @@
 #include <errno.h>
 #include <time.h>
 
-// --- ADD THIS INCLUDE FOR ATOMIC FUNCTIONS ---
 #include <stdatomic.h>
 
 #ifndef M_PI
@@ -71,11 +70,6 @@
 #else
 #include <liquid/liquid.h>
 #endif
-
-// --- Algorithm Tuning Constants ---
-// REMOVED: These are now in config.h
-// #define IQ_BASE_INCREMENT 0.0001f
-// #define IQ_MAX_PASSES 25
 
 // --- Forward Declarations for Static Helper Functions ---
 static void _apply_correction_to_buffer(complex_float_t* buffer, int length, float gain_adj, float phase_adj);
@@ -154,7 +148,7 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
 
     _estimate_power(&resources->iq_correction, optimization_data);
 
-    const float absolute_peak_threshold_db = -60.0f;
+    const float absolute_peak_threshold_db = IQ_CORRECTION_PEAK_THRESHOLD_DB;
     float peak_power = resources->iq_correction.average_power + resources->iq_correction.power_range;
     log_debug("IQ_OPT_PROBE: Peak power estimated at %.2f dB (Threshold is %.1f dB)", peak_power, absolute_peak_threshold_db);
 
@@ -190,8 +184,8 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
     int current_active_idx = atomic_load(&resources->iq_correction.active_buffer_idx);
     int inactive_idx = 1 - current_active_idx;
 
-    float smoothed_gain = (0.95f * resources->iq_correction.factors_buffer[current_active_idx].mag) + (0.05f * current_gain);
-    float smoothed_phase = (0.95f * resources->iq_correction.factors_buffer[current_active_idx].phase) + (0.05f * current_phase);
+    float smoothed_gain = ((1.0f - IQ_CORRECTION_SMOOTHING_FACTOR) * resources->iq_correction.factors_buffer[current_active_idx].mag) + (IQ_CORRECTION_SMOOTHING_FACTOR * current_gain);
+    float smoothed_phase = ((1.0f - IQ_CORRECTION_SMOOTHING_FACTOR) * resources->iq_correction.factors_buffer[current_active_idx].phase) + (IQ_CORRECTION_SMOOTHING_FACTOR * current_phase);
 
     resources->iq_correction.factors_buffer[inactive_idx].mag = smoothed_gain;
     resources->iq_correction.factors_buffer[inactive_idx].phase = smoothed_phase;
@@ -224,7 +218,6 @@ void iq_correct_cleanup(AppResources* resources) {
 
 
 // --- Internal Helper Functions ---
-// ... (These functions are unchanged) ...
 
 static void _apply_correction_to_buffer(complex_float_t* buffer, int length, float gain_adj, float phase_adj) {
     const float magp1 = 1.0f + gain_adj;

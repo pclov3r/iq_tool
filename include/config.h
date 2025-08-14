@@ -6,10 +6,11 @@
 #define PRESETS_FILENAME "iq_resample_tool_presets.conf"
 
 // --- Pipeline & Buffer Configuration ---
-#define STOPBAND_ATTENUATION_DB   60.0f
-#define PROGRESS_UPDATE_INTERVAL  1
-#define NUM_BUFFERS               128
-#define BUFFER_SIZE_SAMPLES       131072
+#define STOPBAND_ATTENUATION_DB         60.0f
+#define PROGRESS_UPDATE_INTERVAL        1
+#define NUM_BUFFERS                     128
+#define BUFFER_SIZE_SAMPLES             131072
+#define RESAMPLER_OUTPUT_SAFETY_MARGIN  128 // Extra samples for resampler output buffer
 
 // --- DSP & Sanity Check Limits ---
 #define MIN_ACCEPTABLE_RATIO      0.001f
@@ -18,10 +19,12 @@
 #define DC_BLOCK_CUTOFF_HZ        10.0f
 
 // --- I/Q Correction Algorithm Tuning ---
-#define IQ_CORRECTION_FFT_SIZE    1024
-#define IQ_CORRECTION_DEFAULT_PERIOD 2000000
-#define IQ_BASE_INCREMENT         0.0001f
-#define IQ_MAX_PASSES             25
+#define IQ_CORRECTION_FFT_SIZE           1024
+#define IQ_CORRECTION_DEFAULT_PERIOD     2000000 // Samples between optimization runs
+#define IQ_BASE_INCREMENT                0.0001f // Step size for the optimizer
+#define IQ_MAX_PASSES                    25      // Iterations per optimization run
+#define IQ_CORRECTION_PEAK_THRESHOLD_DB -60.0f   // Signal power threshold to trigger optimization
+#define IQ_CORRECTION_SMOOTHING_FACTOR   0.05f   // Smoothing factor for updating correction params
 
 // --- Parsing & Resource Limits ---
 #define MAX_PRESETS               128
@@ -51,11 +54,17 @@
 
 #if defined(WITH_HACKRF)
 #define HACKRF_DEFAULT_SAMPLE_RATE 8000000.0
+#define HACKRF_DEFAULT_LNA_GAIN    16
+#define HACKRF_DEFAULT_VGA_GAIN    0
 #endif
 
 #if defined(WITH_BLADERF)
 #define BLADERF_DEFAULT_SAMPLE_RATE_HZ 2000000
 #define BLADERF_DEFAULT_BANDWIDTH_HZ   1500000
+// --- BladeRF Stream Tuning ---
+#define BLADERF_SYNC_CONFIG_TIMEOUT_MS   3500
+#define BLADERF_SYNC_RX_TIMEOUT_MS       5000
+#define BLADERF_TRANSFER_SIZE_SECONDS    0.25
 
 // --- BladeRF Adaptive Streaming Profiles ---
 // These profiles are selected at runtime based on the sample rate to ensure

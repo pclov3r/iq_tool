@@ -44,9 +44,11 @@
 
 struct InputSourceOps;
 struct AppConfig;
-struct AppResources;
 struct SampleChunk;
 struct FileWriterContext;
+
+// --- FIX: Forward-declare AppResources to break the circular dependency ---
+struct AppResources;
 
 typedef enum {
     FORMAT_UNKNOWN, S8, U8, S16, U16, S32, U32, F32,
@@ -92,6 +94,12 @@ typedef struct {
     double target_rate;
     char* sample_format_name;
     OutputType output_type;
+    float gain;
+    bool gain_provided;
+    bool dc_block_enable;
+    bool dc_block_provided;
+    bool iq_correction_enable;
+    bool iq_correction_provided;
 } PresetDefinition;
 
 typedef struct {
@@ -131,6 +139,7 @@ typedef struct {
     bool (*open)(struct FileWriterContext* ctx, const struct AppConfig* config, struct AppResources* resources);
     size_t (*write)(struct FileWriterContext* ctx, const void* buffer, size_t bytes_to_write);
     void (*close)(struct FileWriterContext* ctx);
+    // --- FIX: Reverted this signature to its original, correct form ---
     long long (*get_total_bytes_written)(const struct FileWriterContext* ctx);
 } FileWriterOps;
 
@@ -160,14 +169,14 @@ typedef struct AppConfig {
     float gain;
     bool gain_provided;
     double freq_shift_hz;
-    float wav_freq_shift_hz_arg;
+    float freq_shift_hz_arg;
     bool freq_shift_requested;
     double center_frequency_target_hz;
     float wav_center_target_hz_arg;
     bool set_center_frequency_target_hz;
     bool shift_after_resample;
     bool no_resample;
-    bool no_convert;
+    bool raw_passthrough;
     float user_defined_target_rate_arg;
     bool user_rate_provided;
     IqCorrectionConfig iq_correction;

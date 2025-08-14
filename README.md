@@ -13,7 +13,7 @@ Let's be upfront: a large language model (AI) helped write a significant portion
 *What does this mean for you?*
 
 *   **It's still experimental.** While it works, it hasn't been battle-tested across a wide variety of systems and edge cases.
-*   **Bugs are likely lurking.** The logic likely has quirks that haven't been discovered yet.
+*   **Bugs are likely lurking.** The logic very likely has quirks that haven't been discovered yet.
 *   **Use with caution.** I wouldn't use this for anything mission-critical without a thorough personal review of the code. *For serious work, a mature framework like* [GNU Radio](https://github.com/gnuradio/gnuradio) *is always a better bet.*
 
 ---
@@ -104,8 +104,10 @@ Output Options
 Processing Options
     --output-rate=<flt>                   Output sample rate in Hz. (Required if no preset is used)
     --gain=<flt>                          Apply a linear gain multiplier to the samples (Default: 1.0)
-    --no-resample                         Disable the resampler. Output rate will match input rate.
-    --no-convert                          True passthrough mode. Bypasses all processing.
+    --freq-shift=<flt>                    Apply a direct frequency shift in Hz (e.g., -100e3)
+    --shift-after-resample                Apply frequency shift AFTER resampling (default is before)
+    --no-resample                         Process at native input rate. Bypasses the resampler but applies all other DSP.
+    --raw-passthrough                     Bypass all processing. Copies raw input bytes directly to output.
     --iq-correction                       (Optional) Enable automatic I/Q imbalance correction.
     --dc-block                            (Optional) Enable DC offset removal (high-pass filter).
     --preset=<str>                        Use a preset for a common target.
@@ -116,8 +118,6 @@ SDR General Options
 
 WAV Input Specific Options
     --wav-center-target-frequency=<flt>   Shift signal to a new target center frequency (e.g., 97.3e6)
-    --wav-shift-frequency=<flt>           Apply a direct frequency shift in Hz
-    --wav-shift-after-resample            Apply frequency shift AFTER resampling (default is before)
 
 Raw File Input Options
     --raw-file-input-rate=<flt>           (Required) The sample rate of the raw input file.
@@ -148,7 +148,7 @@ HackRF-Specific Options
 BladeRF-Specific Options
     --bladerf-device-idx=<int>            Select specific BladeRF device by index (0-indexed). (Default: 0)
     --bladerf-load-fpga=<str>             Load an FPGA bitstream from the specified file.
-    --bladerf-sample-rate=<flt>           Set sample rate in Hz. (Default: 2e6)
+    --bladerf-sample-rate=<flt>           Set sample rate in Hz.
     --bladerf-bandwidth=<flt>             Set analog bandwidth in Hz. (Default: Auto-selected)
     --bladerf-gain=<int>                  Set overall manual gain in dB. Disables AGC.
     --bladerf-channel=<int>               For BladeRF 2.0: Select RX channel 0 (RXA) or 1 (RXB). (Default: 0)
@@ -208,7 +208,7 @@ iq_resample_tool --input sdrplay --rf-freq 102.5e6 --sdrplay-gain-level 20 --sdr
 
 **Search Locations:**
 *   **Windows:** The executable's directory, `%APPDATA%\\iq_resample_tool\\`, `%PROGRAMDATA%\\iq_resample_tool\\`
-*   **Linux:** The current directory, `$XDG_CONFIG_HOME/iq_resample_tool/`, `/etc/iq_resample_tool/`
+*   **Linux:** The current directory, `$XDG_CONFIG_HOME/iq_resample_tool/`, `/etc/iq_resample_tool/` , `/usr/local/etc/iq_resample_tool`
 
 ### Current State & Future Plans
 
@@ -238,7 +238,7 @@ The tool is designed to be easily extendable for new input sources (like differe
     1.  Create a new `input_source.c` file that implements the required functions from the `InputSourceOps` interface.
     2.  Define any specific command-line options in that file.
     3.  Add the new module to the master list in `input_manager.c`.
-    4.  Update the `CMakeLists.txt` file to compile the new file and link against the Airspy library.
+    4.  Update the `CMakeLists.txt` file to compile the new file and link against the library.
 
 This design keeps all the logic for a specific input source contained in its own file, making the code clean and easy to maintain and extend.
 

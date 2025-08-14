@@ -28,10 +28,10 @@ extern AppConfig g_config;
 
 // --- Implement the function to set default config values ---
 void hackrf_set_default_config(AppConfig* config) {
-    config->hackrf.lna_gain = 16;
-    config->hackrf.hackrf_lna_gain_arg = 16;
-    config->hackrf.vga_gain = 0;
-    config->hackrf.hackrf_vga_gain_arg = 0;
+    config->hackrf.lna_gain = HACKRF_DEFAULT_LNA_GAIN;
+    config->hackrf.hackrf_lna_gain_arg = HACKRF_DEFAULT_LNA_GAIN;
+    config->hackrf.vga_gain = HACKRF_DEFAULT_VGA_GAIN;
+    config->hackrf.hackrf_vga_gain_arg = HACKRF_DEFAULT_VGA_GAIN;
     config->hackrf.sample_rate_hz = HACKRF_DEFAULT_SAMPLE_RATE;
 }
 
@@ -78,7 +78,7 @@ static bool hackrf_validate_options(AppConfig* config) {
     // This function is only called if "hackrf" is the selected input.
 
     // Post-process and validate LNA gain
-    if (config->hackrf.hackrf_lna_gain_arg != 16) { // 16 is the default
+    if (config->hackrf.hackrf_lna_gain_arg != HACKRF_DEFAULT_LNA_GAIN) {
         long lna_gain = config->hackrf.hackrf_lna_gain_arg;
         if (lna_gain < 0 || lna_gain > 40 || (lna_gain % 8 != 0)) {
             log_fatal("Invalid LNA gain %ld dB. Must be 0-40 in 8 dB steps.", lna_gain);
@@ -89,7 +89,7 @@ static bool hackrf_validate_options(AppConfig* config) {
     }
 
     // Post-process and validate VGA gain
-    if (config->hackrf.hackrf_vga_gain_arg != 0) { // 0 is the default
+    if (config->hackrf.hackrf_vga_gain_arg != HACKRF_DEFAULT_VGA_GAIN) {
         long vga_gain = config->hackrf.hackrf_vga_gain_arg;
         if (vga_gain < 0 || vga_gain > 62 || (vga_gain % 2 != 0)) {
             log_fatal("Invalid VGA gain %ld dB. Must be 0-62 in 2 dB steps.", vga_gain);
@@ -142,7 +142,7 @@ int hackrf_stream_callback(hackrf_transfer* transfer) {
             chunk_size = pipeline_buffer_size;
         }
 
-        void* target_buffer = config->no_convert ? item->final_output_data : item->raw_input_data;
+        void* target_buffer = config->raw_passthrough ? item->final_output_data : item->raw_input_data;
         memcpy(target_buffer, transfer->buffer + bytes_processed, chunk_size);
         item->frames_read = chunk_size / resources->input_bytes_per_sample_pair;
         item->is_last_chunk = false;
@@ -153,7 +153,7 @@ int hackrf_stream_callback(hackrf_transfer* transfer) {
             pthread_mutex_unlock(&resources->progress_mutex);
         }
 
-        if (config->no_convert) {
+        if (config->raw_passthrough) {
             item->frames_to_write = item->frames_read;
             if (!queue_enqueue(resources->final_output_queue, item)) {
                 queue_enqueue(resources->free_sample_chunk_queue, item);
@@ -254,8 +254,8 @@ static bool hackrf_initialize(InputSourceContext* ctx) {
     resources->source_info.samplerate = (int)sample_rate_to_set;
     resources->source_info.frames = -1;
 
-    if (config->no_convert && resources->input_format != config->output_format) {
-        log_fatal("Option --no-convert requires input and output formats to be identical. HackRF input is 'cs8', but output was set to '%s'.", config->sample_type_name);
+    if (config->raw_passthrough && resources->input_format != config->output_format) {
+        log_fatal("Option --raw-passthrough requires input and output formats to be identical. HackRF input is 'cs8', but output was set to '%s'.", config->sample_type_name);
         hackrf_close(resources->hackrf_dev);
         resources->hackrf_dev = NULL;
         hackrf_exit();

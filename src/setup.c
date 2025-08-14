@@ -60,13 +60,11 @@ bool resolve_file_paths(AppConfig *config) {
 bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *resources, float *out_ratio) {
     if (!config || !resources || !out_ratio) return false;
 
-    // --- MODIFIED LOGIC ---
-    // Passthrough mode is active if either no-resample or no-convert is set.
-    if (config->no_resample || config->no_convert) {
-        if (config->no_convert) {
-            log_info("True Passthrough mode enabled: Bypassing all processing.");
+    if (config->no_resample || config->raw_passthrough) {
+        if (config->raw_passthrough) {
+            log_info("Raw Passthrough mode enabled: Bypassing all DSP blocks.");
         } else {
-            log_info("Passthrough rate enabled: output rate will match input rate.");
+            log_info("Native rate processing enabled: output rate will match input rate.");
         }
         config->target_rate = (double)resources->source_info.samplerate;
         resources->is_passthrough = true;
@@ -83,7 +81,6 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *reso
     }
     *out_ratio = r;
 
-    // --- ADDED: Calculate expected total output frames for the progress bar ---
     if (resources->source_info.frames > 0) {
         resources->expected_total_output_frames = (long long)round((double)resources->source_info.frames * (double)r);
     } else {
@@ -97,7 +94,7 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     if (!config || !resources) return false;
 
     double estimated_output = ceil((double)BUFFER_SIZE_SAMPLES * (double)resample_ratio);
-    resources->max_out_samples = (unsigned int)estimated_output + 128;
+    resources->max_out_samples = (unsigned int)estimated_output + RESAMPLER_OUTPUT_SAFETY_MARGIN;
 
     double upper_limit = 20.0 * (double)BUFFER_SIZE_SAMPLES * fmax(1.0, (double)resample_ratio);
     if (resources->max_out_samples > upper_limit || resources->max_out_samples > (UINT_MAX - 128)) {
