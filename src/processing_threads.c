@@ -44,7 +44,6 @@ void* pre_processor_thread_func(void* arg) {
     PipelineContext* args = (PipelineContext*)arg;
     AppResources* resources = args->resources;
     AppConfig* config = args->config;
-    complex_float_t temp_float_buffer[BUFFER_SIZE_SAMPLES];
     unsigned long long samples_since_last_opt = 0;
 
     while (true) {
@@ -74,34 +73,56 @@ void* pre_processor_thread_func(void* arg) {
             dc_block_apply(resources, item->complex_pre_resample_data, item->frames_read);
         }
 
+        // =================================================================
+        // MODIFIED I/Q CORRECTION LOGIC BLOCK STARTS HERE
+        // =================================================================
         if (config->iq_correction.enable) {
-            memcpy(temp_float_buffer, item->complex_pre_resample_data, item->frames_read * sizeof(complex_float_t));
+            // Part A: Feed the optimizer with UNCORRECTED data before correcting the main buffer.
+            // This loop efficiently copies only the small number of samples needed to fill the accumulator.
             int samples_to_process = item->frames_read;
             int offset = 0;
             while (samples_to_process > 0) {
                 int samples_needed = IQ_CORRECTION_FFT_SIZE - resources->iq_correction.samples_in_accum;
                 int samples_to_copy = (samples_to_process < samples_needed) ? samples_to_process : samples_needed;
-                memcpy(resources->iq_correction.optimization_accum_buffer + resources->iq_correction.samples_in_accum, temp_float_buffer + offset, samples_to_copy * sizeof(complex_float_t));
+
+                memcpy(resources->iq_correction.optimization_accum_buffer + resources->iq_correction.samples_in_accum,
+                       item->complex_pre_resample_data + offset, // Source is the uncorrected data
+                       samples_to_copy * sizeof(complex_float_t));
+                
                 resources->iq_correction.samples_in_accum += samples_to_copy;
                 offset += samples_to_copy;
                 samples_to_process -= samples_to_copy;
+
+                // Part B: If the accumulator is full, trigger an optimization pass.
                 if (resources->iq_correction.samples_in_accum == IQ_CORRECTION_FFT_SIZE) {
                     if (samples_since_last_opt >= IQ_CORRECTION_DEFAULT_PERIOD) {
+                        // Get a separate, temporary chunk from the free pool for the optimizer.
                         SampleChunk* opt_item = (SampleChunk*)queue_try_dequeue(resources->free_sample_chunk_queue);
                         if (opt_item) {
+                            // Copy the complete, uncorrected data from the accumulator into the new chunk.
                             memcpy(opt_item->complex_pre_resample_data, resources->iq_correction.optimization_accum_buffer, IQ_CORRECTION_FFT_SIZE * sizeof(complex_float_t));
+                            
+                            // Send the dedicated chunk to the optimization thread.
                             if (!queue_enqueue(resources->iq_optimization_data_queue, opt_item)) {
+                                // If enqueue fails, return the chunk to the free pool to prevent leaks.
                                 queue_enqueue(resources->free_sample_chunk_queue, opt_item);
                             }
                             samples_since_last_opt = 0;
                         }
                     }
+                    // Reset the accumulator for the next batch.
                     resources->iq_correction.samples_in_accum = 0;
                 }
             }
             samples_since_last_opt += item->frames_read;
+
+            // Part C: Correct the main pipeline data in-place.
+            // This happens *after* the uncorrected data has been handled for the optimizer.
             iq_correct_apply(resources, item->complex_pre_resample_data, item->frames_read);
         }
+        // =================================================================
+        // MODIFIED I/Q CORRECTION LOGIC BLOCK ENDS HERE
+        // =================================================================
 
         if (resources->pre_resample_nco) {
             shift_apply(resources->pre_resample_nco, resources->actual_nco_shift_hz, item->complex_pre_resample_data, item->complex_pre_resample_data, item->frames_read);

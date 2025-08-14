@@ -73,8 +73,9 @@
 #endif
 
 // --- Algorithm Tuning Constants ---
-#define IQ_BASE_INCREMENT 0.0001f
-#define IQ_MAX_PASSES 25
+// REMOVED: These are now in config.h
+// #define IQ_BASE_INCREMENT 0.0001f
+// #define IQ_MAX_PASSES 25
 
 // --- Forward Declarations for Static Helper Functions ---
 static void _apply_correction_to_buffer(complex_float_t* buffer, int length, float gain_adj, float phase_adj);

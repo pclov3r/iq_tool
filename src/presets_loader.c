@@ -1,4 +1,3 @@
-
 #include "presets_loader.h"
 #include "log.h"
 #include "config.h" // Include config.h for APP_NAME, PRESETS_FILENAME, and MAX_PATH_BUFFER
@@ -27,8 +26,9 @@
 #endif
 
 // --- Security and Robustness Constants ---
-#define MAX_LINE_LENGTH 1024 // A reasonable limit for a single line in the config file
-#define MAX_PRESETS 128      // A sanity limit on the total number of presets to load
+// REMOVED: These are now in config.h
+// #define MAX_LINE_LENGTH 1024 // A reasonable limit for a single line in the config file
+// #define MAX_PRESETS 128      // A sanity limit on the total number of presets to load
 
 
 // --- Helper function declarations ---

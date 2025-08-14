@@ -64,7 +64,7 @@ You'll need a pretty standard C development environment.
 
 2.  **Build the tool:**
     ```bash
-    git clone https://github.com/pclov3r/iq_resample_tool.git
+    git clone https://github.com/your-repo/iq_resample_tool.git
     cd iq_resample_tool
     mkdir build
     cd build

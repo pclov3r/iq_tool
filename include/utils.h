@@ -97,5 +97,11 @@ char* trim_whitespace(char* str);
  */
 void format_duration(double total_seconds, char* buffer, size_t buffer_size);
 
+/**
+ * @brief Converts a sample format name string to its corresponding format_t enum.
+ * @param name The string name of the format (e.g., "cs16").
+ * @return The format_t enum value, or FORMAT_UNKNOWN if not found.
+ */
+format_t utils_get_format_from_string(const char *name);
 
 #endif // UTILS_H_

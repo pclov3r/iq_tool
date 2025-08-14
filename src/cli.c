@@ -4,6 +4,7 @@
 #include "types.h"
 #include "config.h"
 #include "log.h"
+#include "utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,7 +31,6 @@ static bool validate_output_type_and_sample_format(AppConfig *config);
 static bool validate_sdr_general_options(AppConfig *config);
 static bool validate_processing_options(AppConfig *config);
 static bool validate_iq_correction_options(AppConfig *config);
-static format_t get_format(const char *name);
 
 
 void print_usage(const char *prog_name) {
@@ -41,7 +41,6 @@ void print_usage(const char *prog_name) {
 
 bool parse_arguments(int argc, char *argv[], AppConfig *config) {
     // Increase max options to accommodate dynamic presets
-    #define MAX_PRESETS 64
     #define MAX_STATIC_OPTIONS 128
     #define MAX_TOTAL_OPTIONS (MAX_STATIC_OPTIONS + MAX_PRESETS)
     struct argparse_option all_options[MAX_TOTAL_OPTIONS];
@@ -260,7 +259,7 @@ static bool validate_output_type_and_sample_format(AppConfig *config) {
         }
     }
 
-    config->output_format = get_format(config->sample_type_name);
+    config->output_format = utils_get_format_from_string(config->sample_type_name);
     if (config->output_format == FORMAT_UNKNOWN) {
         log_fatal("Invalid sample format '%s'. See --help for valid formats.", config->sample_type_name);
         return false;
@@ -361,23 +360,4 @@ static bool validate_iq_correction_options(AppConfig *config) {
         }
     }
     return true;
-}
-
-static format_t get_format(const char *name) {
-    if (strcasecmp(name, "s8") == 0) return S8;
-    if (strcasecmp(name, "u8") == 0) return U8;
-    if (strcasecmp(name, "s16") == 0) return S16;
-    if (strcasecmp(name, "u16") == 0) return U16;
-    if (strcasecmp(name, "s32") == 0) return S32;
-    if (strcasecmp(name, "u32") == 0) return U32;
-    if (strcasecmp(name, "f32") == 0) return F32;
-    if (strcasecmp(name, "cs8") == 0) return CS8;
-    if (strcasecmp(name, "cu8") == 0) return CU8;
-    if (strcasecmp(name, "cs16") == 0) return CS16;
-    if (strcasecmp(name, "cu16") == 0) return CU16;
-    if (strcasecmp(name, "cs32") == 0) return CS32;
-    if (strcasecmp(name, "cu32") == 0) return CU32;
-    if (strcasecmp(name, "cf32") == 0) return CF32;
-    if (strcasecmp(name, "sc16q11") == 0) return SC16Q11;
-    return FORMAT_UNKNOWN;
 }

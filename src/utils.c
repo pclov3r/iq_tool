@@ -9,8 +9,10 @@
 #ifdef _WIN32
 #include <shlwapi.h>
 #pragma comment(lib, "shlwapi.lib")
+#define strcasecmp _stricmp // Add this for Windows compatibility
 #else
 #include <libgen.h>
+#include <strings.h> // For strcasecmp
 #endif
 
 /**
@@ -183,4 +185,31 @@ void format_duration(double total_seconds, char* buffer, size_t buffer_size) {
     if (minutes >= 60) { hours++; minutes = 0; }
 
     snprintf(buffer, buffer_size, "%02d:%02d:%02d", hours, minutes, seconds);
+}
+
+/**
+ * @brief Converts a sample format name string to its corresponding format_t enum.
+ *
+ * This is the single, centralized implementation for this conversion.
+ *
+ * @param name The string name of the format (e.g., "cs16").
+ * @return The format_t enum value, or FORMAT_UNKNOWN if not found.
+ */
+format_t utils_get_format_from_string(const char *name) {
+    if (strcasecmp(name, "s8") == 0) return S8;
+    if (strcasecmp(name, "u8") == 0) return U8;
+    if (strcasecmp(name, "s16") == 0) return S16;
+    if (strcasecmp(name, "u16") == 0) return U16;
+    if (strcasecmp(name, "s32") == 0) return S32;
+    if (strcasecmp(name, "u32") == 0) return U32;
+    if (strcasecmp(name, "f32") == 0) return F32;
+    if (strcasecmp(name, "cs8") == 0) return CS8;
+    if (strcasecmp(name, "cu8") == 0) return CU8;
+    if (strcasecmp(name, "cs16") == 0) return CS16;
+    if (strcasecmp(name, "cu16") == 0) return CU16;
+    if (strcasecmp(name, "cs32") == 0) return CS32;
+    if (strcasecmp(name, "cu32") == 0) return CU32;
+    if (strcasecmp(name, "cf32") == 0) return CF32;
+    if (strcasecmp(name, "sc16q11") == 0) return SC16Q11;
+    return FORMAT_UNKNOWN;
 }

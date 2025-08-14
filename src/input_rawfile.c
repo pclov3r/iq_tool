@@ -49,7 +49,6 @@ static void rawfile_stop_stream(InputSourceContext* ctx);
 static void rawfile_cleanup(InputSourceContext* ctx);
 static void rawfile_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
 static bool rawfile_validate_options(AppConfig* config);
-static format_t get_format_from_string(const char *name);
 
 
 // --- The single instance of InputSourceOps for raw files ---
@@ -99,7 +98,7 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
 
-    resources->input_format = get_format_from_string(config->raw_file.format_str);
+    resources->input_format = utils_get_format_from_string(config->raw_file.format_str);
     if (resources->input_format == FORMAT_UNKNOWN) {
         log_fatal("Invalid raw input format '%s'. See --help for valid formats.", config->raw_file.format_str);
         return false;
@@ -248,23 +247,4 @@ static void rawfile_get_summary_info(const InputSourceContext* ctx, InputSummary
     char size_buf[40];
     long long file_size_bytes = resources->source_info.frames * resources->input_bytes_per_sample_pair;
     add_summary_item(info, "Input File Size", "%s", format_file_size(file_size_bytes, size_buf, sizeof(size_buf)));
-}
-
-static format_t get_format_from_string(const char *name) {
-    if (strcasecmp(name, "s8") == 0) return S8;
-    if (strcasecmp(name, "u8") == 0) return U8;
-    if (strcasecmp(name, "s16") == 0) return S16;
-    if (strcasecmp(name, "u16") == 0) return U16;
-    if (strcasecmp(name, "s32") == 0) return S32;
-    if (strcasecmp(name, "u32") == 0) return U32;
-    if (strcasecmp(name, "f32") == 0) return F32;
-    if (strcasecmp(name, "cs8") == 0) return CS8;
-    if (strcasecmp(name, "cu8") == 0) return CU8;
-    if (strcasecmp(name, "cs16") == 0) return CS16;
-    if (strcasecmp(name, "cu16") == 0) return CU16;
-    if (strcasecmp(name, "cs32") == 0) return CS32;
-    if (strcasecmp(name, "cu32") == 0) return CU32;
-    if (strcasecmp(name, "cf32") == 0) return CF32;
-    if (strcasecmp(name, "sc16q11") == 0) return SC16Q11;
-    return FORMAT_UNKNOWN;
 }

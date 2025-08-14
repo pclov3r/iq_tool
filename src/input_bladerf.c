@@ -10,25 +10,25 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/stat.h>
-#include <limits.h> // For UINT_MAX
+#include <limits.h>
 #include "argparse.h"
 
 #ifdef _WIN32
 #define strcasecmp _stricmp
 #include <windows.h>
-#include <shlwapi.h> // For PathFileExistsW
-#include <pathcch.h> // For PathCchCombine
-#include <knownfolders.h> // For FOLDERID_ProgramFiles, FOLDERID_ProgramFilesX86
-#include <shlobj.h> // For SHGetKnownFolderPath
+#include <shlwapi.h>
+#include <pathcch.h>
+#include <knownfolders.h>
+#include <shlobj.h>
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "pathcch.lib")
 #pragma comment(lib, "shell32.lib")
 #else
-#include <stdio.h>   // For fopen, fgets
-#include <stdlib.h>  // For atoi
+#include <stdio.h>
+#include <stdlib.h>
 #include <strings.h>
-#include <unistd.h> // For access(), readlink()
-#include <libgen.h> // For dirname()
+#include <unistd.h>
+#include <libgen.h>
 #endif
 
 #if defined(_WIN32) && defined(WITH_BLADERF)
@@ -84,37 +84,29 @@ void bladerf_unload_api(void) {
 }
 #endif
 
-// --- Add an external declaration for the global config ---
 extern AppConfig g_config;
 
-// --- Implement the function to set default config values ---
 void bladerf_set_default_config(AppConfig* config) {
-    config->bladerf.sample_rate_hz = BLADERF_DEFAULT_SAMPLE_RATE;
-    config->bladerf.bandwidth_hz = BLADERF_DEFAULT_BANDWIDTH;
-    config->bladerf.num_buffers = BLADERF_DEFAULT_NUM_BUFFERS;
-    config->bladerf.buffer_size = BLADERF_DEFAULT_BUFFER_SIZE;
-    config->bladerf.num_transfers = BLADERF_DEFAULT_NUM_TRANSFERS;
+    // MODIFIED: Use definitions from config.h instead of hardcoded values.
+    config->bladerf.sample_rate_hz = BLADERF_DEFAULT_SAMPLE_RATE_HZ;
+    config->bladerf.bandwidth_hz = BLADERF_DEFAULT_BANDWIDTH_HZ;
 }
 
-// --- Define the CLI options for this module ---
 static const struct argparse_option bladerf_cli_options[] = {
     OPT_GROUP("BladeRF-Specific Options"),
     OPT_INTEGER(0, "bladerf-device-idx", &g_config.bladerf.device_index, "Select specific BladeRF device by index (0-indexed). (Default: 0)", NULL, 0, 0),
     OPT_STRING(0, "bladerf-load-fpga", &g_config.bladerf.fpga_file_path, "Load an FPGA bitstream from the specified file.", NULL, 0, 0),
-    OPT_FLOAT(0, "bladerf-sample-rate", &g_config.bladerf.bladerf_sample_rate_hz_arg, "Set sample rate in Hz. (Default: 2e6)", NULL, 0, 0),
+    OPT_FLOAT(0, "bladerf-sample-rate", &g_config.bladerf.bladerf_sample_rate_hz_arg, "Set sample rate in Hz.", NULL, 0, 0),
     OPT_FLOAT(0, "bladerf-bandwidth", &g_config.bladerf.bladerf_bandwidth_hz_arg, "Set analog bandwidth in Hz. (Default: Auto-selected)", NULL, 0, 0),
     OPT_INTEGER(0, "bladerf-gain", &g_config.bladerf.bladerf_gain_arg, "Set overall manual gain in dB. Disables AGC.", NULL, 0, 0),
     OPT_INTEGER(0, "bladerf-channel", &g_config.bladerf.channel, "For BladeRF 2.0: Select RX channel 0 (RXA) or 1 (RXB). (Default: 0)", NULL, 0, 0),
 };
 
-// --- Implement the interface function to provide the options ---
 const struct argparse_option* bladerf_get_cli_options(int* count) {
     *count = sizeof(bladerf_cli_options) / sizeof(bladerf_cli_options[0]);
     return bladerf_cli_options;
 }
 
-
-// --- Forward Declarations for Static Functions ---
 static bool bladerf_initialize(InputSourceContext* ctx);
 static void* bladerf_start_stream(InputSourceContext* ctx);
 static void bladerf_stop_stream(InputSourceContext* ctx);
@@ -124,9 +116,8 @@ static bool bladerf_validate_options(AppConfig* config);
 static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev);
 
 #ifndef _WIN32
-static bool bladerf_configure_buffers_for_linux(AppConfig* config);
+static int get_usbfs_memory_mb_for_linux(void);
 #endif
-
 
 static InputSourceOps bladerf_ops = {
     .initialize = bladerf_initialize,
@@ -142,25 +133,25 @@ InputSourceOps* get_bladerf_input_ops(void) {
     return &bladerf_ops;
 }
 
-// --- Module-specific validation function ---
 static bool bladerf_validate_options(AppConfig* config) {
-    // This function is only called if "bladerf" is the selected input.
-
     if (config->bladerf.bladerf_gain_arg != 0) {
         config->bladerf.gain = (int)config->bladerf.bladerf_gain_arg;
         config->bladerf.gain_provided = true;
     }
 
-    if (config->bladerf.bladerf_sample_rate_hz_arg != 0.0) {
+    if (config->bladerf.bladerf_sample_rate_hz_arg != 0.0f) {
         if (config->bladerf.bladerf_sample_rate_hz_arg > UINT_MAX) {
             log_fatal("Value for --bladerf-sample-rate is too large.");
             return false;
         }
         config->bladerf.sample_rate_hz = (uint32_t)config->bladerf.bladerf_sample_rate_hz_arg;
         config->bladerf.sample_rate_provided = true;
+    } else {
+        log_fatal("Missing required argument --bladerf-sample-rate <hz>.");
+        return false;
     }
 
-    if (config->bladerf.bladerf_bandwidth_hz_arg != 0.0) {
+    if (config->bladerf.bladerf_bandwidth_hz_arg != 0.0f) {
         if (config->bladerf.bladerf_bandwidth_hz_arg > UINT_MAX) {
             log_fatal("Value for --bladerf-bandwidth is too large.");
             return false;
@@ -177,52 +168,27 @@ static bool bladerf_validate_options(AppConfig* config) {
     return true;
 }
 
-
 #ifndef _WIN32
-/**
- * @brief Checks the usbfs memory limit and adjusts buffer settings.
- */
-static bool bladerf_configure_buffers_for_linux(AppConfig* config) {
+static int get_usbfs_memory_mb_for_linux(void) {
     const char* path = "/sys/module/usbcore/parameters/usbfs_memory_mb";
     FILE* fp = fopen(path, "r");
     if (!fp) {
-        // File might not exist on all kernels. Assume the worst-case (16MB) limit.
-        log_warn("Could not determine USB memory limit. Falling back to compatible buffer settings.");
-        config->bladerf.num_buffers = LINUX_BLADERF_USBFS_16MB_NUM_BUFFERS;
-        config->bladerf.buffer_size = LINUX_BLADERF_USBFS_16MB_BUFFER_SIZE;
-        config->bladerf.num_transfers = LINUX_BLADERF_USBFS_16MB_NUM_TRANSFERS;
-        return true;
+        log_warn("Could not read USB memory limit from sysfs. Assuming default of 16 MB.");
+        return 16;
     }
-
     char buf[32];
     if (fgets(buf, sizeof(buf), fp) == NULL) {
         fclose(fp);
-        return true; // Could not read, proceed with defaults.
+        log_warn("Could not read value from usbfs_memory_mb file. Assuming default of 16 MB.");
+        return 16;
     }
     fclose(fp);
-
     int usbfs_memory_mb = atoi(buf);
     if (usbfs_memory_mb <= 0) {
-        return true; // Invalid value, proceed with defaults.
+        log_warn("Invalid value '%s' in usbfs_memory_mb file. Assuming default of 16 MB.", buf);
+        return 16;
     }
-
-    // Check if memory is critically low for even the safe profile (~4MB required).
-    if (usbfs_memory_mb < 8) {
-        log_fatal("BladeRF cannot be initialized. The configured USB memory limit of %d MB is insufficient.", usbfs_memory_mb);
-        return false;
-    }
-
-    // Check if memory is insufficient for the default profile (~8MB required).
-    // Use a 32MB threshold to be safe.
-    if (usbfs_memory_mb < 32) {
-        log_warn("USB memory limit is %d MB, which is insufficient for high sample rates. Using lower buffer settings.", usbfs_memory_mb);
-        config->bladerf.num_buffers = LINUX_BLADERF_USBFS_16MB_NUM_BUFFERS;
-        config->bladerf.buffer_size = LINUX_BLADERF_USBFS_16MB_BUFFER_SIZE;
-        config->bladerf.num_transfers = LINUX_BLADERF_USBFS_16MB_NUM_TRANSFERS;
-    }
-    
-    // Otherwise, the default high-performance settings from main.c are used.
-    return true;
+    return usbfs_memory_mb;
 }
 #endif
 
@@ -249,7 +215,7 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
     bladerf_log_set_verbosity(BLADERF_LOG_LEVEL_ERROR);
 
     status = bladerf_open(&dev, device_identifier[0] ? device_identifier : NULL);
-    resources->bladerf_dev = dev; // Store handle immediately for cleanup
+    resources->bladerf_dev = dev;
     if (is_shutdown_requested()) { return false; }
 
     if (status != 0 && status != BLADERF_ERR_UPDATE_FPGA) {
@@ -274,11 +240,10 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
             log_error("Failed to query BladeRF FPGA state: %s", bladerf_strerror(status));
             return false;
         }
-
         if (status == 0) {
             log_info("BladeRF FPGA not configured. Attempting to find and load it automatically...");
             if (!bladerf_find_and_load_fpga_automatically(dev)) {
-                return false; // Shutdown is checked inside this function
+                return false;
             }
         } else {
             log_info("BladeRF FPGA is already configured. Proceeding.");
@@ -306,12 +271,6 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
 
     log_info("Using %s", resources->bladerf_display_name);
 
-#ifndef _WIN32
-    if (!bladerf_configure_buffers_for_linux(config)) {
-        return false;
-    }
-#endif
-
     bladerf_channel rx_channel;
     if (strcmp(resources->bladerf_board_name, "bladerf2") == 0) {
         rx_channel = BLADERF_CHANNEL_RX(config->bladerf.channel);
@@ -332,6 +291,51 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
     }
     log_info("BladeRF: Requested sample rate %u Hz, actual rate set to %u Hz.", requested_rate, actual_rate);
     resources->source_info.samplerate = (int)actual_rate;
+
+    if (actual_rate > 40000000) {
+#ifdef _WIN32
+        log_debug("BladeRF: Using High-Throughput (Optimized) profile for sample rate > 40 MSPS.");
+        log_debug("BladeRF: (Windows Optimization: Using large 128K transfer buffers).");
+        config->bladerf.num_buffers = BLADERF_PROFILE_WIN_OPTIMIZED_NUM_BUFFERS;
+        config->bladerf.buffer_size = BLADERF_PROFILE_WIN_OPTIMIZED_BUFFER_SIZE;
+        config->bladerf.num_transfers = BLADERF_PROFILE_WIN_OPTIMIZED_NUM_TRANSFERS;
+#else
+        int detected_mb = get_usbfs_memory_mb_for_linux();
+        log_debug("BladeRF: Using High-Throughput (Optimized) profile for sample rate > 40 MSPS.");
+        log_debug("BladeRF: (Linux Optimization: Dynamically calculating profile based on %d MB usbfs limit).", detected_mb);
+
+        long long memory_budget = (long long)detected_mb * 1024 * 1024 * BLADERF_PROFILE_LINUX_MEM_BUDGET_FACTOR;
+        unsigned int calculated_transfers = memory_budget / BLADERF_PROFILE_LINUX_OPTIMIZED_BUFFER_SIZE;
+
+        if (calculated_transfers > BLADERF_PROFILE_LINUX_MAX_TRANSFERS) {
+            calculated_transfers = BLADERF_PROFILE_LINUX_MAX_TRANSFERS;
+        }
+        if (calculated_transfers < 16) {
+            calculated_transfers = 16;
+        }
+
+        config->bladerf.buffer_size = BLADERF_PROFILE_LINUX_OPTIMIZED_BUFFER_SIZE;
+        config->bladerf.num_transfers = calculated_transfers;
+        config->bladerf.num_buffers = calculated_transfers;
+        log_debug("BladeRF: Calculated profile: num_buffers=%u, buffer_size=%u, num_transfers=%u",
+                 config->bladerf.num_buffers, config->bladerf.buffer_size, config->bladerf.num_transfers);
+#endif
+    } else if (actual_rate >= 5000000) {
+        log_debug("BladeRF: Using High-Throughput profile for sample rate between 5 and 40 MSPS.");
+        config->bladerf.num_buffers = BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_BUFFERS;
+        config->bladerf.buffer_size = BLADERF_PROFILE_HIGHTHROUGHPUT_BUFFER_SIZE;
+        config->bladerf.num_transfers = BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS;
+    } else if (actual_rate >= 1000000) {
+        log_debug("BladeRF: Using Balanced profile for sample rate between 1 and 5 MSPS.");
+        config->bladerf.num_buffers = BLADERF_PROFILE_BALANCED_NUM_BUFFERS;
+        config->bladerf.buffer_size = BLADERF_PROFILE_BALANCED_BUFFER_SIZE;
+        config->bladerf.num_transfers = BLADERF_PROFILE_BALANCED_NUM_TRANSFERS;
+    } else {
+        log_debug("BladeRF: Using Low-Latency profile for sample rate < 1 MSPS.");
+        config->bladerf.num_buffers = BLADERF_PROFILE_LOWLATENCY_NUM_BUFFERS;
+        config->bladerf.buffer_size = BLADERF_PROFILE_LOWLATENCY_BUFFER_SIZE;
+        config->bladerf.num_transfers = BLADERF_PROFILE_LOWLATENCY_NUM_TRANSFERS;
+    }
 
     bladerf_bandwidth requested_bw = config->bladerf.bandwidth_hz;
     bladerf_bandwidth actual_bw;
@@ -397,8 +401,6 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
     struct bladerf_metadata meta;
 
     if (!resources->bladerf_initialized_successfully) {
-        // This can happen if initialization was aborted by Ctrl+C.
-        // The main thread will have already logged an error.
         return NULL;
     }
 
@@ -436,6 +438,16 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
         return NULL;
     }
 
+    unsigned int samples_per_transfer = (unsigned int)(resources->source_info.samplerate * 0.25);
+    if (samples_per_transfer > BUFFER_SIZE_SAMPLES) {
+        samples_per_transfer = BUFFER_SIZE_SAMPLES;
+    }
+    if (samples_per_transfer < 4096) {
+        samples_per_transfer = 4096;
+    }
+    samples_per_transfer = (samples_per_transfer / 1024) * 1024;
+    log_debug("BladeRF: Using dynamic transfer size of %u samples.", samples_per_transfer);
+
     while (!is_shutdown_requested() && !resources->error_occurred) {
         SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
         if (!item) break;
@@ -444,7 +456,7 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
         meta.flags = BLADERF_META_FLAG_RX_NOW;
 
         void* target_buffer = config->no_convert ? item->final_output_data : item->raw_input_data;
-        status = bladerf_sync_rx(dev, target_buffer, BUFFER_SIZE_SAMPLES, &meta, 5000);
+        status = bladerf_sync_rx(dev, target_buffer, samples_per_transfer, &meta, 5000);
         
         if (status != 0) {
             if (!is_shutdown_requested()) {
@@ -541,7 +553,6 @@ static void bladerf_get_summary_info(const InputSourceContext* ctx, InputSummary
 }
 
 #ifdef _WIN32
-// Helper to get a known folder path (e.g., Program Files) on Windows
 static bool get_known_folder_path_win(const KNOWNFOLDERID* rfid, wchar_t* path_buf, size_t path_buf_len) {
     PWSTR known_path = NULL;
     HRESULT hr = SHGetKnownFolderPath(rfid, 0, NULL, &known_path);
@@ -560,7 +571,6 @@ static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev) {
     bladerf_fpga_size fpga_size;
     const char* filename_utf8 = NULL;
 
-    // 1. Determine which FPGA file we need based on the device's size
     status = bladerf_get_fpga_size(dev, &fpga_size);
     if (is_shutdown_requested()) return false;
     if (status != 0) {
@@ -579,7 +589,6 @@ static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev) {
             return false;
     }
 
-    // 2. Search for the file in our application-specific locations
 #ifdef _WIN32
     wchar_t filename_w[64];
     if (MultiByteToWideChar(CP_UTF8, 0, filename_utf8, -1, filename_w, 64) == 0) {
@@ -615,27 +624,22 @@ static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev) {
             }
         }
     }
-#else // POSIX search paths
+#else
     char exe_path_buf[MAX_PATH_LEN] = {0};
     char exe_dir[MAX_PATH_LEN] = {0};
     char parent_dir_buf[MAX_PATH_LEN] = {0};
     
     ssize_t len = readlink("/proc/self/exe", exe_path_buf, sizeof(exe_path_buf) - 1);
     if (len > 0) {
-        exe_path_buf[len] = '\0'; // Ensure null-termination after readlink
-
-        // --- Safely get the executable's directory ---
+        exe_path_buf[len] = '\0';
         char temp_path1[MAX_PATH_LEN];
         snprintf(temp_path1, sizeof(temp_path1), "%s", exe_path_buf);
         snprintf(exe_dir, sizeof(exe_dir), "%s", dirname(temp_path1));
-
-        // --- Safely get the parent of the executable's directory ---
         char temp_path2[MAX_PATH_LEN];
         snprintf(temp_path2, sizeof(temp_path2), "%s", exe_path_buf);
-        dirname(temp_path2); // First call gets exe_dir
-        snprintf(parent_dir_buf, sizeof(parent_dir_buf), "%s", dirname(temp_path2)); // Second call gets parent
+        dirname(temp_path2);
+        snprintf(parent_dir_buf, sizeof(parent_dir_buf), "%s", dirname(temp_path2));
     } else {
-        // Fallback if readlink fails
         snprintf(exe_dir, sizeof(exe_dir), ".");
         snprintf(parent_dir_buf, sizeof(parent_dir_buf), "..");
     }
@@ -666,7 +670,6 @@ static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev) {
     }
 #endif
 
-    // 3. If we get here, the file was not found
     log_error("Could not automatically find the required FPGA file '%s'.", filename_utf8);
     log_error("Please ensure the FPGA files are in the 'fpga/bladerf' subdirectory next to the executable, or installed system-wide.");
     return false;
