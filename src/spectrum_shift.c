@@ -124,11 +124,13 @@ bool shift_check_nyquist_warning(const AppConfig *config, const AppResources *re
 }
 
 /**
- * @brief Resets the internal state of a specific NCO.
+ * @brief Resets the NCO's phase accumulator without destroying its frequency.
+ * This is the safe way to handle stream discontinuities from SDRs.
  */
 void shift_reset_nco(nco_crcf nco) {
     if (nco) {
-        nco_crcf_reset(nco);
+        // This only resets the phase, leaving the frequency configuration intact.
+        nco_crcf_set_phase(nco, 0.0f);
     }
 }
 
