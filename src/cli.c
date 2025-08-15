@@ -138,7 +138,7 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
     };
     argparse_init(&argparse, all_options, usages, 0);
     argparse_describe(&argparse, "\nResamples an I/Q file or a stream from an SDR device to a specified format and sample rate.", NULL);
-    
+
     int non_opt_argc = argparse_parse(&argparse, argc, (const char **)argv);
 
     if (!validate_and_process_args(config, non_opt_argc, argparse.out)) {
@@ -156,7 +156,7 @@ static bool resolve_frequency_shift_options(AppConfig *config) {
     if (config->freq_shift_hz_arg != 0.0f) {
         // Check if a module (like WAV) has already made a request.
         if (config->frequency_shift_request.type != FREQUENCY_SHIFT_REQUEST_NONE) {
-            log_fatal("Conflicting frequency shift options provided. Cannot use --freq-shift and --wav-center-target-frequency at the same time.");
+            log_fatal("Conflicting frequency shift options provided. Cannot use --freq-shift and --wav-center-target-freq at the same time.");
             return false;
         }
         config->frequency_shift_request.type = FREQUENCY_SHIFT_REQUEST_MANUAL;

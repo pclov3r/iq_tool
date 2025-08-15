@@ -12,9 +12,10 @@ Let's be upfront: a large language model (AI) helped write a significant portion
 
 *What does this mean for you?*
 
-*   **It's still experimental.** While it works, it hasn't been battle-tested across a wide variety of systems and edge cases.
-*   **Bugs are likely lurking.** The logic very likely has quirks that haven't been discovered yet.
-*   **Use with caution.** I wouldn't use this for anything mission-critical without a thorough personal review of the code. *For serious work, a mature framework like* [GNU Radio](https://github.com/gnuradio/gnuradio) *is always a better bet.*
+*   **It's Experimental.** While it works, it hasn't been battle-tested across a wide variety of systems and edge cases nor has it had a security review.
+*   **Design choices not stable** You may see features, command line options, etc. suddenly appear and dissapear. 
+*   **Bugs are expected** The logic very likely has quirks that haven't been discovered yet.
+*   **Use with caution!** I wouldn't use this for anything mission-critical without a thorough personal review of the code. *For serious work, a mature framework like* [GNU Radio](https://github.com/gnuradio/gnuradio) *is always a better bet.*
 
 ---
 
@@ -25,13 +26,13 @@ Let's be upfront: a large language model (AI) helped write a significant portion
     *   **WAV Files:** Reads standard 8-bit and 16-bit complex (I/Q) WAV files.
     *   **Raw I/Q Files:** Just point it at a headerless file, but you have to tell it the sample rate and format.
     *   **SDR Hardware:** Streams directly from **RTL-SDR**, **SDRplay**, **HackRF**, and **BladeRF** devices.
-*   **Intelligent Metadata Parsing:** Automatically reads metadata from various sources to make your life easier, especially for frequency correction.
+*   **WAV Metadata Parsing:** Automatically reads metadata from SDR I/Q captures to make your life easier, especially for frequency correction.
     *   `auxi` chunks from **SDR Console, SDRconnect,** and **SDRuno**.
     *   SDR# style filenames (e.g., `..._20240520_181030Z_97300000Hz_...`).
 *   **Powerful Processing:**
     *   **High-Quality Resampling:** Uses `liquid-dsp` under the hood.
     *   **Precise Frequency Shifting:** Apply shifts before or after resampling—handy for those weird, narrow I/Q captures.
-    *   **Automatic I/Q Correction:** Can optionally find and fix I/Q imbalance on the fly. *This is very experimental and requires a strong, stable signal to work well.*
+    *   **Automatic I/Q Correction:** Can optionally find and fix I/Q imbalance on the fly. *This is very experimental and possibly could make it worse*
     *   **DC Blocking:** A simple high-pass filter to remove the pesky DC offset.
 *   **Versatile Outputs:**
     *   **Container Formats:** `raw` (for piping), standard `wav`, and `wav-rf64` (for files >4GB).
@@ -117,7 +118,7 @@ SDR General Options
     --bias-t                              (Optional) Enable Bias-T power.
 
 WAV Input Specific Options
-    --wav-center-target-frequency=<flt>   Shift signal to a new target center frequency (e.g., 97.3e6)
+    --wav-center-target-freq=<flt>	  Shift signal to a new target center frequency (e.g., 97.3e6)
 
 Raw File Input Options
     --raw-file-input-rate=<flt>           (Required) The sample rate of the raw input file.
@@ -173,7 +174,7 @@ iq_resample_tool --input wav my_capture.wav -f my_capture_resampled.wav --output
 **Example 2: Piping to a Decoder with a Preset (WAV Input)**
 Use the `cu8-nrsc5` preset to resample and automatically correct the frequency, then pipe it to `nrsc5`. (Assumes the WAV has frequency metadata).
 ```bash
-iq_resample_tool --input wav my_capture.wav --wav-center-target-frequency 97.3e6 --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
+iq_resample_tool --input wav my_capture.wav --wav-center-target-freq 97.3e6 --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
 ```
 
 **Example 3: Streaming from an RTL-SDR with Preset**
@@ -227,6 +228,7 @@ This tool is a work in progress.
     *   [ ] Improve I/Q correction algorithm stability.
     *   [ ] Refine and standardize log levels throughout the application.
     *   [ ] General code cleanup and comment refactoring.
+    *   [ ] Improve the README.
 
 ### For Developers: The Modular Input System
 
