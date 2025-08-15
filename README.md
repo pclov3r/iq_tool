@@ -118,7 +118,7 @@ SDR General Options
     --bias-t                              (Optional) Enable Bias-T power.
 
 WAV Input Specific Options
-    --wav-center-target-freq=<flt>	  Shift signal to a new target center frequency (e.g., 97.3e6)
+    --wav-center-target-freq=<flt>	      Shift signal to a new target center frequency (e.g., 97.3e6)
 
 Raw File Input Options
     --raw-file-input-rate=<flt>           (Required) The sample rate of the raw input file.
