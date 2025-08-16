@@ -8,7 +8,7 @@
 // --- Pipeline & Buffer Configuration ---
 #define STOPBAND_ATTENUATION_DB         60.0f
 #define PROGRESS_UPDATE_INTERVAL        1
-#define NUM_BUFFERS                     128
+#define NUM_BUFFERS                     512
 #define BUFFER_SIZE_SAMPLES             131072
 #define RESAMPLER_OUTPUT_SAFETY_MARGIN  128 // Extra samples for resampler output buffer
 

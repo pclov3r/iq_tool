@@ -77,45 +77,8 @@ static bool validate_configuration(AppConfig *config, const AppResources *resour
 static bool initialize_application(AppConfig *config, AppResources *resources);
 static void cleanup_application(AppConfig *config, AppResources *resources);
 static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success);
-
-
-// --- Logger Lock Function ---
-static void console_lock_function(bool lock, void *udata) {
-    pthread_mutex_t *mutex = (pthread_mutex_t *)udata;
-    if (lock) {
-        pthread_mutex_lock(mutex);
-    } else {
-        pthread_mutex_unlock(mutex);
-    }
-}
-
-// --- Progress Update Callback ---
-static void application_progress_callback(unsigned long long current_output_frames, long long total_output_frames, unsigned long long unused_arg, void* udata) {
-    (void)unused_arg; // This argument is no longer used but kept for signature compatibility
-    pthread_mutex_t *console_mutex = (pthread_mutex_t *)udata;
-    pthread_mutex_lock(console_mutex);
-
-#ifdef _WIN32
-    if (_isatty(_fileno(stderr))) {
-        fprintf(stderr, "\r \r");
-    }
-#else
-    if (isatty(fileno(stderr))) {
-        fprintf(stderr, "\r \r");
-    }
-#endif
-
-    if (total_output_frames > 0) {
-        double percentage = ((double)current_output_frames / (double)total_output_frames) * 100.0;
-        if (percentage > 100.0) percentage = 100.0; // Clamp to 100%
-        fprintf(stderr, "\rWriting output frames %llu / %lld (%.1f%% Est.)...", current_output_frames, total_output_frames, percentage);
-    } else {
-        // This handles live streams where the total is unknown
-        fprintf(stderr, "\rWritten %llu output frames...", current_output_frames);
-    }
-    fflush(stderr);
-    pthread_mutex_unlock(console_mutex);
-}
+static void console_lock_function(bool lock, void *udata);
+static void application_progress_callback(unsigned long long current_output_frames, long long total_output_frames, unsigned long long unused_arg, void* udata);
 
 
 // --- Main Application Entry Point ---
@@ -235,12 +198,21 @@ int main(int argc, char *argv[]) {
     }
     pthread_join(resources.reader_thread_handle, NULL);
 
-    // --- MODIFIED SECTION ---
+    // --- CORRECTED SECTION ---
     // Lock the console mutex to ensure the final output is atomic and clean.
     pthread_mutex_lock(&g_console_mutex);
 
-    if (resources.end_of_stream_reached && !g_config.output_to_stdout) {
+    // In all normal exit scenarios (successful completion or user cancellation),
+    // clear the final, stale progress line from the screen before printing the summary.
+    // This is skipped if there was a fatal error or if outputting to stdout.
+    if ((resources.end_of_stream_reached || is_shutdown_requested()) && !g_config.output_to_stdout) {
+        // Check if stderr is an interactive terminal before printing control characters.
+        #ifdef _WIN32
+        if (_isatty(_fileno(stderr))) {
+        #else
         if (isatty(fileno(stderr))) {
+        #endif
+            // Move cursor to start, overwrite line with spaces, move cursor to start again.
             fprintf(stderr, "\r                                                                               \r");
             fflush(stderr);
         }
@@ -255,7 +227,7 @@ int main(int argc, char *argv[]) {
     
     // Unlock the console after all final printing is complete.
     pthread_mutex_unlock(&g_console_mutex);
-    // --- END MODIFIED SECTION ---
+    // --- END CORRECTED SECTION ---
 
     int exit_status = (processing_ok || is_shutdown_requested()) ? EXIT_SUCCESS : EXIT_FAILURE;
 
@@ -266,24 +238,18 @@ int main(int argc, char *argv[]) {
 }
 
 
+// --- Static Helper Function Definitions ---
+
 static void initialize_resource_struct(AppResources *resources) {
     memset(resources, 0, sizeof(AppResources));
     
-    // All pointers and numeric types in the resources struct are now zero-initialized by memset.
-    // This includes SDR device handles (e.g., resources->hackrf_dev) which are correctly set to NULL,
-    // and flags (e.g., resources->sdr_api_is_open) which are correctly set to false.
-
-    // Explicitly initialize any non-zero default values or global config flags here.
     g_config.iq_correction.enable = false;
     g_config.dc_block.enable = false;
 }
 
 static bool validate_configuration(AppConfig *config, const AppResources *resources) {
-    if (resources->selected_input_ops->validate_options) {
-        if (!resources->selected_input_ops->validate_options(config)) {
-            return false;
-        }
-    }
+    (void)config;
+    (void)resources;
     return true;
 }
 
@@ -428,4 +394,39 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Written:", total_output_samples);
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
     }
+}
+
+static void console_lock_function(bool lock, void *udata) {
+    pthread_mutex_t *mutex = (pthread_mutex_t *)udata;
+    if (lock) {
+        pthread_mutex_lock(mutex);
+    } else {
+        pthread_mutex_unlock(mutex);
+    }
+}
+
+static void application_progress_callback(unsigned long long current_output_frames, long long total_output_frames, unsigned long long unused_arg, void* udata) {
+    (void)unused_arg;
+    pthread_mutex_t *console_mutex = (pthread_mutex_t *)udata;
+    pthread_mutex_lock(console_mutex);
+
+#ifdef _WIN32
+    if (_isatty(_fileno(stderr))) {
+        fprintf(stderr, "\r \r");
+    }
+#else
+    if (isatty(fileno(stderr))) {
+        fprintf(stderr, "\r \r");
+    }
+#endif
+
+    if (total_output_frames > 0) {
+        double percentage = ((double)current_output_frames / (double)total_output_frames) * 100.0;
+        if (percentage > 100.0) percentage = 100.0;
+        fprintf(stderr, "\rWriting output frames %llu / %lld (%.1f%% Est.)...", current_output_frames, total_output_frames, percentage);
+    } else {
+        fprintf(stderr, "\rWritten %llu output frames...", current_output_frames);
+    }
+    fflush(stderr);
+    pthread_mutex_unlock(console_mutex);
 }
