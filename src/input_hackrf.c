@@ -23,10 +23,8 @@
 
 extern pthread_mutex_t g_console_mutex;
 
-// --- Add an external declaration for the global config ---
 extern AppConfig g_config;
 
-// --- Implement the function to set default config values ---
 void hackrf_set_default_config(AppConfig* config) {
     config->hackrf.lna_gain = HACKRF_DEFAULT_LNA_GAIN;
     config->hackrf.hackrf_lna_gain_arg = HACKRF_DEFAULT_LNA_GAIN;
@@ -35,7 +33,6 @@ void hackrf_set_default_config(AppConfig* config) {
     config->hackrf.sample_rate_hz = HACKRF_DEFAULT_SAMPLE_RATE;
 }
 
-// --- Define the CLI options for this module ---
 static const struct argparse_option hackrf_cli_options[] = {
     OPT_GROUP("HackRF-Specific Options"),
     OPT_FLOAT(0, "hackrf-sample-rate", &g_config.hackrf.hackrf_sample_rate_hz_arg, "Set sample rate in Hz. (Optional, Default: 8e6)", NULL, 0, 0),
@@ -44,13 +41,11 @@ static const struct argparse_option hackrf_cli_options[] = {
     OPT_BOOLEAN(0, "hackrf-amp-enable", &g_config.hackrf.amp_enable, "Enable the front-end RF amplifier (+14 dB).", NULL, 0, 0),
 };
 
-// --- Implement the interface function to provide the options ---
 const struct argparse_option* hackrf_get_cli_options(int* count) {
     *count = sizeof(hackrf_cli_options) / sizeof(hackrf_cli_options[0]);
     return hackrf_cli_options;
 }
 
-// --- Forward Declarations ---
 static bool hackrf_initialize(InputSourceContext* ctx);
 static void* hackrf_start_stream(InputSourceContext* ctx);
 static void hackrf_stop_stream(InputSourceContext* ctx);
@@ -58,7 +53,6 @@ static void hackrf_cleanup(InputSourceContext* ctx);
 static void hackrf_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
 static bool hackrf_validate_options(AppConfig* config);
 
-// --- Ops struct ---
 static InputSourceOps hackrf_ops = {
     .initialize = hackrf_initialize,
     .start_stream = hackrf_start_stream,
@@ -73,11 +67,7 @@ InputSourceOps* get_hackrf_input_ops(void) {
     return &hackrf_ops;
 }
 
-// --- Module-specific validation function ---
 static bool hackrf_validate_options(AppConfig* config) {
-    // This function is only called if "hackrf" is the selected input.
-
-    // Post-process and validate LNA gain
     if (config->hackrf.hackrf_lna_gain_arg != HACKRF_DEFAULT_LNA_GAIN) {
         long lna_gain = config->hackrf.hackrf_lna_gain_arg;
         if (lna_gain < 0 || lna_gain > 40 || (lna_gain % 8 != 0)) {
@@ -88,7 +78,6 @@ static bool hackrf_validate_options(AppConfig* config) {
         config->hackrf.lna_gain_provided = true;
     }
 
-    // Post-process and validate VGA gain
     if (config->hackrf.hackrf_vga_gain_arg != HACKRF_DEFAULT_VGA_GAIN) {
         long vga_gain = config->hackrf.hackrf_vga_gain_arg;
         if (vga_gain < 0 || vga_gain > 62 || (vga_gain % 2 != 0)) {
@@ -99,7 +88,6 @@ static bool hackrf_validate_options(AppConfig* config) {
         config->hackrf.vga_gain_provided = true;
     }
 
-    // Post-process and validate sample rate
     if (config->hackrf.hackrf_sample_rate_hz_arg != 0.0f) {
         config->hackrf.sample_rate_hz = (double)config->hackrf.hackrf_sample_rate_hz_arg;
         if (config->hackrf.sample_rate_hz < 2e6 || config->hackrf.sample_rate_hz > 20e6) {
@@ -112,8 +100,6 @@ static bool hackrf_validate_options(AppConfig* config) {
     return true;
 }
 
-
-// --- HackRF API Callback Function ---
 int hackrf_stream_callback(hackrf_transfer* transfer) {
     AppResources *resources = (AppResources*)transfer->rx_ctx;
     const AppConfig *config = resources->config;
@@ -126,6 +112,17 @@ int hackrf_stream_callback(hackrf_transfer* transfer) {
         return 0;
     }
 
+    // --- START OF MODIFIED BLOCK ---
+    if (config->raw_passthrough) {
+        size_t bytes_written = file_write_buffer_write(resources->file_write_buffer, transfer->buffer, transfer->valid_length);
+        if (bytes_written < (size_t)transfer->valid_length) {
+            log_warn("I/O buffer overrun! Dropped %zu bytes.", (size_t)transfer->valid_length - bytes_written);
+        }
+        return 0;
+    }
+    // --- END OF MODIFIED BLOCK ---
+
+    // Normal processing path
     size_t bytes_processed = 0;
     while (bytes_processed < (size_t)transfer->valid_length) {
         SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
@@ -142,8 +139,7 @@ int hackrf_stream_callback(hackrf_transfer* transfer) {
             chunk_size = pipeline_buffer_size;
         }
 
-        void* target_buffer = config->raw_passthrough ? item->final_output_data : item->raw_input_data;
-        memcpy(target_buffer, transfer->buffer + bytes_processed, chunk_size);
+        memcpy(item->raw_input_data, transfer->buffer + bytes_processed, chunk_size);
         item->frames_read = chunk_size / resources->input_bytes_per_sample_pair;
         item->is_last_chunk = false;
 
@@ -153,25 +149,14 @@ int hackrf_stream_callback(hackrf_transfer* transfer) {
             pthread_mutex_unlock(&resources->progress_mutex);
         }
 
-        if (config->raw_passthrough) {
-            item->frames_to_write = item->frames_read;
-            if (!queue_enqueue(resources->final_output_queue, item)) {
-                queue_enqueue(resources->free_sample_chunk_queue, item);
-                return -1;
-            }
-        } else {
-            if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
-                queue_enqueue(resources->free_sample_chunk_queue, item);
-                return -1;
-            }
+        if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
+            queue_enqueue(resources->free_sample_chunk_queue, item);
+            return -1;
         }
         bytes_processed += chunk_size;
     }
     return 0;
 }
-
-
-// --- InputSourceOps Implementations for HackRF ---
 
 static void hackrf_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;

@@ -17,15 +17,12 @@
 #include <time.h>
 #endif
 
-// --- Add an external declaration for the global config ---
 extern AppConfig g_config;
 
-// --- Implement the function to set default config values ---
 void rtlsdr_set_default_config(AppConfig* config) {
     config->rtlsdr.sample_rate_hz = RTLSDR_DEFAULT_SAMPLE_RATE;
 }
 
-// --- Define the CLI options for this module ---
 static const struct argparse_option rtlsdr_cli_options[] = {
     OPT_GROUP("RTL-SDR-Specific Options"),
     OPT_INTEGER(0, "rtlsdr-device-idx", &g_config.rtlsdr.device_index, "Select specific RTL-SDR device by index (0-indexed). (Default: 0)", NULL, 0, 0),
@@ -35,23 +32,19 @@ static const struct argparse_option rtlsdr_cli_options[] = {
     OPT_INTEGER(0, "rtlsdr-direct-sampling", &g_config.rtlsdr.direct_sampling_mode, "Enable direct sampling mode for HF reception (1=I-branch, 2=Q-branch)", NULL, 0, 0),
 };
 
-// --- Implement the interface function to provide the options ---
 const struct argparse_option* rtlsdr_get_cli_options(int* count) {
     *count = sizeof(rtlsdr_cli_options) / sizeof(rtlsdr_cli_options[0]);
     return rtlsdr_cli_options;
 }
 
-
-// --- Forward Declarations for Static Functions ---
 static bool rtlsdr_initialize(InputSourceContext* ctx);
 static void* rtlsdr_start_stream(InputSourceContext* ctx);
 static void rtlsdr_stop_stream(InputSourceContext* ctx);
 static void rtlsdr_cleanup(InputSourceContext* ctx);
 static void rtlsdr_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
-static bool rtlsdr_validate_options(AppConfig* config); // <<< MODIFIED: Now takes non-const AppConfig*
+static bool rtlsdr_validate_options(AppConfig* config);
 static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ctx);
 
-// --- DEFINITIVE FIX: Helper function to safely get tuner name ---
 static const char* get_tuner_name_from_enum(enum rtlsdr_tuner tuner_type) {
     switch (tuner_type) {
         case RTLSDR_TUNER_E4000:    return "Elonics E4000";
@@ -71,7 +64,7 @@ static InputSourceOps rtlsdr_ops = {
     .stop_stream = rtlsdr_stop_stream,
     .cleanup = rtlsdr_cleanup,
     .get_summary_info = rtlsdr_get_summary_info,
-    .validate_options = rtlsdr_validate_options, // <<< UPDATED to point to local function
+    .validate_options = rtlsdr_validate_options,
     .has_known_length = _input_source_has_known_length_false
 };
 
@@ -79,28 +72,20 @@ InputSourceOps* get_rtlsdr_input_ops(void) {
     return &rtlsdr_ops;
 }
 
-// --- NEW: Module-specific validation function ---
 static bool rtlsdr_validate_options(AppConfig* config) {
-    // This function is only called if "rtlsdr" is the selected input.
-    // No need to check config->input_type_str here.
-
-    // Post-process and validate rtlsdr-gain
     if (config->rtlsdr.rtlsdr_gain_db_arg != 0.0f) {
         config->rtlsdr.gain = (int)(config->rtlsdr.rtlsdr_gain_db_arg * 10.0f);
         config->rtlsdr.gain_provided = true;
     }
 
-    // Post-process and validate rtlsdr-sample-rate
     if (config->rtlsdr.sample_rate_hz != RTLSDR_DEFAULT_SAMPLE_RATE) {
         config->rtlsdr.sample_rate_provided = true;
     }
 
-    // Post-process and validate rtlsdr-ppm
     if (config->rtlsdr.ppm != 0) {
         config->rtlsdr.ppm_provided = true;
     }
 
-    // Post-process and validate rtlsdr-direct-sampling
     if (config->rtlsdr.direct_sampling_mode != 0) {
         if (config->rtlsdr.direct_sampling_mode < 1 || config->rtlsdr.direct_sampling_mode > 2) {
             log_fatal("Invalid value for --rtlsdr-direct-sampling. Must be 1 or 2.");
@@ -111,7 +96,6 @@ static bool rtlsdr_validate_options(AppConfig* config) {
 
     return true;
 }
-
 
 static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ctx) {
     AppResources *resources = (AppResources*)cb_ctx;
@@ -125,9 +109,21 @@ static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ct
         return;
     }
 
+    if (config->raw_passthrough) {
+        // --- START OF MODIFIED BLOCK (PASSTHROUGH) ---
+        size_t bytes_written = file_write_buffer_write(resources->file_write_buffer, buf, len);
+        if (bytes_written < len) {
+            log_warn("I/O buffer overrun! Dropped %zu bytes.", len - bytes_written);
+        }
+        // In passthrough mode, we don't use the SampleChunk pool, so we just return.
+        return;
+        // --- END OF MODIFIED BLOCK (PASSTHROUGH) ---
+    }
+
+    // Normal processing path
     SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
     if (!item) {
-        return;
+        return; // No free buffers, so we must drop the data.
     }
 
     item->stream_discontinuity_event = false;
@@ -139,8 +135,7 @@ static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ct
         bytes_to_copy = pipeline_buffer_size;
     }
 
-    void* target_buffer = config->raw_passthrough ? item->final_output_data : item->raw_input_data;
-    memcpy(target_buffer, buf, bytes_to_copy);
+    memcpy(item->raw_input_data, buf, bytes_to_copy);
     item->frames_read = bytes_to_copy / resources->input_bytes_per_sample_pair;
     item->is_last_chunk = false;
 
@@ -150,15 +145,8 @@ static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ct
         pthread_mutex_unlock(&resources->progress_mutex);
     }
 
-    if (config->raw_passthrough) {
-        item->frames_to_write = item->frames_read;
-        if (!queue_enqueue(resources->final_output_queue, item)) {
-            queue_enqueue(resources->free_sample_chunk_queue, item);
-        }
-    } else {
-        if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
-            queue_enqueue(resources->free_sample_chunk_queue, item);
-        }
+    if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
+        queue_enqueue(resources->free_sample_chunk_queue, item);
     }
 }
 
@@ -200,7 +188,6 @@ static bool rtlsdr_initialize(InputSourceContext* ctx) {
     const char* tuner_name = get_tuner_name_from_enum(tuner_type);
     log_info("Found RTL-SDR device with tuner: %s", tuner_name);
 
-    // --- Set Sample Rate ---
     double sample_rate_to_set = config->rtlsdr.sample_rate_provided ? config->rtlsdr.sample_rate_hz : RTLSDR_DEFAULT_SAMPLE_RATE;
     result = rtlsdr_set_sample_rate(resources->rtlsdr_dev, (uint32_t)sample_rate_to_set);
     if (result < 0) {
@@ -212,7 +199,6 @@ static bool rtlsdr_initialize(InputSourceContext* ctx) {
     log_info("RTL-SDR: Requested sample rate %.0f Hz, actual rate set to %u Hz.", sample_rate_to_set, actual_rate);
     resources->source_info.samplerate = actual_rate;
 
-    // --- Set Center Frequency ---
     result = rtlsdr_set_center_freq(resources->rtlsdr_dev, (uint32_t)config->sdr.rf_freq_hz);
     if (result < 0) {
         log_fatal("Failed to set center frequency: %s", strerror(-result));
@@ -220,7 +206,6 @@ static bool rtlsdr_initialize(InputSourceContext* ctx) {
         return false;
     }
 
-    // --- Set Gain ---
     if (config->rtlsdr.gain_provided) {
         rtlsdr_set_tuner_gain_mode(resources->rtlsdr_dev, 1);
         rtlsdr_set_tuner_gain(resources->rtlsdr_dev, config->rtlsdr.gain);
@@ -228,12 +213,10 @@ static bool rtlsdr_initialize(InputSourceContext* ctx) {
         rtlsdr_set_tuner_gain_mode(resources->rtlsdr_dev, 0);
     }
     
-    // --- Set PPM Correction ---
     if (config->rtlsdr.ppm_provided) {
         rtlsdr_set_freq_correction(resources->rtlsdr_dev, config->rtlsdr.ppm);
     }
 
-    // --- Set Bias-T ---
     if (config->sdr.bias_t_enable) {
         log_info("Attempting to enable Bias-T...");
         result = rtlsdr_set_bias_tee(resources->rtlsdr_dev, 1);
@@ -242,12 +225,10 @@ static bool rtlsdr_initialize(InputSourceContext* ctx) {
         }
     }
     
-    // --- Set Direct Sampling ---
     if (config->rtlsdr.direct_sampling_provided) {
         rtlsdr_set_direct_sampling(resources->rtlsdr_dev, config->rtlsdr.direct_sampling_mode);
     }
 
-    // --- Finalize Setup ---
     result = rtlsdr_reset_buffer(resources->rtlsdr_dev);
     if (result < 0) {
         log_warn("Failed to reset RTL-SDR buffer.");
@@ -258,7 +239,7 @@ static bool rtlsdr_initialize(InputSourceContext* ctx) {
     resources->source_info.frames = -1;
 
     if (config->raw_passthrough && resources->input_format != config->output_format) {
-        log_fatal("Option --no-convert requires input and output formats to be identical. RTL-SDR input is 'cu8', but output was set to '%s'.", config->sample_type_name);
+        log_fatal("Option --raw-passthrough requires input and output formats to be identical. RTL-SDR input is 'cu8', but output was set to '%s'.", config->sample_type_name);
         rtlsdr_close(resources->rtlsdr_dev);
         return false;
     }

@@ -25,6 +25,7 @@
 
 #include "config.h"
 #include "queue.h"
+#include "file_write_buffer.h"
 
 #if defined(WITH_SDRPLAY)
 #include "sdrplay_api.h"
@@ -163,7 +164,7 @@ typedef enum {
 
 typedef struct {
     FrequencyShiftRequestType type;
-    double value; // The value associated with the request (e.g., 25000.0 or 97.3e6)
+    double value;
 } FrequencyShiftRequest;
 
 typedef struct AppConfig {
@@ -189,13 +190,9 @@ typedef struct AppConfig {
 
     FrequencyShiftRequest frequency_shift_request;
 
-    // The final, simple flags used by the DSP chain.
-    // These will be populated by the resolver in cli.c.
     double freq_shift_hz;
     bool freq_shift_requested;
 
-    // The WAV-specific flag is still needed for the metadata logic,
-    // but it's now set by the resolver, not the module.
     double center_frequency_target_hz;
     bool set_center_frequency_target_hz;
 
@@ -229,6 +226,9 @@ typedef struct AppConfig {
         int device_index;
         int gain_level;
         bool gain_level_provided;
+        int if_gain_db;
+        bool if_gain_db_provided;
+        int sdrplay_if_gain_db_arg;
         sdrplay_api_RspDx_HdrModeBwT hdr_bw_mode;
         bool hdr_bw_mode_provided;
         float sdrplay_hdr_bw_hz_arg;
@@ -405,8 +405,10 @@ typedef struct AppResources {
     Queue* raw_to_pre_process_queue;
     Queue* pre_process_to_resampler_queue;
     Queue* resampler_to_post_process_queue;
-    Queue* final_output_queue;
     Queue* iq_optimization_data_queue;
+    Queue* stdout_queue;
+
+    FileWriteBuffer* file_write_buffer;
 
     pthread_mutex_t progress_mutex;
     bool error_occurred;

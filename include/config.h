@@ -8,9 +8,17 @@
 // --- Pipeline & Buffer Configuration ---
 #define STOPBAND_ATTENUATION_DB         60.0f
 #define PROGRESS_UPDATE_INTERVAL        1
-#define NUM_BUFFERS                     512
+#define NUM_BUFFERS                     512 // Increased for stability against pipeline stalls
 #define BUFFER_SIZE_SAMPLES             131072
 #define RESAMPLER_OUTPUT_SAFETY_MARGIN  128 // Extra samples for resampler output buffer
+
+// Size of the decoupled I/O ring buffer. A large size is critical for absorbing
+// I/O latency spikes from the OS/antivirus on Windows.
+#define IO_RING_BUFFER_CAPACITY         (1024 * 1024 * 1024) // 1 GB
+
+// The size of the local buffer in the writer thread. Data is read from the
+// ring buffer into this local buffer before being written to disk.
+#define WRITER_THREAD_CHUNK_SIZE        (1024 * 1024) // 1 MB
 
 // --- DSP & Sanity Check Limits ---
 #define MIN_ACCEPTABLE_RATIO      0.001f

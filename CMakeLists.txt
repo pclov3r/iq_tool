@@ -611,7 +611,7 @@ if(WITH_BLADERF)
 endif()
 
 set(SOURCES
-    src/argparse.c # <<< ADDED
+    src/argparse.c
     src/cli.c
     src/config.c
     src/dc_block.c
@@ -619,6 +619,7 @@ set(SOURCES
     src/input_manager.c
     src/input_rawfile.c
     src/input_wav.c
+    src/file_write_buffer.c
     src/io_threads.c
     src/iq_correct.c
     src/log.c

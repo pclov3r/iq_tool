@@ -40,8 +40,6 @@ BladerfApiFunctionPointers bladerf_api;
             bladerf_api.dll_handle = NULL; \
             return false; \
         } \
-        /* Use memcpy to safely convert the generic function pointer to the specific one. */ \
-        /* This is the standard-compliant way to avoid the -Wpedantic warnings. */ \
         memcpy(&bladerf_api.func_name, &proc, sizeof(bladerf_api.func_name)); \
     } while (0)
 
@@ -449,54 +447,80 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
     samples_per_transfer = (samples_per_transfer / 1024) * 1024;
     log_debug("BladeRF: Using dynamic transfer size of %u samples.", samples_per_transfer);
 
-    while (!is_shutdown_requested() && !resources->error_occurred) {
-        SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
-        if (!item) break;
+    // --- START OF MODIFIED BLOCK ---
+    // In passthrough mode, we need a temporary buffer to receive data before writing to the file_write_buffer.
+    // We can use the first SampleChunk's final_output_data buffer for this to avoid a new allocation.
+    void* passthrough_temp_buffer = NULL;
+    if (config->raw_passthrough) {
+        SampleChunk* temp_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+        if (!temp_item) {
+            handle_fatal_thread_error("BladeRF: Failed to get a temporary buffer for passthrough mode.", resources);
+            return NULL;
+        }
+        passthrough_temp_buffer = temp_item->final_output_data;
+        queue_enqueue(resources->free_sample_chunk_queue, temp_item); // Return it immediately
+    }
 
+    while (!is_shutdown_requested() && !resources->error_occurred) {
         memset(&meta, 0, sizeof(meta));
         meta.flags = BLADERF_META_FLAG_RX_NOW;
 
-        void* target_buffer = config->raw_passthrough ? item->final_output_data : item->raw_input_data;
-        status = bladerf_sync_rx(dev, target_buffer, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
-        
-        if (status != 0) {
-            if (!is_shutdown_requested()) {
-                char error_buf[256];
-                snprintf(error_buf, sizeof(error_buf), "bladerf_sync_rx() failed: %s", bladerf_strerror(status));
-                handle_fatal_thread_error(error_buf, resources);
-            }
-            queue_enqueue(resources->free_sample_chunk_queue, item);
-            break;
-        }
-
-        if ((meta.status & BLADERF_META_STATUS_OVERRUN) != 0) {
-            log_warn("BladeRF reported a stream overrun (discontinuity).");
-            log_info("Signaling pipeline to reset DSP state.");
-            item->stream_discontinuity_event = true;
-        } else {
-            item->stream_discontinuity_event = false;
-        }
-
-        item->frames_read = meta.actual_count;
-        item->is_last_chunk = false;
-
-        pthread_mutex_lock(&resources->progress_mutex);
-        resources->total_frames_read += item->frames_read;
-        pthread_mutex_unlock(&resources->progress_mutex);
-
         if (config->raw_passthrough) {
-            item->frames_to_write = item->frames_read;
-            if (!queue_enqueue(resources->final_output_queue, item)) {
+            status = bladerf_sync_rx(dev, passthrough_temp_buffer, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
+            if (status != 0) {
+                if (!is_shutdown_requested()) {
+                    char error_buf[256];
+                    snprintf(error_buf, sizeof(error_buf), "bladerf_sync_rx() failed: %s", bladerf_strerror(status));
+                    handle_fatal_thread_error(error_buf, resources);
+                }
+                break;
+            }
+            if (meta.actual_count > 0) {
+                size_t bytes_to_write = meta.actual_count * resources->input_bytes_per_sample_pair;
+                size_t bytes_written = file_write_buffer_write(resources->file_write_buffer, passthrough_temp_buffer, bytes_to_write);
+                if (bytes_written < bytes_to_write) {
+                    log_warn("I/O buffer overrun! Dropped %zu bytes.", bytes_to_write - bytes_written);
+                }
+            }
+        } else {
+            // Normal processing path
+            SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+            if (!item) break;
+
+            status = bladerf_sync_rx(dev, item->raw_input_data, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
+            
+            if (status != 0) {
+                if (!is_shutdown_requested()) {
+                    char error_buf[256];
+                    snprintf(error_buf, sizeof(error_buf), "bladerf_sync_rx() failed: %s", bladerf_strerror(status));
+                    handle_fatal_thread_error(error_buf, resources);
+                }
                 queue_enqueue(resources->free_sample_chunk_queue, item);
                 break;
             }
-        } else {
+
+            if ((meta.status & BLADERF_META_STATUS_OVERRUN) != 0) {
+                log_warn("BladeRF reported a stream overrun (discontinuity).");
+                log_info("Signaling pipeline to reset DSP state.");
+                item->stream_discontinuity_event = true;
+            } else {
+                item->stream_discontinuity_event = false;
+            }
+
+            item->frames_read = meta.actual_count;
+            item->is_last_chunk = false;
+
+            pthread_mutex_lock(&resources->progress_mutex);
+            resources->total_frames_read += item->frames_read;
+            pthread_mutex_unlock(&resources->progress_mutex);
+
             if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
                 queue_enqueue(resources->free_sample_chunk_queue, item);
                 break;
             }
         }
     }
+    // --- END OF MODIFIED BLOCK ---
     return NULL;
 }
 

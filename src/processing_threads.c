@@ -1,7 +1,7 @@
 // src/processing_threads.c
 
 #ifdef _WIN32
-#include <windows.h> // Required for SetThreadPriority and SetThreadAffinityMask
+#include <windows.h>
 #endif
 
 #include "processing_threads.h"
@@ -24,17 +24,11 @@
 #include <liquid/liquid.h>
 #endif
 
-/**
- * @brief The pre-processor thread's main function.
- */
 void* pre_processor_thread_func(void* arg) {
 #ifdef _WIN32
-    // --- PERFORMANCE: Set ELEVATED Priority & Affinity ---
-    // Give processing threads a boost, but keep them below the I/O threads.
     if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL)) {
         log_warn("Failed to set pre-processor thread priority.");
     }
-    // Prevent this thread from running on the reader's dedicated core.
     DWORD_PTR affinity_mask = ~(1 << 2);
     if (SetThreadAffinityMask(GetCurrentThread(), affinity_mask) == 0) {
         log_warn("Failed to set pre-processor thread affinity mask.");
@@ -73,12 +67,7 @@ void* pre_processor_thread_func(void* arg) {
             dc_block_apply(resources, item->complex_pre_resample_data, item->frames_read);
         }
 
-        // =================================================================
-        // MODIFIED I/Q CORRECTION LOGIC BLOCK STARTS HERE
-        // =================================================================
         if (config->iq_correction.enable) {
-            // Part A: Feed the optimizer with UNCORRECTED data before correcting the main buffer.
-            // This loop efficiently copies only the small number of samples needed to fill the accumulator.
             int samples_to_process = item->frames_read;
             int offset = 0;
             while (samples_to_process > 0) {
@@ -86,43 +75,32 @@ void* pre_processor_thread_func(void* arg) {
                 int samples_to_copy = (samples_to_process < samples_needed) ? samples_to_process : samples_needed;
 
                 memcpy(resources->iq_correction.optimization_accum_buffer + resources->iq_correction.samples_in_accum,
-                       item->complex_pre_resample_data + offset, // Source is the uncorrected data
+                       item->complex_pre_resample_data + offset,
                        samples_to_copy * sizeof(complex_float_t));
                 
                 resources->iq_correction.samples_in_accum += samples_to_copy;
                 offset += samples_to_copy;
                 samples_to_process -= samples_to_copy;
 
-                // Part B: If the accumulator is full, trigger an optimization pass.
                 if (resources->iq_correction.samples_in_accum == IQ_CORRECTION_FFT_SIZE) {
                     if (samples_since_last_opt >= IQ_CORRECTION_DEFAULT_PERIOD) {
-                        // Get a separate, temporary chunk from the free pool for the optimizer.
                         SampleChunk* opt_item = (SampleChunk*)queue_try_dequeue(resources->free_sample_chunk_queue);
                         if (opt_item) {
-                            // Copy the complete, uncorrected data from the accumulator into the new chunk.
                             memcpy(opt_item->complex_pre_resample_data, resources->iq_correction.optimization_accum_buffer, IQ_CORRECTION_FFT_SIZE * sizeof(complex_float_t));
                             
-                            // Send the dedicated chunk to the optimization thread.
                             if (!queue_enqueue(resources->iq_optimization_data_queue, opt_item)) {
-                                // If enqueue fails, return the chunk to the free pool to prevent leaks.
                                 queue_enqueue(resources->free_sample_chunk_queue, opt_item);
                             }
                             samples_since_last_opt = 0;
                         }
                     }
-                    // Reset the accumulator for the next batch.
                     resources->iq_correction.samples_in_accum = 0;
                 }
             }
             samples_since_last_opt += item->frames_read;
 
-            // Part C: Correct the main pipeline data in-place.
-            // This happens *after* the uncorrected data has been handled for the optimizer.
             iq_correct_apply(resources, item->complex_pre_resample_data, item->frames_read);
         }
-        // =================================================================
-        // MODIFIED I/Q CORRECTION LOGIC BLOCK ENDS HERE
-        // =================================================================
 
         if (resources->pre_resample_nco) {
             shift_apply(resources->pre_resample_nco, resources->actual_nco_shift_hz, item->complex_pre_resample_data, item->complex_pre_resample_data, item->frames_read);
@@ -136,9 +114,6 @@ void* pre_processor_thread_func(void* arg) {
     return NULL;
 }
 
-/**
- * @brief The resampler thread's main function.
- */
 void* resampler_thread_func(void* arg) {
 #ifdef _WIN32
     if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL)) {
@@ -189,9 +164,6 @@ void* resampler_thread_func(void* arg) {
     return NULL;
 }
 
-/**
- * @brief The post-processor thread's main function.
- */
 void* post_processor_thread_func(void* arg) {
 #ifdef _WIN32
     if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL)) {
@@ -213,44 +185,72 @@ void* post_processor_thread_func(void* arg) {
 
         if (item->stream_discontinuity_event) {
             shift_reset_nco(resources->post_resample_nco);
-            if (!queue_enqueue(resources->final_output_queue, item)) {
-                queue_enqueue(resources->free_sample_chunk_queue, item);
+            if (config->output_to_stdout) {
+                if (!queue_enqueue(resources->stdout_queue, item)) {
+                    queue_enqueue(resources->free_sample_chunk_queue, item);
+                    break;
+                }
+            } else {
+                if (!queue_enqueue(resources->free_sample_chunk_queue, item)) {
+                    break;
+                }
             }
             continue;
         }
 
-        if (item->is_last_chunk) {
-            queue_enqueue(resources->final_output_queue, item);
-            break;
+        if (!item->is_last_chunk) {
+            complex_float_t* final_complex_data = item->complex_resampled_data;
+            if (resources->post_resample_nco) {
+                shift_apply(resources->post_resample_nco, resources->actual_nco_shift_hz, item->complex_resampled_data, item->complex_post_resample_data, item->frames_to_write);
+                final_complex_data = item->complex_post_resample_data;
+            }
+
+            if (!convert_cf32_to_block(final_complex_data, item->final_output_data, item->frames_to_write, config->output_format)) {
+                handle_fatal_thread_error("Post-Processor: Failed to convert samples.", resources);
+                queue_enqueue(resources->free_sample_chunk_queue, item);
+                break;
+            }
         }
 
-        complex_float_t* final_complex_data = item->complex_resampled_data;
-        if (resources->post_resample_nco) {
-            shift_apply(resources->post_resample_nco, resources->actual_nco_shift_hz, item->complex_resampled_data, item->complex_post_resample_data, item->frames_to_write);
-            final_complex_data = item->complex_post_resample_data;
-        }
+        if (config->output_to_stdout) {
+            // STDOUT PATH: Use the small, fast queue.
+            if (!queue_enqueue(resources->stdout_queue, item)) {
+                queue_enqueue(resources->free_sample_chunk_queue, item);
+                break;
+            }
+            if (item->is_last_chunk) {
+                break;
+            }
+        } else {
+            // FILE PATH: Use the large, decoupled I/O buffer.
+            if (!item->is_last_chunk) {
+                size_t bytes_to_write = item->frames_to_write * resources->output_bytes_per_sample_pair;
+                if (bytes_to_write > 0) {
+                    size_t bytes_written = file_write_buffer_write(resources->file_write_buffer, item->final_output_data, bytes_to_write);
+                    if (bytes_written < bytes_to_write) {
+                        log_warn("I/O buffer overrun! Dropped %zu bytes. System may be overloaded.", bytes_to_write - bytes_written);
+                    }
+                }
+            }
 
-        if (!convert_cf32_to_block(final_complex_data, item->final_output_data, item->frames_to_write, config->output_format)) {
-            handle_fatal_thread_error("Post-Processor: Failed to convert samples.", resources);
-            queue_enqueue(resources->free_sample_chunk_queue, item);
-            break;
-        }
+            if (item->is_last_chunk) {
+                file_write_buffer_signal_end_of_stream(resources->file_write_buffer);
+            }
 
-        if (!queue_enqueue(resources->final_output_queue, item)) {
-            queue_enqueue(resources->free_sample_chunk_queue, item);
-            break;
+            if (!queue_enqueue(resources->free_sample_chunk_queue, item)) {
+                break;
+            }
+
+            if (item->is_last_chunk) {
+                break;
+            }
         }
     }
     return NULL;
 }
 
-/**
- * @brief The I/Q optimization thread's main function.
- */
 void* iq_optimization_thread_func(void* arg) {
 #ifdef _WIN32
-    // This thread is less critical, so a normal priority is fine.
-    // We still set affinity to keep it off the reader's core.
     DWORD_PTR affinity_mask = ~(1 << 2);
     if (SetThreadAffinityMask(GetCurrentThread(), affinity_mask) == 0) {
         log_warn("Failed to set IQ optimization thread affinity mask.");

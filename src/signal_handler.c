@@ -10,29 +10,24 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <io.h> // Required for _isatty() and _fileno()
+#include <io.h>
 #else
 #include <signal.h>
 #include <pthread.h>
-#include <unistd.h> // Required for isatty() and fileno()
-#include <strings.h> // Required for strcasecmp on POSIX
+#include <unistd.h>
+#include <strings.h>
 #endif
 
 
-// --- Add an external declaration for the global console mutex defined in main.c ---
 extern pthread_mutex_t g_console_mutex;
 
-// --- Define a sequence to clear the current line on a terminal ---
 #define LINE_CLEAR_SEQUENCE "\r \r"
 
-// This static global is the standard way to give a signal/console handler
-// access to the application's state.
 static AppResources *g_resources_for_signal_handler = NULL;
 static volatile sig_atomic_t g_shutdown_flag = 0;
 
 
 #ifdef _WIN32
-// --- WINDOWS IMPLEMENTATION ---
 static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
     switch (dwCtrlType) {
         case CTRL_C_EVENT:
@@ -55,9 +50,7 @@ static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
 }
 
 #else
-// --- POSIX (LINUX) IMPLEMENTATION ---
 void* signal_handler_thread(void *arg) {
-    // This argument is now implicitly used via the global g_resources_for_signal_handler
     (void)arg;
     sigset_t signal_set;
     int sig;
@@ -109,7 +102,6 @@ void reset_shutdown_flag(void) {
 }
 
 void request_shutdown(void) {
-    // Check if a shutdown is already in progress to avoid redundant signaling
     if (g_shutdown_flag) {
         return;
     }
@@ -118,8 +110,6 @@ void request_shutdown(void) {
     if (g_resources_for_signal_handler) {
         AppResources* r = g_resources_for_signal_handler;
 
-        // Special handling for RTL-SDR: its reader thread blocks inside the library
-        // and must be cancelled externally.
         if (r->config && r->config->input_type_str && strcasecmp(r->config->input_type_str, "rtlsdr") == 0) {
             if (r->selected_input_ops && r->selected_input_ops->stop_stream) {
                 log_debug("Signal handler is calling stop_stream for RTL-SDR to unblock reader thread.");
@@ -128,7 +118,6 @@ void request_shutdown(void) {
             }
         }
 
-        // Signal ALL queues to ensure every thread wakes up
         if (r->free_sample_chunk_queue)
             queue_signal_shutdown(r->free_sample_chunk_queue);
         if (r->raw_to_pre_process_queue)
@@ -137,32 +126,24 @@ void request_shutdown(void) {
             queue_signal_shutdown(r->pre_process_to_resampler_queue);
         if (r->resampler_to_post_process_queue)
             queue_signal_shutdown(r->resampler_to_post_process_queue);
-        if (r->final_output_queue)
-            queue_signal_shutdown(r->final_output_queue);
+        if (r->stdout_queue) // <<< ADDED
+            queue_signal_shutdown(r->stdout_queue); // <<< ADDED
         if (r->iq_optimization_data_queue)
             queue_signal_shutdown(r->iq_optimization_data_queue);
+        if (r->file_write_buffer)
+            file_write_buffer_signal_shutdown(r->file_write_buffer);
     }
 }
 
-/**
- * @brief Handles a fatal error that occurs within a thread.
- *
- * This is the central, thread-safe function for reporting a fatal error.
- * It ensures the error is logged, a global error flag is set, and a
- * graceful shutdown is initiated via request_shutdown().
- *
- * @param context_msg A descriptive error message string.
- * @param resources A pointer to the main AppResources struct.
- */
 void handle_fatal_thread_error(const char* context_msg, AppResources* resources) {
     pthread_mutex_lock(&resources->progress_mutex);
     if (resources->error_occurred) {
         pthread_mutex_unlock(&resources->progress_mutex);
-        return; // Error is already being handled by another thread.
+        return;
     }
     resources->error_occurred = true;
     pthread_mutex_unlock(&resources->progress_mutex);
 
     log_fatal("%s", context_msg);
-    request_shutdown(); // Use the central shutdown mechanism
+    request_shutdown();
 }

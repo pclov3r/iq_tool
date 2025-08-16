@@ -74,8 +74,7 @@ AppConfig g_config;
 // --- Forward Declarations for Static Helper Functions ---
 static void initialize_resource_struct(AppResources *resources);
 static bool validate_configuration(AppConfig *config, const AppResources *resources);
-static bool initialize_application(AppConfig *config, AppResources *resources);
-static void cleanup_application(AppConfig *config, AppResources *resources);
+// NOTE: initialize_application and cleanup_application are now public (declared in setup.h)
 static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success);
 static void console_lock_function(bool lock, void *udata);
 static void application_progress_callback(unsigned long long current_output_frames, long long total_output_frames, unsigned long long unused_arg, void* udata);
@@ -98,10 +97,9 @@ int main(int argc, char *argv[]) {
 
     AppResources resources;
     
-    // --- Initialize g_config with defaults ---
     memset(&g_config, 0, sizeof(AppConfig));
-    input_manager_apply_defaults(&g_config); // Set module-specific defaults
-    g_config.gain = 1.0f;                    // Set global defaults
+    input_manager_apply_defaults(&g_config);
+    g_config.gain = 1.0f;
 
     initialize_resource_struct(&resources);
     reset_shutdown_flag();
@@ -136,7 +134,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    // If no arguments are provided, show the help screen and exit.
     if (argc <= 1) {
         print_usage(argv[0]);
         presets_free_loaded(&g_config);
@@ -145,7 +142,6 @@ int main(int argc, char *argv[]) {
     }
 
     if (!parse_arguments(argc, argv, &g_config)) {
-        // Error messages are printed inside parse_arguments/argparse
         presets_free_loaded(&g_config);
         pthread_mutex_destroy(&g_console_mutex);
         return EXIT_FAILURE;
@@ -171,6 +167,9 @@ int main(int argc, char *argv[]) {
         pthread_mutex_destroy(&g_console_mutex);
         return EXIT_FAILURE;
     }
+
+    resources.progress_callback = application_progress_callback;
+    resources.progress_callback_udata = &g_console_mutex;
 
     resources.start_time = time(NULL);
 
@@ -198,21 +197,14 @@ int main(int argc, char *argv[]) {
     }
     pthread_join(resources.reader_thread_handle, NULL);
 
-    // --- CORRECTED SECTION ---
-    // Lock the console mutex to ensure the final output is atomic and clean.
     pthread_mutex_lock(&g_console_mutex);
 
-    // In all normal exit scenarios (successful completion or user cancellation),
-    // clear the final, stale progress line from the screen before printing the summary.
-    // This is skipped if there was a fatal error or if outputting to stdout.
     if ((resources.end_of_stream_reached || is_shutdown_requested()) && !g_config.output_to_stdout) {
-        // Check if stderr is an interactive terminal before printing control characters.
         #ifdef _WIN32
         if (_isatty(_fileno(stderr))) {
         #else
         if (isatty(fileno(stderr))) {
         #endif
-            // Move cursor to start, overwrite line with spaces, move cursor to start again.
             fprintf(stderr, "\r                                                                               \r");
             fflush(stderr);
         }
@@ -225,9 +217,7 @@ int main(int argc, char *argv[]) {
     bool processing_ok = !resources.error_occurred;
     print_final_summary(&g_config, &resources, processing_ok);
     
-    // Unlock the console after all final printing is complete.
     pthread_mutex_unlock(&g_console_mutex);
-    // --- END CORRECTED SECTION ---
 
     int exit_status = (processing_ok || is_shutdown_requested()) ? EXIT_SUCCESS : EXIT_FAILURE;
 
@@ -251,98 +241,6 @@ static bool validate_configuration(AppConfig *config, const AppResources *resour
     (void)config;
     (void)resources;
     return true;
-}
-
-static bool initialize_application(AppConfig *config, AppResources *resources) {
-    bool success = false;
-    resources->config = config;
-    InputSourceContext ctx = { .config = config, .resources = resources };
-    float resample_ratio = 0.0f;
-
-    if (!resolve_file_paths(config)) goto cleanup;
-    if (!resources->selected_input_ops->initialize(&ctx)) goto cleanup;
-    if (!calculate_and_validate_resample_ratio(config, resources, &resample_ratio)) goto cleanup;
-    if (!allocate_processing_buffers(config, resources, resample_ratio)) goto cleanup;
-    if (!create_dsp_components(config, resources, resample_ratio)) goto cleanup;
-    if (!create_threading_components(resources)) goto cleanup;
-
-    resources->progress_callback = application_progress_callback;
-    resources->progress_callback_udata = &g_console_mutex;
-
-    if (!config->output_to_stdout) {
-        print_configuration_summary(config, resources);
-        if (!check_nyquist_warning(config, resources)) {
-            goto cleanup;
-        }
-    }
-
-    if (!prepare_output_stream(config, resources)) goto cleanup;
-
-    if (config->dc_block.enable) {
-        if (!dc_block_init(config, resources)) goto cleanup;
-    }
-
-    if (config->iq_correction.enable) {
-        if (!iq_correct_init(config, resources)) goto cleanup;
-    }
-
-    success = true;
-
-cleanup:
-    if (!success) {
-        log_error("Application initialization failed.");
-    } else if (!g_config.output_to_stdout) {
-        bool source_has_known_length = resources->selected_input_ops->has_known_length();
-        if (!source_has_known_length) {
-            log_info("Starting SDR capture...");
-        } else {
-            log_info("Starting file processing...");
-        }
-    }
-    return success;
-}
-
-static void cleanup_application(AppConfig *config, AppResources *resources) {
-    if (!resources) return;
-    InputSourceContext ctx = { .config = config, .resources = resources };
-
-    if (resources->selected_input_ops && resources->selected_input_ops->cleanup) {
-        resources->selected_input_ops->cleanup(&ctx);
-    }
-
-    if (resources->writer_ctx.ops.close) {
-        resources->writer_ctx.ops.close(&resources->writer_ctx);
-    }
-    if (resources->writer_ctx.ops.get_total_bytes_written) {
-        resources->final_output_size_bytes = resources->writer_ctx.ops.get_total_bytes_written(&resources->writer_ctx);
-    }
-
-    if (config->dc_block.enable) {
-        dc_block_cleanup(resources);
-    }
-    if (config->iq_correction.enable) {
-        iq_correct_cleanup(resources);
-    }
-
-    destroy_threading_components(resources);
-    shift_destroy_ncos(resources);
-
-    if (resources->resampler) {
-        msresamp_crcf_destroy(resources->resampler);
-        resources->resampler = NULL;
-    }
-
-    free(resources->sample_chunk_pool);
-    free(resources->raw_input_data_pool);
-    free(resources->complex_pre_resample_data_pool);
-    free(resources->complex_post_resample_data_pool);
-    free(resources->complex_resampled_data_pool);
-    free(resources->final_output_data_pool);
-
-#ifdef _WIN32
-    free_absolute_path_windows(&config->effective_input_filename_w, &config->effective_input_filename_utf8);
-    free_absolute_path_windows(&config->effective_output_filename_w, &config->effective_output_filename_utf8);
-#endif
 }
 
 static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success) {

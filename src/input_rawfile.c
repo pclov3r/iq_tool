@@ -6,7 +6,7 @@
 #include "utils.h"
 #include "config.h"
 #include "platform.h"
-#include "sample_convert.h" // For get_bytes_per_sample
+#include "sample_convert.h"
 #include "input_common.h"
 #include <stdio.h>
 #include <string.h>
@@ -25,24 +25,19 @@
 #define strcasecmp _stricmp
 #endif
 
-// --- Add an external declaration for the global config ---
 extern AppConfig g_config;
 
-// --- Define the CLI options for this module ---
 static const struct argparse_option rawfile_cli_options[] = {
     OPT_GROUP("Raw File Input Options"),
     OPT_FLOAT(0, "raw-file-input-rate", &g_config.raw_file.raw_file_sample_rate_hz_arg, "(Required) The sample rate of the raw input file.", NULL, 0, 0),
     OPT_STRING(0, "raw-file-input-sample-format", &g_config.raw_file.format_str, "(Required) The sample format of the raw input file.", NULL, 0, 0),
 };
 
-// --- Implement the interface function to provide the options ---
 const struct argparse_option* rawfile_get_cli_options(int* count) {
     *count = sizeof(rawfile_cli_options) / sizeof(rawfile_cli_options[0]);
     return rawfile_cli_options;
 }
 
-
-// --- Forward Declarations for Static Functions ---
 static bool rawfile_initialize(InputSourceContext* ctx);
 static void* rawfile_start_stream(InputSourceContext* ctx);
 static void rawfile_stop_stream(InputSourceContext* ctx);
@@ -50,8 +45,6 @@ static void rawfile_cleanup(InputSourceContext* ctx);
 static void rawfile_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
 static bool rawfile_validate_options(AppConfig* config);
 
-
-// --- The single instance of InputSourceOps for raw files ---
 static InputSourceOps raw_file_ops = {
     .initialize = rawfile_initialize,
     .start_stream = rawfile_start_stream,
@@ -66,10 +59,7 @@ InputSourceOps* get_raw_file_input_ops(void) {
     return &raw_file_ops;
 }
 
-// --- Module-specific validation function ---
 static bool rawfile_validate_options(AppConfig* config) {
-    // This function is only called if "raw-file" is the selected input.
-    
     if (config->raw_file.raw_file_sample_rate_hz_arg > 0.0f) {
         config->raw_file.sample_rate_hz = (double)config->raw_file.raw_file_sample_rate_hz_arg;
         config->raw_file.sample_rate_provided = true;
@@ -87,12 +77,8 @@ static bool rawfile_validate_options(AppConfig* config) {
     }
 
     config->raw_file.format_provided = true;
-
     return true;
 }
-
-
-// --- Implementations of the InputSourceOps functions ---
 
 static bool rawfile_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
@@ -159,7 +145,7 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
     if (config->raw_passthrough && resources->input_format != config->output_format) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf),
-                 "Option --no-convert requires input and output formats to be identical. Input format is '%s', output format is '%s'.",
+                 "Option --raw-passthrough requires input and output formats to be identical. Input format is '%s', output format is '%s'.",
                  config->raw_file.format_str, config->sample_type_name);
         handle_fatal_thread_error(error_buf, resources);
         return NULL;
@@ -186,33 +172,45 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
             break;
         }
 
-        current_item->frames_read = bytes_read / resources->input_bytes_per_sample_pair;
-        current_item->is_last_chunk = (current_item->frames_read == 0);
-
-        if (!current_item->is_last_chunk) {
-            pthread_mutex_lock(&resources->progress_mutex);
-            resources->total_frames_read += current_item->frames_read;
-            pthread_mutex_unlock(&resources->progress_mutex);
+        if (bytes_read == 0) {
+            queue_enqueue(resources->free_sample_chunk_queue, current_item);
+            break; // End of file
         }
 
+        current_item->frames_read = bytes_read / resources->input_bytes_per_sample_pair;
+        
+        pthread_mutex_lock(&resources->progress_mutex);
+        resources->total_frames_read += current_item->frames_read;
+        pthread_mutex_unlock(&resources->progress_mutex);
+
         if (config->raw_passthrough) {
-            // <<< CORRECTED: Changed 'item' to 'current_item' >>>
-            current_item->frames_to_write = current_item->frames_read;
-            if (!queue_enqueue(resources->final_output_queue, current_item)) {
-                queue_enqueue(resources->free_sample_chunk_queue, current_item);
-                break;
+            size_t bytes_written = file_write_buffer_write(resources->file_write_buffer, target_buffer, bytes_read);
+            if (bytes_written < (size_t)bytes_read) {
+                log_warn("I/O buffer overrun! Dropped %zu bytes.", (size_t)bytes_read - bytes_written);
             }
+            queue_enqueue(resources->free_sample_chunk_queue, current_item);
         } else {
+            current_item->is_last_chunk = false;
             if (!queue_enqueue(resources->raw_to_pre_process_queue, current_item)) {
                 queue_enqueue(resources->free_sample_chunk_queue, current_item);
                 break;
             }
         }
+    }
 
-        if (current_item->is_last_chunk) {
-            break;
+    if (!is_shutdown_requested()) {
+        if (config->raw_passthrough) {
+            file_write_buffer_signal_end_of_stream(resources->file_write_buffer);
+        } else {
+            SampleChunk *last_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+            if (last_item) {
+                last_item->is_last_chunk = true;
+                last_item->frames_read = 0;
+                queue_enqueue(resources->raw_to_pre_process_queue, last_item);
+            }
         }
     }
+
     return NULL;
 }
 
