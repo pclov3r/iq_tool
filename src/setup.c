@@ -8,10 +8,12 @@
 #include "spectrum_shift.h"
 #include "log.h"
 #include "input_source.h"
+#include "input_manager.h"
 #include "file_writer.h"
 #include "sample_convert.h"
 #include "iq_correct.h"
 #include "dc_block.h"
+#include "filter.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +35,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <libgen.h>
+#include <strings.h>
 #endif
 
 bool resolve_file_paths(AppConfig *config) {
@@ -90,6 +93,56 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *reso
     return true;
 }
 
+bool validate_and_configure_filter_stage(AppConfig *config, AppResources *resources) {
+    config->apply_user_filter_post_resample = false;
+
+    if (config->num_filter_requests == 0 || config->no_resample || config->raw_passthrough) {
+        return true;
+    }
+
+    double input_rate = (double)resources->source_info.samplerate;
+    double output_rate = config->target_rate;
+
+    if (output_rate < input_rate) {
+        float max_filter_freq_hz = 0.0f;
+
+        // Find the highest frequency component across all requested filters
+        for (int i = 0; i < config->num_filter_requests; i++) {
+            const FilterRequest* req = &config->filter_requests[i];
+            float current_max = 0.0f;
+            switch (req->type) {
+                case FILTER_TYPE_LOWPASS:
+                case FILTER_TYPE_HIGHPASS:
+                    current_max = fabsf(req->freq1_hz);
+                    break;
+                case FILTER_TYPE_PASSBAND:
+                case FILTER_TYPE_STOPBAND:
+                    current_max = fabsf(req->freq1_hz) + (req->freq2_hz / 2.0f);
+                    break;
+                default:
+                    break;
+            }
+            if (current_max > max_filter_freq_hz) {
+                max_filter_freq_hz = current_max;
+            }
+        }
+
+        double output_nyquist = output_rate / 2.0;
+
+        if (max_filter_freq_hz > output_nyquist) {
+            log_fatal("Filter configuration is incompatible with the output sample rate.");
+            log_error("The specified filter chain extends to %.0f Hz, but the output rate of %.0f Hz can only support frequencies up to %.0f Hz.",
+                      max_filter_freq_hz, output_rate, output_nyquist);
+            return false;
+        } else {
+            log_debug("Filter will be applied efficiently after resampling to avoid excessive CPU usage.");
+            config->apply_user_filter_post_resample = true;
+        }
+    }
+    return true;
+}
+
+
 bool allocate_processing_buffers(AppConfig *config, AppResources *resources, float resample_ratio) {
     if (!config || !resources) return false;
 
@@ -105,7 +158,11 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     size_t raw_input_bytes_per_item = BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
     size_t complex_pre_resample_elements = BUFFER_SIZE_SAMPLES;
     size_t complex_resampled_elements = resources->max_out_samples;
-    size_t complex_post_resample_elements = (config->shift_after_resample) ? resources->max_out_samples : 0;
+    
+    size_t complex_post_resample_elements = 0;
+    if (config->shift_after_resample || config->apply_user_filter_post_resample) {
+        complex_post_resample_elements = resources->max_out_samples;
+    }
 
     resources->output_bytes_per_sample_pair = get_bytes_per_sample(config->output_format);
     size_t final_output_bytes_per_item = resources->max_out_samples * resources->output_bytes_per_sample_pair;
@@ -134,6 +191,8 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
         item->complex_pre_resample_data = resources->complex_pre_resample_data_pool + i * complex_pre_resample_elements;
         item->complex_resampled_data = resources->complex_resampled_data_pool + i * complex_resampled_elements;
         item->final_output_data = (unsigned char*)resources->final_output_data_pool + i * final_output_bytes_per_item;
+        
+        item->input_bytes_per_sample_pair = resources->input_bytes_per_sample_pair;
 
         if (complex_post_resample_elements > 0) {
             item->complex_post_resample_data = resources->complex_post_resample_data_pool + i * complex_post_resample_elements;
@@ -160,6 +219,13 @@ bool create_dsp_components(AppConfig *config, AppResources *resources, float res
             return false;
         }
     }
+    
+    if (!filter_create(config, resources)) {
+        shift_destroy_ncos(resources);
+        if (resources->resampler) msresamp_crcf_destroy(resources->resampler);
+        return false;
+    }
+
     return true;
 }
 
@@ -168,7 +234,7 @@ bool create_threading_components(AppResources *resources) {
     resources->raw_to_pre_process_queue = queue_create(NUM_BUFFERS);
     resources->pre_process_to_resampler_queue = queue_create(NUM_BUFFERS);
     resources->resampler_to_post_process_queue = queue_create(NUM_BUFFERS);
-    resources->stdout_queue = queue_create(NUM_BUFFERS); // <<< ADDED
+    resources->stdout_queue = queue_create(NUM_BUFFERS);
     if (resources->config->iq_correction.enable) {
         resources->iq_optimization_data_queue = queue_create(NUM_BUFFERS);
     } else {
@@ -177,7 +243,7 @@ bool create_threading_components(AppResources *resources) {
 
     if (!resources->free_sample_chunk_queue || !resources->raw_to_pre_process_queue ||
         !resources->pre_process_to_resampler_queue || !resources->resampler_to_post_process_queue ||
-        !resources->stdout_queue || // <<< ADDED
+        !resources->stdout_queue ||
         (resources->config->iq_correction.enable && !resources->iq_optimization_data_queue)) {
         log_fatal("Failed to create one or more processing queues.");
         return false;
@@ -203,7 +269,7 @@ void destroy_threading_components(AppResources *resources) {
     if(resources->raw_to_pre_process_queue) queue_destroy(resources->raw_to_pre_process_queue);
     if(resources->pre_process_to_resampler_queue) queue_destroy(resources->pre_process_to_resampler_queue);
     if(resources->resampler_to_post_process_queue) queue_destroy(resources->resampler_to_post_process_queue);
-    if(resources->stdout_queue) queue_destroy(resources->stdout_queue); // <<< ADDED
+    if(resources->stdout_queue) queue_destroy(resources->stdout_queue);
     if(resources->iq_optimization_data_queue) queue_destroy(resources->iq_optimization_data_queue);
     pthread_mutex_destroy(&resources->progress_mutex);
 }
@@ -228,7 +294,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 
     const char* base_output_labels[] = {
         "Output Type", "Sample Type", "Output Rate", "Gain", "Frequency Shift",
-        "I/Q Correction", "DC Block", "Resampling", "Output Target"
+        "I/Q Correction", "DC Block", "Resampling", "Output Target", "FIR Filter"
     };
     for (size_t i = 0; i < sizeof(base_output_labels) / sizeof(base_output_labels[0]); i++) {
         int len = (int)strlen(base_output_labels[i]);
@@ -243,7 +309,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
         }
     }
 
-    fprintf(stderr, "--- Input Details ---\n");
+    fprintf(stderr, "\n--- Input Details ---\n");
     if (summary_info.count > 0) {
         for (int i = 0; i < summary_info.count; i++) {
             fprintf(stderr, " %-*s : %s\n", max_label_len, summary_info.items[i].label, summary_info.items[i].value);
@@ -277,6 +343,30 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 
     fprintf(stderr, " %-*s : %s\n", max_label_len, "I/Q Correction", config->iq_correction.enable ? "Enabled" : "Disabled");
     fprintf(stderr, " %-*s : %s\n", max_label_len, "DC Block", config->dc_block.enable ? "Enabled" : "Disabled");
+    
+    if (config->num_filter_requests == 0) {
+        fprintf(stderr, " %-*s : %s\n", max_label_len, "FIR Filter", "Disabled");
+    } else {
+        char filter_buf[256] = {0};
+        const char* stage = config->apply_user_filter_post_resample ? " (Post-Resample)" : "";
+        strncat(filter_buf, "Enabled: ", sizeof(filter_buf) - strlen(filter_buf) - 1);
+        for (int i = 0; i < config->num_filter_requests; i++) {
+            char current_filter_desc[128];
+            const FilterRequest* req = &config->filter_requests[i];
+            switch (req->type) {
+                case FILTER_TYPE_LOWPASS: snprintf(current_filter_desc, sizeof(current_filter_desc), "LPF(%.0f Hz)", req->freq1_hz); break;
+                case FILTER_TYPE_HIGHPASS: snprintf(current_filter_desc, sizeof(current_filter_desc), "HPF(%.0f Hz)", req->freq1_hz); break;
+                case FILTER_TYPE_PASSBAND: snprintf(current_filter_desc, sizeof(current_filter_desc), "BPF(%.0f Hz, BW %.0f Hz)", req->freq1_hz, req->freq2_hz); break;
+                case FILTER_TYPE_STOPBAND: snprintf(current_filter_desc, sizeof(current_filter_desc), "BSF(%.0f Hz, BW %.0f Hz)", req->freq1_hz, req->freq2_hz); break;
+                default: break;
+            }
+            if (i > 0) strncat(filter_buf, " + ", sizeof(filter_buf) - strlen(filter_buf) - 1);
+            strncat(filter_buf, current_filter_desc, sizeof(filter_buf) - strlen(filter_buf) - 1);
+        }
+        strncat(filter_buf, stage, sizeof(filter_buf) - strlen(filter_buf) - 1);
+        fprintf(stderr, " %-*s : %s\n", max_label_len, "FIR Filter", filter_buf);
+    }
+
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Resampling", resources->is_passthrough ? "Disabled (Passthrough Mode)" : "Enabled");
 
     const char* output_path_for_messages;
@@ -286,10 +376,6 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     output_path_for_messages = config->effective_output_filename;
 #endif
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Output Target", config->output_to_stdout ? "<stdout>" : output_path_for_messages);
-}
-
-bool check_nyquist_warning(const AppConfig *config, const AppResources *resources) {
-    return shift_check_nyquist_warning(config, resources);
 }
 
 bool prepare_output_stream(AppConfig *config, AppResources *resources) {
@@ -311,28 +397,83 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     InputSourceContext ctx = { .config = config, .resources = resources };
     float resample_ratio = 0.0f;
 
+    bool is_sdr = is_sdr_input(config->input_type_str);
+    if (is_sdr) {
+        if (config->output_to_stdout) {
+            resources->pipeline_mode = PIPELINE_MODE_REALTIME_SDR;
+            log_debug("SDR to stdout: Real-time, low-latency mode enabled.");
+        } else {
+            resources->pipeline_mode = PIPELINE_MODE_BUFFERED_SDR;
+            log_debug("SDR to file: Buffered, max-quality mode enabled.");
+        }
+    } else {
+        resources->pipeline_mode = PIPELINE_MODE_FILE_PROCESSING;
+        log_debug("File processing: Self-paced, max-quality mode enabled.");
+    }
+
     if (!resolve_file_paths(config)) goto cleanup;
     if (!resources->selected_input_ops->initialize(&ctx)) goto cleanup;
     if (!calculate_and_validate_resample_ratio(config, resources, &resample_ratio)) goto cleanup;
+    if (!validate_and_configure_filter_stage(config, resources)) goto cleanup;
     if (!allocate_processing_buffers(config, resources, resample_ratio)) goto cleanup;
     if (!create_dsp_components(config, resources, resample_ratio)) goto cleanup;
     if (!create_threading_components(resources)) goto cleanup;
 
-    // Conditionally create the large I/O buffer only if writing to a file.
+    if (resources->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
+        resources->sdr_input_buffer = file_write_buffer_create(SDR_INPUT_BUFFER_CAPACITY);
+        if (!resources->sdr_input_buffer) {
+            log_fatal("Failed to create SDR input buffer for buffered mode.");
+            goto cleanup;
+        }
+    }
+
     if (!config->output_to_stdout) {
         resources->file_write_buffer = file_write_buffer_create(IO_RING_BUFFER_CAPACITY);
         if (!resources->file_write_buffer) {
-            log_fatal("Failed to create I/O buffer.");
+            log_fatal("Failed to create I/O output buffer.");
             goto cleanup;
         }
     } else {
-        resources->file_write_buffer = NULL; // Ensure it's NULL for the stdout path
+        resources->file_write_buffer = NULL;
     }
 
     if (!config->output_to_stdout) {
         print_configuration_summary(config, resources);
-        if (!check_nyquist_warning(config, resources)) {
-            goto cleanup;
+        
+        if (fabs(resources->actual_nco_shift_hz) > 1e-9) {
+            double rate_for_shift_check = config->shift_after_resample ? config->target_rate : (double)resources->source_info.samplerate;
+            if (!utils_check_nyquist_warning(fabs(resources->actual_nco_shift_hz), rate_for_shift_check, "Frequency Shift")) {
+                goto cleanup;
+            }
+        }
+
+        if (config->num_filter_requests > 0) {
+            double rate_for_filter_check = config->apply_user_filter_post_resample ? config->target_rate : (double)resources->source_info.samplerate;
+            
+            for (int i = 0; i < config->num_filter_requests; i++) {
+                const FilterRequest* req = &config->filter_requests[i];
+                double freq_to_check = 0.0;
+                const char* context = NULL;
+
+                switch (req->type) {
+                    case FILTER_TYPE_LOWPASS:
+                    case FILTER_TYPE_HIGHPASS:
+                        freq_to_check = req->freq1_hz;
+                        context = "Filter Cutoff";
+                        break;
+                    case FILTER_TYPE_PASSBAND:
+                    case FILTER_TYPE_STOPBAND:
+                        freq_to_check = fabsf(req->freq1_hz) + (req->freq2_hz / 2.0f);
+                        context = "Filter Edge";
+                        break;
+                    default:
+                        break;
+                }
+
+                if (context && !utils_check_nyquist_warning(freq_to_check, rate_for_filter_check, context)) {
+                    goto cleanup;
+                }
+            }
         }
     }
 
@@ -349,9 +490,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     success = true;
 
 cleanup:
-    if (!success) {
-        log_error("Application initialization failed.");
-    } else if (!config->output_to_stdout) {
+    if (success && !config->output_to_stdout) {
         bool source_has_known_length = resources->selected_input_ops->has_known_length();
         if (!source_has_known_length) {
             log_info("Starting SDR capture...");
@@ -382,6 +521,13 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
     }
     if (config->iq_correction.enable) {
         iq_correct_cleanup(resources);
+    }
+
+    filter_destroy(resources);
+
+    if (resources->sdr_input_buffer) {
+        file_write_buffer_destroy(resources->sdr_input_buffer);
+        resources->sdr_input_buffer = NULL;
     }
 
     if (resources->file_write_buffer) {

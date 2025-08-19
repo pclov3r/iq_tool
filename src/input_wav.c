@@ -2,20 +2,22 @@
 
 #include "input_wav.h"
 #include "log.h"
-#include "signal_handler.h" // For is_shutdown_requested
+#include "signal_handler.h"
 #include "utils.h"
 #include "config.h"
 #include "platform.h"
-#include "sample_convert.h" // For get_bytes_per_sample
+#include "sample_convert.h"
 #include "input_common.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
-#include <sndfile.h>
 #include <pthread.h>
 #include <sys/stat.h>
 #include <stdarg.h>
 #include "argparse.h"
+
+// Module-specific includes that were removed from types.h
+#include <sndfile.h>
 
 // --- Includes from metadata.c ---
 #include <stdlib.h>
@@ -27,11 +29,15 @@
 #include <stddef.h>
 #include <math.h>
 
+// --- Private Module State ---
+typedef struct {
+    SNDFILE *infile;
+} WavPrivateData;
+
 // --- Add an external declaration for the global config ---
 extern AppConfig g_config;
 
 // --- Define the CLI options for this module ---
-// --- MODIFIED: Removed the --wav-shift-after-resample option ---
 static const struct argparse_option wav_cli_options[] = {
     OPT_GROUP("WAV Input Specific Options"),
     OPT_FLOAT(0, "wav-center-target-freq", &g_config.wav_center_target_hz_arg, "Shift signal to a new target center frequency (e.g., 97.3e6)", NULL, 0, 0),
@@ -68,10 +74,7 @@ InputSourceOps* get_wav_input_ops(void) {
 
 // --- Module-specific validation function ---
 static bool wav_validate_options(AppConfig* config) {
-    // This function's ONLY job is to report its request using the generic struct.
     if (config->wav_center_target_hz_arg != 0.0f) {
-        // It doesn't check for conflicts. It just reports what it sees.
-        // The central resolver in cli.c will handle any conflicts.
         config->frequency_shift_request.type = FREQUENCY_SHIFT_REQUEST_METADATA_CALC_TARGET;
         config->frequency_shift_request.value = (double)config->wav_center_target_hz_arg;
     }
@@ -80,13 +83,11 @@ static bool wav_validate_options(AppConfig* config) {
 
 
 // =================================================================================
-// START: Merged code from metadata.c
+// START: Private Metadata Parsing Logic (formerly metadata.c)
 // =================================================================================
-// --- Constants ---
 #define SDRC_AUXI_CHUNK_ID_STR "auxi"
 #define MAX_METADATA_CHUNK_SIZE (1024 * 1024)
 
-// Structure mimicking Windows SYSTEMTIME for SDRuno/SDRconnect auxi chunk
 #pragma pack(push, 1)
 typedef struct {
     uint16_t wYear;
@@ -100,8 +101,6 @@ typedef struct {
 } SdrUnoSystemTime;
 #pragma pack(pop)
 
-// --- Data-Driven XML Parsing ---
-// Enum to identify the data type of an XML attribute
 typedef enum {
     ATTR_TYPE_STRING,
     ATTR_TYPE_DOUBLE,
@@ -109,17 +108,14 @@ typedef enum {
     ATTR_TYPE_TIME_T_STRING
 } AttrType;
 
-// Struct to map an XML attribute name to its parser and location in SdrMetadata
 typedef struct {
     const char* name;
     AttrType type;
-    size_t offset;              // Offset of the data field in SdrMetadata
-    size_t present_flag_offset; // Offset of the boolean 'present' flag
-    size_t buffer_size;         // For string types
+    size_t offset;
+    size_t present_flag_offset;
+    size_t buffer_size;
 } AttributeParser;
 
-
-// --- Forward Declarations for Static Functions ---
 static void XMLCALL expat_start_element_handler(void *userData, const XML_Char *name, const XML_Char **atts);
 static bool _parse_auxi_xml_expat(const unsigned char *chunk_data, sf_count_t chunk_size, SdrMetadata *metadata);
 static bool _parse_binary_auxi_data(const unsigned char *chunk_data, sf_count_t chunk_size, SdrMetadata *metadata);
@@ -128,7 +124,6 @@ static void init_sdr_metadata(SdrMetadata *metadata);
 static bool parse_sdr_metadata_chunks(SNDFILE *infile, const SF_INFO *sfinfo, SdrMetadata *metadata);
 static bool parse_sdr_metadata_from_filename(const char* base_filename, SdrMetadata *metadata);
 
-// --- Polyfill for strcasestr (if not available) ---
 #ifndef HAVE_STRCASESTR
 static char *strcasestr(const char *haystack, const char *needle) {
     if (!needle || !*needle) return (char *)haystack;
@@ -146,21 +141,12 @@ static char *strcasestr(const char *haystack, const char *needle) {
 }
 #endif
 
-
-// --- Public Functions from metadata.c are now static to this module ---
-
-/**
- * @brief Initializes the SdrMetadata struct to default/unknown values.
- */
 static void init_sdr_metadata(SdrMetadata *metadata) {
     if (!metadata) return;
     memset(metadata, 0, sizeof(SdrMetadata));
     metadata->source_software = SDR_SOFTWARE_UNKNOWN;
 }
 
-/**
- * @brief Processes a specific chunk type identified by its ID string.
- */
 static bool process_specific_chunk(SNDFILE *infile, SdrMetadata *metadata, const char* chunk_id_str) {
     SF_CHUNK_ITERATOR *iterator = NULL;
     SF_CHUNK_INFO chunk_info_filter, chunk_info_query;
@@ -187,9 +173,7 @@ static bool process_specific_chunk(SNDFILE *infile, SdrMetadata *metadata, const
         return false;
     }
 
-    // --- Attempt Parsing based on Chunk ID ---
     if (strcmp(chunk_id_str, SDRC_AUXI_CHUNK_ID_STR) == 0) {
-        // Try parsing as XML first; if that fails, try as binary (for older formats)
         if (!_parse_auxi_xml_expat(chunk_data_buffer, chunk_info_query.datalen, metadata)) {
             parsed_successfully = _parse_binary_auxi_data(chunk_data_buffer, chunk_info_query.datalen, metadata);
         } else {
@@ -201,25 +185,17 @@ static bool process_specific_chunk(SNDFILE *infile, SdrMetadata *metadata, const
     return parsed_successfully;
 }
 
-
-/**
- * @brief Attempts to parse SDR-specific metadata chunks from a WAV file.
- */
 static bool parse_sdr_metadata_chunks(SNDFILE *infile, const SF_INFO *sfinfo, SdrMetadata *metadata) {
     if (!infile || !sfinfo || !metadata) return false;
-    (void)sfinfo; // sfinfo is unused for now but kept for API consistency
+    (void)sfinfo;
     return process_specific_chunk(infile, metadata, SDRC_AUXI_CHUNK_ID_STR);
 }
 
-/**
- * @brief Attempts to parse SDR metadata (frequency, timestamp) from a filename.
- */
 static bool parse_sdr_metadata_from_filename(const char* base_filename, SdrMetadata *metadata) {
     if (!base_filename || !metadata) return false;
     bool parsed_something_new = false;
     bool inferred_sdrsharp = false;
 
-    // Parse Frequency (_(\d+)Hz) - Only if not already present
     if (!metadata->center_freq_hz_present) {
         const char *hz_ptr = strcasestr(base_filename, "Hz");
         if (hz_ptr) {
@@ -249,7 +225,6 @@ static bool parse_sdr_metadata_from_filename(const char* base_filename, SdrMetad
         }
     }
 
-    // Parse Full Timestamp (_YYYYMMDD_HHMMSSZ_) - Only if not already present
     if (!metadata->timestamp_unix_present) {
         const char *match_start = strstr(base_filename, "_");
         while (match_start) {
@@ -281,7 +256,6 @@ static bool parse_sdr_metadata_from_filename(const char* base_filename, SdrMetad
         }
     }
 
-    // Update Software Type if Inferred and not already set by auxi chunk
     if (metadata->source_software == SDR_SOFTWARE_UNKNOWN) {
         if (inferred_sdrsharp) {
             metadata->source_software = SDR_SHARP;
@@ -300,12 +274,6 @@ static bool parse_sdr_metadata_from_filename(const char* base_filename, SdrMetad
     return parsed_something_new;
 }
 
-
-// --- Private Helper Functions ---
-
-/**
- * @brief Portable implementation of timegm (UTC mktime).
- */
 static time_t timegm_portable(struct tm *tm) {
     if (!tm) return -1;
     tm->tm_isdst = 0;
@@ -314,7 +282,7 @@ static time_t timegm_portable(struct tm *tm) {
 #else
     time_t result;
     char *tz_orig = getenv("TZ");
-    setenv("TZ", "", 1); // Set timezone to UTC
+    setenv("TZ", "", 1);
     tzset();
     result = mktime(tm);
     if (tz_orig) {
@@ -327,9 +295,6 @@ static time_t timegm_portable(struct tm *tm) {
 #endif
 }
 
-/**
- * @brief Parses SDRuno/SDRconnect binary auxi chunk data.
- */
 static bool _parse_binary_auxi_data(const unsigned char *chunk_data, sf_count_t chunk_size, SdrMetadata *metadata) {
     const size_t min_req_size = sizeof(SdrUnoSystemTime) + 16 + 4;
     if (!chunk_data || !metadata || chunk_size < (sf_count_t)min_req_size) {
@@ -338,7 +303,6 @@ static bool _parse_binary_auxi_data(const unsigned char *chunk_data, sf_count_t 
     bool time_parsed = false;
     bool freq_parsed = false;
 
-    // Parse Start Time
     SdrUnoSystemTime st;
     memcpy(&st, chunk_data, sizeof(SdrUnoSystemTime));
     struct tm t = {0};
@@ -361,9 +325,8 @@ static bool _parse_binary_auxi_data(const unsigned char *chunk_data, sf_count_t 
         }
     }
 
-    // Parse Center Frequency
     uint32_t freq_hz_int;
-    memcpy(&freq_hz_int, chunk_data + 32, sizeof(uint32_t)); // Offset 32
+    memcpy(&freq_hz_int, chunk_data + 32, sizeof(uint32_t));
     if (freq_hz_int > 0 && !metadata->center_freq_hz_present) {
         metadata->center_freq_hz = (double)freq_hz_int;
         metadata->center_freq_hz_present = true;
@@ -373,8 +336,6 @@ static bool _parse_binary_auxi_data(const unsigned char *chunk_data, sf_count_t 
     return time_parsed || freq_parsed;
 }
 
-
-// --- Data-Driven XML Parsing Implementation ---
 static const AttributeParser attribute_parsers[] = {
     {"SoftwareName",    ATTR_TYPE_STRING,        offsetof(SdrMetadata, software_name),    offsetof(SdrMetadata, software_name_present),    sizeof(((SdrMetadata*)0)->software_name)},
     {"SoftwareVersion", ATTR_TYPE_STRING,        offsetof(SdrMetadata, software_version), offsetof(SdrMetadata, software_version_present), sizeof(((SdrMetadata*)0)->software_version)},
@@ -471,13 +432,10 @@ static bool _parse_auxi_xml_expat(const unsigned char *chunk_data, sf_count_t ch
     return any_data_parsed;
 }
 // =================================================================================
-// END: Merged code from metadata.c
+// END: Private Metadata Parsing Logic
 // =================================================================================
 
 
-/**
- * @brief Populates the InputSummaryInfo struct with details for a WAV file source.
- */
 static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppResources *resources = ctx->resources;
@@ -550,27 +508,34 @@ static bool wav_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
 
+    WavPrivateData* private_data = (WavPrivateData*)calloc(1, sizeof(WavPrivateData));
+    if (!private_data) {
+        log_fatal("Failed to allocate memory for WAV private data.");
+        return false;
+    }
+    resources->input_module_private_data = private_data;
+
 #ifdef _WIN32
     log_info("Opening WAV input file: %s", config->effective_input_filename_utf8);
     SF_INFO sfinfo;
     memset(&sfinfo, 0, sizeof(SF_INFO));
-    resources->infile = sf_wchar_open(config->effective_input_filename_w, SFM_READ, &sfinfo);
+    private_data->infile = sf_wchar_open(config->effective_input_filename_w, SFM_READ, &sfinfo);
 #else
     log_info("Opening WAV input file: %s", config->effective_input_filename);
     SF_INFO sfinfo;
     memset(&sfinfo, 0, sizeof(SF_INFO));
-    resources->infile = sf_open(config->effective_input_filename, SFM_READ, &sfinfo);
+    private_data->infile = sf_open(config->effective_input_filename, SFM_READ, &sfinfo);
 #endif
 
-    if (!resources->infile) {
+    if (!private_data->infile) {
         log_fatal("Error opening input file: %s", sf_strerror(NULL));
         return false;
     }
 
     if (sfinfo.channels != 2) {
         log_fatal("Error: Input file must have 2 channels (I/Q), but found %d.", sfinfo.channels);
-        sf_close(resources->infile);
-        resources->infile = NULL;
+        sf_close(private_data->infile);
+        private_data->infile = NULL;
         return false;
     }
 
@@ -581,8 +546,8 @@ static bool wav_initialize(InputSourceContext* ctx) {
         default:
             log_fatal("Error: Input WAV file uses an unsupported PCM subtype (0x%04X). "
                       "Supported WAV PCM subtypes are 16-bit Signed (cs16) and 8-bit Unsigned (cu8).", sf_subtype);
-            sf_close(resources->infile);
-            resources->infile = NULL;
+            sf_close(private_data->infile);
+            private_data->infile = NULL;
             return false;
     }
 
@@ -590,8 +555,8 @@ static bool wav_initialize(InputSourceContext* ctx) {
 
     if (sfinfo.samplerate <= 0) {
         log_fatal("Error: Invalid input sample rate (%d Hz).", sfinfo.samplerate);
-        sf_close(resources->infile);
-        resources->infile = NULL;
+        sf_close(private_data->infile);
+        private_data->infile = NULL;
         return false;
     }
 
@@ -603,7 +568,7 @@ static bool wav_initialize(InputSourceContext* ctx) {
     resources->source_info.frames = sfinfo.frames;
 
     init_sdr_metadata(&resources->sdr_info);
-    resources->sdr_info_present = parse_sdr_metadata_chunks(resources->infile, &sfinfo, &resources->sdr_info);
+    resources->sdr_info_present = parse_sdr_metadata_chunks(private_data->infile, &sfinfo, &resources->sdr_info);
 
     char basename_buffer[MAX_PATH_LEN];
     const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer));
@@ -617,6 +582,7 @@ static bool wav_initialize(InputSourceContext* ctx) {
 
 static void* wav_start_stream(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
+    WavPrivateData* private_data = (WavPrivateData*)resources->input_module_private_data;
     size_t bytes_to_read_per_chunk = (size_t)BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
 
     while (!is_shutdown_requested() && !resources->error_occurred) {
@@ -627,9 +593,9 @@ static void* wav_start_stream(InputSourceContext* ctx) {
 
         current_item->stream_discontinuity_event = false;
 
-        int64_t bytes_read = sf_read_raw(resources->infile, current_item->raw_input_data, bytes_to_read_per_chunk);
+        int64_t bytes_read = sf_read_raw(private_data->infile, current_item->raw_input_data, bytes_to_read_per_chunk);
         if (bytes_read < 0) {
-            log_fatal("libsndfile read error: %s", sf_strerror(resources->infile));
+            log_fatal("libsndfile read error: %s", sf_strerror(private_data->infile));
             pthread_mutex_lock(&resources->progress_mutex);
             resources->error_occurred = true;
             pthread_mutex_unlock(&resources->progress_mutex);
@@ -665,9 +631,14 @@ static void wav_stop_stream(InputSourceContext* ctx) {
 
 static void wav_cleanup(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
-    if (resources->infile) {
-        log_info("Closing WAV input file.");
-        sf_close(resources->infile);
-        resources->infile = NULL;
+    if (resources->input_module_private_data) {
+        WavPrivateData* private_data = (WavPrivateData*)resources->input_module_private_data;
+        if (private_data->infile) {
+            log_info("Closing WAV input file.");
+            sf_close(private_data->infile);
+            private_data->infile = NULL;
+        }
+        free(private_data);
+        resources->input_module_private_data = NULL;
     }
 }

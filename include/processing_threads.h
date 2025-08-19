@@ -15,7 +15,7 @@ void* pre_processor_thread_func(void* arg);
 
 /**
  * @brief The resampler thread's main function.
- *        Resamples the I/Q data to the target rate.
+ *        Applies anti-aliasing and resamples the I/Q data to the target rate.
  * @param arg A void pointer to the PipelineContext struct.
  * @return NULL.
  */
@@ -23,7 +23,7 @@ void* resampler_thread_func(void* arg);
 
 /**
  * @brief The post-processor thread's main function.
- *        Handles post-resample frequency shifting and conversion to the final output format.
+ *        Handles user-defined filtering, post-resample frequency shifting, and conversion to the final output format.
  * @param arg A void pointer to the PipelineContext struct.
  * @return NULL.
  */

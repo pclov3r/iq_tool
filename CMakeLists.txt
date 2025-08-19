@@ -27,6 +27,7 @@ option(WITH_RTLSDR "Enable RTL-SDR device support (requires librtlsdr)" OFF)
 option(WITH_SDRPLAY "Enable SDRplay device support (requires SDRplay API library)" OFF)
 option(WITH_HACKRF "Enable HackRF device support (requires libhackrf)" OFF)
 option(WITH_BLADERF "Enable BladeRF device support (requires libbladeRF)" OFF)
+option(BUILD_DOCUMENTATION "Enable building Doxygen documentation (requires Doxygen)" OFF)
 
 #=======================================================================
 # Compiler specific setup & flags
@@ -69,6 +70,7 @@ else()
             add_compile_options(-fcolor-diagnostics)
         endif()
     endif()
+
 endif()
 
 if(MINGW)
@@ -89,7 +91,6 @@ if(WITH_BLADERF)
     add_compile_definitions(WITH_BLADERF)
 endif()
 
-# <<< ADDED: Define ANY_SDR_SUPPORT_ENABLED if any SDR is active >>>
 if(WITH_RTLSDR OR WITH_SDRPLAY OR WITH_HACKRF OR WITH_BLADERF)
     add_compile_definitions(ANY_SDR_SUPPORT_ENABLED)
 endif()
@@ -610,45 +611,60 @@ if(WITH_BLADERF)
     include_directories(${FINAL_LIBUSB_INCLUDE_DIRS})
 endif()
 
-set(SOURCES
+# Define the list of DSP-specific source files
+set(DSP_SOURCES
+    src/sample_convert.c
+    src/iq_correct.c
+    src/dc_block.c
+    src/filter.c
+    src/spectrum_shift.c
+)
+
+# Define the list of all other (non-DSP) source files
+set(OTHER_SOURCES
     src/argparse.c
     src/cli.c
     src/config.c
-    src/dc_block.c
     src/file_writer.c
     src/input_manager.c
     src/input_rawfile.c
     src/input_wav.c
     src/file_write_buffer.c
     src/io_threads.c
-    src/iq_correct.c
     src/log.c
     src/main.c
     src/platform.c
     src/presets_loader.c
     src/processing_threads.c
     src/queue.c
-    src/sample_convert.c
+    src/sdr_packet_serializer.c
     src/setup.c
     src/signal_handler.c
-    src/spectrum_shift.c
     src/utils.c
 )
 
 if(WITH_RTLSDR)
-    list(APPEND SOURCES src/input_rtlsdr.c)
+    list(APPEND OTHER_SOURCES src/input_rtlsdr.c)
 endif()
 if(WITH_SDRPLAY)
-    list(APPEND SOURCES src/input_sdrplay.c)
+    list(APPEND OTHER_SOURCES src/input_sdrplay.c)
 endif()
 if(WITH_HACKRF)
-    list(APPEND SOURCES src/input_hackrf.c)
+    list(APPEND OTHER_SOURCES src/input_hackrf.c)
 endif()
 if(WITH_BLADERF)
-    list(APPEND SOURCES src/input_bladerf.c)
+    list(APPEND OTHER_SOURCES src/input_bladerf.c)
 endif()
 
-add_executable(iq_resample_tool ${SOURCES})
+# Create the executable from ALL source files
+add_executable(iq_resample_tool ${DSP_SOURCES} ${OTHER_SOURCES})
+
+# Apply special compile options ONLY to the DSP source files for Release builds
+if(NOT MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
+    set_source_files_properties(${DSP_SOURCES}
+        PROPERTIES COMPILE_OPTIONS "-ffast-math"
+    )
+endif()
 
 target_compile_definitions(iq_resample_tool PRIVATE APP_NAME="${PROJECT_NAME}")
 
@@ -668,6 +684,9 @@ if(NOT MSVC)
     if(NOT CPU_TARGET_ARCHITECTURE STREQUAL "")
         list(APPEND RELEASE_COMPILE_OPTIONS "-march=${CPU_TARGET_ARCHITECTURE}")
     endif()
+    
+    # Apply the standard options to the ENTIRE executable target.
+    # The DSP files will get these flags PLUS the -ffast-math flag from above.
     target_compile_options(iq_resample_tool PRIVATE
         $<IF:$<CONFIG:Debug>,${DEBUG_COMPILE_OPTIONS},>
         $<IF:$<CONFIG:Release>,${RELEASE_COMPILE_OPTIONS},>
@@ -680,9 +699,6 @@ endif()
 #=======================================================================
 message(STATUS "Linking libraries...")
 
-# --- MODIFIED SECTION START ---
-# We will now link all libraries directly to the target.
-
 target_link_libraries(iq_resample_tool PRIVATE
     ${FINAL_SNDFILE_LIBRARIES}
     ${FINAL_LIQUIDDSP_LIBRARIES}
@@ -690,10 +706,6 @@ target_link_libraries(iq_resample_tool PRIVATE
     ${FINAL_PTHREADS_LIBRARIES}
 )
 
-# --- Platform-specific linking for Windows ---
-# On Windows, we need to link against several system libraries for
-# advanced path handling and shell functions. This block ensures these
-# libraries are linked regardless of whether we are using MSVC or MinGW.
 if(WIN32)
     target_link_libraries(iq_resample_tool PRIVATE
         shlwapi
@@ -701,7 +713,6 @@ if(WIN32)
         shell32
     )
 else()
-    # Link math library on non-Windows systems
     target_link_libraries(iq_resample_tool PRIVATE m)
 endif()
 
@@ -712,8 +723,6 @@ if(WITH_RTLSDR)
     )
 endif()
 if(WITH_SDRPLAY)
-    # SDRplay API is typically a dynamic library on Windows,
-    # but needs to be explicitly linked on other platforms if applicable.
     if(NOT WIN32)
         target_link_libraries(iq_resample_tool PRIVATE ${FINAL_SDRPLAY_LIBRARIES})
     endif()
@@ -725,13 +734,35 @@ if(WITH_HACKRF)
     )
 endif()
 if(WITH_BLADERF)
-    # BladeRF library needs to be linked on all platforms.
     target_link_libraries(iq_resample_tool PRIVATE
         ${FINAL_BLADERF_LIBRARIES}
         ${FINAL_LIBUSB_LIBRARIES}
     )
 endif()
-# --- MODIFIED SECTION END ---
+
+#=======================================================================
+# Doxygen Documentation (Optional)
+#=======================================================================
+if(BUILD_DOCUMENTATION)
+    # If the user wants documentation, Doxygen is now a required dependency.
+    find_package(Doxygen REQUIRED)
+    message(STATUS "Doxygen found, 'doc' target will be available.")
+
+    # Configure our Doxyfile.in template.
+    configure_file(
+        ${CMAKE_SOURCE_DIR}/doc/Doxyfile.in
+        ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile
+        @ONLY
+    )
+
+    # Add the custom 'doc' target.
+    add_custom_target(doc
+        COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Generating documentation with Doxygen..."
+        VERBATIM
+    )
+endif()
 
 
 #=======================================================================
@@ -777,6 +808,11 @@ else()
     message(STATUS "  Build Target:      ${CMAKE_SYSTEM_NAME} (Unknown)")
 endif()
 message(STATUS "  Install Prefix:    ${CMAKE_INSTALL_PREFIX}")
+if(BUILD_DOCUMENTATION)
+    message(STATUS "  Documentation:     ENABLED (run 'make doc' to generate)")
+else()
+    message(STATUS "  Documentation:     DISABLED (use -DBUILD_DOCUMENTATION=ON to enable)")
+endif()
 message(STATUS "  libsndfile:        ${FINAL_SNDFILE_LIBRARIES}")
 message(STATUS "  liquid-dsp:        ${FINAL_LIQUIDDSP_LIBRARIES}")
 message(STATUS "  Expat:             ${FINAL_EXPAT_LIBRARIES}")

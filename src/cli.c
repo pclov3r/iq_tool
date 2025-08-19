@@ -1,3 +1,5 @@
+// src/cli.c
+
 #include "cli.h"
 #include "types.h"
 #include "config.h"
@@ -25,10 +27,10 @@ extern AppConfig g_config;
 // --- Forward Declarations ---
 static bool validate_output_destination(AppConfig *config);
 static bool validate_output_type_and_sample_format(AppConfig *config);
-static bool validate_sdr_general_options(AppConfig *config);
-static bool validate_iq_correction_options(AppConfig *config);
 static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const char** non_opt_argv);
 static bool resolve_frequency_shift_options(AppConfig *config);
+static bool validate_filter_options(AppConfig *config);
+static bool validate_iq_correction_options(AppConfig *config);
 
 
 void print_usage(const char *prog_name) {
@@ -38,7 +40,6 @@ void print_usage(const char *prog_name) {
 
 
 bool parse_arguments(int argc, char *argv[], AppConfig *config) {
-    // Increase max options to accommodate dynamic presets
     #define MAX_STATIC_OPTIONS 128
     #define MAX_TOTAL_OPTIONS (MAX_STATIC_OPTIONS + MAX_PRESETS)
     struct argparse_option all_options[MAX_TOTAL_OPTIONS];
@@ -66,15 +67,31 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
         OPT_STRING(0, "preset", &g_config.preset_name, "Use a preset for a common target.", NULL, 0, 0),
     };
 
+    static const struct argparse_option filter_options[] = {
+        OPT_GROUP("Filtering Options"),
+        OPT_FLOAT(0, "lowpass", &g_config.lowpass_cutoff_hz_arg, "Apply a low-pass filter, keeping frequencies from -<freq> to +<freq>.", NULL, 0, 0),
+        OPT_FLOAT(0, "highpass", &g_config.highpass_cutoff_hz_arg, "Apply a high-pass filter, keeping frequencies above +<freq> and below -<freq>.", NULL, 0, 0),
+        // CHANGE: Removed the implementation detail "with a FIR filter".
+        OPT_STRING(0, "pass-range", &g_config.pass_range_str_arg, "Isolate a frequency range. Format: 'start_freq:end_freq' (e.g., '100e3:200e3').", NULL, 0, 0),
+        OPT_STRING(0, "stopband", &g_config.stopband_str_arg, "Apply a stop-band (notch) filter. Format: 'start_freq:end_freq' (e.g., '-65:65').", NULL, 0, 0),
+        OPT_GROUP("Filter Quality Options"),
+        OPT_FLOAT(0, "transition-width", &g_config.transition_width_hz_arg, "Set filter sharpness by transition width in Hz. (Default: Auto).", NULL, 0, 0),
+        OPT_INTEGER(0, "filter-taps", &g_config.filter_taps_arg, "Set exact filter length. Overrides --transition-width and auto mode.", NULL, 0, 0),
+        OPT_FLOAT(0, "attenuation", &g_config.attenuation_db_arg, "Set filter stop-band attenuation in dB. (Default: 60).", NULL, 0, 0),
+        OPT_GROUP("Filter Implementation Options"),
+        OPT_STRING(0, "filter-type", &g_config.filter_type_str_arg, "Set filter implementation {fir|fft}. (Default: auto - fir for symmetric filters, fft for asymmetric)", NULL, 0, 0),
+        OPT_INTEGER(0, "filter-fft-size", &g_config.filter_fft_size_arg, "Set FFT size for 'fft' filter type. Must be a power of 2. (Default: Auto)", NULL, 0, 0),
+    };
+
     #if defined(ANY_SDR_SUPPORT_ENABLED)
     static const struct argparse_option sdr_general_options[] = {
         OPT_GROUP("SDR General Options"),
-        OPT_FLOAT(0, "rf-freq", &g_config.sdr.sdr_rf_freq_hz_arg, "(Required for SDR) Tuner center frequency in Hz (e.g., 97.3e6)", NULL, 0, 0),
-        OPT_BOOLEAN(0, "bias-t", &g_config.sdr.bias_t_enable, "(Optional) Enable Bias-T power.", NULL, 0, 0),
+        OPT_FLOAT(0, "sdr-rf-freq", &g_config.sdr.rf_freq_hz_arg, "(Required for SDR) Tuner center frequency in Hz", NULL, 0, 0),
+        OPT_FLOAT(0, "sdr-sample-rate", &g_config.sdr.sample_rate_hz_arg, "Set sample rate in Hz. (Device-specific default)", NULL, 0, 0),
+        OPT_BOOLEAN(0, "sdr-bias-t", &g_config.sdr.bias_t_enable, "(Optional) Enable Bias-T power.", NULL, 0, 0),
     };
     #endif
 
-    // --- Define placeholder and final options ---
     static struct argparse_option final_options[] = {
         OPT_GROUP("Help"),
         OPT_BOOLEAN('h', "help", NULL, "show this help message and exit", argparse_help_cb, 0, OPT_NONEG),
@@ -91,8 +108,8 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
             total_opts += (n); \
         } while (0)
 
-    // --- Build the master options list in the desired order ---
     SAFE_MEMCPY(&all_options[total_opts], generic_options, sizeof(generic_options) / sizeof(generic_options[0]));
+    SAFE_MEMCPY(&all_options[total_opts], filter_options, sizeof(filter_options) / sizeof(filter_options[0]));
     #if defined(ANY_SDR_SUPPORT_ENABLED)
     SAFE_MEMCPY(&all_options[total_opts], sdr_general_options, sizeof(sdr_general_options) / sizeof(sdr_general_options[0]));
     #endif
@@ -109,21 +126,17 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
         }
     }
 
-    // --- Dynamically build and add preset options ---
     if (config->num_presets > 0) {
         struct argparse_option preset_header[] = { OPT_GROUP("Available Presets:") };
         SAFE_MEMCPY(&all_options[total_opts], preset_header, 1);
-
-        // Create a temporary array on the stack for the preset options
         struct argparse_option preset_opts[MAX_PRESETS];
         int presets_to_add = (config->num_presets > MAX_PRESETS) ? MAX_PRESETS : config->num_presets;
-
         for (int i = 0; i < presets_to_add; i++) {
             preset_opts[i] = (struct argparse_option){
-                .type = ARGPARSE_OPT_BOOLEAN, // A simple type for display purposes
+                .type = ARGPARSE_OPT_BOOLEAN,
                 .long_name = config->presets[i].name,
                 .help = config->presets[i].description,
-                .flags = OPT_LONG_NOPREFIX, // Use our new flag
+                .flags = OPT_LONG_NOPREFIX,
             };
         }
         SAFE_MEMCPY(&all_options[total_opts], preset_opts, presets_to_add);
@@ -132,13 +145,9 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
     SAFE_MEMCPY(&all_options[total_opts], final_options, sizeof(final_options) / sizeof(final_options[0]));
 
     struct argparse argparse;
-    const char *const usages[] = {
-        "iq_resample_tool -i <type> [input_file] [options]",
-        NULL,
-    };
+    const char *const usages[] = { "iq_resample_tool -i <type> [input_file] [options]", NULL, };
     argparse_init(&argparse, all_options, usages, 0);
     argparse_describe(&argparse, "\nResamples an I/Q file or a stream from an SDR device to a specified format and sample rate.", NULL);
-
     int non_opt_argc = argparse_parse(&argparse, argc, (const char **)argv);
 
     if (!validate_and_process_args(config, non_opt_argc, argparse.out)) {
@@ -148,13 +157,98 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
     return true;
 }
 
-// --- NEW: The Final, Generic Resolver Function ---
-// This function contains ALL logic related to frequency shifting.
-// It is the single source of truth.
+static bool parse_start_end_string(const char* input_str, const char* arg_name, float* out_start, float* out_end) {
+    char start_buf[128];
+    char end_buf[128];
+
+    if (sscanf(input_str, "%127[^:]:%127s", start_buf, end_buf) != 2) {
+        log_fatal("Invalid format for %s. Expected 'start_freq:end_freq'. Found '%s'.", arg_name, input_str);
+        return false;
+    }
+
+    char* endptr1;
+    char* endptr2;
+    *out_start = strtof(start_buf, &endptr1);
+    *out_end = strtof(end_buf, &endptr2);
+
+    if (*endptr1 != '\0' || *endptr2 != '\0') {
+        log_fatal("Invalid numerical value in %s argument. Could not parse '%s'.", arg_name, input_str);
+        return false;
+    }
+
+    if (*out_end <= *out_start) {
+        log_fatal("In %s argument, end frequency must be greater than start frequency.", arg_name);
+        return false;
+    }
+
+    return true;
+}
+
+static void add_filter_request(AppConfig *config, FilterType type, float f1, float f2) {
+    if (config->num_filter_requests < MAX_FILTER_CHAIN) {
+        config->filter_requests[config->num_filter_requests].type = type;
+        config->filter_requests[config->num_filter_requests].freq1_hz = f1;
+        config->filter_requests[config->num_filter_requests].freq2_hz = f2;
+        config->num_filter_requests++;
+    } else {
+        log_warn("Maximum number of chained filters (%d) reached. Ignoring further filter options.", MAX_FILTER_CHAIN);
+    }
+}
+
+static bool validate_filter_options(AppConfig *config) {
+    config->num_filter_requests = 0;
+
+    if (config->lowpass_cutoff_hz_arg > 0.0f) {
+        add_filter_request(config, FILTER_TYPE_LOWPASS, config->lowpass_cutoff_hz_arg, 0.0f);
+    }
+    if (config->highpass_cutoff_hz_arg > 0.0f) {
+        add_filter_request(config, FILTER_TYPE_HIGHPASS, config->highpass_cutoff_hz_arg, 0.0f);
+    }
+    if (config->pass_range_str_arg) {
+        float start_f, end_f;
+        if (!parse_start_end_string(config->pass_range_str_arg, "--pass-range", &start_f, &end_f)) return false;
+        float bandwidth = end_f - start_f;
+        float center_freq = start_f + (bandwidth / 2.0f);
+        add_filter_request(config, FILTER_TYPE_PASSBAND, center_freq, bandwidth);
+    }
+    if (config->stopband_str_arg) {
+        float start_f, end_f;
+        if (!parse_start_end_string(config->stopband_str_arg, "--stopband", &start_f, &end_f)) return false;
+        float bandwidth = end_f - start_f;
+        float center_freq = start_f + (bandwidth / 2.0f);
+        add_filter_request(config, FILTER_TYPE_STOPBAND, center_freq, bandwidth);
+    }
+
+    if (config->transition_width_hz_arg > 0.0f && config->filter_taps_arg > 0) {
+        log_fatal("Error: Cannot specify both --transition-width and --filter-taps at the same time.");
+        log_error("Please choose only one method to define the filter's quality.");
+        return false;
+    }
+
+    if (config->transition_width_hz_arg < 0.0f) {
+        log_fatal("--transition-width must be a positive value.");
+        return false;
+    }
+
+    if (config->filter_taps_arg != 0 && config->filter_taps_arg < 3) {
+        log_fatal("--filter-taps must be 3 or greater.");
+        return false;
+    }
+    if (config->filter_taps_arg != 0 && config->filter_taps_arg % 2 == 0) {
+        log_warn("--filter-taps must be an odd number. Adjusting from %d to %d.", config->filter_taps_arg, config->filter_taps_arg + 1);
+        config->filter_taps_arg++;
+    }
+
+    if (config->attenuation_db_arg <= 0.0f && config->attenuation_db_arg != 0.0f) {
+        log_fatal("--attenuation must be a positive value.");
+        return false;
+    }
+
+    return true;
+}
+
 static bool resolve_frequency_shift_options(AppConfig *config) {
-    // --- Part 1: Populate the request struct from generic arguments ---
     if (config->freq_shift_hz_arg != 0.0f) {
-        // Check if a module (like WAV) has already made a request.
         if (config->frequency_shift_request.type != FREQUENCY_SHIFT_REQUEST_NONE) {
             log_fatal("Conflicting frequency shift options provided. Cannot use --freq-shift and --wav-center-target-freq at the same time.");
             return false;
@@ -163,17 +257,14 @@ static bool resolve_frequency_shift_options(AppConfig *config) {
         config->frequency_shift_request.value = (double)config->freq_shift_hz_arg;
     }
 
-    // --- Part 2: Resolve the single, verified request into the final DSP config ---
     switch (config->frequency_shift_request.type) {
         case FREQUENCY_SHIFT_REQUEST_NONE:
             config->freq_shift_requested = false;
             break;
-
         case FREQUENCY_SHIFT_REQUEST_MANUAL:
             config->freq_shift_requested = true;
             config->freq_shift_hz = config->frequency_shift_request.value;
             break;
-
         case FREQUENCY_SHIFT_REQUEST_METADATA_CALC_TARGET:
             config->freq_shift_requested = true;
             config->set_center_frequency_target_hz = true;
@@ -181,7 +272,6 @@ static bool resolve_frequency_shift_options(AppConfig *config) {
             break;
     }
 
-    // --- Part 3: Final validation of related options ---
     if (config->shift_after_resample && !config->freq_shift_requested) {
         log_fatal("Option --shift-after-resample was used, but no frequency shift was requested.");
         return false;
@@ -190,7 +280,6 @@ static bool resolve_frequency_shift_options(AppConfig *config) {
     return true;
 }
 
-// --- MODIFIED: The main validation flow ---
 static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const char** non_opt_argv) {
     if (!config->input_type_str) {
         fprintf(stderr, "error: missing required argument --input <type>\n");
@@ -223,25 +312,65 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
         }
     }
 
-    // Initialize the request type to NONE before any validation happens.
     config->frequency_shift_request.type = FREQUENCY_SHIFT_REQUEST_NONE;
 
-    // Run the module-specific validation FIRST to populate the request struct.
+    #if defined(ANY_SDR_SUPPORT_ENABLED)
+    if (config->sdr.rf_freq_hz_arg > 0.0f) {
+        config->sdr.rf_freq_hz = (double)config->sdr.rf_freq_hz_arg;
+        config->sdr.rf_freq_provided = true;
+    }
+    if (config->sdr.sample_rate_hz_arg > 0.0f) {
+        config->sdr.sample_rate_hz = (double)config->sdr.sample_rate_hz_arg;
+        config->sdr.sample_rate_provided = true;
+    }
+    #endif
+
     if (selected_ops->validate_options) {
         if (!selected_ops->validate_options(config)) {
             return false;
         }
     }
 
-    // Run other generic validation functions.
     if (!validate_output_destination(config)) return false;
     if (!validate_output_type_and_sample_format(config)) return false;
-    if (!validate_sdr_general_options(config)) return false;
-
-    // Call our new, clean resolver for frequency shifts.
+    
+    if (selected_ops->validate_generic_options) {
+        if (!selected_ops->validate_generic_options(config)) {
+            return false;
+        }
+    }
+    
+    if (!validate_filter_options(config)) return false;
     if (!resolve_frequency_shift_options(config)) return false;
 
-    // Validate the remaining processing options that are NOT related to frequency shifting.
+    config->filter_type_request = FILTER_TYPE_FIR;
+    if (config->filter_type_str_arg) {
+        if (strcasecmp(config->filter_type_str_arg, "fir") == 0) {
+            config->filter_type_request = FILTER_TYPE_FIR;
+        } else if (strcasecmp(config->filter_type_str_arg, "fft") == 0) {
+            config->filter_type_request = FILTER_TYPE_FFT;
+        } else {
+            log_fatal("Invalid value for --filter-type: '%s'. Must be 'fir' or 'fft'.", config->filter_type_str_arg);
+            return false;
+        }
+    }
+
+    if (config->filter_fft_size_arg != 0) {
+        if (config->filter_type_request != FILTER_TYPE_FFT) {
+            log_fatal("Option --filter-fft-size can only be used with --filter-type fft.");
+            return false;
+        }
+        if (config->filter_fft_size_arg <= 0) {
+            log_fatal("--filter-fft-size must be a positive integer.");
+            return false;
+        }
+        int n = config->filter_fft_size_arg;
+        if ((n > 0) && ((n & (n - 1)) != 0)) {
+            log_fatal("--filter-fft-size must be a power of two (e.g., 1024, 2048, 4096).");
+            return false;
+        }
+    }
+
     if (config->user_rate_provided && config->preset_name) {
         log_fatal("Option --output-rate cannot be used with --preset.");
         return false;
@@ -257,6 +386,10 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
         }
     }
     if (config->raw_passthrough) {
+        if (config->num_filter_requests > 0) {
+            log_fatal("Option --raw-passthrough cannot be used with any filtering options.");
+            return false;
+        }
         if (!config->no_resample) {
             log_warn("Option --raw-passthrough implies --no-resample. Forcing resampler off.");
             config->no_resample = true;
@@ -374,35 +507,6 @@ static bool validate_output_type_and_sample_format(AppConfig *config) {
         }
     }
 
-    return true;
-}
-
-static bool validate_sdr_general_options(AppConfig *config) {
-    #if defined(ANY_SDR_SUPPORT_ENABLED)
-    bool is_sdr = is_sdr_input(config->input_type_str);
-
-    if (config->sdr.sdr_rf_freq_hz_arg > 0.0f) {
-        config->sdr.rf_freq_hz = (double)config->sdr.sdr_rf_freq_hz_arg;
-        config->sdr.rf_freq_provided = true;
-    }
-
-    if (is_sdr && !config->sdr.rf_freq_provided) {
-        log_fatal("Option '--rf-freq' is required for SDR inputs.");
-        return false;
-    }
-    if (!is_sdr) {
-        if (config->sdr.rf_freq_provided) {
-            log_fatal("Option '--rf-freq' is only valid for SDR inputs.");
-            return false;
-        }
-        if (config->sdr.bias_t_enable) {
-            log_fatal("Option '--bias-t' is only valid for SDR inputs.");
-            return false;
-        }
-    }
-    #else
-    (void)config;
-    #endif
     return true;
 }
 

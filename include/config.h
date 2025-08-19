@@ -1,3 +1,5 @@
+// src/config.h
+
 #ifndef CONFIG_H_
 #define CONFIG_H_
 
@@ -7,7 +9,11 @@
 
 // --- Pipeline & Buffer Configuration ---
 #define STOPBAND_ATTENUATION_DB         60.0f
-#define PROGRESS_UPDATE_INTERVAL        1
+
+// Defines the interval in seconds for printing progress updates to the console.
+// Set to 0 to disable progress updates entirely.
+#define PROGRESS_UPDATE_INTERVAL_SECONDS 1
+
 #define NUM_BUFFERS                     512 // Increased for stability against pipeline stalls
 #define BUFFER_SIZE_SAMPLES             131072
 #define RESAMPLER_OUTPUT_SAFETY_MARGIN  128 // Extra samples for resampler output buffer
@@ -20,11 +26,22 @@
 // ring buffer into this local buffer before being written to disk.
 #define WRITER_THREAD_CHUNK_SIZE        (1024 * 1024) // 1 MB
 
+// Defines the size of the input ring buffer used only in buffered SDR mode to
+// prevent sample drops during heavy processing.
+#define SDR_INPUT_BUFFER_CAPACITY       (256 * 1024 * 1024) // 256 MB
+
 // --- DSP & Sanity Check Limits ---
 #define MIN_ACCEPTABLE_RATIO      0.001f
 #define MAX_ACCEPTABLE_RATIO      1000.0f
 #define SHIFT_FACTOR_LIMIT        5.0
 #define DC_BLOCK_CUTOFF_HZ        10.0f
+
+// --- FIR Filter Defaults ---
+// Defines the default sharpness of the filter. The transition width will be
+// this fraction of the filter's characteristic frequency (cutoff or bandwidth).
+// A smaller value results in a sharper, higher-quality (but more CPU-intensive) filter.
+#define DEFAULT_FILTER_TRANSITION_FACTOR 0.25f
+#define MAX_FILTER_CHAIN                 5 // Allow up to 5 filters to be chained together.
 
 // --- I/Q Correction Algorithm Tuning ---
 #define IQ_CORRECTION_FFT_SIZE           1024
@@ -37,6 +54,7 @@
 // --- Parsing & Resource Limits ---
 #define MAX_PRESETS               128
 #define MAX_LINE_LENGTH           1024
+#define MAX_SUMMARY_ITEMS         16 // Max number of lines in the pre-run summary display.
 
 // --- Path Buffer Constants ---
 #ifndef MAX_PATH

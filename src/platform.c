@@ -1,3 +1,4 @@
+// platform.c
 #include "platform.h"
 #include "log.h"
 #include <stdio.h>
@@ -14,6 +15,7 @@
 #include <io.h>      // For _setmode
 #include <shlwapi.h> // For PathIsRelativeW, PathAppendW
 #include <pathcch.h> // For PathCchCombineEx
+#include "config.h"  // For MAX_PATH_BUFFER
 
 /**
  * @brief Sets stdout to binary mode on Windows.
@@ -161,57 +163,30 @@ void free_absolute_path_windows(wchar_t** path_w, char** path_utf8) {
     }
 }
 
-// This function is only compiled if SDRplay support is enabled via CMake.
-#if defined(WITH_SDRPLAY)
 /**
- * @brief (Windows-only) Finds the full path to the correct SDRplay API DLL
- *        by searching the registry.
+ * @brief Gets the directory containing the currently running executable.
  */
-wchar_t* platform_get_sdrplay_dll_path(void) {
-    HKEY hKey;
-    LONG reg_status;
-    wchar_t api_path_buf[MAX_PATH] = {0};
-    DWORD buffer_size = sizeof(api_path_buf);
-    bool path_found = false;
-
-    // Try the standard 64-bit registry location first
-    reg_status = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\SDRplay\\Service\\API", 0, KEY_READ | KEY_WOW64_64KEY, &hKey);
-    if (reg_status == ERROR_SUCCESS) {
-        if (RegQueryValueExW(hKey, L"Install_Dir", NULL, NULL, (LPBYTE)api_path_buf, &buffer_size) == ERROR_SUCCESS) {
-            path_found = true;
-        }
-        RegCloseKey(hKey);
+bool platform_get_executable_dir(char* buffer, size_t buffer_size) {
+    wchar_t w_path[MAX_PATH_BUFFER];
+    DWORD len = GetModuleFileNameW(NULL, w_path, MAX_PATH_BUFFER);
+    if (len == 0 || len >= MAX_PATH_BUFFER) { // Use >= to catch truncation
+        log_error("GetModuleFileNameW failed or buffer too small.");
+        return false;
     }
-
-    // If not found, try the WOW6432Node for 32-bit installers on 64-bit systems
-    if (!path_found) {
-        reg_status = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\WOW6432Node\\SDRplay\\Service\\API", 0, KEY_READ, &hKey);
-        if (reg_status == ERROR_SUCCESS) {
-            buffer_size = sizeof(api_path_buf); // Reset buffer size for the new call
-            if (RegQueryValueExW(hKey, L"Install_Dir", NULL, NULL, (LPBYTE)api_path_buf, &buffer_size) == ERROR_SUCCESS) {
-                path_found = true;
-            }
-            RegCloseKey(hKey);
-        }
+    // Remove filename to get directory
+    wchar_t* last_slash = wcsrchr(w_path, L'\\');
+    if (last_slash) {
+        *last_slash = L'\0';
+    } else {
+        // No slash, probably just the executable name, so current dir
+        wcsncpy(w_path, L".", MAX_PATH_BUFFER);
+        w_path[MAX_PATH_BUFFER - 1] = L'\0';
     }
-
-    if (!path_found) {
-        log_error("Could not find SDRplay API installation path in the registry.");
-        log_error("Please ensure the SDRplay API service is installed correctly.");
-        return NULL;
+    if (WideCharToMultiByte(CP_UTF8, 0, w_path, -1, buffer, (int)buffer_size, NULL, NULL) == 0) {
+        log_error("Failed to convert wide char path to UTF-8 for executable directory.");
+        return false;
     }
-
-    // Append the architecture-specific subfolder and DLL name
-#ifdef _WIN64
-    PathAppendW(api_path_buf, L"x64");
-#else
-    PathAppendW(api_path_buf, L"x86");
-#endif
-    PathAppendW(api_path_buf, L"sdrplay_api.dll");
-
-    // Return a dynamically allocated copy of the path that the caller must free
-    return _wcsdup(api_path_buf);
+    return true;
 }
-#endif // defined(WITH_SDRPLAY)
 
 #endif // _WIN32

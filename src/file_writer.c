@@ -45,12 +45,24 @@ static void wav_close(FileWriterContext* ctx);
 // --- Helper Functions ---
 static bool prompt_for_overwrite(const char* path_for_messages) {
     fprintf(stderr, "\nOutput file %s exists.\nOverwrite? (y/n): ", path_for_messages);
-    int response = tolower(getchar());
-    clear_stdin_buffer();
+
+    int response = getchar();
+
+    if (response != '\n' && response != EOF) {
+        clear_stdin_buffer();
+    }
+
+    response = tolower(response);
+
     if (response != 'y') {
-        fprintf(stderr, "\nOperation cancelled by user.\n");
+        if (response != '\n' && response != EOF) {
+            log_debug("Operation cancelled by user.");
+        }
         return false;
     }
+
+    fprintf(stderr, "\n");
+
     return true;
 }
 

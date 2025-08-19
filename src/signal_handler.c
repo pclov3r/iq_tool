@@ -110,6 +110,7 @@ void request_shutdown(void) {
     if (g_resources_for_signal_handler) {
         AppResources* r = g_resources_for_signal_handler;
 
+        // Special case for RTL-SDR to unblock its synchronous read loop
         if (r->config && r->config->input_type_str && strcasecmp(r->config->input_type_str, "rtlsdr") == 0) {
             if (r->selected_input_ops && r->selected_input_ops->stop_stream) {
                 log_debug("Signal handler is calling stop_stream for RTL-SDR to unblock reader thread.");
@@ -118,6 +119,7 @@ void request_shutdown(void) {
             }
         }
 
+        // Signal all queues to wake up any waiting threads
         if (r->free_sample_chunk_queue)
             queue_signal_shutdown(r->free_sample_chunk_queue);
         if (r->raw_to_pre_process_queue)
@@ -126,12 +128,18 @@ void request_shutdown(void) {
             queue_signal_shutdown(r->pre_process_to_resampler_queue);
         if (r->resampler_to_post_process_queue)
             queue_signal_shutdown(r->resampler_to_post_process_queue);
-        if (r->stdout_queue) // <<< ADDED
-            queue_signal_shutdown(r->stdout_queue); // <<< ADDED
+        if (r->stdout_queue)
+            queue_signal_shutdown(r->stdout_queue);
         if (r->iq_optimization_data_queue)
             queue_signal_shutdown(r->iq_optimization_data_queue);
+        
+        // Signal all ring buffers to wake up any waiting threads
         if (r->file_write_buffer)
             file_write_buffer_signal_shutdown(r->file_write_buffer);
+        
+        // Also signal the SDR input buffer to unblock the reader thread in buffered mode.
+        if (r->sdr_input_buffer)
+            file_write_buffer_signal_shutdown(r->sdr_input_buffer);
     }
 }
 

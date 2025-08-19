@@ -1,12 +1,15 @@
 // utils.c
 #include "utils.h"
+#include "log.h"
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <time.h>
 
 #ifdef _WIN32
+#include <windows.h>
 #include <shlwapi.h>
 #define strcasecmp _stricmp
 #else
@@ -40,9 +43,23 @@ static const SampleFormatInfo format_table[] = {
 };
 static const int num_formats = sizeof(format_table) / sizeof(format_table[0]);
 
-// MODIFIED: The definitions for float_to_uchar and float_to_schar are REMOVED from this file.
-
-// ... (the rest of the file, from clear_stdin_buffer onwards, is unchanged) ...
+double get_monotonic_time_sec(void) {
+#ifdef _WIN32
+    LARGE_INTEGER freq, count;
+    if (QueryPerformanceFrequency(&freq) && QueryPerformanceCounter(&count)) {
+        return (double)count.QuadPart / (double)freq.QuadPart;
+    }
+    // Fallback to a lower-resolution timer if QPC fails
+    return (double)GetTickCount64() / 1000.0;
+#else
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+        return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+    }
+    // Fallback for systems without clock_gettime
+    return (double)time(NULL);
+#endif
+}
 
 void clear_stdin_buffer(void) {
     int c;
@@ -169,4 +186,44 @@ const char* utils_get_format_description_string(format_t format) {
         }
     }
     return "Unknown";
+}
+
+bool utils_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz, const char* context_str) {
+    if (!context_str || sample_rate_hz <= 0) {
+        return true; // Cannot perform check, so allow continuation.
+    }
+
+    double nyquist_freq = sample_rate_hz / 2.0;
+
+    if (fabs(freq_to_check_hz) > nyquist_freq) {
+        log_warn("The '%s' of %.2f Hz exceeds the Nyquist frequency of %.2f Hz for the current sample rate.",
+                 context_str, freq_to_check_hz, nyquist_freq);
+        log_warn("This may cause aliasing and corrupt the signal.");
+
+        int response;
+        do {
+            fprintf(stderr, "Continue anyway? (y/n): ");
+            response = getchar();
+            if (response == EOF) {
+                fprintf(stderr, "\nEOF detected. Cancelling.\n");
+                return false;
+            }
+            clear_stdin_buffer();
+            response = tolower(response);
+            if (response == 'n') {
+                log_debug("Operation cancelled by user.");
+                return false;
+            }
+        } while (response != 'y');
+    }
+    return true;
+}
+
+bool utils_check_file_exists(const char* full_path) {
+    FILE* fp = fopen(full_path, "r");
+    if (fp) {
+        fclose(fp);
+        return true;
+    }
+    return false;
 }

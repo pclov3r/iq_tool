@@ -11,11 +11,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
-#include <sndfile.h>
 #include <pthread.h>
 #include <sys/stat.h>
 #include <stdarg.h>
 #include "argparse.h"
+
+// Module-specific includes that were removed from types.h
+#include <sndfile.h>
 
 #ifndef _WIN32
 #include <strings.h>
@@ -27,10 +29,25 @@
 
 extern AppConfig g_config;
 
+// --- Private Module Configuration ---
+static struct {
+    double sample_rate_hz;
+    float raw_file_sample_rate_hz_arg;
+    bool sample_rate_provided;
+    char *format_str;
+    bool format_provided;
+} s_rawfile_config;
+
+// --- Private Module State ---
+typedef struct {
+    SNDFILE *infile;
+} RawfilePrivateData;
+
+
 static const struct argparse_option rawfile_cli_options[] = {
     OPT_GROUP("Raw File Input Options"),
-    OPT_FLOAT(0, "raw-file-input-rate", &g_config.raw_file.raw_file_sample_rate_hz_arg, "(Required) The sample rate of the raw input file.", NULL, 0, 0),
-    OPT_STRING(0, "raw-file-input-sample-format", &g_config.raw_file.format_str, "(Required) The sample format of the raw input file.", NULL, 0, 0),
+    OPT_FLOAT(0, "raw-file-input-rate", &s_rawfile_config.raw_file_sample_rate_hz_arg, "(Required) The sample rate of the raw input file.", NULL, 0, 0),
+    OPT_STRING(0, "raw-file-input-sample-format", &s_rawfile_config.format_str, "(Required) The sample format of the raw input file.", NULL, 0, 0),
 };
 
 const struct argparse_option* rawfile_get_cli_options(int* count) {
@@ -60,14 +77,15 @@ InputSourceOps* get_raw_file_input_ops(void) {
 }
 
 static bool rawfile_validate_options(AppConfig* config) {
-    if (config->raw_file.raw_file_sample_rate_hz_arg > 0.0f) {
-        config->raw_file.sample_rate_hz = (double)config->raw_file.raw_file_sample_rate_hz_arg;
-        config->raw_file.sample_rate_provided = true;
+    (void)config; // Mark as unused
+    if (s_rawfile_config.raw_file_sample_rate_hz_arg > 0.0f) {
+        s_rawfile_config.sample_rate_hz = (double)s_rawfile_config.raw_file_sample_rate_hz_arg;
+        s_rawfile_config.sample_rate_provided = true;
     }
 
-    bool format_provided = config->raw_file.format_str != NULL;
+    bool format_provided = s_rawfile_config.format_str != NULL;
 
-    if (!config->raw_file.sample_rate_provided) {
+    if (!s_rawfile_config.sample_rate_provided) {
         log_fatal("Missing required option --raw-file-input-rate <hz> for raw file input.");
         return false;
     }
@@ -76,7 +94,7 @@ static bool rawfile_validate_options(AppConfig* config) {
         return false;
     }
 
-    config->raw_file.format_provided = true;
+    s_rawfile_config.format_provided = true;
     return true;
 }
 
@@ -84,21 +102,28 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
 
-    resources->input_format = utils_get_format_from_string(config->raw_file.format_str);
+    RawfilePrivateData* private_data = (RawfilePrivateData*)calloc(1, sizeof(RawfilePrivateData));
+    if (!private_data) {
+        log_fatal("Failed to allocate memory for Raw File private data.");
+        return false;
+    }
+    resources->input_module_private_data = private_data;
+
+    resources->input_format = utils_get_format_from_string(s_rawfile_config.format_str);
     if (resources->input_format == FORMAT_UNKNOWN) {
-        log_fatal("Invalid raw input format '%s'. See --help for valid formats.", config->raw_file.format_str);
+        log_fatal("Invalid raw input format '%s'. See --help for valid formats.", s_rawfile_config.format_str);
         return false;
     }
 
     resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
     if (resources->input_bytes_per_sample_pair == 0) {
-        log_fatal("Internal error: could not determine sample size for format '%s'.", config->raw_file.format_str);
+        log_fatal("Internal error: could not determine sample size for format '%s'.", s_rawfile_config.format_str);
         return false;
     }
 
     SF_INFO sfinfo;
     memset(&sfinfo, 0, sizeof(SF_INFO));
-    sfinfo.samplerate = (int)config->raw_file.sample_rate_hz;
+    sfinfo.samplerate = (int)s_rawfile_config.sample_rate_hz;
     sfinfo.channels = 2;
     int format_code = SF_FORMAT_RAW;
     switch (resources->input_format) {
@@ -117,22 +142,22 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
     sfinfo.format = format_code;
 
 #ifdef _WIN32
-    resources->infile = sf_wchar_open(config->effective_input_filename_w, SFM_READ, &sfinfo);
+    private_data->infile = sf_wchar_open(config->effective_input_filename_w, SFM_READ, &sfinfo);
 #else
-    resources->infile = sf_open(config->effective_input_filename, SFM_READ, &sfinfo);
+    private_data->infile = sf_open(config->effective_input_filename, SFM_READ, &sfinfo);
 #endif
 
-    if (!resources->infile) {
+    if (!private_data->infile) {
         log_fatal("Error opening raw input file '%s': %s", config->input_filename_arg, sf_strerror(NULL));
         return false;
     }
 
-    sf_command(resources->infile, SFC_GET_CURRENT_SF_INFO, &sfinfo, sizeof(sfinfo));
+    sf_command(private_data->infile, SFC_GET_CURRENT_SF_INFO, &sfinfo, sizeof(sfinfo));
     resources->source_info.samplerate = sfinfo.samplerate;
     resources->source_info.frames = sfinfo.frames;
 
     log_info("Opened raw file with format %s, rate %.0f Hz, and %lld frames.",
-             config->raw_file.format_str, (double)resources->source_info.samplerate, (long long)resources->source_info.frames);
+             s_rawfile_config.format_str, (double)resources->source_info.samplerate, (long long)resources->source_info.frames);
 
     return true;
 }
@@ -140,13 +165,14 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
 static void* rawfile_start_stream(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
     const AppConfig *config = ctx->config;
+    RawfilePrivateData* private_data = (RawfilePrivateData*)resources->input_module_private_data;
     size_t bytes_to_read_per_chunk = (size_t)BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
 
     if (config->raw_passthrough && resources->input_format != config->output_format) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf),
                  "Option --raw-passthrough requires input and output formats to be identical. Input format is '%s', output format is '%s'.",
-                 config->raw_file.format_str, config->sample_type_name);
+                 s_rawfile_config.format_str, config->sample_type_name);
         handle_fatal_thread_error(error_buf, resources);
         return NULL;
     }
@@ -160,10 +186,10 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
         current_item->stream_discontinuity_event = false;
 
         void* target_buffer = config->raw_passthrough ? current_item->final_output_data : current_item->raw_input_data;
-        int64_t bytes_read = sf_read_raw(resources->infile, target_buffer, bytes_to_read_per_chunk);
+        int64_t bytes_read = sf_read_raw(private_data->infile, target_buffer, bytes_to_read_per_chunk);
 
         if (bytes_read < 0) {
-            log_fatal("libsndfile read error: %s", sf_strerror(resources->infile));
+            log_fatal("libsndfile read error: %s", sf_strerror(private_data->infile));
             pthread_mutex_lock(&resources->progress_mutex);
             resources->error_occurred = true;
             pthread_mutex_unlock(&resources->progress_mutex);
@@ -220,10 +246,15 @@ static void rawfile_stop_stream(InputSourceContext* ctx) {
 
 static void rawfile_cleanup(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
-    if (resources->infile) {
-        log_info("Closing raw input file.");
-        sf_close(resources->infile);
-        resources->infile = NULL;
+    if (resources->input_module_private_data) {
+        RawfilePrivateData* private_data = (RawfilePrivateData*)resources->input_module_private_data;
+        if (private_data->infile) {
+            log_info("Closing raw input file.");
+            sf_close(private_data->infile);
+            private_data->infile = NULL;
+        }
+        free(private_data);
+        resources->input_module_private_data = NULL;
     }
 }
 
@@ -239,8 +270,8 @@ static void rawfile_get_summary_info(const InputSourceContext* ctx, InputSummary
 
     add_summary_item(info, "Input File", "%s", display_path);
     add_summary_item(info, "Input Type", "RAW FILE");
-    add_summary_item(info, "Input Format", "%s", config->raw_file.format_str);
-    add_summary_item(info, "Input Rate", "%.0f Hz", config->raw_file.sample_rate_hz);
+    add_summary_item(info, "Input Format", "%s", s_rawfile_config.format_str);
+    add_summary_item(info, "Input Rate", "%.0f Hz", s_rawfile_config.sample_rate_hz);
 
     char size_buf[40];
     long long file_size_bytes = resources->source_info.frames * resources->input_bytes_per_sample_pair;

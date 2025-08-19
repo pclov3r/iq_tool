@@ -5,7 +5,7 @@
 #endif
 
 #include "io_threads.h"
-#include "types.h"
+#include "types.h" // This now includes sdr_buffer_stream.h
 #include "config.h"
 #include "signal_handler.h"
 #include "log.h"
@@ -15,23 +15,110 @@
 #include <errno.h>
 #include <pthread.h>
 
-void* reader_thread_func(void* arg) {
+void* sdr_capture_thread_func(void* arg) {
 #ifdef _WIN32
     if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL)) {
-        log_warn("Failed to set reader thread priority to TIME_CRITICAL.");
+        log_warn("Failed to set SDR capture thread priority to TIME_CRITICAL.");
     }
-    DWORD_PTR affinity_mask = (1 << 2);
-    if (SetThreadAffinityMask(GetCurrentThread(), affinity_mask) == 0) {
-        log_warn("Failed to set reader thread affinity mask.");
+#endif
+    PipelineContext* args = (PipelineContext*)arg;
+    AppResources* resources = args->resources;
+    InputSourceContext ctx = { .config = args->config, .resources = resources };
+
+    // This is a blocking call that runs the SDR hardware's main loop.
+    // The SDR's callback function is now responsible for writing framed packets
+    // into the sdr_input_buffer.
+    resources->selected_input_ops->start_stream(&ctx);
+
+    // When start_stream returns, it means the SDR has been stopped (usually by shutdown).
+    // We must signal to the reader_thread that no more data will ever be written.
+    if (resources->sdr_input_buffer) {
+        file_write_buffer_signal_end_of_stream(resources->sdr_input_buffer);
+    }
+
+    log_debug("SDR capture thread is exiting.");
+    return NULL;
+}
+
+
+void* reader_thread_func(void* arg) {
+#ifdef _WIN32
+    if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL)) {
+        log_warn("Failed to set reader thread priority.");
     }
 #endif
 
     PipelineContext* args = (PipelineContext*)arg;
     AppResources* resources = args->resources;
     AppConfig* config = args->config;
-    InputSourceContext ctx = { .config = config, .resources = resources };
 
-    resources->selected_input_ops->start_stream(&ctx);
+    switch (resources->pipeline_mode) {
+        case PIPELINE_MODE_BUFFERED_SDR: {
+            // This is the new, robust, universal packet-parsing reader.
+            // It works for all SDR types by deserializing the framed stream.
+            log_debug("Reader thread starting in buffered SDR mode.");
+
+            while (!is_shutdown_requested() && !resources->error_occurred) {
+                // Get a free processing chunk from the pool. This will block if none are available.
+                SampleChunk* item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+                if (!item) break; // Shutdown signaled
+
+                bool is_reset = false;
+                // This is the core of the new logic. It's a blocking call that reads
+                // one complete, self-described packet from the ring buffer.
+                int64_t frames_read = sdr_packet_serializer_read_packet(resources->sdr_input_buffer, item, &is_reset);
+
+                if (frames_read < 0) { // A negative value indicates a fatal parsing error.
+                    handle_fatal_thread_error("Reader: Fatal error parsing SDR buffer stream.", resources);
+                    queue_enqueue(resources->free_sample_chunk_queue, item);
+                    break;
+                }
+
+                if (frames_read == 0 && !is_reset) { // A value of 0 indicates a clean end-of-stream.
+                    queue_enqueue(resources->free_sample_chunk_queue, item);
+                    break; // Exit the loop.
+                }
+
+                // We have a valid packet (either data or a reset event).
+                item->frames_read = frames_read;
+                item->stream_discontinuity_event = is_reset;
+                item->is_last_chunk = false;
+
+                if (item->frames_read > 0) {
+                    pthread_mutex_lock(&resources->progress_mutex);
+                    resources->total_frames_read += item->frames_read;
+                    pthread_mutex_unlock(&resources->progress_mutex);
+                }
+
+                // Send the populated chunk to the first DSP stage.
+                if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
+                    queue_enqueue(resources->free_sample_chunk_queue, item);
+                    break; // Shutdown while trying to enqueue.
+                }
+            }
+
+            // After the loop finishes (either by shutdown or end-of-stream),
+            // send one final "end of stream" marker to the DSP pipeline.
+            if (!is_shutdown_requested()) {
+                SampleChunk *last_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+                if (last_item) {
+                    last_item->is_last_chunk = true;
+                    last_item->frames_read = 0;
+                    queue_enqueue(resources->raw_to_pre_process_queue, last_item);
+                }
+            }
+            break;
+        }
+
+        case PIPELINE_MODE_REALTIME_SDR:
+        case PIPELINE_MODE_FILE_PROCESSING: {
+            // These modes remain unchanged. They use a direct, tightly-coupled pipeline
+            // without the intermediate SDR input buffer.
+            InputSourceContext ctx = { .config = config, .resources = resources };
+            resources->selected_input_ops->start_stream(&ctx);
+            break;
+        }
+    }
 
     if (!is_shutdown_requested()) {
         log_debug("Reader thread finished naturally. End of stream reached.");
@@ -47,19 +134,13 @@ void* writer_thread_func(void* arg) {
     if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST)) {
         log_warn("Failed to set writer thread priority to HIGHEST.");
     }
-    DWORD_PTR affinity_mask = ~(1 << 2);
-    if (SetThreadAffinityMask(GetCurrentThread(), affinity_mask) == 0) {
-        log_warn("Failed to set writer thread affinity mask.");
-    }
 #endif
 
     PipelineContext* args = (PipelineContext*)arg;
     AppResources* resources = args->resources;
     AppConfig* config = args->config;
-    int loop_count = 0;
 
     if (config->output_to_stdout) {
-        // --- STDOUT PATH: Use the simple, low-memory, tightly-coupled queue ---
         while (true) {
             SampleChunk* item = (SampleChunk*)queue_dequeue(resources->stdout_queue);
             if (!item) break;
@@ -79,6 +160,7 @@ void* writer_thread_func(void* arg) {
                 size_t written_bytes = resources->writer_ctx.ops.write(&resources->writer_ctx, item->final_output_data, output_bytes_this_chunk);
                 if (written_bytes != output_bytes_this_chunk) {
                     if (!is_shutdown_requested()) {
+                        log_debug("Writer: stdout write error: %s", strerror(errno));
                         request_shutdown();
                     }
                     queue_enqueue(resources->free_sample_chunk_queue, item);
@@ -91,7 +173,6 @@ void* writer_thread_func(void* arg) {
             }
         }
     } else {
-        // --- FILE PATH: Use the robust, decoupled I/O buffer ---
         unsigned char* local_write_buffer = (unsigned char*)malloc(WRITER_THREAD_CHUNK_SIZE);
         if (!local_write_buffer) {
             handle_fatal_thread_error("Writer: Failed to allocate local write buffer.", resources);
@@ -114,18 +195,15 @@ void* writer_thread_func(void* arg) {
                 break;
             }
 
-            loop_count++;
-            if (loop_count % PROGRESS_UPDATE_INTERVAL == 0) {
-                if (resources->progress_callback) {
-                    long long current_bytes = resources->writer_ctx.ops.get_total_bytes_written(&resources->writer_ctx);
-                    unsigned long long current_frames = current_bytes / resources->output_bytes_per_sample_pair;
-                    
-                    pthread_mutex_lock(&resources->progress_mutex);
-                    resources->total_output_frames = current_frames;
-                    pthread_mutex_unlock(&resources->progress_mutex);
+            if (resources->progress_callback) {
+                long long current_bytes = resources->writer_ctx.ops.get_total_bytes_written(&resources->writer_ctx);
+                unsigned long long current_frames = current_bytes / resources->output_bytes_per_sample_pair;
+                
+                pthread_mutex_lock(&resources->progress_mutex);
+                resources->total_output_frames = current_frames;
+                pthread_mutex_unlock(&resources->progress_mutex);
 
-                    resources->progress_callback(current_frames, resources->expected_total_output_frames, 0, resources->progress_callback_udata);
-                }
+                resources->progress_callback(current_frames, resources->expected_total_output_frames, current_bytes, resources->progress_callback_udata);
             }
         }
         free(local_write_buffer);

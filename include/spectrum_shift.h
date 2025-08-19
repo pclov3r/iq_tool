@@ -1,3 +1,4 @@
+// spectrum_shift.h
 #ifndef SPECTRUM_SHIFT_H_
 #define SPECTRUM_SHIFT_H_
 
@@ -27,18 +28,6 @@ bool shift_create_ncos(AppConfig *config, AppResources *resources);
  * @param num_frames The number of frames to process.
  */
 void shift_apply(nco_crcf nco, double shift_hz, complex_float_t* input_buffer, complex_float_t* output_buffer, unsigned int num_frames);
-
-/**
- * @brief Checks if the configured frequency shift exceeds the Nyquist frequency and warns the user.
- *
- * If a large shift is requested, this function prints a warning about potential aliasing
- * and prompts the user to continue, unless outputting to stdout.
- *
- * @param config Pointer to the application configuration.
- * @param resources Pointer to the application resources.
- * @return true if the user chooses to continue or no warning is needed, false if the user cancels.
- */
-bool shift_check_nyquist_warning(const AppConfig *config, const AppResources *resources);
 
 /**
  * @brief Resets the internal state of a specific NCO.

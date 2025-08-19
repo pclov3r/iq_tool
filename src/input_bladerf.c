@@ -1,3 +1,5 @@
+// src/input_bladerf.c
+
 #include "input_bladerf.h"
 #include "log.h"
 #include "signal_handler.h"
@@ -12,6 +14,9 @@
 #include <sys/stat.h>
 #include <limits.h>
 #include "argparse.h"
+
+// Module-specific includes
+#include <libbladeRF.h>
 
 #ifdef _WIN32
 #define strcasecmp _stricmp
@@ -29,7 +34,30 @@
 #endif
 
 #if defined(_WIN32) && defined(WITH_BLADERF)
-BladerfApiFunctionPointers bladerf_api;
+// --- Private Windows Dynamic API Loading ---
+typedef struct {
+    HINSTANCE dll_handle;
+    void (*log_set_verbosity)(bladerf_log_level);
+    int (*open)(struct bladerf **, const char *);
+    void (*close)(struct bladerf *);
+    const char * (*get_board_name)(struct bladerf *);
+    int (*get_serial)(struct bladerf *, char *);
+    int (*is_fpga_configured)(struct bladerf *);
+    int (*get_fpga_size)(struct bladerf *, bladerf_fpga_size *);
+    int (*load_fpga)(struct bladerf *, const char *);
+    int (*set_sample_rate)(struct bladerf *, bladerf_channel, bladerf_sample_rate, bladerf_sample_rate *);
+    int (*set_bandwidth)(struct bladerf *, bladerf_channel, bladerf_bandwidth, bladerf_bandwidth *);
+    int (*set_frequency)(struct bladerf *, bladerf_channel, bladerf_frequency);
+    int (*set_gain_mode)(struct bladerf *, bladerf_channel, bladerf_gain_mode);
+    int (*set_gain)(struct bladerf *, bladerf_channel, int);
+    int (*set_bias_tee)(struct bladerf *, bladerf_channel, bool);
+    int (*sync_config)(struct bladerf *, bladerf_channel_layout, bladerf_format, unsigned int, unsigned int, unsigned int, unsigned int);
+    int (*enable_module)(struct bladerf *, bladerf_module, bool);
+    int (*sync_rx)(struct bladerf *, void *, unsigned int, struct bladerf_metadata *, unsigned int);
+    const char * (*strerror)(int);
+} BladerfApiFunctionPointers;
+
+static BladerfApiFunctionPointers bladerf_api;
 
 #define LOAD_BLADERF_FUNC(func_name) \
     do { \
@@ -44,7 +72,7 @@ BladerfApiFunctionPointers bladerf_api;
     } while (0)
 
 
-bool bladerf_load_api(void) {
+static bool bladerf_load_api(void) {
     if (bladerf_api.dll_handle) { return true; }
     log_info("Attempting to load bladeRF.dll...");
     bladerf_api.dll_handle = LoadLibraryA("bladeRF.dll");
@@ -76,30 +104,75 @@ bool bladerf_load_api(void) {
     return true;
 }
 
-void bladerf_unload_api(void) {
+static void bladerf_unload_api(void) {
     if (bladerf_api.dll_handle) {
         FreeLibrary(bladerf_api.dll_handle);
         bladerf_api.dll_handle = NULL;
         log_info("BladeRF API DLL unloaded.");
     }
 }
+
+#define bladerf_log_set_verbosity   bladerf_api.log_set_verbosity
+#define bladerf_open            bladerf_api.open
+#define bladerf_close           bladerf_api.close
+#define bladerf_get_board_name  bladerf_api.get_board_name
+#define bladerf_get_serial      bladerf_api.get_serial
+#define bladerf_is_fpga_configured bladerf_api.is_fpga_configured
+#define bladerf_get_fpga_size   bladerf_api.get_fpga_size
+#define bladerf_load_fpga       bladerf_api.load_fpga
+#define bladerf_set_sample_rate bladerf_api.set_sample_rate
+#define bladerf_set_bandwidth   bladerf_api.set_bandwidth
+#define bladerf_set_frequency   bladerf_api.set_frequency
+#define bladerf_set_gain_mode   bladerf_api.set_gain_mode
+#define bladerf_set_gain        bladerf_api.set_gain
+#define bladerf_set_bias_tee    bladerf_api.set_bias_tee
+#define bladerf_sync_config     bladerf_api.sync_config
+#define bladerf_enable_module   bladerf_api.enable_module
+#define bladerf_sync_rx         bladerf_api.sync_rx
+#define bladerf_strerror        bladerf_api.strerror
+
 #endif
 
 extern AppConfig g_config;
 
+// --- Private Module Configuration ---
+static struct {
+    int device_index;
+    int channel;
+    int gain;
+    bool gain_provided;
+    long bladerf_gain_arg;
+    uint32_t bandwidth_hz;
+    bool bandwidth_provided;
+    float bladerf_bandwidth_hz_arg;
+    char *fpga_file_path;
+    unsigned int num_buffers;
+    unsigned int buffer_size;
+    unsigned int num_transfers;
+} s_bladerf_config;
+
+// --- Private Module State ---
+typedef struct {
+    struct bladerf *dev;
+    char board_name[16];
+    char serial[33];
+    char display_name[128];
+    bool initialized_successfully;
+} BladerfPrivateData;
+
+
 void bladerf_set_default_config(AppConfig* config) {
-    config->bladerf.sample_rate_hz = BLADERF_DEFAULT_SAMPLE_RATE_HZ;
-    config->bladerf.bandwidth_hz = BLADERF_DEFAULT_BANDWIDTH_HZ;
+    config->sdr.sample_rate_hz = BLADERF_DEFAULT_SAMPLE_RATE_HZ;
+    s_bladerf_config.bandwidth_hz = BLADERF_DEFAULT_BANDWIDTH_HZ;
 }
 
 static const struct argparse_option bladerf_cli_options[] = {
     OPT_GROUP("BladeRF-Specific Options"),
-    OPT_INTEGER(0, "bladerf-device-idx", &g_config.bladerf.device_index, "Select specific BladeRF device by index (0-indexed). (Default: 0)", NULL, 0, 0),
-    OPT_STRING(0, "bladerf-load-fpga", &g_config.bladerf.fpga_file_path, "Load an FPGA bitstream from the specified file.", NULL, 0, 0),
-    OPT_FLOAT(0, "bladerf-sample-rate", &g_config.bladerf.bladerf_sample_rate_hz_arg, "Set sample rate in Hz.", NULL, 0, 0),
-    OPT_FLOAT(0, "bladerf-bandwidth", &g_config.bladerf.bladerf_bandwidth_hz_arg, "Set analog bandwidth in Hz. (Default: Auto-selected)", NULL, 0, 0),
-    OPT_INTEGER(0, "bladerf-gain", &g_config.bladerf.bladerf_gain_arg, "Set overall manual gain in dB. Disables AGC.", NULL, 0, 0),
-    OPT_INTEGER(0, "bladerf-channel", &g_config.bladerf.channel, "For BladeRF 2.0: Select RX channel 0 (RXA) or 1 (RXB). (Default: 0)", NULL, 0, 0),
+    OPT_INTEGER(0, "bladerf-device-idx", &s_bladerf_config.device_index, "Select specific BladeRF device by index (0-indexed). (Default: 0)", NULL, 0, 0),
+    OPT_STRING(0, "bladerf-load-fpga", &s_bladerf_config.fpga_file_path, "Load an FPGA bitstream from the specified file.", NULL, 0, 0),
+    OPT_FLOAT(0, "bladerf-bandwidth", &s_bladerf_config.bladerf_bandwidth_hz_arg, "Set analog bandwidth in Hz. (Default: Auto-selected)", NULL, 0, 0),
+    OPT_INTEGER(0, "bladerf-gain", &s_bladerf_config.bladerf_gain_arg, "Set overall manual gain in dB. Disables AGC.", NULL, 0, 0),
+    OPT_INTEGER(0, "bladerf-channel", &s_bladerf_config.channel, "For BladeRF 2.0: Select RX channel 0 (RXA) or 1 (RXB). (Default: 0)", NULL, 0, 0),
 };
 
 const struct argparse_option* bladerf_get_cli_options(int* count) {
@@ -113,6 +186,7 @@ static void bladerf_stop_stream(InputSourceContext* ctx);
 static void bladerf_cleanup(InputSourceContext* ctx);
 static void bladerf_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
 static bool bladerf_validate_options(AppConfig* config);
+static bool bladerf_validate_generic_options(const AppConfig* config);
 static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev);
 
 #ifndef _WIN32
@@ -126,6 +200,7 @@ static InputSourceOps bladerf_ops = {
     .cleanup = bladerf_cleanup,
     .get_summary_info = bladerf_get_summary_info,
     .validate_options = bladerf_validate_options,
+    .validate_generic_options = bladerf_validate_generic_options,
     .has_known_length = _input_source_has_known_length_false
 };
 
@@ -133,34 +208,35 @@ InputSourceOps* get_bladerf_input_ops(void) {
     return &bladerf_ops;
 }
 
-static bool bladerf_validate_options(AppConfig* config) {
-    if (config->bladerf.bladerf_gain_arg != 0) {
-        config->bladerf.gain = (int)config->bladerf.bladerf_gain_arg;
-        config->bladerf.gain_provided = true;
-    }
-
-    if (config->bladerf.bladerf_sample_rate_hz_arg != 0.0f) {
-        if (config->bladerf.bladerf_sample_rate_hz_arg > UINT_MAX) {
-            log_fatal("Value for --bladerf-sample-rate is too large.");
-            return false;
-        }
-        config->bladerf.sample_rate_hz = (uint32_t)config->bladerf.bladerf_sample_rate_hz_arg;
-        config->bladerf.sample_rate_provided = true;
-    } else {
-        log_fatal("Missing required argument --bladerf-sample-rate <hz>.");
+static bool bladerf_validate_generic_options(const AppConfig* config) {
+    if (!config->sdr.rf_freq_provided) {
+        log_fatal("BladeRF input requires the --sdr-rf-freq option.");
         return false;
     }
+    if (!config->sdr.sample_rate_provided) {
+        log_fatal("BladeRF input requires the --sdr-sample-rate option.");
+        return false;
+    }
+    return true;
+}
 
-    if (config->bladerf.bladerf_bandwidth_hz_arg != 0.0f) {
-        if (config->bladerf.bladerf_bandwidth_hz_arg > UINT_MAX) {
+static bool bladerf_validate_options(AppConfig* config) {
+    (void)config; // Mark as unused
+    if (s_bladerf_config.bladerf_gain_arg != 0) {
+        s_bladerf_config.gain = (int)s_bladerf_config.bladerf_gain_arg;
+        s_bladerf_config.gain_provided = true;
+    }
+
+    if (s_bladerf_config.bladerf_bandwidth_hz_arg != 0.0f) {
+        if (s_bladerf_config.bladerf_bandwidth_hz_arg > UINT_MAX) {
             log_fatal("Value for --bladerf-bandwidth is too large.");
             return false;
         }
-        config->bladerf.bandwidth_hz = (uint32_t)config->bladerf.bladerf_bandwidth_hz_arg;
-        config->bladerf.bandwidth_provided = true;
+        s_bladerf_config.bandwidth_hz = (uint32_t)s_bladerf_config.bladerf_bandwidth_hz_arg;
+        s_bladerf_config.bandwidth_provided = true;
     }
 
-    if (config->bladerf.channel != 0 && config->bladerf.channel != 1) {
+    if (s_bladerf_config.channel != 0 && s_bladerf_config.channel != 1) {
         log_fatal("Invalid value for --bladerf-channel. Must be 0 or 1.");
         return false;
     }
@@ -195,27 +271,32 @@ static int get_usbfs_memory_mb_for_linux(void) {
 static bool bladerf_initialize(InputSourceContext* ctx) {
     AppConfig *config = (AppConfig*)ctx->config;
     AppResources *resources = ctx->resources;
-    struct bladerf* dev = NULL;
     int status;
     char device_identifier[32];
 
     log_info("Attempting to initialize BladeRF device...");
+
+    BladerfPrivateData* private_data = (BladerfPrivateData*)calloc(1, sizeof(BladerfPrivateData));
+    if (!private_data) {
+        log_fatal("Failed to allocate memory for BladeRF private data.");
+        return false;
+    }
+    resources->input_module_private_data = private_data;
 
 #if defined(_WIN32) && defined(WITH_BLADERF)
     if (!bladerf_load_api()) { return false; }
     if (is_shutdown_requested()) { return false; }
 #endif
 
-    if (config->bladerf.device_index > 0) {
-        snprintf(device_identifier, sizeof(device_identifier), "bladerf%d", config->bladerf.device_index);
+    if (s_bladerf_config.device_index > 0) {
+        snprintf(device_identifier, sizeof(device_identifier), "bladerf%d", s_bladerf_config.device_index);
     } else {
         device_identifier[0] = '\0';
     }
 
     bladerf_log_set_verbosity(BLADERF_LOG_LEVEL_ERROR);
 
-    status = bladerf_open(&dev, device_identifier[0] ? device_identifier : NULL);
-    resources->bladerf_dev = dev;
+    status = bladerf_open(&private_data->dev, device_identifier[0] ? device_identifier : NULL);
     if (is_shutdown_requested()) { return false; }
 
     if (status != 0 && status != BLADERF_ERR_UPDATE_FPGA) {
@@ -224,9 +305,9 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
         return false;
     }
 
-    if (config->bladerf.fpga_file_path) {
-        log_info("Manual FPGA load requested: %s", config->bladerf.fpga_file_path);
-        status = bladerf_load_fpga(dev, config->bladerf.fpga_file_path);
+    if (s_bladerf_config.fpga_file_path) {
+        log_info("Manual FPGA load requested: %s", s_bladerf_config.fpga_file_path);
+        status = bladerf_load_fpga(private_data->dev, s_bladerf_config.fpga_file_path);
         if (is_shutdown_requested()) { return false; }
         if (status != 0) {
             log_error("Failed to load specified BladeRF FPGA: %s", bladerf_strerror(status));
@@ -234,7 +315,7 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
         }
         log_info("Manual FPGA loaded successfully.");
     } else {
-        status = bladerf_is_fpga_configured(dev);
+        status = bladerf_is_fpga_configured(private_data->dev);
         if (is_shutdown_requested()) { return false; }
         if (status < 0) {
             log_error("Failed to query BladeRF FPGA state: %s", bladerf_strerror(status));
@@ -242,7 +323,7 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
         }
         if (status == 0) {
             log_info("BladeRF FPGA not configured. Attempting to find and load it automatically...");
-            if (!bladerf_find_and_load_fpga_automatically(dev)) {
+            if (!bladerf_find_and_load_fpga_automatically(private_data->dev)) {
                 return false;
             }
         } else {
@@ -252,38 +333,38 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
 
     bladerf_log_set_verbosity(BLADERF_LOG_LEVEL_INFO);
 
-    const char* board_name_from_api = bladerf_get_board_name(dev);
-    strncpy(resources->bladerf_board_name, board_name_from_api, sizeof(resources->bladerf_board_name) - 1);
-    resources->bladerf_board_name[sizeof(resources->bladerf_board_name) - 1] = '\0';
+    const char* board_name_from_api = bladerf_get_board_name(private_data->dev);
+    strncpy(private_data->board_name, board_name_from_api, sizeof(private_data->board_name) - 1);
+    private_data->board_name[sizeof(private_data->board_name) - 1] = '\0';
 
-    bladerf_get_serial(dev, resources->bladerf_serial);
+    bladerf_get_serial(private_data->dev, private_data->serial);
 
     const char* friendly_name;
-    if (strcmp(resources->bladerf_board_name, "bladerf2") == 0) {
+    if (strcmp(private_data->board_name, "bladerf2") == 0) {
         friendly_name = "Nuand BladeRF 2";
-    } else if (strcmp(resources->bladerf_board_name, "bladerf") == 0) {
+    } else if (strcmp(private_data->board_name, "bladerf") == 0) {
         friendly_name = "Nuand BladeRF 1";
     } else {
         friendly_name = "Nuand BladeRF";
     }
-    snprintf(resources->bladerf_display_name, sizeof(resources->bladerf_display_name),
-             "%s (S/N: %s)", friendly_name, resources->bladerf_serial);
+    snprintf(private_data->display_name, sizeof(private_data->display_name),
+             "%s (S/N: %s)", friendly_name, private_data->serial);
 
-    log_info("Using %s", resources->bladerf_display_name);
+    log_info("Using %s", private_data->display_name);
 
     bladerf_channel rx_channel;
-    if (strcmp(resources->bladerf_board_name, "bladerf2") == 0) {
-        rx_channel = BLADERF_CHANNEL_RX(config->bladerf.channel);
+    if (strcmp(private_data->board_name, "bladerf2") == 0) {
+        rx_channel = BLADERF_CHANNEL_RX(s_bladerf_config.channel);
     } else {
         rx_channel = BLADERF_CHANNEL_RX(0);
-        if (config->bladerf.channel != 0) {
+        if (s_bladerf_config.channel != 0) {
             log_warn("Option --bladerf-channel is for BladeRF 2.0 only and is ignored on this BladeRF 1.0 device.");
         }
     }
 
-    bladerf_sample_rate requested_rate = config->bladerf.sample_rate_hz;
+    bladerf_sample_rate requested_rate = (bladerf_sample_rate)config->sdr.sample_rate_hz;
     bladerf_sample_rate actual_rate;
-    status = bladerf_set_sample_rate(dev, rx_channel, requested_rate, &actual_rate);
+    status = bladerf_set_sample_rate(private_data->dev, rx_channel, requested_rate, &actual_rate);
     if (is_shutdown_requested()) { return false; }
     if (status != 0) {
         log_error("Failed to set BladeRF sample rate: %s", bladerf_strerror(status));
@@ -296,9 +377,9 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
 #ifdef _WIN32
         log_debug("BladeRF: Using High-Throughput (Optimized) profile for sample rate > 40 MSPS.");
         log_debug("BladeRF: (Windows Optimization: Using large 128K transfer buffers).");
-        config->bladerf.num_buffers = BLADERF_PROFILE_WIN_OPTIMIZED_NUM_BUFFERS;
-        config->bladerf.buffer_size = BLADERF_PROFILE_WIN_OPTIMIZED_BUFFER_SIZE;
-        config->bladerf.num_transfers = BLADERF_PROFILE_WIN_OPTIMIZED_NUM_TRANSFERS;
+        s_bladerf_config.num_buffers = BLADERF_PROFILE_WIN_OPTIMIZED_NUM_BUFFERS;
+        s_bladerf_config.buffer_size = BLADERF_PROFILE_WIN_OPTIMIZED_BUFFER_SIZE;
+        s_bladerf_config.num_transfers = BLADERF_PROFILE_WIN_OPTIMIZED_NUM_TRANSFERS;
 #else
         int detected_mb = get_usbfs_memory_mb_for_linux();
         log_debug("BladeRF: Using High-Throughput (Optimized) profile for sample rate > 40 MSPS.");
@@ -314,32 +395,32 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
             calculated_transfers = 16;
         }
 
-        config->bladerf.buffer_size = BLADERF_PROFILE_LINUX_OPTIMIZED_BUFFER_SIZE;
-        config->bladerf.num_transfers = calculated_transfers;
-        config->bladerf.num_buffers = calculated_transfers;
+        s_bladerf_config.buffer_size = BLADERF_PROFILE_LINUX_OPTIMIZED_BUFFER_SIZE;
+        s_bladerf_config.num_transfers = calculated_transfers;
+        s_bladerf_config.num_buffers = calculated_transfers;
         log_debug("BladeRF: Calculated profile: num_buffers=%u, buffer_size=%u, num_transfers=%u",
-                 config->bladerf.num_buffers, config->bladerf.buffer_size, config->bladerf.num_transfers);
+                 s_bladerf_config.num_buffers, s_bladerf_config.buffer_size, s_bladerf_config.num_transfers);
 #endif
     } else if (actual_rate >= 5000000) {
         log_debug("BladeRF: Using High-Throughput profile for sample rate between 5 and 40 MSPS.");
-        config->bladerf.num_buffers = BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_BUFFERS;
-        config->bladerf.buffer_size = BLADERF_PROFILE_HIGHTHROUGHPUT_BUFFER_SIZE;
-        config->bladerf.num_transfers = BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS;
+        s_bladerf_config.num_buffers = BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_BUFFERS;
+        s_bladerf_config.buffer_size = BLADERF_PROFILE_HIGHTHROUGHPUT_BUFFER_SIZE;
+        s_bladerf_config.num_transfers = BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS;
     } else if (actual_rate >= 1000000) {
         log_debug("BladeRF: Using Balanced profile for sample rate between 1 and 5 MSPS.");
-        config->bladerf.num_buffers = BLADERF_PROFILE_BALANCED_NUM_BUFFERS;
-        config->bladerf.buffer_size = BLADERF_PROFILE_BALANCED_BUFFER_SIZE;
-        config->bladerf.num_transfers = BLADERF_PROFILE_BALANCED_NUM_TRANSFERS;
+        s_bladerf_config.num_buffers = BLADERF_PROFILE_BALANCED_NUM_BUFFERS;
+        s_bladerf_config.buffer_size = BLADERF_PROFILE_BALANCED_BUFFER_SIZE;
+        s_bladerf_config.num_transfers = BLADERF_PROFILE_BALANCED_NUM_TRANSFERS;
     } else {
         log_debug("BladeRF: Using Low-Latency profile for sample rate < 1 MSPS.");
-        config->bladerf.num_buffers = BLADERF_PROFILE_LOWLATENCY_NUM_BUFFERS;
-        config->bladerf.buffer_size = BLADERF_PROFILE_LOWLATENCY_BUFFER_SIZE;
-        config->bladerf.num_transfers = BLADERF_PROFILE_LOWLATENCY_NUM_TRANSFERS;
+        s_bladerf_config.num_buffers = BLADERF_PROFILE_LOWLATENCY_NUM_BUFFERS;
+        s_bladerf_config.buffer_size = BLADERF_PROFILE_LOWLATENCY_BUFFER_SIZE;
+        s_bladerf_config.num_transfers = BLADERF_PROFILE_LOWLATENCY_NUM_TRANSFERS;
     }
 
-    bladerf_bandwidth requested_bw = config->bladerf.bandwidth_hz;
+    bladerf_bandwidth requested_bw = s_bladerf_config.bandwidth_hz;
     bladerf_bandwidth actual_bw;
-    status = bladerf_set_bandwidth(dev, rx_channel, requested_bw, &actual_bw);
+    status = bladerf_set_bandwidth(private_data->dev, rx_channel, requested_bw, &actual_bw);
     if (is_shutdown_requested()) { return false; }
     if (status != 0) {
         log_error("Failed to set BladeRF bandwidth: %s", bladerf_strerror(status));
@@ -350,20 +431,20 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
     } else {
         log_info("BladeRF: Requested bandwidth %u Hz, actual bandwidth set to %u Hz.", requested_bw, actual_bw);
     }
-    config->bladerf.bandwidth_hz = actual_bw;
+    s_bladerf_config.bandwidth_hz = actual_bw;
 
-    status = bladerf_set_frequency(dev, rx_channel, config->sdr.rf_freq_hz);
+    status = bladerf_set_frequency(private_data->dev, rx_channel, config->sdr.rf_freq_hz);
     if (is_shutdown_requested()) { return false; }
     if (status != 0) {
         log_error("Failed to set BladeRF frequency: %s", bladerf_strerror(status));
         return false;
     }
 
-    if (config->bladerf.gain_provided) {
-        status = bladerf_set_gain_mode(dev, rx_channel, BLADERF_GAIN_MGC);
-        if (status == 0) status = bladerf_set_gain(dev, rx_channel, config->bladerf.gain);
+    if (s_bladerf_config.gain_provided) {
+        status = bladerf_set_gain_mode(private_data->dev, rx_channel, BLADERF_GAIN_MGC);
+        if (status == 0) status = bladerf_set_gain(private_data->dev, rx_channel, s_bladerf_config.gain);
     } else {
-        status = bladerf_set_gain_mode(dev, rx_channel, BLADERF_GAIN_DEFAULT);
+        status = bladerf_set_gain_mode(private_data->dev, rx_channel, BLADERF_GAIN_DEFAULT);
     }
     if (is_shutdown_requested()) { return false; }
     if (status != 0) {
@@ -372,21 +453,21 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
     }
 
     if (config->sdr.bias_t_enable) {
-        if (strcmp(resources->bladerf_board_name, "bladerf2") == 0) {
-            status = bladerf_set_bias_tee(dev, rx_channel, true);
+        if (strcmp(private_data->board_name, "bladerf2") == 0) {
+            status = bladerf_set_bias_tee(private_data->dev, rx_channel, true);
             if (is_shutdown_requested()) { return false; }
             if (status != 0) {
                 log_error("Failed to enable BladeRF Bias-T: %s", bladerf_strerror(status));
                 return false;
             }
         } else {
-            log_warn("Bias-T is not supported on this BladeRF model (%s) and will be ignored.", resources->bladerf_board_name);
+            log_warn("Bias-T is not supported on this BladeRF model (%s) and will be ignored.", private_data->board_name);
         }
     }
 
     resources->input_format = SC16Q11;
     resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
-    resources->bladerf_initialized_successfully = true;
+    private_data->initialized_successfully = true;
     log_info("BladeRF initialized successfully.");
     return true;
 }
@@ -394,28 +475,28 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
 static void* bladerf_start_stream(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
     const AppConfig *config = ctx->config;
-    struct bladerf* dev = resources->bladerf_dev;
+    BladerfPrivateData* private_data = (BladerfPrivateData*)resources->input_module_private_data;
     int status;
     bladerf_channel_layout layout;
     bladerf_channel rx_channel;
     struct bladerf_metadata meta;
 
-    if (!resources->bladerf_initialized_successfully) {
+    if (!private_data || !private_data->initialized_successfully) {
         return NULL;
     }
 
-    if (strcmp(resources->bladerf_board_name, "bladerf2") == 0) {
+    if (strcmp(private_data->board_name, "bladerf2") == 0) {
         layout = BLADERF_RX_X1;
-        rx_channel = BLADERF_CHANNEL_RX(config->bladerf.channel);
+        rx_channel = BLADERF_CHANNEL_RX(s_bladerf_config.channel);
     } else {
         layout = BLADERF_RX_X1;
         rx_channel = BLADERF_CHANNEL_RX(0);
     }
 
-    status = bladerf_sync_config(dev, layout, BLADERF_FORMAT_SC16_Q11_META,
-                                 config->bladerf.num_buffers,
-                                 config->bladerf.buffer_size,
-                                 config->bladerf.num_transfers,
+    status = bladerf_sync_config(private_data->dev, layout, BLADERF_FORMAT_SC16_Q11_META,
+                                 s_bladerf_config.num_buffers,
+                                 s_bladerf_config.buffer_size,
+                                 s_bladerf_config.num_transfers,
                                  BLADERF_SYNC_CONFIG_TIMEOUT_MS);
     if (status != 0) {
         char error_buf[256];
@@ -424,7 +505,7 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
         return NULL;
     }
 
-    status = bladerf_enable_module(dev, rx_channel, true);
+    status = bladerf_enable_module(private_data->dev, rx_channel, true);
     if (status != 0) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "bladerf_enable_module() failed: %s", bladerf_strerror(status));
@@ -447,95 +528,136 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
     samples_per_transfer = (samples_per_transfer / 1024) * 1024;
     log_debug("BladeRF: Using dynamic transfer size of %u samples.", samples_per_transfer);
 
-    // --- START OF MODIFIED BLOCK ---
-    // In passthrough mode, we need a temporary buffer to receive data before writing to the file_write_buffer.
-    // We can use the first SampleChunk's final_output_data buffer for this to avoid a new allocation.
-    void* passthrough_temp_buffer = NULL;
-    if (config->raw_passthrough) {
-        SampleChunk* temp_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
-        if (!temp_item) {
-            handle_fatal_thread_error("BladeRF: Failed to get a temporary buffer for passthrough mode.", resources);
-            return NULL;
+    switch (resources->pipeline_mode) {
+        case PIPELINE_MODE_BUFFERED_SDR: {
+            void* temp_buffer = malloc(samples_per_transfer * resources->input_bytes_per_sample_pair);
+            if (!temp_buffer) {
+                handle_fatal_thread_error("BladeRF: Failed to allocate temp buffer for buffered mode.", resources);
+                break;
+            }
+            while (!is_shutdown_requested() && !resources->error_occurred) {
+                memset(&meta, 0, sizeof(meta));
+                meta.flags = BLADERF_META_FLAG_RX_NOW;
+                status = bladerf_sync_rx(private_data->dev, temp_buffer, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
+                if (status != 0) {
+                    if (!is_shutdown_requested()) {
+                        char error_buf[256];
+                        snprintf(error_buf, sizeof(error_buf), "bladerf_sync_rx() failed: %s", bladerf_strerror(status));
+                        handle_fatal_thread_error(error_buf, resources);
+                    }
+                    break;
+                }
+                if (meta.actual_count > 0) {
+                    if ((meta.status & BLADERF_META_STATUS_OVERRUN) != 0) {
+                        log_warn("BladeRF reported a stream overrun (discontinuity). Sending reset event.");
+                        sdr_packet_serializer_write_reset_event(resources->sdr_input_buffer);
+                    }
+                    if (!sdr_packet_serializer_write_interleaved_chunk(resources->sdr_input_buffer, meta.actual_count, temp_buffer, resources->input_bytes_per_sample_pair)) {
+                        log_warn("SDR input buffer overrun! Dropped %u samples.", meta.actual_count);
+                    }
+                }
+            }
+            free(temp_buffer);
+            break;
         }
-        passthrough_temp_buffer = temp_item->final_output_data;
-        queue_enqueue(resources->free_sample_chunk_queue, temp_item); // Return it immediately
-    }
 
-    while (!is_shutdown_requested() && !resources->error_occurred) {
-        memset(&meta, 0, sizeof(meta));
-        meta.flags = BLADERF_META_FLAG_RX_NOW;
-
-        if (config->raw_passthrough) {
-            status = bladerf_sync_rx(dev, passthrough_temp_buffer, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
-            if (status != 0) {
-                if (!is_shutdown_requested()) {
-                    char error_buf[256];
-                    snprintf(error_buf, sizeof(error_buf), "bladerf_sync_rx() failed: %s", bladerf_strerror(status));
-                    handle_fatal_thread_error(error_buf, resources);
+        case PIPELINE_MODE_REALTIME_SDR: {
+            if (config->raw_passthrough) {
+                void* passthrough_buffer = malloc(samples_per_transfer * resources->input_bytes_per_sample_pair);
+                if (!passthrough_buffer) {
+                    handle_fatal_thread_error("BladeRF: Failed to allocate temp buffer for passthrough.", resources);
+                    break;
                 }
-                break;
-            }
-            if (meta.actual_count > 0) {
-                size_t bytes_to_write = meta.actual_count * resources->input_bytes_per_sample_pair;
-                size_t bytes_written = file_write_buffer_write(resources->file_write_buffer, passthrough_temp_buffer, bytes_to_write);
-                if (bytes_written < bytes_to_write) {
-                    log_warn("I/O buffer overrun! Dropped %zu bytes.", bytes_to_write - bytes_written);
+                while (!is_shutdown_requested() && !resources->error_occurred) {
+                    memset(&meta, 0, sizeof(meta));
+                    meta.flags = BLADERF_META_FLAG_RX_NOW;
+                    status = bladerf_sync_rx(private_data->dev, passthrough_buffer, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
+                    if (status != 0) {
+                        if (!is_shutdown_requested()) {
+                            char error_buf[256];
+                            snprintf(error_buf, sizeof(error_buf), "bladerf_sync_rx() failed: %s", bladerf_strerror(status));
+                            handle_fatal_thread_error(error_buf, resources);
+                        }
+                        break;
+                    }
+                    if (meta.actual_count > 0) {
+                        size_t bytes_to_write = meta.actual_count * resources->input_bytes_per_sample_pair;
+                        size_t written = resources->writer_ctx.ops.write(&resources->writer_ctx, passthrough_buffer, bytes_to_write);
+                        if (written < bytes_to_write) {
+                            log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
+                            request_shutdown();
+                            break;
+                        }
+                    }
                 }
-            }
-        } else {
-            // Normal processing path
-            SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
-            if (!item) break;
-
-            status = bladerf_sync_rx(dev, item->raw_input_data, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
-            
-            if (status != 0) {
-                if (!is_shutdown_requested()) {
-                    char error_buf[256];
-                    snprintf(error_buf, sizeof(error_buf), "bladerf_sync_rx() failed: %s", bladerf_strerror(status));
-                    handle_fatal_thread_error(error_buf, resources);
-                }
-                queue_enqueue(resources->free_sample_chunk_queue, item);
-                break;
-            }
-
-            if ((meta.status & BLADERF_META_STATUS_OVERRUN) != 0) {
-                log_warn("BladeRF reported a stream overrun (discontinuity).");
-                log_info("Signaling pipeline to reset DSP state.");
-                item->stream_discontinuity_event = true;
+                free(passthrough_buffer);
             } else {
-                item->stream_discontinuity_event = false;
+                while (!is_shutdown_requested() && !resources->error_occurred) {
+                    SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+                    if (!item) break;
+
+                    memset(&meta, 0, sizeof(meta));
+                    meta.flags = BLADERF_META_FLAG_RX_NOW;
+                    status = bladerf_sync_rx(private_data->dev, item->raw_input_data, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
+                    
+                    if (status != 0) {
+                        if (!is_shutdown_requested()) {
+                            char error_buf[256];
+                            snprintf(error_buf, sizeof(error_buf), "bladerf_sync_rx() failed: %s", bladerf_strerror(status));
+                            handle_fatal_thread_error(error_buf, resources);
+                        }
+                        queue_enqueue(resources->free_sample_chunk_queue, item);
+                        break;
+                    }
+
+                    item->stream_discontinuity_event = ((meta.status & BLADERF_META_STATUS_OVERRUN) != 0);
+                    if (item->stream_discontinuity_event) {
+                        log_warn("BladeRF reported a stream overrun (discontinuity).");
+                    }
+                    item->frames_read = meta.actual_count;
+                    item->is_last_chunk = false;
+
+                    if (item->frames_read > 0) {
+                        pthread_mutex_lock(&resources->progress_mutex);
+                        resources->total_frames_read += item->frames_read;
+                        pthread_mutex_unlock(&resources->progress_mutex);
+                        if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
+                            queue_enqueue(resources->free_sample_chunk_queue, item);
+                            break;
+                        }
+                    } else {
+                        queue_enqueue(resources->free_sample_chunk_queue, item);
+                    }
+                }
+                SampleChunk *last_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+                if (last_item) {
+                    last_item->is_last_chunk = true;
+                    last_item->frames_read = 0;
+                    queue_enqueue(resources->raw_to_pre_process_queue, last_item);
+                }
             }
-
-            item->frames_read = meta.actual_count;
-            item->is_last_chunk = false;
-
-            pthread_mutex_lock(&resources->progress_mutex);
-            resources->total_frames_read += item->frames_read;
-            pthread_mutex_unlock(&resources->progress_mutex);
-
-            if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
-                queue_enqueue(resources->free_sample_chunk_queue, item);
-                break;
-            }
+            break;
         }
+        case PIPELINE_MODE_FILE_PROCESSING:
+            break;
     }
-    // --- END OF MODIFIED BLOCK ---
+    
+    bladerf_stop_stream(ctx);
     return NULL;
 }
 
 static void bladerf_stop_stream(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
-    const AppConfig *config = ctx->config;
-    if (resources->bladerf_dev && resources->bladerf_initialized_successfully) {
+    BladerfPrivateData* private_data = (BladerfPrivateData*)resources->input_module_private_data;
+    if (private_data && private_data->dev && private_data->initialized_successfully) {
         bladerf_channel rx_channel;
-        if (strcmp(resources->bladerf_board_name, "bladerf2") == 0) {
-            rx_channel = BLADERF_CHANNEL_RX(config->bladerf.channel);
+        if (strcmp(private_data->board_name, "bladerf2") == 0) {
+            rx_channel = BLADERF_CHANNEL_RX(s_bladerf_config.channel);
         } else {
             rx_channel = BLADERF_CHANNEL_RX(0);
         }
         log_info("Disabling BladeRF RX module...");
-        int status = bladerf_enable_module(resources->bladerf_dev, rx_channel, false);
+        int status = bladerf_enable_module(private_data->dev, rx_channel, false);
         if (status != 0) {
             log_error("Failed to disable BladeRF RX module: %s", bladerf_strerror(status));
         }
@@ -544,11 +666,15 @@ static void bladerf_stop_stream(InputSourceContext* ctx) {
 
 static void bladerf_cleanup(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
-    if (resources->bladerf_dev) {
-        log_info("Closing BladeRF device...");
-        bladerf_close(resources->bladerf_dev);
+    if (resources->input_module_private_data) {
+        BladerfPrivateData* private_data = (BladerfPrivateData*)resources->input_module_private_data;
+        if (private_data->dev) {
+            log_info("Closing BladeRF device...");
+            bladerf_close(private_data->dev);
+        }
+        free(private_data);
+        resources->input_module_private_data = NULL;
     }
-    resources->bladerf_dev = NULL;
 #if defined(_WIN32) && defined(WITH_BLADERF)
     bladerf_unload_api();
 #endif
@@ -557,20 +683,21 @@ static void bladerf_cleanup(InputSourceContext* ctx) {
 static void bladerf_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
-    add_summary_item(info, "Input Source", "%s", resources->bladerf_display_name);
+    BladerfPrivateData* private_data = (BladerfPrivateData*)resources->input_module_private_data;
+    add_summary_item(info, "Input Source", "%s", private_data->display_name);
     add_summary_item(info, "Input Format", "16-bit Signed Complex Q4.11 (sc16q11)");
 
-    if (strcmp(resources->bladerf_board_name, "bladerf2") == 0) {
-        add_summary_item(info, "Channel", "%d (RXA)", config->bladerf.channel);
+    if (strcmp(private_data->board_name, "bladerf2") == 0) {
+        add_summary_item(info, "Channel", "%d (RXA)", s_bladerf_config.channel);
     } else {
         add_summary_item(info, "Antenna Port", "Automatic");
     }
 
     add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
-    add_summary_item(info, "Bandwidth", "%u Hz", config->bladerf.bandwidth_hz);
+    add_summary_item(info, "Bandwidth", "%u Hz", s_bladerf_config.bandwidth_hz);
     add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr.rf_freq_hz);
-    if (config->bladerf.gain_provided) {
-        add_summary_item(info, "Gain", "%d dB (Manual)", config->bladerf.gain);
+    if (s_bladerf_config.gain_provided) {
+        add_summary_item(info, "Gain", "%d dB (Manual)", s_bladerf_config.gain);
     } else {
         add_summary_item(info, "Gain", "Automatic (AGC)");
     }

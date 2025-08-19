@@ -1,3 +1,5 @@
+// src/main.c
+
 /*
  * This file is part of iq_resample_tool.
  *
@@ -74,10 +76,9 @@ AppConfig g_config;
 // --- Forward Declarations for Static Helper Functions ---
 static void initialize_resource_struct(AppResources *resources);
 static bool validate_configuration(AppConfig *config, const AppResources *resources);
-// NOTE: initialize_application and cleanup_application are now public (declared in setup.h)
 static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success);
 static void console_lock_function(bool lock, void *udata);
-static void application_progress_callback(unsigned long long current_output_frames, long long total_output_frames, unsigned long long unused_arg, void* udata);
+static void application_progress_callback(unsigned long long current_output_frames, long long total_output_frames, unsigned long long current_bytes_written, void* udata);
 
 
 // --- Main Application Entry Point ---
@@ -85,6 +86,11 @@ int main(int argc, char *argv[]) {
 #ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
 #endif
+
+    // CHANGE: Refactored main to use a single, unified cleanup path to prevent double-free errors.
+    int exit_status = EXIT_FAILURE;
+    AppResources resources;
+    bool resources_initialized = false;
 
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
@@ -94,8 +100,6 @@ int main(int argc, char *argv[]) {
 
     log_set_lock(console_lock_function, &g_console_mutex);
     log_set_level(LOG_INFO);
-
-    AppResources resources;
     
     memset(&g_config, 0, sizeof(AppConfig));
     input_manager_apply_defaults(&g_config);
@@ -110,63 +114,49 @@ int main(int argc, char *argv[]) {
     pthread_attr_t sig_thread_attr;
     if (pthread_attr_init(&sig_thread_attr) != 0) {
         log_fatal("Failed to initialize signal thread attributes.");
-        pthread_mutex_destroy(&g_console_mutex);
-        return EXIT_FAILURE;
+        goto cleanup;
     }
     if (pthread_attr_setdetachstate(&sig_thread_attr, PTHREAD_CREATE_DETACHED) != 0) {
         log_fatal("Failed to set signal thread to detached state.");
         pthread_attr_destroy(&sig_thread_attr);
-        pthread_mutex_destroy(&g_console_mutex);
-        return EXIT_FAILURE;
+        goto cleanup;
     }
     if (pthread_create(&sig_thread_id, &sig_thread_attr, signal_handler_thread, &resources) != 0) {
         log_fatal("Failed to create detached signal handler thread.");
         pthread_attr_destroy(&sig_thread_attr);
-        pthread_mutex_destroy(&g_console_mutex);
-        return EXIT_FAILURE;
+        goto cleanup;
     }
     pthread_attr_destroy(&sig_thread_attr);
 #endif
 
     if (!presets_load_from_file(&g_config)) {
-        presets_free_loaded(&g_config);
-        pthread_mutex_destroy(&g_console_mutex);
-        return EXIT_FAILURE;
+        goto cleanup;
     }
 
     if (argc <= 1) {
         print_usage(argv[0]);
-        presets_free_loaded(&g_config);
-        pthread_mutex_destroy(&g_console_mutex);
-        return EXIT_SUCCESS;
+        exit_status = EXIT_SUCCESS;
+        goto cleanup;
     }
 
     if (!parse_arguments(argc, argv, &g_config)) {
-        presets_free_loaded(&g_config);
-        pthread_mutex_destroy(&g_console_mutex);
-        return EXIT_FAILURE;
+        goto cleanup;
     }
 
     resources.selected_input_ops = get_input_ops_by_name(g_config.input_type_str);
     if (!resources.selected_input_ops) {
         log_fatal("Input type '%s' is not supported or not enabled in this build.", g_config.input_type_str);
-        presets_free_loaded(&g_config);
-        pthread_mutex_destroy(&g_console_mutex);
-        return EXIT_FAILURE;
+        goto cleanup;
     }
 
     if (!validate_configuration(&g_config, &resources)) {
-        presets_free_loaded(&g_config);
-        pthread_mutex_destroy(&g_console_mutex);
-        return EXIT_FAILURE;
+        goto cleanup;
     }
 
     if (!initialize_application(&g_config, &resources)) {
-        cleanup_application(&g_config, &resources);
-        presets_free_loaded(&g_config);
-        pthread_mutex_destroy(&g_console_mutex);
-        return EXIT_FAILURE;
+        goto cleanup;
     }
+    resources_initialized = true;
 
     resources.progress_callback = application_progress_callback;
     resources.progress_callback_udata = &g_console_mutex;
@@ -178,6 +168,13 @@ int main(int argc, char *argv[]) {
     thread_args.resources = &resources;
 
     log_debug("Starting processing threads...");
+
+    if (resources.pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
+        if (pthread_create(&resources.sdr_capture_thread_handle, NULL, sdr_capture_thread_func, &thread_args) != 0) {
+            handle_fatal_thread_error("In Main: Failed to create SDR capture thread.", &resources);
+        }
+    }
+
     if (pthread_create(&resources.reader_thread_handle, NULL, reader_thread_func, &thread_args) != 0 ||
         pthread_create(&resources.pre_processor_thread_handle, NULL, pre_processor_thread_func, &thread_args) != 0 ||
         pthread_create(&resources.resampler_thread_handle, NULL, resampler_thread_func, &thread_args) != 0 ||
@@ -185,7 +182,7 @@ int main(int argc, char *argv[]) {
         pthread_create(&resources.writer_thread_handle, NULL, writer_thread_func, &thread_args) != 0 ||
         (g_config.iq_correction.enable && pthread_create(&resources.iq_optimization_thread_handle, NULL, iq_optimization_thread_func, &thread_args) != 0))
     {
-        handle_fatal_thread_error("In Main: Failed to create one or more threads.", &resources);
+        handle_fatal_thread_error("In Main: Failed to create one or more processing threads.", &resources);
     }
 
     pthread_join(resources.post_processor_thread_handle, NULL);
@@ -197,29 +194,23 @@ int main(int argc, char *argv[]) {
     }
     pthread_join(resources.reader_thread_handle, NULL);
 
-    pthread_mutex_lock(&g_console_mutex);
-
-    if ((resources.end_of_stream_reached || is_shutdown_requested()) && !g_config.output_to_stdout) {
-        #ifdef _WIN32
-        if (_isatty(_fileno(stderr))) {
-        #else
-        if (isatty(fileno(stderr))) {
-        #endif
-            fprintf(stderr, "\r                                                                               \r");
-            fflush(stderr);
-        }
+    if (resources.pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
+        pthread_join(resources.sdr_capture_thread_handle, NULL);
     }
 
     log_debug("All processing threads have joined.");
 
-    cleanup_application(&g_config, &resources);
-
     bool processing_ok = !resources.error_occurred;
-    print_final_summary(&g_config, &resources, processing_ok);
-    
-    pthread_mutex_unlock(&g_console_mutex);
+    exit_status = (processing_ok || is_shutdown_requested()) ? EXIT_SUCCESS : EXIT_FAILURE;
 
-    int exit_status = (processing_ok || is_shutdown_requested()) ? EXIT_SUCCESS : EXIT_FAILURE;
+cleanup:
+    pthread_mutex_lock(&g_console_mutex);
+    if (resources_initialized) {
+        bool final_ok = !resources.error_occurred;
+        cleanup_application(&g_config, &resources);
+        print_final_summary(&g_config, &resources, final_ok);
+    }
+    pthread_mutex_unlock(&g_console_mutex);
 
     presets_free_loaded(&g_config);
     pthread_mutex_destroy(&g_console_mutex);
@@ -256,6 +247,11 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
     format_duration(duration_secs, duration_buf, sizeof(duration_buf));
     unsigned long long total_output_samples = resources->total_output_frames * 2;
 
+    double avg_write_speed_mbps = 0.0;
+    if (duration_secs > 0.001) { // Avoid division by zero
+        avg_write_speed_mbps = (double)resources->final_output_size_bytes / (1024.0 * 1024.0) / duration_secs;
+    }
+
     fprintf(stderr, "\n--- Final Summary ---\n");
     if (!success) {
         fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Stopped Due to Error");
@@ -270,6 +266,7 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", resources->total_output_frames);
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Written:", total_output_samples);
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
+        fprintf(stderr, "%-*s %.2f MB/s\n", label_width, "Average Write Speed:", avg_write_speed_mbps);
     } else if (is_shutdown_requested()) {
         bool source_has_known_length = resources->selected_input_ops->has_known_length();
         if (!source_has_known_length) {
@@ -291,6 +288,7 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", resources->total_output_frames);
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Written:", total_output_samples);
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
+        fprintf(stderr, "%-*s %.2f MB/s\n", label_width, "Average Write Speed:", avg_write_speed_mbps);
     }
 }
 
@@ -303,28 +301,50 @@ static void console_lock_function(bool lock, void *udata) {
     }
 }
 
-static void application_progress_callback(unsigned long long current_output_frames, long long total_output_frames, unsigned long long unused_arg, void* udata) {
-    (void)unused_arg;
-    pthread_mutex_t *console_mutex = (pthread_mutex_t *)udata;
-    pthread_mutex_lock(console_mutex);
+static void application_progress_callback(unsigned long long current_output_frames, long long total_output_frames, unsigned long long current_bytes_written, void* udata) {
+    (void)udata;
 
-#ifdef _WIN32
-    if (_isatty(_fileno(stderr))) {
-        fprintf(stderr, "\r \r");
+    if (PROGRESS_UPDATE_INTERVAL_SECONDS == 0) {
+        return;
     }
-#else
-    if (isatty(fileno(stderr))) {
-        fprintf(stderr, "\r \r");
-    }
-#endif
 
-    if (total_output_frames > 0) {
-        double percentage = ((double)current_output_frames / (double)total_output_frames) * 100.0;
-        if (percentage > 100.0) percentage = 100.0;
-        fprintf(stderr, "\rWriting output frames %llu / %lld (%.1f%% Est.)...", current_output_frames, total_output_frames, percentage);
-    } else {
-        fprintf(stderr, "\rWritten %llu output frames...", current_output_frames);
+    static double last_progress_log_time = 0.0;
+    static long long last_bytes_written = 0;
+    
+    double current_time = get_monotonic_time_sec();
+
+    if (current_time - last_progress_log_time >= PROGRESS_UPDATE_INTERVAL_SECONDS) {
+        double rate_mb_per_sec = 0.0;
+        if (last_progress_log_time > 0.0) {
+            long long bytes_delta = current_bytes_written - last_bytes_written;
+            double time_delta = current_time - last_progress_log_time;
+            if (time_delta > 0) {
+                rate_mb_per_sec = (double)bytes_delta / (1024.0 * 1024.0) / time_delta;
+            }
+        }
+
+        bool is_first_update = (last_progress_log_time == 0.0);
+
+        if (total_output_frames > 0) {
+            double percentage = ((double)current_output_frames / (double)total_output_frames) * 100.0;
+            if (percentage > 100.0) percentage = 100.0;
+            if (is_first_update) {
+                log_info("Writing: %llu / %lld frames (%.1f%%)", 
+                         current_output_frames, total_output_frames, percentage);
+            } else {
+                log_info("Writing: %llu / %lld frames (%.1f%%) %.2f MB/s", 
+                         current_output_frames, total_output_frames, percentage, rate_mb_per_sec);
+            }
+        } else {
+            if (is_first_update) {
+                log_info("Written %llu frames", current_output_frames);
+            } else {
+                log_info("Written %llu frames %.2f MB/s", 
+                         current_output_frames, rate_mb_per_sec);
+            }
+        }
+
+        last_progress_log_time = current_time;
+        last_bytes_written = current_bytes_written;
     }
-    fflush(stderr);
-    pthread_mutex_unlock(console_mutex);
 }

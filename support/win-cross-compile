@@ -158,11 +158,8 @@ fi
 # --- Execute the build ---
 mkdir -p "${prefix}"
 cd "${prefix}"
-echo "--- Configuring with CMake ---"
 cmake "${cmake_opts[@]}" ..
-echo "--- Building with Make ---"
 make "${MAKE_ARGS[@]}"
-echo "Build complete."
 
 # --- Packaging Section ---
 if [ "$DO_PACKAGE" = "YES" ]; then
@@ -208,7 +205,7 @@ if [ "$DO_PACKAGE" = "YES" ]; then
         fi
     fi
 
-    # --- MODIFIED: Zipping logic for a flat archive ---
+    # Zipping logic for a flat archive ---
     echo "Creating ZIP archive: ${zip_file_name}"
     # Go INTO the staging directory to create a flat archive without a root folder.
     cd "${dist_dir}"

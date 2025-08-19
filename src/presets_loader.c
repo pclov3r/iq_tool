@@ -1,76 +1,33 @@
+// presets_loader.c
 #include "presets_loader.h"
 #include "log.h"
-#include "config.h" // Include config.h for APP_NAME, PRESETS_FILENAME, and MAX_PATH_BUFFER
-#include "utils.h"  // For trim_whitespace
+#include "config.h"
+#include "utils.h"
+#include "platform.h" // <<< ADDED
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <errno.h> // For strerror
-#include <math.h> // For isfinite
+#include <errno.h>
+#include <math.h>
 
 #ifdef _WIN32
 #include <windows.h>
-#include <shlobj.h> // For SHGetKnownFolderPath
-#include <shlwapi.h> // For PathAppendW
+#include <shlobj.h>
+#include <shlwapi.h>
 #define strcasecmp _stricmp
 #else
-#include <strings.h> // For strcasecmp
-#include <unistd.h>  // For readlink
-#include <limits.h>  // For PATH_MAX (used by wordexp, but MAX_PATH_BUFFER is preferred for buffers)
-#include <sys/stat.h> // For stat
-#include <wordexp.h> // For wordexp (to expand ~)
-#include <libgen.h> // For dirname
+#include <strings.h>
+#include <unistd.h>
+#include <limits.h>
+#include <sys/stat.h>
+#include <wordexp.h>
+#include <libgen.h>
 #endif
 
 // --- Helper function declarations ---
-static bool check_file_exists(const char* full_path);
 static void free_dynamic_paths(char** paths, int count);
 
-#ifdef _WIN32
-/**
- * @brief Helper function to get the executable's directory (Windows specific).
- * @param buffer Buffer to store the path.
- * @param buffer_size Size of the buffer.
- * @return true on success, false on failure.
- */
-static bool get_executable_dir(char* buffer, size_t buffer_size) {
-    wchar_t w_path[MAX_PATH_BUFFER]; // Use MAX_PATH_BUFFER for consistency
-    DWORD len = GetModuleFileNameW(NULL, w_path, MAX_PATH_BUFFER);
-    if (len == 0 || len == MAX_PATH_BUFFER) {
-        log_error("GetModuleFileNameW failed or buffer too small.");
-        return false;
-    }
-    // Remove filename to get directory
-    wchar_t* last_slash = wcsrchr(w_path, L'\\');
-    if (last_slash) {
-        *last_slash = L'\0';
-    } else {
-        // No slash, probably just the executable name, so current dir
-        wcsncpy(w_path, L".", MAX_PATH_BUFFER);
-        w_path[MAX_PATH_BUFFER - 1] = L'\0';
-    }
-    if (WideCharToMultiByte(CP_UTF8, 0, w_path, -1, buffer, buffer_size, NULL, NULL) == 0) {
-        log_error("Failed to convert wide char path to UTF-8 for executable directory.");
-        return false;
-    }
-    return true;
-}
-#endif // _WIN32
-
-/**
- * @brief Helper function to check if a file exists at the given path.
- * @param full_path The full path to the file.
- * @return true if the file exists and is readable, false otherwise.
- */
-static bool check_file_exists(const char* full_path) {
-    FILE* fp = fopen(full_path, "r");
-    if (fp) {
-        fclose(fp);
-        return true;
-    }
-    return false;
-}
 
 /**
  * @brief Helper function to free dynamically allocated path strings.
@@ -84,8 +41,6 @@ static void free_dynamic_paths(char** paths, int count) {
 
 /**
  * @brief Loads preset definitions from a text file, searching common locations.
- * @param config A pointer to the AppConfig struct where the loaded presets will be stored.
- * @return true on success (even if no file is found or a conflict is warned), false on a fatal error.
  */
 bool presets_load_from_file(AppConfig* config) {
     // Initialize config fields
@@ -93,23 +48,19 @@ bool presets_load_from_file(AppConfig* config) {
     config->num_presets = 0;
 
     char full_path_buffer[MAX_PATH_BUFFER];
-    // To store dynamically allocated paths (e.g., from SHGetKnownFolderPath, getenv, wordexp)
-    char* dynamic_paths[5] = {NULL}; // Max 5 dynamic paths (e.g., 3 for Windows, 3 for POSIX)
+    char* dynamic_paths[5] = {NULL};
     int dynamic_paths_count = 0;
 
-    // List to store paths where the presets file was found
-    char* found_preset_files[5]; // Max 5 found files (e.g., 1 per search path type)
+    char* found_preset_files[5];
     int num_found_files = 0;
 
-    // Define potential search paths.
-    // Note: search_paths_list will contain pointers to either string literals or dynamic_paths.
-    const char* search_paths_list[10]; // Max 10 potential paths
+    const char* search_paths_list[10];
     int current_path_idx = 0;
 
 #ifdef _WIN32
     // 1. Executable directory
     char exe_dir[MAX_PATH_BUFFER];
-    if (get_executable_dir(exe_dir, sizeof(exe_dir))) {
+    if (platform_get_executable_dir(exe_dir, sizeof(exe_dir))) { // <<< CHANGED
         search_paths_list[current_path_idx++] = exe_dir;
     }
 
@@ -119,7 +70,7 @@ bool presets_load_from_file(AppConfig* config) {
         wchar_t full_appdata_path_w[MAX_PATH_BUFFER];
         wcsncpy(full_appdata_path_w, appdata_path_w, MAX_PATH_BUFFER - 1);
         full_appdata_path_w[MAX_PATH_BUFFER - 1] = L'\0';
-        CoTaskMemFree(appdata_path_w); // Free the path returned by the function
+        CoTaskMemFree(appdata_path_w);
 
         PathAppendW(full_appdata_path_w, L"\\" APP_NAME);
         char* appdata_path_utf8 = (char*)malloc(MAX_PATH_BUFFER);
@@ -163,10 +114,8 @@ bool presets_load_from_file(AppConfig* config) {
         }
     }
 #else // POSIX
-    // 1. Current working directory
+    // ... (POSIX paths remain the same) ...
     search_paths_list[current_path_idx++] = ".";
-
-    // 2. XDG Base Directory Specification (user-specific)
     const char* xdg_config_home = getenv("XDG_CONFIG_HOME");
     char* xdg_path = (char*)malloc(MAX_PATH_BUFFER);
     if (!xdg_path) {
@@ -177,12 +126,10 @@ bool presets_load_from_file(AppConfig* config) {
     if (xdg_config_home && xdg_config_home[0] != '\0') {
         snprintf(xdg_path, MAX_PATH_BUFFER, "%s/%s", xdg_config_home, APP_NAME);
     } else {
-        // Fallback to ~/.config/APP_NAME if XDG_CONFIG_HOME not set or is empty
         const char* home_dir = getenv("HOME");
         if (home_dir) {
             snprintf(xdg_path, MAX_PATH_BUFFER, "%s/.config/%s", home_dir, APP_NAME);
         } else {
-            // No HOME, can't form path, so free and skip
             free(xdg_path);
             xdg_path = NULL;
         }
@@ -191,8 +138,6 @@ bool presets_load_from_file(AppConfig* config) {
         dynamic_paths[dynamic_paths_count++] = xdg_path;
         search_paths_list[current_path_idx++] = xdg_path;
     }
-
-    // 3. System-wide config locations
     search_paths_list[current_path_idx++] = "/etc/" APP_NAME;
     search_paths_list[current_path_idx++] = "/usr/local/etc/" APP_NAME;
 #endif
@@ -202,10 +147,9 @@ bool presets_load_from_file(AppConfig* config) {
         const char* base_dir = search_paths_list[i];
         if (base_dir == NULL) continue;
 
-        // Construct full path
         snprintf(full_path_buffer, sizeof(full_path_buffer), "%s/%s", base_dir, PRESETS_FILENAME);
 
-        if (check_file_exists(full_path_buffer)) {
+        if (utils_check_file_exists(full_path_buffer)) { // <<< CHANGED
             if (num_found_files < (int)(sizeof(found_preset_files) / sizeof(found_preset_files[0]))) {
                 found_preset_files[num_found_files] = strdup(full_path_buffer);
                 if (!found_preset_files[num_found_files]) {
@@ -219,7 +163,7 @@ bool presets_load_from_file(AppConfig* config) {
         }
     }
 
-    // --- Handle conflict resolution or absence ---
+    // ... (The rest of the function remains unchanged) ...
     if (num_found_files > 1) {
         log_warn("Conflicting presets files found. No presets will be loaded. Please resolve the conflict by keeping only one of the following files:");
         for (int i = 0; i < num_found_files; ++i) {
@@ -234,7 +178,6 @@ bool presets_load_from_file(AppConfig* config) {
         return true;
     }
 
-    // --- Load the single found presets file ---
     FILE* fp = fopen(found_preset_files[0], "r");
     if (!fp) {
         log_fatal("Error opening presets file '%s': %s", found_preset_files[0], strerror(errno));
@@ -352,7 +295,6 @@ bool presets_load_from_file(AppConfig* config) {
                 else {
                     log_warn("Invalid value for 'output_type' in preset '%s' at line %d: '%s'", current_preset->name, line_num, value);
                 }
-            // --- MODIFIED/ADDED SECTION ---
             } else if (strcasecmp(key, "gain") == 0) {
                 char* endptr;
                 float parsed_gain = strtof(value, &endptr);
@@ -382,7 +324,6 @@ bool presets_load_from_file(AppConfig* config) {
                 } else {
                     log_warn("Invalid value for 'iq_correction' in preset '%s' at line %d: '%s'. Use 'true' or 'false'.", current_preset->name, line_num, value);
                 }
-            // --- END MODIFIED/ADDED SECTION ---
             } else {
                 log_warn("Unknown key '%s' in preset '%s' at line %d.", key, current_preset->name, line_num);
             }

@@ -58,7 +58,16 @@ typedef struct InputSourceOps {
      * @param config A pointer to the application configuration, which can be modified.
      * @return true if the options are valid, false otherwise.
      */
-    bool (*validate_options)(AppConfig* config); // <<< MODIFIED: config is now non-const
+    bool (*validate_options)(AppConfig* config);
+
+    /**
+     * @brief Validates the generic options (e.g., --sdr-rf-freq) in the context of this module.
+     *        SDR modules will use this to require certain options, while file-based modules
+     *        will use it to forbid them.
+     * @param config A read-only pointer to the application configuration.
+     * @return true if the generic options are valid for this module, false otherwise.
+     */
+    bool (*validate_generic_options)(const AppConfig* config);
 
     /**
      * @brief Reports whether the input source has a known, finite length (like a file).

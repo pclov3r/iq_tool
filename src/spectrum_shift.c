@@ -1,3 +1,4 @@
+// spectrum_shift.c
 #include "spectrum_shift.h"
 #include "config.h"
 #include "utils.h"
@@ -87,40 +88,6 @@ void shift_apply(nco_crcf nco, double shift_hz, complex_float_t* input_buffer, c
     } else {
         nco_crcf_mix_block_down(nco, input_buffer, output_buffer, num_frames);
     }
-}
-
-/**
- * @brief Checks if the configured frequency shift exceeds the Nyquist frequency and warns the user.
- */
-bool shift_check_nyquist_warning(const AppConfig *config, const AppResources *resources) {
-    if (!config || !resources || config->output_to_stdout || fabs(resources->actual_nco_shift_hz) < 1e-9) {
-        return true;
-    }
-
-    double rate_for_nyquist_check = config->shift_after_resample ? config->target_rate : (double)resources->source_info.samplerate;
-    double nyquist_freq = rate_for_nyquist_check / 2.0;
-
-    if (fabs(resources->actual_nco_shift_hz) > nyquist_freq) {
-        log_warn("Required frequency shift %.2f Hz exceeds the Nyquist frequency %.2f Hz for the stage where it is applied.", resources->actual_nco_shift_hz, nyquist_freq);
-        log_warn("This may cause aliasing and corrupt the signal.");
-
-        int response;
-        do {
-            fprintf(stderr, "Continue anyway? (y/n): ");
-            response = getchar();
-            if (response == EOF) {
-                fprintf(stderr, "\nEOF detected. Cancelling.\n");
-                return false;
-            }
-            clear_stdin_buffer();
-            response = tolower(response);
-            if (response == 'n') {
-                log_debug("Operation cancelled by user.");
-                return false;
-            }
-        } while (response != 'y');
-    }
-    return true;
 }
 
 /**

@@ -1,11 +1,16 @@
+// utils.h
 #ifndef UTILS_H_
 #define UTILS_H_
 
 #include <stdint.h>
 #include <stddef.h>
-#include "types.h" // For AppConfig and SdrSoftwareType
+#include "types.h" // For AppConfig, SdrSoftwareType, AppResources, etc.
 
-// MODIFIED: The declarations for float_to_uchar and float_to_schar are REMOVED from this file.
+/**
+ * @brief Gets a high-resolution monotonic time in seconds.
+ * @return The time in seconds as a double.
+ */
+double get_monotonic_time_sec(void);
 
 /**
  * @brief Clears the standard input buffer up to the next newline or EOF.
@@ -51,5 +56,17 @@ format_t utils_get_format_from_string(const char *name);
  * @brief Converts a format_t enum value to its full, human-readable description.
  */
 const char* utils_get_format_description_string(format_t format);
+
+/**
+ * @brief Checks if a given frequency exceeds the Nyquist frequency for a sample rate and warns the user.
+ */
+bool utils_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz, const char* context_str);
+
+/**
+ * @brief Checks if a file exists at the given path and is accessible for reading.
+ * @param full_path The full path to the file.
+ * @return true if the file exists and can be opened for reading, false otherwise.
+ */
+bool utils_check_file_exists(const char* full_path);
 
 #endif // UTILS_H_

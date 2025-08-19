@@ -1,0 +1,131 @@
+# =============================================================================
+# Doxyfile Configuration Template for iq_resample_tool
+#
+# This file is a template used by CMake. The '@VAR@' variables will be
+# replaced by CMake during the configuration step to create the final
+# Doxyfile in the build directory.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Project Information
+# -----------------------------------------------------------------------------
+
+# The name of the project that will appear in the documentation header.
+# CMake will set this from the project() command.
+PROJECT_NAME           = "@PROJECT_NAME@"
+
+# A brief description of the project.
+PROJECT_BRIEF          = "A command-line I/Q resampling and processing tool"
+
+# You can add a project version number here.
+# For advanced usage, you could set this from a variable in CMake.
+PROJECT_NUMBER         = 1.0
+
+# The main language for the output.
+OUTPUT_LANGUAGE        = English
+
+# -----------------------------------------------------------------------------
+# Build & Output Control
+# -----------------------------------------------------------------------------
+
+# The directory where the documentation will be generated.
+# CMake will set this to a 'docs' subdirectory in your build folder.
+OUTPUT_DIRECTORY       = "@CMAKE_CURRENT_BINARY_DIR@/docs"
+
+# The directory where your source code is located.
+# CMake will set this to the root of your project.
+INPUT                  = "@CMAKE_SOURCE_DIR@/src" \
+                         "@CMAKE_SOURCE_DIR@/include"
+
+# Doxygen should scan subdirectories for source files.
+RECURSIVE              = YES
+
+# Use relative paths in the output. This keeps the generated docs portable.
+FULL_PATH_NAMES        = NO
+
+# Strip this path prefix from file names in the documentation for cleaner output.
+# CMake will set this to the project's root directory.
+STRIP_FROM_PATH        = "@CMAKE_SOURCE_DIR@"
+
+# Suppress most of Doxygen's console output for a cleaner build log.
+QUIET                  = YES
+
+# Redirect any warnings to a log file instead of printing them to the console.
+WARN_LOGFILE           = doxygen_warnings.log
+
+# -----------------------------------------------------------------------------
+# Source Code Parsing Options
+# -----------------------------------------------------------------------------
+
+# This is a key setting. It tells Doxygen to document every entity
+# (function, struct, etc.) even if it doesn't have a Doxygen comment block.
+# This ensures the API reference is complete.
+EXTRACT_ALL            = YES
+
+# Include private members of classes (not very relevant for C, but good practice).
+EXTRACT_PRIVATE        = YES
+
+# Include static functions and variables.
+EXTRACT_STATIC         = YES
+
+# Tell Doxygen's preprocessor to handle all #if, #ifdef, etc. blocks.
+# This is crucial for correctly parsing code with conditional compilation.
+ENABLE_PREPROCESSING   = YES
+
+# Allow macros to be expanded.
+MACRO_EXPANSION        = YES
+
+# Predefine macros that are set by your build system. This helps Doxygen
+# parse conditional code blocks (like #if defined(WITH_RTLSDR)) correctly.
+# Add any other important macros your build system defines.
+PREDEFINED             = "WITH_RTLSDR" \
+                         "WITH_SDRPLAY" \
+                         "WITH_HACKRF" \
+                         "WITH_BLADERF" \
+                         "ANY_SDR_SUPPORT_ENABLED" \
+                         "_WIN32"
+
+# -----------------------------------------------------------------------------
+# HTML Output Customization
+# -----------------------------------------------------------------------------
+
+# Enable HTML generation.
+GENERATE_HTML          = YES
+
+# The subdirectory within OUTPUT_DIRECTORY for the HTML files.
+HTML_OUTPUT            = html
+
+# Add a collapsible navigation tree panel to the side of the HTML pages.
+# This makes browsing the documentation much easier.
+GENERATE_TREEVIEW      = YES
+
+# Make certain sections of the HTML pages (like code blocks) collapsible.
+HTML_DYNAMIC_SECTIONS  = YES
+
+# This is a fantastic feature. It includes the actual source code of functions
+# in the documentation, with syntax highlighting and links to other documented code.
+SOURCE_BROWSER         = YES
+
+# Enable the search box in the top right corner. Essential for large projects.
+SEARCHENGINE           = YES
+
+# -----------------------------------------------------------------------------
+# Graphviz / Dot Diagram Generation
+# -----------------------------------------------------------------------------
+
+# Set to YES if you have the 'dot' tool from Graphviz installed.
+# This enables Doxygen to generate powerful diagrams.
+HAVE_DOT               = YES
+
+# Generate a graph for each function showing which other functions it calls.
+CALL_GRAPH             = YES
+
+# Generate a graph for each function showing which functions call it.
+CALLER_GRAPH           = YES
+
+# Use a more modern, UML-style look for the generated graphs.
+UML_LOOK               = YES
+
+# Set a reasonable limit on the number of nodes in a graph to prevent
+# gigantic, unreadable diagrams for very complex functions.
+DOT_GRAPH_MAX_NODES    = 100

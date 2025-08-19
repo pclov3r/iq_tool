@@ -1,3 +1,5 @@
+// src/input_sdrplay.c
+
 #include "input_sdrplay.h"
 #include "log.h"
 #include "signal_handler.h"
@@ -16,10 +18,14 @@
 #include <stdarg.h>
 #include "argparse.h"
 
+// Module-specific includes
+#include "sdrplay_api.h"
+
 #if defined(_WIN32)
 #include "platform.h"
 #include <windows.h>
 #include <io.h>
+#include <shlwapi.h> // For PathAppendW
 #define strcasecmp _stricmp
 #else
 #include <unistd.h>
@@ -29,7 +35,66 @@
 
 
 #if defined(_WIN32) && defined(WITH_SDRPLAY)
-SdrplayApiFunctionPointers sdrplay_api;
+// --- Private Windows Dynamic API Loading ---
+typedef struct {
+    HINSTANCE dll_handle;
+    sdrplay_api_ErrT (*Open)(void);
+    sdrplay_api_ErrT (*Close)(void);
+    sdrplay_api_ErrT (*GetDevices)(sdrplay_api_DeviceT*, unsigned int*, unsigned int);
+    sdrplay_api_ErrT (*SelectDevice)(sdrplay_api_DeviceT*);
+    sdrplay_api_ErrT (*ReleaseDevice)(sdrplay_api_DeviceT*);
+    sdrplay_api_ErrT (*GetDeviceParams)(HANDLE, sdrplay_api_DeviceParamsT**);
+    const char*      (*GetErrorString)(sdrplay_api_ErrT);
+    sdrplay_api_ErrorInfoT* (*GetLastError)(sdrplay_api_DeviceT*);
+    sdrplay_api_ErrT (*Update)(HANDLE, sdrplay_api_TunerSelectT, sdrplay_api_ReasonForUpdateT, sdrplay_api_ReasonForUpdateExtension1T);
+    sdrplay_api_ErrT (*Init)(HANDLE, sdrplay_api_CallbackFnsT*, void*);
+    sdrplay_api_ErrT (*Uninit)(HANDLE);
+} SdrplayApiFunctionPointers;
+
+static SdrplayApiFunctionPointers sdrplay_api;
+
+static wchar_t* get_sdrplay_dll_path(void) {
+    HKEY hKey;
+    LONG reg_status;
+    wchar_t api_path_buf[MAX_PATH] = {0};
+    DWORD buffer_size = sizeof(api_path_buf);
+    bool path_found = false;
+
+    reg_status = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\SDRplay\\Service\\API", 0, KEY_READ | KEY_WOW64_64KEY, &hKey);
+    if (reg_status == ERROR_SUCCESS) {
+        if (RegQueryValueExW(hKey, L"Install_Dir", NULL, NULL, (LPBYTE)api_path_buf, &buffer_size) == ERROR_SUCCESS) {
+            path_found = true;
+        }
+        RegCloseKey(hKey);
+    }
+
+    if (!path_found) {
+        reg_status = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\WOW6432Node\\SDRplay\\Service\\API", 0, KEY_READ, &hKey);
+        if (reg_status == ERROR_SUCCESS) {
+            buffer_size = sizeof(api_path_buf);
+            if (RegQueryValueExW(hKey, L"Install_Dir", NULL, NULL, (LPBYTE)api_path_buf, &buffer_size) == ERROR_SUCCESS) {
+                path_found = true;
+            }
+            RegCloseKey(hKey);
+        }
+    }
+
+    if (!path_found) {
+        log_error("Could not find SDRplay API installation path in the registry.");
+        log_error("Please ensure the SDRplay API service is installed correctly.");
+        return NULL;
+    }
+
+#ifdef _WIN64
+    PathAppendW(api_path_buf, L"x64");
+#else
+    PathAppendW(api_path_buf, L"x86");
+#endif
+    PathAppendW(api_path_buf, L"sdrplay_api.dll");
+
+    return _wcsdup(api_path_buf);
+}
+
 
 #define LOAD_SDRPLAY_FUNC(func_name) \
     do { \
@@ -43,21 +108,21 @@ SdrplayApiFunctionPointers sdrplay_api;
         memcpy(&sdrplay_api.func_name, &proc, sizeof(sdrplay_api.func_name)); \
     } while (0)
 
-bool sdrplay_load_api(void) {
+static bool sdrplay_load_api(void) {
     if (sdrplay_api.dll_handle) { return true; }
-    wchar_t* dll_path = platform_get_sdrplay_dll_path();
+    wchar_t* dll_path = get_sdrplay_dll_path();
     if (!dll_path) {
         log_fatal("Could not determine SDRplay API DLL path.");
         return false;
     }
-    log_info("Attempting to load SDRplay API from: %ls", dll_path);
+    log_debug("Attempting to load SDRplay API from: %ls", dll_path);
     sdrplay_api.dll_handle = LoadLibraryW(dll_path);
     free(dll_path);
     if (!sdrplay_api.dll_handle) {
         print_win_error("LoadLibraryW for sdrplay_api.dll", GetLastError());
         return false;
     }
-    log_info("SDRplay API DLL loaded successfully. Loading function pointers...");
+    log_debug("SDRplay API DLL loaded successfully. Loading function pointers...");
     LOAD_SDRPLAY_FUNC(Open);
     LOAD_SDRPLAY_FUNC(Close);
     LOAD_SDRPLAY_FUNC(GetDevices);
@@ -69,17 +134,30 @@ bool sdrplay_load_api(void) {
     LOAD_SDRPLAY_FUNC(Update);
     LOAD_SDRPLAY_FUNC(Init);
     LOAD_SDRPLAY_FUNC(Uninit);
-    log_info("All SDRplay API function pointers loaded.");
+    log_debug("All SDRplay API function pointers loaded.");
     return true;
 }
 
-void sdrplay_unload_api(void) {
+static void sdrplay_unload_api(void) {
     if (sdrplay_api.dll_handle) {
         FreeLibrary(sdrplay_api.dll_handle);
         sdrplay_api.dll_handle = NULL;
-        log_info("SDRplay API DLL unloaded.");
+        log_debug("SDRplay API DLL unloaded.");
     }
 }
+
+#define sdrplay_api_Open          sdrplay_api.Open
+#define sdrplay_api_Close         sdrplay_api.Close
+#define sdrplay_api_GetDevices    sdrplay_api.GetDevices
+#define sdrplay_api_SelectDevice  sdrplay_api.SelectDevice
+#define sdrplay_api_ReleaseDevice sdrplay_api.ReleaseDevice
+#define sdrplay_api_GetDeviceParams sdrplay_api.GetDeviceParams
+#define sdrplay_api_GetErrorString sdrplay_api.GetErrorString
+#define sdrplay_api_GetLastError  sdrplay_api.GetLastError
+#define sdrplay_api_Update        sdrplay_api.Update
+#define sdrplay_api_Init          sdrplay_api.Init
+#define sdrplay_api_Uninit        sdrplay_api.Uninit
+
 #endif
 
 extern pthread_mutex_t g_console_mutex;
@@ -87,21 +165,46 @@ extern pthread_mutex_t g_console_mutex;
 
 extern AppConfig g_config;
 
+// --- Private Module Configuration ---
+static struct {
+    int device_index;
+    int gain_level;
+    bool gain_level_provided;
+    int if_gain_db;
+    bool if_gain_db_provided;
+    int sdrplay_if_gain_db_arg;
+    sdrplay_api_RspDx_HdrModeBwT hdr_bw_mode;
+    bool hdr_bw_mode_provided;
+    float sdrplay_hdr_bw_hz_arg;
+    bool use_hdr_mode;
+    char *antenna_port_name;
+    double bandwidth_hz;
+    float sdrplay_bandwidth_hz_arg;
+    bool bandwidth_provided;
+} s_sdrplay_config;
+
+// --- Private Module State ---
+typedef struct {
+    sdrplay_api_DeviceT *sdr_device;
+    sdrplay_api_DeviceParamsT *sdr_device_params;
+    bool sdr_api_is_open;
+} SdrplayPrivateData;
+
+
 void sdrplay_set_default_config(AppConfig* config) {
-    config->sdrplay.sample_rate_hz = SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
-    config->sdrplay.bandwidth_hz = SDRPLAY_DEFAULT_BANDWIDTH_HZ;
+    config->sdr.sample_rate_hz = SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
+    s_sdrplay_config.bandwidth_hz = SDRPLAY_DEFAULT_BANDWIDTH_HZ;
 }
 
 static const struct argparse_option sdrplay_cli_options[] = {
     OPT_GROUP("SDRplay-Specific Options"),
-    OPT_FLOAT(0, "sdrplay-sample-rate", &g_config.sdrplay.sdrplay_sample_rate_hz_arg, "Set sample rate in Hz. (Optional, Default: 2e6)", NULL, 0, 0),
-    OPT_FLOAT(0, "sdrplay-bandwidth", &g_config.sdrplay.sdrplay_bandwidth_hz_arg, "Set analog bandwidth in Hz. (Optional, Default: 1.536e6)", NULL, 0, 0),
-    OPT_INTEGER(0, "sdrplay-device-idx", &g_config.sdrplay.device_index, "Select specific SDRplay device by index (0-indexed). (Default: 0)", NULL, 0, 0),
-    OPT_INTEGER(0, "sdrplay-gain-level", &g_config.sdrplay.gain_level, "Set LNA state (coarse gain, 0=max gain). Disables AGC.", NULL, 0, 0),
-    OPT_INTEGER(0, "sdrplay-if-gain", &g_config.sdrplay.sdrplay_if_gain_db_arg, "Set IF gain in dB (fine gain, e.g., -20, -35, -59). Disables AGC.", NULL, 0, 0),
-    OPT_STRING(0, "sdrplay-antenna", &g_config.sdrplay.antenna_port_name, "Select antenna port (device-specific).", NULL, 0, 0),
-    OPT_BOOLEAN(0, "sdrplay-hdr-mode", &g_config.sdrplay.use_hdr_mode, "(Optional) Enable HDR mode on RSPdx/RSPdxR2.", NULL, 0, 0),
-    OPT_FLOAT(0, "sdrplay-hdr-bw", &g_config.sdrplay.sdrplay_hdr_bw_hz_arg, "Set bandwidth for HDR mode. Requires --sdrplay-hdr-mode.", NULL, 0, 0),
+    OPT_FLOAT(0, "sdrplay-bandwidth", &s_sdrplay_config.sdrplay_bandwidth_hz_arg, "Set analog bandwidth in Hz. (Optional, Default: 1.536e6)", NULL, 0, 0),
+    OPT_INTEGER(0, "sdrplay-device-idx", &s_sdrplay_config.device_index, "Select specific SDRplay device by index (0-indexed). (Default: 0)", NULL, 0, 0),
+    OPT_INTEGER(0, "sdrplay-gain-level", &s_sdrplay_config.gain_level, "Set LNA state (coarse gain, 0=max gain). Disables AGC.", NULL, 0, 0),
+    OPT_INTEGER(0, "sdrplay-if-gain", &s_sdrplay_config.sdrplay_if_gain_db_arg, "Set IF gain in dB (fine gain, e.g., -20, -35, -59). Disables AGC.", NULL, 0, 0),
+    OPT_STRING(0, "sdrplay-antenna", &s_sdrplay_config.antenna_port_name, "Select antenna port (device-specific).", NULL, 0, 0),
+    OPT_BOOLEAN(0, "sdrplay-hdr-mode", &s_sdrplay_config.use_hdr_mode, "(Optional) Enable HDR mode on RSPdx/RSPdxR2.", NULL, 0, 0),
+    OPT_FLOAT(0, "sdrplay-hdr-bw", &s_sdrplay_config.sdrplay_hdr_bw_hz_arg, "Set bandwidth for HDR mode. Requires --sdrplay-hdr-mode.", NULL, 0, 0),
 };
 
 const struct argparse_option* sdrplay_get_cli_options(int* count) {
@@ -115,7 +218,12 @@ static void sdrplay_stop_stream(InputSourceContext* ctx);
 static void sdrplay_cleanup(InputSourceContext* ctx);
 static void sdrplay_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
 static bool sdrplay_validate_options(AppConfig* config);
+static bool sdrplay_validate_generic_options(const AppConfig* config);
 static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz);
+static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext);
+static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext);
+static void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext);
+
 
 static InputSourceOps sdrplay_ops = {
     .initialize = sdrplay_initialize,
@@ -124,6 +232,7 @@ static InputSourceOps sdrplay_ops = {
     .cleanup = sdrplay_cleanup,
     .get_summary_info = sdrplay_get_summary_info,
     .validate_options = sdrplay_validate_options,
+    .validate_generic_options = sdrplay_validate_generic_options,
     .has_known_length = _input_source_has_known_length_false
 };
 
@@ -131,60 +240,62 @@ InputSourceOps* get_sdrplay_input_ops(void) {
     return &sdrplay_ops;
 }
 
+static bool sdrplay_validate_generic_options(const AppConfig* config) {
+    if (!config->sdr.rf_freq_provided) {
+        log_fatal("SDRplay input requires the --sdr-rf-freq option.");
+        return false;
+    }
+    return true;
+}
+
 static bool sdrplay_validate_options(AppConfig* config) {
-    if (config->sdrplay.gain_level != 0) config->sdrplay.gain_level_provided = true;
+    if (s_sdrplay_config.gain_level != 0) s_sdrplay_config.gain_level_provided = true;
     
-    if (config->sdrplay.sdrplay_if_gain_db_arg != 0) {
-        if (config->sdrplay.sdrplay_if_gain_db_arg > 0 || config->sdrplay.sdrplay_if_gain_db_arg < -59) {
+    if (s_sdrplay_config.sdrplay_if_gain_db_arg != 0) {
+        if (s_sdrplay_config.sdrplay_if_gain_db_arg > 0 || s_sdrplay_config.sdrplay_if_gain_db_arg < -59) {
             log_fatal("Invalid value for --sdrplay-if-gain. Must be between -59 and 0.");
             return false;
         }
-        config->sdrplay.if_gain_db = config->sdrplay.sdrplay_if_gain_db_arg;
-        config->sdrplay.if_gain_db_provided = true;
+        s_sdrplay_config.if_gain_db = s_sdrplay_config.sdrplay_if_gain_db_arg;
+        s_sdrplay_config.if_gain_db_provided = true;
     }
 
-    if (config->sdrplay.sdrplay_sample_rate_hz_arg != 0.0f) {
-        config->sdrplay.sample_rate_hz = (double)config->sdrplay.sdrplay_sample_rate_hz_arg;
-        config->sdrplay.sample_rate_provided = true;
+    if (s_sdrplay_config.sdrplay_bandwidth_hz_arg != 0.0f) {
+        s_sdrplay_config.bandwidth_hz = (double)s_sdrplay_config.sdrplay_bandwidth_hz_arg;
+        s_sdrplay_config.bandwidth_provided = true;
     }
 
-    if (config->sdrplay.sdrplay_bandwidth_hz_arg != 0.0f) {
-        config->sdrplay.bandwidth_hz = (double)config->sdrplay.sdrplay_bandwidth_hz_arg;
-        config->sdrplay.bandwidth_provided = true;
-    }
-
-    if (config->sdrplay.sdrplay_hdr_bw_hz_arg != 0.0) {
-        double bw_hz = config->sdrplay.sdrplay_hdr_bw_hz_arg;
-        if      (fabs(bw_hz - 200000.0) < 1.0) config->sdrplay.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_0_200;
-        else if (fabs(bw_hz - 500000.0) < 1.0) config->sdrplay.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_0_500;
-        else if (fabs(bw_hz - 1200000.0) < 1.0) config->sdrplay.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_1_200;
-        else if (fabs(bw_hz - 1700000.0) < 1.0) config->sdrplay.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_1_700;
+    if (s_sdrplay_config.sdrplay_hdr_bw_hz_arg != 0.0) {
+        double bw_hz = s_sdrplay_config.sdrplay_hdr_bw_hz_arg;
+        if      (fabs(bw_hz - 200000.0) < 1.0) s_sdrplay_config.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_0_200;
+        else if (fabs(bw_hz - 500000.0) < 1.0) s_sdrplay_config.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_0_500;
+        else if (fabs(bw_hz - 1200000.0) < 1.0) s_sdrplay_config.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_1_200;
+        else if (fabs(bw_hz - 1700000.0) < 1.0) s_sdrplay_config.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_1_700;
         else {
             log_fatal("Invalid HDR bandwidth '%.0f'. Valid values are 200e3, 500e3, 1.2e6, 1.7e6.", bw_hz);
             return false;
         }
-        config->sdrplay.hdr_bw_mode_provided = true;
+        s_sdrplay_config.hdr_bw_mode_provided = true;
     }
 
-    if (config->sdrplay.hdr_bw_mode_provided && !config->sdrplay.use_hdr_mode) {
+    if (s_sdrplay_config.hdr_bw_mode_provided && !s_sdrplay_config.use_hdr_mode) {
         log_fatal("Option --sdrplay-hdr-bw requires --sdrplay-hdr-mode to be specified.");
         return false;
     }
 
-    double sample_rate = config->sdrplay.sample_rate_hz;
-    double bandwidth = config->sdrplay.bandwidth_hz;
-
-    if (sample_rate < 2e6 || sample_rate > 10e6) {
-        log_fatal("Invalid SDRplay sample rate %.0f Hz. Must be between 2,000,000 and 10,000,000.", sample_rate);
-        return false;
+    if (config->sdr.sample_rate_provided) {
+        if (config->sdr.sample_rate_hz < 2e6 || config->sdr.sample_rate_hz > 10e6) {
+            log_fatal("Invalid SDRplay sample rate %.0f Hz. Must be between 2,000,000 and 10,000,000.", config->sdr.sample_rate_hz);
+            return false;
+        }
     }
     
-    if (map_bw_hz_to_enum(bandwidth) == sdrplay_api_BW_Undefined) {
-        log_fatal("Invalid SDRplay bandwidth %.0f Hz. See --help for valid values.", bandwidth);
+    if (map_bw_hz_to_enum(s_sdrplay_config.bandwidth_hz) == sdrplay_api_BW_Undefined) {
+        log_fatal("Invalid SDRplay bandwidth %.0f Hz. See --help for valid values.", s_sdrplay_config.bandwidth_hz);
         return false;
     }
-    if (bandwidth > sample_rate) {
-        log_fatal("Bandwidth (%.0f Hz) cannot be greater than the sample rate (%.0f Hz).", bandwidth, sample_rate);
+    if (s_sdrplay_config.bandwidth_hz > config->sdr.sample_rate_hz) {
+        log_fatal("Bandwidth (%.0f Hz) cannot be greater than the sample rate (%.0f Hz).", s_sdrplay_config.bandwidth_hz, config->sdr.sample_rate_hz);
         return false;
     }
 
@@ -253,25 +364,16 @@ static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz) {
     return sdrplay_api_BW_Undefined;
 }
 
-void sdrplay_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext) {
+// Stream callback for PIPELINE_MODE_REALTIME_SDR
+static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext) {
     (void)params;
     AppResources *resources = (AppResources*)cbContext;
     const AppConfig *config = resources->config;
 
-    if (is_shutdown_requested() || resources->error_occurred) {
-        return;
-    }
+    if (is_shutdown_requested() || resources->error_occurred) return;
 
     if (reset) {
-        pthread_mutex_lock(&g_console_mutex);
-#ifdef _WIN32
-        if (_isatty(_fileno(stderr))) fprintf(stderr, LINE_CLEAR_SEQUENCE);
-#else
-        if (isatty(fileno(stderr))) fprintf(stderr, LINE_CLEAR_SEQUENCE);
-#endif
         log_info("SDRplay stream reset detected. Sending reset command to pipeline.");
-        pthread_mutex_unlock(&g_console_mutex);
-
         SampleChunk* reset_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
         if (reset_item) {
             reset_item->stream_discontinuity_event = true;
@@ -283,70 +385,83 @@ void sdrplay_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *
         }
     }
 
-    if (numSamples == 0) {
-        return;
-    }
+    if (numSamples == 0) return;
 
     if (config->raw_passthrough) {
         int16_t temp_buffer[8192];
         unsigned int samples_processed = 0;
-        
         while (samples_processed < numSamples) {
             unsigned int samples_this_chunk = numSamples - samples_processed;
             if (samples_this_chunk > (sizeof(temp_buffer) / sizeof(int16_t) / 2)) {
                 samples_this_chunk = sizeof(temp_buffer) / sizeof(int16_t) / 2;
             }
-
             for (unsigned int i = 0; i < samples_this_chunk; i++) {
                 temp_buffer[i * 2]     = xi[samples_processed + i];
                 temp_buffer[i * 2 + 1] = xq[samples_processed + i];
             }
-
             size_t bytes_to_write = samples_this_chunk * resources->input_bytes_per_sample_pair;
-            size_t bytes_written = file_write_buffer_write(resources->file_write_buffer, temp_buffer, bytes_to_write);
-            if (bytes_written < bytes_to_write) {
-                log_warn("File write buffer overrun! Dropped %zu bytes.", bytes_to_write - bytes_written);
+            size_t written = resources->writer_ctx.ops.write(&resources->writer_ctx, temp_buffer, bytes_to_write);
+            if (written < bytes_to_write) {
+                log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
+                request_shutdown();
+                return;
             }
             samples_processed += samples_this_chunk;
         }
-        return;
-    }
-
-    SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
-    if (!item) {
-        return;
-    }
-
-    item->stream_discontinuity_event = false;
-
-    size_t samples_to_copy = numSamples;
-    if (samples_to_copy > BUFFER_SIZE_SAMPLES) {
-        log_warn("SDRplay callback provided more samples than buffer can hold. Truncating.");
-        samples_to_copy = BUFFER_SIZE_SAMPLES;
-    }
-
-    int16_t *raw_buffer = (int16_t*)item->raw_input_data;
-    for (unsigned int i = 0; i < samples_to_copy; i++) {
-        raw_buffer[i * 2] = xi[i];
-        raw_buffer[i * 2 + 1] = xq[i];
-    }
-
-    item->frames_read = samples_to_copy;
-    item->is_last_chunk = false;
-
-    if (samples_to_copy > 0) {
-        pthread_mutex_lock(&resources->progress_mutex);
-        resources->total_frames_read += samples_to_copy;
-        pthread_mutex_unlock(&resources->progress_mutex);
-    }
-
-    if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
-        queue_enqueue(resources->free_sample_chunk_queue, item);
+    } else {
+        SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+        if (!item) {
+            log_warn("Real-time pipeline stalled. Dropping %u samples.", numSamples);
+            return;
+        }
+        item->stream_discontinuity_event = false;
+        size_t samples_to_copy = numSamples;
+        if (samples_to_copy > BUFFER_SIZE_SAMPLES) {
+            log_warn("SDRplay callback provided more samples than buffer can hold. Truncating.");
+            samples_to_copy = BUFFER_SIZE_SAMPLES;
+        }
+        int16_t *raw_buffer = (int16_t*)item->raw_input_data;
+        for (unsigned int i = 0; i < samples_to_copy; i++) {
+            raw_buffer[i * 2] = xi[i];
+            raw_buffer[i * 2 + 1] = xq[i];
+        }
+        item->frames_read = samples_to_copy;
+        item->is_last_chunk = false;
+        if (samples_to_copy > 0) {
+            pthread_mutex_lock(&resources->progress_mutex);
+            resources->total_frames_read += samples_to_copy;
+            pthread_mutex_unlock(&resources->progress_mutex);
+        }
+        if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
+            queue_enqueue(resources->free_sample_chunk_queue, item);
+        }
     }
 }
 
-void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext) {
+// This callback now uses the serialization library to write clean, robust packets.
+static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext) {
+    (void)params;
     AppResources *resources = (AppResources*)cbContext;
+
+    if (is_shutdown_requested() || resources->error_occurred) {
+        return;
+    }
+
+    if (reset) {
+        log_info("SDRplay stream reset detected (buffered mode), sending event.");
+        sdr_packet_serializer_write_reset_event(resources->sdr_input_buffer);
+    }
+
+    if (numSamples > 0) {
+        if (!sdr_packet_serializer_write_deinterleaved_chunk(resources->sdr_input_buffer, numSamples, xi, xq)) {
+            log_warn("SDR input buffer overrun! Dropped data.");
+        }
+    }
+}
+
+static void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext) {
+    AppResources *resources = (AppResources*)cbContext;
+    SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
 
     if (is_shutdown_requested() || resources->error_occurred) {
         return;
@@ -375,7 +490,7 @@ void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT
                 log_info("Overload condition corrected.");
             }
             pthread_mutex_unlock(&g_console_mutex);
-            sdrplay_api_Update(resources->sdr_device->dev, tuner, sdrplay_api_Update_Ctrl_OverloadMsgAck, sdrplay_api_Update_Ext1_None);
+            sdrplay_api_Update(private_data->sdr_device->dev, tuner, sdrplay_api_Update_Ctrl_OverloadMsgAck, sdrplay_api_Update_Ext1_None);
             break;
         }
         case sdrplay_api_GainChange:
@@ -389,44 +504,50 @@ void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT
 
 static void sdrplay_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
-    const AppResources *resources = ctx->resources;
-    if (!resources->sdr_device) return;
+    AppResources *resources = ctx->resources;
+    SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
+    if (!private_data || !private_data->sdr_device) return;
 
     char source_name_buf[128];
     snprintf(source_name_buf, sizeof(source_name_buf), "%s (S/N: %s)",
-             get_sdrplay_device_name(resources->sdr_device->hwVer), resources->sdr_device->SerNo);
+             get_sdrplay_device_name(private_data->sdr_device->hwVer), private_data->sdr_device->SerNo);
     add_summary_item(info, "Input Source", "%s", source_name_buf);
     add_summary_item(info, "Input Format", "16-bit Signed Complex (cs16)");
     add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
 
-    double active_bw = config->sdrplay.bandwidth_provided ? config->sdrplay.bandwidth_hz : SDRPLAY_DEFAULT_BANDWIDTH_HZ;
-    add_summary_item(info, "Bandwidth", "%.0f Hz", active_bw);
+    add_summary_item(info, "Bandwidth", "%.0f Hz", s_sdrplay_config.bandwidth_hz);
     add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr.rf_freq_hz);
 
-    if (config->sdrplay.gain_level_provided || config->sdrplay.if_gain_db_provided) {
+    if (s_sdrplay_config.gain_level_provided || s_sdrplay_config.if_gain_db_provided) {
         char gain_buf[128];
-        char lna_str[32] = "LNA State: (auto)";
-        char if_str[32] = "IF Gain: (auto)";
+        char lna_str[40];
+        char if_str[40];
 
-        if (config->sdrplay.gain_level_provided) {
-            snprintf(lna_str, sizeof(lna_str), "LNA State: %d", config->sdrplay.gain_level);
+        if (s_sdrplay_config.gain_level_provided) {
+            snprintf(lna_str, sizeof(lna_str), "LNA State: %d", s_sdrplay_config.gain_level);
+        } else {
+            snprintf(lna_str, sizeof(lna_str), "LNA State: (auto)");
         }
-        if (config->sdrplay.if_gain_db_provided) {
-            snprintf(if_str, sizeof(if_str), "IF Gain: %d dB", config->sdrplay.if_gain_db);
+
+        if (s_sdrplay_config.if_gain_db_provided) {
+            snprintf(if_str, sizeof(if_str), "IF Gain: %d dB", s_sdrplay_config.if_gain_db);
+        } else {
+            snprintf(if_str, sizeof(if_str), "IF Gain: (auto)");
         }
-        snprintf(gain_buf, sizeof(gain_buf), "%s, %s (Manual)", lna_str, if_str);
+
+        snprintf(gain_buf, sizeof(gain_buf), "%s, %s", lna_str, if_str);
         add_summary_item(info, "Gain", "%s", gain_buf);
     } else {
         add_summary_item(info, "Gain", "Automatic (AGC)");
     }
 
-    if (config->sdrplay.antenna_port_name) {
-        add_summary_item(info, "Antenna Port", "%s", config->sdrplay.antenna_port_name);
+    if (s_sdrplay_config.antenna_port_name) {
+        add_summary_item(info, "Antenna Port", "%s", s_sdrplay_config.antenna_port_name);
     }
-    if (config->sdrplay.use_hdr_mode) {
+    if (s_sdrplay_config.use_hdr_mode) {
         const char* bw_str = "1700000";
-        if (config->sdrplay.hdr_bw_mode_provided) {
-            switch(config->sdrplay.hdr_bw_mode) {
+        if (s_sdrplay_config.hdr_bw_mode_provided) {
+            switch(s_sdrplay_config.hdr_bw_mode) {
                 case sdrplay_api_RspDx_HDRMODE_BW_0_200: bw_str = "200000"; break;
                 case sdrplay_api_RspDx_HDRMODE_BW_0_500: bw_str = "500000"; break;
                 case sdrplay_api_RspDx_HDRMODE_BW_1_200: bw_str = "1200000"; break;
@@ -449,6 +570,13 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
     }
 #endif
 
+    SdrplayPrivateData* private_data = (SdrplayPrivateData*)calloc(1, sizeof(SdrplayPrivateData));
+    if (!private_data) {
+        log_fatal("Failed to allocate memory for SDRplay private data.");
+        return false;
+    }
+    resources->input_module_private_data = private_data;
+
     err = sdrplay_api_Open();
     if (err != sdrplay_api_Success) {
         log_fatal("Failed to open SDRplay API: %s", sdrplay_api_GetErrorString(err));
@@ -457,7 +585,7 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
 #endif
         return false;
     }
-    resources->sdr_api_is_open = true;
+    private_data->sdr_api_is_open = true;
 
     sdrplay_api_DeviceT devs[SDRPLAY_MAX_DEVICES];
     unsigned int numDevs = 0;
@@ -470,92 +598,90 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
         log_fatal("No SDRplay devices found.");
         return false;
     }
-    if ((unsigned int)config->sdrplay.device_index >= numDevs) {
+    if ((unsigned int)s_sdrplay_config.device_index >= numDevs) {
         log_fatal("Device index %d is out of range. Found %u devices (0 to %u).",
-                  config->sdrplay.device_index, numDevs, numDevs - 1);
+                  s_sdrplay_config.device_index, numDevs, numDevs - 1);
         return false;
     }
 
-    resources->sdr_device = (sdrplay_api_DeviceT *)malloc(sizeof(sdrplay_api_DeviceT));
-    if (!resources->sdr_device) {
+    private_data->sdr_device = (sdrplay_api_DeviceT *)malloc(sizeof(sdrplay_api_DeviceT));
+    if (!private_data->sdr_device) {
         log_fatal("Failed to allocate memory for device structure: %s", strerror(errno));
         return false;
     }
-    memcpy(resources->sdr_device, &devs[config->sdrplay.device_index], sizeof(sdrplay_api_DeviceT));
+    memcpy(private_data->sdr_device, &devs[s_sdrplay_config.device_index], sizeof(sdrplay_api_DeviceT));
 
-    err = sdrplay_api_SelectDevice(resources->sdr_device);
+    err = sdrplay_api_SelectDevice(private_data->sdr_device);
     if (err != sdrplay_api_Success) {
-        log_fatal("Failed to select SDRplay device %d: %s", config->sdrplay.device_index, sdrplay_api_GetErrorString(err));
-        free(resources->sdr_device);
-        resources->sdr_device = NULL;
+        log_fatal("Failed to select SDRplay device %d: %s", s_sdrplay_config.device_index, sdrplay_api_GetErrorString(err));
+        free(private_data->sdr_device);
+        private_data->sdr_device = NULL;
         return false;
     }
     log_info("Using SDRplay device: %s (S/N: %s)",
-             get_sdrplay_device_name(resources->sdr_device->hwVer), resources->sdr_device->SerNo);
+             get_sdrplay_device_name(private_data->sdr_device->hwVer), private_data->sdr_device->SerNo);
 
-    err = sdrplay_api_GetDeviceParams(resources->sdr_device->dev, &resources->sdr_device_params);
+    err = sdrplay_api_GetDeviceParams(private_data->sdr_device->dev, &private_data->sdr_device_params);
     if (err != sdrplay_api_Success) {
         log_fatal("Failed to get device parameters: %s", sdrplay_api_GetErrorString(err));
-        sdrplay_api_ReleaseDevice(resources->sdr_device);
-        free(resources->sdr_device);
-        resources->sdr_device = NULL;
+        sdrplay_api_ReleaseDevice(private_data->sdr_device);
+        free(private_data->sdr_device);
+        private_data->sdr_device = NULL;
         return false;
     }
 
-    sdrplay_api_RxChannelParamsT *chParams = resources->sdr_device_params->rxChannelA;
-    sdrplay_api_DevParamsT *devParams = resources->sdr_device_params->devParams;
+    sdrplay_api_RxChannelParamsT *chParams = private_data->sdr_device_params->rxChannelA;
+    sdrplay_api_DevParamsT *devParams = private_data->sdr_device_params->devParams;
 
-    double sample_rate_to_set = config->sdrplay.sample_rate_provided ? config->sdrplay.sample_rate_hz : SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
-    double bandwidth_to_set = config->sdrplay.bandwidth_provided ? config->sdrplay.bandwidth_hz : SDRPLAY_DEFAULT_BANDWIDTH_HZ;
-    sdrplay_api_Bw_MHzT bw_enum = map_bw_hz_to_enum(bandwidth_to_set);
+    sdrplay_api_Bw_MHzT bw_enum = map_bw_hz_to_enum(s_sdrplay_config.bandwidth_hz);
 
-    devParams->fsFreq.fsHz = sample_rate_to_set;
+    devParams->fsFreq.fsHz = config->sdr.sample_rate_hz;
     chParams->tunerParams.bwType = bw_enum;
     chParams->tunerParams.ifType = sdrplay_api_IF_Zero;
     chParams->tunerParams.rfFreq.rfHz = config->sdr.rf_freq_hz;
 
-    log_info("SDRplay: API accepting sample rate %.0f Hz.", devParams->fsFreq.fsHz);
-    log_info("SDRplay: API accepting bandwidth %.0f Hz.", bandwidth_to_set);
+    log_debug("SDRplay: API accepting sample rate %.0f Hz.", devParams->fsFreq.fsHz);
+    log_debug("SDRplay: API accepting bandwidth %.0f Hz.", s_sdrplay_config.bandwidth_hz);
 
-    if (config->sdrplay.use_hdr_mode) {
-        if (resources->sdr_device->hwVer != SDRPLAY_RSPdx_ID && resources->sdr_device->hwVer != SDRPLAY_RSPdxR2_ID) {
+    if (s_sdrplay_config.use_hdr_mode) {
+        if (private_data->sdr_device->hwVer != SDRPLAY_RSPdx_ID && private_data->sdr_device->hwVer != SDRPLAY_RSPdxR2_ID) {
             log_fatal("--sdrplay-hdr-mode is only supported on RSPdx and RSPdx-R2 devices.");
-            sdrplay_api_ReleaseDevice(resources->sdr_device);
-            free(resources->sdr_device);
-            resources->sdr_device = NULL;
+            sdrplay_api_ReleaseDevice(private_data->sdr_device);
+            free(private_data->sdr_device);
+            private_data->sdr_device = NULL;
             return false;
         }
         devParams->rspDxParams.hdrEnable = 1;
-        chParams->rspDxTunerParams.hdrBw = config->sdrplay.hdr_bw_mode_provided ? config->sdrplay.hdr_bw_mode : sdrplay_api_RspDx_HDRMODE_BW_1_700;
+        chParams->rspDxTunerParams.hdrBw = s_sdrplay_config.hdr_bw_mode_provided ? s_sdrplay_config.hdr_bw_mode : sdrplay_api_RspDx_HDRMODE_BW_1_700;
     }
 
-    if (resources->sdr_device->hwVer == SDRPLAY_RSPduo_ID) {
-        resources->sdr_device->rspDuoMode = sdrplay_api_RspDuoMode_Single_Tuner;
-        resources->sdr_device->tuner = sdrplay_api_Tuner_A;
+    if (private_data->sdr_device->hwVer == SDRPLAY_RSPduo_ID) {
+        private_data->sdr_device->rspDuoMode = sdrplay_api_RspDuoMode_Single_Tuner;
+        private_data->sdr_device->tuner = sdrplay_api_Tuner_A;
     }
 
     bool antenna_request_handled = false;
     bool biast_request_handled = false;
     bool hiz_port_selected = false;
 
-    if (config->sdrplay.antenna_port_name || config->sdr.bias_t_enable) {
-        switch (resources->sdr_device->hwVer) {
+    if (s_sdrplay_config.antenna_port_name || config->sdr.bias_t_enable) {
+        switch (private_data->sdr_device->hwVer) {
             case SDRPLAY_RSP2_ID:
                 if (config->sdr.bias_t_enable) {
                     chParams->rsp2TunerParams.biasTEnable = 1;
                     biast_request_handled = true;
                 }
-                if (config->sdrplay.antenna_port_name) {
-                    if (strcasecmp(config->sdrplay.antenna_port_name, "A") == 0) {
+                if (s_sdrplay_config.antenna_port_name) {
+                    if (strcasecmp(s_sdrplay_config.antenna_port_name, "A") == 0) {
                         chParams->rsp2TunerParams.antennaSel = sdrplay_api_Rsp2_ANTENNA_A;
-                    } else if (strcasecmp(config->sdrplay.antenna_port_name, "B") == 0) {
+                    } else if (strcasecmp(s_sdrplay_config.antenna_port_name, "B") == 0) {
                         chParams->rsp2TunerParams.antennaSel = sdrplay_api_Rsp2_ANTENNA_B;
-                    } else if (strcasecmp(config->sdrplay.antenna_port_name, "HIZ") == 0) {
+                    } else if (strcasecmp(s_sdrplay_config.antenna_port_name, "HIZ") == 0) {
                         chParams->rsp2TunerParams.amPortSel = sdrplay_api_Rsp2_AMPORT_2;
                         hiz_port_selected = true;
                     } else {
-                        log_fatal("Invalid antenna port '%s' for RSP2. Use A, B, or HIZ.", config->sdrplay.antenna_port_name);
-                        sdrplay_api_ReleaseDevice(resources->sdr_device); free(resources->sdr_device); resources->sdr_device = NULL; return false;
+                        log_fatal("Invalid antenna port '%s' for RSP2. Use A, B, or HIZ.", s_sdrplay_config.antenna_port_name);
+                        sdrplay_api_ReleaseDevice(private_data->sdr_device); free(private_data->sdr_device); private_data->sdr_device = NULL; return false;
                     }
                     antenna_request_handled = true;
                 }
@@ -565,14 +691,14 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
                     chParams->rspDuoTunerParams.biasTEnable = 1;
                     biast_request_handled = true;
                 }
-                if (config->sdrplay.antenna_port_name) {
-                    if (strcasecmp(config->sdrplay.antenna_port_name, "A") == 0) {
-                    } else if (strcasecmp(config->sdrplay.antenna_port_name, "HIZ") == 0) {
+                if (s_sdrplay_config.antenna_port_name) {
+                    if (strcasecmp(s_sdrplay_config.antenna_port_name, "A") == 0) {
+                    } else if (strcasecmp(s_sdrplay_config.antenna_port_name, "HIZ") == 0) {
                         chParams->rspDuoTunerParams.tuner1AmPortSel = sdrplay_api_RspDuo_AMPORT_2;
                         hiz_port_selected = true;
                     } else {
-                        log_fatal("Invalid antenna port '%s' for RSPduo. Use A or HIZ.", config->sdrplay.antenna_port_name);
-                        sdrplay_api_ReleaseDevice(resources->sdr_device); free(resources->sdr_device); resources->sdr_device = NULL; return false;
+                        log_fatal("Invalid antenna port '%s' for RSPduo. Use A or HIZ.", s_sdrplay_config.antenna_port_name);
+                        sdrplay_api_ReleaseDevice(private_data->sdr_device); free(private_data->sdr_device); private_data->sdr_device = NULL; return false;
                     }
                     antenna_request_handled = true;
                 }
@@ -583,19 +709,19 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
                     devParams->rspDxParams.biasTEnable = 1;
                     biast_request_handled = true;
                 }
-                if (config->sdrplay.antenna_port_name) {
-                    if (strcasecmp(config->sdrplay.antenna_port_name, "A") == 0) {
+                if (s_sdrplay_config.antenna_port_name) {
+                    if (strcasecmp(s_sdrplay_config.antenna_port_name, "A") == 0) {
                         devParams->rspDxParams.antennaSel = sdrplay_api_RspDx_ANTENNA_A;
                         antenna_request_handled = true;
-                    } else if (strcasecmp(config->sdrplay.antenna_port_name, "B") == 0) {
+                    } else if (strcasecmp(s_sdrplay_config.antenna_port_name, "B") == 0) {
                         devParams->rspDxParams.antennaSel = sdrplay_api_RspDx_ANTENNA_B;
                         antenna_request_handled = true;
-                    } else if (strcasecmp(config->sdrplay.antenna_port_name, "C") == 0) {
+                    } else if (strcasecmp(s_sdrplay_config.antenna_port_name, "C") == 0) {
                         devParams->rspDxParams.antennaSel = sdrplay_api_RspDx_ANTENNA_C;
                         antenna_request_handled = true;
                     } else {
-                        log_fatal("Invalid antenna port '%s' for RSPdx/RSPdx-R2. Use A, B, or C.", config->sdrplay.antenna_port_name);
-                        sdrplay_api_ReleaseDevice(resources->sdr_device); free(resources->sdr_device); resources->sdr_device = NULL; return false;
+                        log_fatal("Invalid antenna port '%s' for RSPdx/RSPdx-R2. Use A, B, or C.", s_sdrplay_config.antenna_port_name);
+                        sdrplay_api_ReleaseDevice(private_data->sdr_device); free(private_data->sdr_device); private_data->sdr_device = NULL; return false;
                     }
                 }
                 break;
@@ -609,45 +735,45 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
         }
     }
 
-    if (config->sdrplay.antenna_port_name && !antenna_request_handled) {
+    if (s_sdrplay_config.antenna_port_name && !antenna_request_handled) {
         log_warn("Antenna selection not applicable for the detected device.");
     }
     if (config->sdr.bias_t_enable && !biast_request_handled) {
         log_warn("Bias-T is not supported on the detected device.");
     }
 
-    if (config->sdrplay.gain_level_provided || config->sdrplay.if_gain_db_provided) {
+    if (s_sdrplay_config.gain_level_provided || s_sdrplay_config.if_gain_db_provided) {
         chParams->ctrlParams.agc.enable = sdrplay_api_AGC_DISABLE;
         log_info("SDRplay: AGC disabled due to manual gain setting.");
     }
 
-    if (config->sdrplay.if_gain_db_provided) {
-        chParams->tunerParams.gain.gRdB = -config->sdrplay.if_gain_db;
+    if (s_sdrplay_config.if_gain_db_provided) {
+        chParams->tunerParams.gain.gRdB = -s_sdrplay_config.if_gain_db;
     }
 
-    if (config->sdrplay.gain_level_provided) {
-        int num_lna_states = get_num_lna_states(resources->sdr_device->hwVer, config->sdr.rf_freq_hz, config->sdrplay.use_hdr_mode, hiz_port_selected);
-        if (config->sdrplay.gain_level < 0 || config->sdrplay.gain_level >= num_lna_states) {
+    if (s_sdrplay_config.gain_level_provided) {
+        int num_lna_states = get_num_lna_states(private_data->sdr_device->hwVer, config->sdr.rf_freq_hz, s_sdrplay_config.use_hdr_mode, hiz_port_selected);
+        if (s_sdrplay_config.gain_level < 0 || s_sdrplay_config.gain_level >= num_lna_states) {
             log_fatal("Invalid LNA state '%d'. Valid range for this device/frequency is 0 to %d.",
-                      config->sdrplay.gain_level, num_lna_states - 1);
-            sdrplay_api_ReleaseDevice(resources->sdr_device);
-            free(resources->sdr_device);
-            resources->sdr_device = NULL;
+                      s_sdrplay_config.gain_level, num_lna_states - 1);
+            sdrplay_api_ReleaseDevice(private_data->sdr_device);
+            free(private_data->sdr_device);
+            private_data->sdr_device = NULL;
             return false;
         }
-        chParams->tunerParams.gain.LNAstate = num_lna_states - 1 - config->sdrplay.gain_level;
+        chParams->tunerParams.gain.LNAstate = num_lna_states - 1 - s_sdrplay_config.gain_level;
     }
 
     resources->input_format = CS16;
     resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
-    resources->source_info.samplerate = (int)sample_rate_to_set;
+    resources->source_info.samplerate = (int)config->sdr.sample_rate_hz;
     resources->source_info.frames = -1;
 
     if (config->raw_passthrough && resources->input_format != config->output_format) {
         log_fatal("Option --raw-passthrough requires input and output formats to be identical. SDRplay input is 'cs16', but output was set to '%s'.", config->sample_type_name);
-        sdrplay_api_ReleaseDevice(resources->sdr_device);
-        free(resources->sdr_device);
-        resources->sdr_device = NULL;
+        sdrplay_api_ReleaseDevice(private_data->sdr_device);
+        free(private_data->sdr_device);
+        private_data->sdr_device = NULL;
         return false;
     }
 
@@ -656,15 +782,22 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
 
 static void* sdrplay_start_stream(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
+    SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
     sdrplay_api_CallbackFnsT cbFns;
-    cbFns.StreamACbFn = sdrplay_stream_callback;
     cbFns.StreamBCbFn = NULL;
     cbFns.EventCbFn = sdrplay_event_callback;
 
-    log_info("Starting SDRplay stream...");
-    sdrplay_api_ErrT err = sdrplay_api_Init(resources->sdr_device->dev, &cbFns, resources);
+    if (resources->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
+        log_info("Starting SDRplay stream (Buffered File Mode)...");
+        cbFns.StreamACbFn = sdrplay_buffered_stream_callback;
+    } else { // PIPELINE_MODE_REALTIME_SDR
+        log_info("Starting SDRplay stream (Real-Time Stdout Mode)...");
+        cbFns.StreamACbFn = sdrplay_realtime_stream_callback;
+    }
+
+    sdrplay_api_ErrT err = sdrplay_api_Init(private_data->sdr_device->dev, &cbFns, resources);
     if (err != sdrplay_api_Success && err != sdrplay_api_StopPending) {
-        sdrplay_api_ErrorInfoT *errorInfo = sdrplay_api_GetLastError(resources->sdr_device);
+        sdrplay_api_ErrorInfoT *errorInfo = sdrplay_api_GetLastError(private_data->sdr_device);
         char error_buf[1536];
         snprintf(error_buf, sizeof(error_buf), "sdrplay_api_Init() failed: %s", sdrplay_api_GetErrorString(err));
         if (errorInfo && strlen(errorInfo->message) > 0) {
@@ -681,14 +814,18 @@ static void* sdrplay_start_stream(InputSourceContext* ctx) {
 #endif
         }
     }
+    
+    sdrplay_stop_stream(ctx);
+    
     return NULL;
 }
 
 static void sdrplay_stop_stream(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
-    if (resources->sdr_device) {
+    SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
+    if (private_data && private_data->sdr_device) {
         log_info("Stopping SDRplay stream...");
-        sdrplay_api_ErrT err = sdrplay_api_Uninit(resources->sdr_device->dev);
+        sdrplay_api_ErrT err = sdrplay_api_Uninit(private_data->sdr_device->dev);
         if (err != sdrplay_api_Success && err != sdrplay_api_StopPending) {
             log_error("Failed to uninitialize SDRplay device: %s", sdrplay_api_GetErrorString(err));
         }
@@ -697,22 +834,27 @@ static void sdrplay_stop_stream(InputSourceContext* ctx) {
 
 static void sdrplay_cleanup(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
-    if (resources->sdr_device) {
-        log_info("Releasing SDRplay device handle...");
-        sdrplay_api_ReleaseDevice(resources->sdr_device);
+    if (resources->input_module_private_data) {
+        SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
+        if (private_data->sdr_device) {
+            log_debug("Releasing SDRplay device handle...");
+            sdrplay_api_ReleaseDevice(private_data->sdr_device);
 #ifndef _WIN32
-        log_info("Waiting for SDRplay daemon to release device...");
-        sleep(1);
+            log_debug("Waiting for SDRplay daemon to release device...");
+            sleep(1);
 #endif
-        free(resources->sdr_device);
-        resources->sdr_device = NULL;
-    }
-    if (resources->sdr_api_is_open) {
-        log_info("Closing SDRplay API...");
-        sdrplay_api_Close();
+            free(private_data->sdr_device);
+            private_data->sdr_device = NULL;
+        }
+        if (private_data->sdr_api_is_open) {
+            log_debug("Closing SDRplay API...");
+            sdrplay_api_Close();
 #if defined(_WIN32)
-        sdrplay_unload_api();
+            sdrplay_unload_api();
 #endif
-        resources->sdr_api_is_open = false;
+            private_data->sdr_api_is_open = false;
+        }
+        free(private_data);
+        resources->input_module_private_data = NULL;
     }
 }

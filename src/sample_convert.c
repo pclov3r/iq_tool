@@ -33,32 +33,6 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// --- Private helper functions, moved from utils.c ---
-// These are implementation details of this module and are not exposed.
-
-/**
- * @brief (Private) Converts a float value to an unsigned char [0, 255].
- */
-static uint8_t float_to_uchar(float v) {
-    // Shift the range [-127.5, 127.5] up to [0, 255]
-    v += 127.5f;
-    // Clamp the value to the valid [0.0, 255.0] range
-    v = fmaxf(0.0f, fminf(255.0f, v));
-    // Round to the nearest integer and cast
-    return (uint8_t)(v + 0.5f);
-}
-
-/**
- * @brief (Private) Converts a float value to a signed char [-128, 127].
- */
-static int8_t float_to_schar(float v) {
-    // Clamp the value to the valid [-128.0, 127.0] range for int8_t
-    v = fmaxf(-128.0f, fminf(127.0f, v));
-    // Round to the nearest integer and cast
-    return (int8_t)lrintf(v);
-}
-
-
 /**
  * @brief Gets the number of bytes for a single sample of the given format.
  */
@@ -169,6 +143,9 @@ bool convert_raw_to_cf32(const void* input_buffer, complex_float_t* output_buffe
 
 /**
  * @brief Converts a block of normalized complex floats into the specified output byte format.
+ * @note The logic in this function has been intentionally written to avoid math library
+ *       calls (e.g. fminf, lrintf) within the loops. This makes the operations
+ *       transparent to the compiler, allowing for much more effective autovectorization.
  */
 bool convert_cf32_to_block(const complex_float_t* input_buffer, void* output_buffer, size_t num_frames, format_t output_format) {
     size_t i;
@@ -177,16 +154,34 @@ bool convert_cf32_to_block(const complex_float_t* input_buffer, void* output_buf
         case CS8: {
             int8_t* out = (int8_t*)output_buffer;
             for (i = 0; i < num_frames; ++i) {
-                out[i * 2]     = float_to_schar(crealf(input_buffer[i]) * 127.0f);
-                out[i * 2 + 1] = float_to_schar(cimagf(input_buffer[i]) * 127.0f);
+                float i_val = crealf(input_buffer[i]) * 127.0f;
+                float q_val = cimagf(input_buffer[i]) * 127.0f;
+
+                if (i_val > 127.0f) i_val = 127.0f;
+                else if (i_val < -128.0f) i_val = -128.0f;
+
+                if (q_val > 127.0f) q_val = 127.0f;
+                else if (q_val < -128.0f) q_val = -128.0f;
+
+                out[i * 2]     = (int8_t)(i_val > 0.0f ? i_val + 0.5f : i_val - 0.5f);
+                out[i * 2 + 1] = (int8_t)(q_val > 0.0f ? q_val + 0.5f : q_val - 0.5f);
             }
             break;
         }
         case CU8: {
             uint8_t* out = (uint8_t*)output_buffer;
             for (i = 0; i < num_frames; ++i) {
-                out[i * 2]     = float_to_uchar(crealf(input_buffer[i]) * 127.0f);
-                out[i * 2 + 1] = float_to_uchar(cimagf(input_buffer[i]) * 127.0f);
+                float i_val = (crealf(input_buffer[i]) * 127.0f) + 127.5f;
+                float q_val = (cimagf(input_buffer[i]) * 127.0f) + 127.5f;
+
+                if (i_val > 255.0f) i_val = 255.0f;
+                else if (i_val < 0.0f) i_val = 0.0f;
+
+                if (q_val > 255.0f) q_val = 255.0f;
+                else if (q_val < 0.0f) q_val = 0.0f;
+
+                out[i * 2]     = (uint8_t)(i_val + 0.5f);
+                out[i * 2 + 1] = (uint8_t)(q_val + 0.5f);
             }
             break;
         }
@@ -195,8 +190,15 @@ bool convert_cf32_to_block(const complex_float_t* input_buffer, void* output_buf
             for (i = 0; i < num_frames; ++i) {
                 float i_val = crealf(input_buffer[i]) * 32767.0f;
                 float q_val = cimagf(input_buffer[i]) * 32767.0f;
-                out[i * 2]     = (int16_t)fmaxf(-32768.0f, fminf(32767.0f, lrintf(i_val)));
-                out[i * 2 + 1] = (int16_t)fmaxf(-32768.0f, fminf(32767.0f, lrintf(q_val)));
+
+                if (i_val > 32767.0f) i_val = 32767.0f;
+                else if (i_val < -32768.0f) i_val = -32768.0f;
+
+                if (q_val > 32767.0f) q_val = 32767.0f;
+                else if (q_val < -32768.0f) q_val = -32768.0f;
+
+                out[i * 2]     = (int16_t)(i_val > 0.0f ? i_val + 0.5f : i_val - 0.5f);
+                out[i * 2 + 1] = (int16_t)(q_val > 0.0f ? q_val + 0.5f : q_val - 0.5f);
             }
             break;
         }
@@ -205,8 +207,15 @@ bool convert_cf32_to_block(const complex_float_t* input_buffer, void* output_buf
             for (i = 0; i < num_frames; ++i) {
                 float i_val = crealf(input_buffer[i]) * 2048.0f;
                 float q_val = cimagf(input_buffer[i]) * 2048.0f;
-                out[i * 2]     = (int16_t)fmaxf(-32768.0f, fminf(32767.0f, lrintf(i_val)));
-                out[i * 2 + 1] = (int16_t)fmaxf(-32768.0f, fminf(32767.0f, lrintf(q_val)));
+
+                if (i_val > 32767.0f) i_val = 32767.0f;
+                else if (i_val < -32768.0f) i_val = -32768.0f;
+
+                if (q_val > 32767.0f) q_val = 32767.0f;
+                else if (q_val < -32768.0f) q_val = -32768.0f;
+
+                out[i * 2]     = (int16_t)(i_val > 0.0f ? i_val + 0.5f : i_val - 0.5f);
+                out[i * 2 + 1] = (int16_t)(q_val > 0.0f ? q_val + 0.5f : q_val - 0.5f);
             }
             break;
         }
@@ -215,8 +224,15 @@ bool convert_cf32_to_block(const complex_float_t* input_buffer, void* output_buf
             for (i = 0; i < num_frames; ++i) {
                 float i_val = (crealf(input_buffer[i]) * 32767.0f) + 32767.5f;
                 float q_val = (cimagf(input_buffer[i]) * 32767.0f) + 32767.5f;
-                out[i * 2]     = (uint16_t)fmaxf(0.0f, fminf(65535.0f, lrintf(i_val)));
-                out[i * 2 + 1] = (uint16_t)fmaxf(0.0f, fminf(65535.0f, lrintf(q_val)));
+
+                if (i_val > 65535.0f) i_val = 65535.0f;
+                else if (i_val < 0.0f) i_val = 0.0f;
+
+                if (q_val > 65535.0f) q_val = 65535.0f;
+                else if (q_val < 0.0f) q_val = 0.0f;
+
+                out[i * 2]     = (uint16_t)(i_val + 0.5f);
+                out[i * 2 + 1] = (uint16_t)(q_val + 0.5f);
             }
             break;
         }
@@ -225,8 +241,15 @@ bool convert_cf32_to_block(const complex_float_t* input_buffer, void* output_buf
             for (i = 0; i < num_frames; ++i) {
                 double i_val = creal(input_buffer[i]) * 2147483647.0;
                 double q_val = cimag(input_buffer[i]) * 2147483647.0;
-                out[i * 2]     = (int32_t)fmax(-2147483648.0, fmin(2147483647.0, llrint(i_val)));
-                out[i * 2 + 1] = (int32_t)fmax(-2147483648.0, fmin(2147483647.0, llrint(q_val)));
+
+                if (i_val > 2147483647.0) i_val = 2147483647.0;
+                else if (i_val < -2147483648.0) i_val = -2147483648.0;
+
+                if (q_val > 2147483647.0) q_val = 2147483647.0;
+                else if (q_val < -2147483648.0) q_val = -2147483648.0;
+
+                out[i * 2]     = (int32_t)(i_val > 0.0 ? i_val + 0.5 : i_val - 0.5);
+                out[i * 2 + 1] = (int32_t)(q_val > 0.0 ? q_val + 0.5 : q_val - 0.5);
             }
             break;
         }
@@ -235,8 +258,15 @@ bool convert_cf32_to_block(const complex_float_t* input_buffer, void* output_buf
             for (i = 0; i < num_frames; ++i) {
                 double i_val = (creal(input_buffer[i]) * 2147483647.0) + 2147483647.5;
                 double q_val = (cimag(input_buffer[i]) * 2147483647.0) + 2147483647.5;
-                out[i * 2]     = (uint32_t)fmax(0.0, fmin(4294967295.0, llrint(i_val)));
-                out[i * 2 + 1] = (uint32_t)fmax(0.0, fmin(4294967295.0, llrint(q_val)));
+
+                if (i_val > 4294967295.0) i_val = 4294967295.0;
+                else if (i_val < 0.0) i_val = 0.0;
+
+                if (q_val > 4294967295.0) q_val = 4294967295.0;
+                else if (q_val < 0.0) q_val = 0.0;
+
+                out[i * 2]     = (uint32_t)(i_val + 0.5);
+                out[i * 2 + 1] = (uint32_t)(q_val + 0.5);
             }
             break;
         }

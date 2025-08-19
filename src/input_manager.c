@@ -1,3 +1,5 @@
+// src/input_manager.c
+
 #include "input_manager.h"
 #include <string.h>
 #include <stdlib.h> // Needed for NULL
@@ -41,14 +43,14 @@ static void initialize_modules_list(void) {
             .name = "wav",
             .ops = get_wav_input_ops(),
             .is_sdr = false,
-            .set_default_config = NULL,
+            .set_default_config = NULL, // WAV module has no defaults to set
             .get_cli_options = wav_get_cli_options
         },
         {
             .name = "raw-file",
             .ops = get_raw_file_input_ops(),
             .is_sdr = false,
-            .set_default_config = NULL,
+            .set_default_config = NULL, // Raw File module has no defaults to set
             .get_cli_options = rawfile_get_cli_options
         },
     #if defined(WITH_RTLSDR)

@@ -1,27 +1,29 @@
 # iq_resample_tool
 
-A multi-threaded command-line tool for resampling, shifting, and correcting I/Q data streams.
+A multi-threaded command-line tool for resampling, filtering, shifting, and correcting I/Q data streams.
 
 I originally built this tool for a very specific need: processing NRSC-5 (HD Radio) captures for use with the awesome [NRSC5](https://github.com/theori-io/nrsc5) decoder. This means it's particularly good at handling the frequency shifts and metadata found in WAV files from SDR software, but it has grown into a more general-purpose utility for prepping I/Q data for any downstream tool.
 
 ---
 
-### ⚠️  A Quick Word of Warning: This is an AI-Assisted Project ⚠️
+### ⚠️ A Quick Word of Warning: This is an AI-Assisted Project ⚠️
 
-Let's be upfront: a large language model (AI) helped write a significant portion of this code *If not most.* I guided it, reviewed its output, and tested the result, but this project didn't evolve through the typical trial-and-error of a human-only endeavor. Even this README you're reading was drafted by the AI based on the source code, then edited and refined by me.
+Let's be upfront: a large language model (AI) helped write a significant portion of this code, *if not most.* I guided it, reviewed its output, and tested the result, but this project didn't evolve through the typical trial-and-error of a human-only endeavor. Even this README you're reading was drafted by the AI based on the source code, then edited and refined by me.
+
+Second, it's worth knowing that this was a learning project for me. I chose to write it in C for its simplicity and how it keeps you close to the metal; I also figured it would be a better target for AI collaboration versus a more complex language like C++. Since I was learning the language as I went, what you'll see in the code is my journey of tackling C, threading, and DSP all at once. The focus was always on getting a practical, working result, which means some of the solutions are probably not what you'd find in a textbook. However, I have made a effort to clean up and refactor the code to the best of my knowledge and research.
 
 *What does this mean for you?*
 
 *   **It's Experimental.** While it works, it hasn't been battle-tested across a wide variety of systems and edge cases nor has it had a security review.
-*   **Design choices not stable** You may see features, command line options, etc. suddenly appear and dissapear. 
-*   **Bugs are expected** The logic very likely has quirks that haven't been discovered yet.
+*   **Design choices not stable.** You may see features, command line options, etc. suddenly appear and disappear.
+*   **Bugs are expected.** The logic very likely has quirks that haven't been discovered yet.
 *   **Use with caution!** I wouldn't use this for anything mission-critical without a thorough personal review of the code. *For serious work, a mature framework like* [GNU Radio](https://github.com/gnuradio/gnuradio) *is always a better bet.*
 
 ---
 
 ### What It Can Do
 
-*   **Multi-Threaded Pipeline:** Uses a Reader -> Pre-Processor -> Resampler -> Post-Processor -> Writer model to maximize throughput.
+*   **Multi-Threaded Pipeline:** Uses a Reader -> Pre-Processor -> Resampler -> Post-Processor -> Writer model.
 *   **Flexible Inputs:**
     *   **WAV Files:** Reads standard 8-bit and 16-bit complex (I/Q) WAV files.
     *   **Raw I/Q Files:** Just point it at a headerless file, but you have to tell it the sample rate and format.
@@ -29,10 +31,13 @@ Let's be upfront: a large language model (AI) helped write a significant portion
 *   **WAV Metadata Parsing:** Automatically reads metadata from SDR I/Q captures to make your life easier, especially for frequency correction.
     *   `auxi` chunks from **SDR Console, SDRconnect,** and **SDRuno**.
     *   SDR# style filenames (e.g., `..._20240520_181030Z_97300000Hz_...`).
-*   **Powerful Processing:**
-    *   **High-Quality Resampling:** Uses `liquid-dsp` under the hood.
-    *   **Precise Frequency Shifting:** Apply shifts before or after resampling—handy for those weird, narrow I/Q captures.
-    *   **Automatic I/Q Correction:** Can optionally find and fix I/Q imbalance on the fly. *This is very experimental and possibly could make it worse*
+*   **Processing Features:**
+    *   **Resampling** to a new sample rate.
+    *   **Frequency Shifting:** Apply shifts before or after resampling.
+    *   **Filtering:**
+        *   Apply low-pass, high-pass, band-pass, or notch FIR filters.
+        *   Offers two processing methods: a `FIR` (time-domain) method and an `FFT` (frequency-domain) method and will attempt to automatically default to the most suitable method.
+    *   **Automatic I/Q Correction:** Can optionally find and fix I/Q imbalance on the fly. *This is very experimental and possibly could make it worse.*
     *   **DC Blocking:** A simple high-pass filter to remove the pesky DC offset.
 *   **Versatile Outputs:**
     *   **Container Formats:** `raw` (for piping), standard `wav`, and `wav-rf64` (for files >4GB).
@@ -50,6 +55,7 @@ You'll need a pretty standard C development environment.
 *   **liquid-dsp**
 *   **libexpat**
 *   **pthreads:** This is a standard system component on Linux/macOS. On Windows, a compatible version is typically included with the MinGW-w64 toolchain.
+*   **(Optional) libfftw3:** For a significant performance boost with FFT-based filtering, install this library (`libfftw3-dev`) **before** building `liquid-dsp`.
 *   **(Optional) RTL-SDR Library (librtlsdr):** For RTL-SDR support (e.g., `librtlsdr-dev`).
 *   **(Optional) BladeRF Library (libbladeRF):** For BladeRF support (e.g., `libbladerf-dev`).
 *   **(Optional) HackRF Library (libhackrf):** For HackRF support (e.g., `libhackrf-dev`).
@@ -60,7 +66,7 @@ You'll need a pretty standard C development environment.
 1.  **Install the boring stuff:**
     ```bash
     sudo apt-get update
-    sudo apt-get install build-essential cmake libsndfile1-dev libliquid-dev libexpat1-dev librtlsdr-dev libhackrf-dev libbladerf-dev libusb-1.0-0-dev
+    sudo apt-get install build-essential cmake libsndfile1-dev libliquid-dev libexpat1-dev librtlsdr-dev libhackrf-dev libbladerf-dev libusb-1.0-0-dev libfftw3-dev
     ```
 
 2.  **Build the tool:**
@@ -113,12 +119,28 @@ Processing Options
     --dc-block                            (Optional) Enable DC offset removal (high-pass filter).
     --preset=<str>                        Use a preset for a common target.
 
+Filtering Options
+    --lowpass=<flt>                       Apply a low-pass filter, keeping frequencies from -<freq> to +<freq>.
+    --highpass=<flt>                      Apply a high-pass filter, keeping frequencies above +<freq> and below -<freq>.
+    --pass-range=<str>                    Isolate a frequency range. Format: 'start_freq:end_freq' (e.g., '100e3:200e3').
+    --stopband=<str>                      Apply a stop-band (notch) filter. Format: 'start_freq:end_freq' (e.g., '-65:65').
+
+Filter Quality Options
+    --transition-width=<flt>              Set filter sharpness by transition width in Hz. (Default: Auto).
+    --filter-taps=<int>                   Expert: Set exact filter length. Overrides --transition-width and auto mode.
+    --attenuation=<flt>                   Set filter stop-band attenuation in dB. (Default: 60).
+
+Filter Implementation Options
+    --filter-type=<str>                   Set filter implementation {fir|fft}. (Default: auto - fir for symmetric filters, fft for asymmetric)
+    --filter-fft-size=<int>               Expert: Set FFT size for 'fft' filter type. Must be a power of 2. (Default: Auto)
+
 SDR General Options
-    --rf-freq=<flt>                       (Required for SDR) Tuner center frequency in Hz (e.g., 97.3e6)
-    --bias-t                              (Optional) Enable Bias-T power.
+    --sdr-rf-freq=<flt>                   (Required for SDR) Tuner center frequency in Hz
+    --sdr-sample-rate=<flt>               Set sample rate in Hz. (Device-specific default)
+    --sdr-bias-t                          (Optional) Enable Bias-T power.
 
 WAV Input Specific Options
-    --wav-center-target-freq=<flt>	      Shift signal to a new target center frequency (e.g., 97.3e6)
+    --wav-center-target-freq=<flt>        Shift signal to a new target center frequency (e.g., 97.3e6)
 
 Raw File Input Options
     --raw-file-input-rate=<flt>           (Required) The sample rate of the raw input file.
@@ -126,22 +148,20 @@ Raw File Input Options
 
 RTL-SDR-Specific Options
     --rtlsdr-device-idx=<int>             Select specific RTL-SDR device by index (0-indexed). (Default: 0)
-    --rtlsdr-sample-rate=<flt>            Set sample rate in Hz. (Optional, Default: 2.4e6)
     --rtlsdr-gain=<flt>                   Set manual tuner gain in dB (e.g., 28.0, 49.6). Disables AGC.
     --rtlsdr-ppm=<int>                    Set frequency correction in parts-per-million. (Optional, Default: 0)
     --rtlsdr-direct-sampling=<int>        Enable direct sampling mode for HF reception (1=I-branch, 2=Q-branch)
 
 SDRplay-Specific Options
-    --sdrplay-sample-rate=<flt>           Set sample rate in Hz. (Optional, Default: 2e6)
     --sdrplay-bandwidth=<flt>             Set analog bandwidth in Hz. (Optional, Default: 1.536e6)
     --sdrplay-device-idx=<int>            Select specific SDRplay device by index (0-indexed). (Default: 0)
-    --sdrplay-gain-level=<int>            Set manual gain level (0=min gain). Disables AGC.
+    --sdrplay-gain-level=<int>            Set LNA state (coarse gain, 0=max gain). Disables AGC.
+    --sdrplay-if-gain=<int>               Set IF gain in dB (fine gain, e.g., -20, -35, -59). Disables AGC.
     --sdrplay-antenna=<str>               Select antenna port (device-specific).
     --sdrplay-hdr-mode                    (Optional) Enable HDR mode on RSPdx/RSPdxR2.
     --sdrplay-hdr-bw=<flt>                Set bandwidth for HDR mode. Requires --sdrplay-hdr-mode.
 
 HackRF-Specific Options
-    --hackrf-sample-rate=<flt>            Set sample rate in Hz. (Optional, Default: 8e6)
     --hackrf-lna-gain=<int>               Set LNA (IF) gain in dB. (Optional, Default: 16)
     --hackrf-vga-gain=<int>               Set VGA (Baseband) gain in dB. (Optional, Default: 0)
     --hackrf-amp-enable                   Enable the front-end RF amplifier (+14 dB).
@@ -149,7 +169,6 @@ HackRF-Specific Options
 BladeRF-Specific Options
     --bladerf-device-idx=<int>            Select specific BladeRF device by index (0-indexed). (Default: 0)
     --bladerf-load-fpga=<str>             Load an FPGA bitstream from the specified file.
-    --bladerf-sample-rate=<flt>           Set sample rate in Hz.
     --bladerf-bandwidth=<flt>             Set analog bandwidth in Hz. (Default: Auto-selected)
     --bladerf-gain=<int>                  Set overall manual gain in dB. Disables AGC.
     --bladerf-channel=<int>               For BladeRF 2.0: Select RX channel 0 (RXA) or 1 (RXB). (Default: 0)
@@ -171,34 +190,22 @@ Resample a WAV file to a 16-bit RF64 (large WAV) file with a custom output rate.
 iq_resample_tool --input wav my_capture.wav -f my_capture_resampled.wav --output-container wav-rf64 --output-sample-format cs16 --output-rate 240000
 ```
 
-**Example 2: Piping to a Decoder with a Preset (WAV Input)**
+**Example 2: Channel Selection (FFT Filter)**
+Isolate a specific range of frequencies from a live SDR stream. The tool will automatically select the `fft` filter because this is an asymmetric (offset) filter.
+```bash
+iq_resample_tool --input rtlsdr --sdr-rf-freq 98.5e6 --pass-range 50e3:250e3 --output-rate 240000 --stdout | ...
+```
+
+**Example 3: Piping to a Decoder with a Preset (WAV Input)**
 Use the `cu8-nrsc5` preset to resample and automatically correct the frequency, then pipe it to `nrsc5`. (Assumes the WAV has frequency metadata).
 ```bash
 iq_resample_tool --input wav my_capture.wav --wav-center-target-freq 97.3e6 --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
 ```
 
-**Example 3: Streaming from an RTL-SDR with Preset**
-Tune an RTL-SDR to 98.5 MHz, set a manual gain, and pipe the output to nrsc5.
-```bash
-iq_resample_tool --input rtlsdr --rf-freq 98.5e6 --rtlsdr-gain 36.4 --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
-```
-
-**Example 4: Streaming from a BladeRF with Preset**
-Tune a BladeRF to 102.5 MHz, set a manual gain, and pipe the output to nrsc5.
-```bash
-iq_resample_tool --input bladerf --rf-freq 102.5e6 --bladerf-gain 40 --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
-```
-
-**Example 5: Streaming from a HackRF Device with Preset**
-Tune a HackRF to 98.5 MHz, set LNA and VGA gain, and pipe the output to nrsc5.
-```bash
-iq_resample_tool --input hackrf --rf-freq 98.5e6 --hackrf-lna-gain 24 --hackrf-vga-gain 16 --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
-```
-
-**Example 6: Streaming from an SDRplay Device with Preset**
+**Example 4: Streaming from an SDRplay Device with Preset**
 Tune an SDRplay RSPdx to 102.5 MHz, set a manual gain level and select an antenna port before piping to nrsc5.
 ```bash
-iq_resample_tool --input sdrplay --rf-freq 102.5e6 --sdrplay-gain-level 20 --sdrplay-antenna B --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
+iq_resample_tool --input sdrplay --sdr-rf-freq 102.5e6 --sdrplay-gain-level 20 --sdrplay-antenna B --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
 ```
 
 ### Configuration via Presets
@@ -224,13 +231,38 @@ This tool is a work in progress.
 *   **Roadmap:**
     *   [x] Add RTL-SDR support.
     *   [x] Add BladeRF support.
+    *   [x] Refactor configuration system for full modularity.
+    *   [x] Implement FFT-based filtering option.
     *   [ ] Add Airspy support (including SpyServer).
     *   [ ] Improve I/Q correction algorithm stability.
     *   [ ] Refine and standardize log levels throughout the application.
     *   [ ] General code cleanup and comment refactoring.
     *   [ ] Improve the README.
 
-### For Developers: The Modular Input System
+### For Developers: Architecture & Design
+
+This section provides a high-level overview of the tool's internal design for those looking to understand, modify, or extend the codebase.
+
+#### The Data Flow Pipeline
+
+The tool processes data using a pipeline of dedicated threads for each major stage. Data is passed between these threads in `SampleChunk` buffers, using queues to hand off a buffer from one stage to the next.
+
+The sequence of threads and their responsibilities are as follows:
+
+1.  **Reader Thread:** The first thread in the pipeline acquires raw samples from the selected input source (a file or SDR). It fills a `SampleChunk` buffer with this raw data and adds it to a queue for the next stage.
+    *   **SDR-to-File Mode:** When reading from a live SDR to a file, an additional `sdr_capture_thread` is used. This thread's callback writes data to an intermediate ring buffer in a structured packet format. Each packet consists of a header (containing the number of samples and format flags) followed by the corresponding sample data. This packet structure also allows for non-data events, like stream resets, to be communicated. The main Reader thread's job is to read and parse these packets from the buffer, providing a consistent stream to the rest of the pipeline regardless of the source SDR.
+
+2.  **Pre-Processor Thread:** This thread takes raw sample buffers from the first queue. It converts the data to a 32-bit complex float format and performs any DSP operations scheduled before resampling (e.g., DC blocking).
+
+3.  **Resampler Thread:** This thread takes the complex float buffers and changes the sample rate of the data using a filter from the `liquid-dsp` library.
+
+4.  **Post-Processor Thread:** This thread takes the resampled buffers. It performs any DSP operations scheduled after resampling (e.g., FIR filtering) and then converts the data into the final, user-specified output byte format.
+
+5.  **Writer Thread:** The final thread takes the formatted buffers and writes the data to the output destination.
+    *   **File Output:** When writing to a file, the post-processor adds its data to a ring buffer. The writer thread reads from this buffer and writes to the disk.
+    *   **Stdout Output:** When piping, data is written directly to the `stdout` stream.
+
+#### The Modular Input System
 
 The tool is designed to be easily extendable for new input sources (like different SDRs or file types). This is handled through a simple but powerful interface in the code.
 
@@ -248,4 +280,4 @@ This design keeps all the logic for a specific input source contained in its own
 
 Contributions are highly welcome! Whether you've found a bug or have a cool idea for a feature, feel free to open an issue or send a pull request.
 
-Since an AI had a heavy hand in writing this tool, AI-assisted pull requests are totally fair game. Just a heads-up: all PRs, whether from a human or a bot, will be carefully reviewed to make sure they fit the project's goals and quality standards. I look forward to seeing what you come up with
+Since an AI had a heavy hand in writing this tool, AI-assisted pull requests are totally fair game. Just a heads-up: all PRs, whether from a human or a bot, will be carefully reviewed to make sure they fit the project's goals and quality standards. I look forward to seeing what you come with.
