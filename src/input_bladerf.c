@@ -213,10 +213,6 @@ static bool bladerf_validate_generic_options(const AppConfig* config) {
         log_fatal("BladeRF input requires the --sdr-rf-freq option.");
         return false;
     }
-    if (!config->sdr.sample_rate_provided) {
-        log_fatal("BladeRF input requires the --sdr-sample-rate option.");
-        return false;
-    }
     return true;
 }
 
