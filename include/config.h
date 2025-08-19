@@ -113,7 +113,7 @@
 
 // Profile for sample rates > 40 MSPS on Windows (Optimized for Throughput)
 #define BLADERF_PROFILE_WIN_OPTIMIZED_NUM_BUFFERS     64
-#define BLADERF_PROFILE_WIN_OPTIMIZED_BUFFER_SIZE     131072
+#define BLADERF_PROFILE_WIN_OPTIMIZED_BUFFER_SIZE     65536
 #define BLADERF_PROFILE_WIN_OPTIMIZED_NUM_TRANSFERS   64
 
 // Parameters for calculating the Optimized profile on Linux for sample rates > 40 MSPS
