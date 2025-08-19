@@ -189,10 +189,6 @@ static bool bladerf_validate_options(AppConfig* config);
 static bool bladerf_validate_generic_options(const AppConfig* config);
 static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev);
 
-#ifndef _WIN32
-static int get_usbfs_memory_mb_for_linux(void);
-#endif
-
 static InputSourceOps bladerf_ops = {
     .initialize = bladerf_initialize,
     .start_stream = bladerf_start_stream,
@@ -209,6 +205,8 @@ InputSourceOps* get_bladerf_input_ops(void) {
 }
 
 static bool bladerf_validate_generic_options(const AppConfig* config) {
+    // This now matches the logic of the other SDR modules.
+    // It correctly requires the frequency but allows the default sample rate to be used.
     if (!config->sdr.rf_freq_provided) {
         log_fatal("BladeRF input requires the --sdr-rf-freq option.");
         return false;
@@ -239,30 +237,6 @@ static bool bladerf_validate_options(AppConfig* config) {
 
     return true;
 }
-
-#ifndef _WIN32
-static int get_usbfs_memory_mb_for_linux(void) {
-    const char* path = "/sys/module/usbcore/parameters/usbfs_memory_mb";
-    FILE* fp = fopen(path, "r");
-    if (!fp) {
-        log_warn("Could not read USB memory limit from sysfs. Assuming default of 16 MB.");
-        return 16;
-    }
-    char buf[32];
-    if (fgets(buf, sizeof(buf), fp) == NULL) {
-        fclose(fp);
-        log_warn("Could not read value from usbfs_memory_mb file. Assuming default of 16 MB.");
-        return 16;
-    }
-    fclose(fp);
-    int usbfs_memory_mb = atoi(buf);
-    if (usbfs_memory_mb <= 0) {
-        log_warn("Invalid value '%s' in usbfs_memory_mb file. Assuming default of 16 MB.", buf);
-        return 16;
-    }
-    return usbfs_memory_mb;
-}
-#endif
 
 static bool bladerf_initialize(InputSourceContext* ctx) {
     AppConfig *config = (AppConfig*)ctx->config;
@@ -369,36 +343,10 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
     log_info("BladeRF: Requested sample rate %u Hz, actual rate set to %u Hz.", requested_rate, actual_rate);
     resources->source_info.samplerate = (int)actual_rate;
 
-    if (actual_rate > 40000000) {
-#ifdef _WIN32
-        log_debug("BladeRF: Using High-Throughput (Optimized) profile for sample rate > 40 MSPS.");
-        log_debug("BladeRF: (Windows Optimization: Using large 128K transfer buffers).");
-        s_bladerf_config.num_buffers = BLADERF_PROFILE_WIN_OPTIMIZED_NUM_BUFFERS;
-        s_bladerf_config.buffer_size = BLADERF_PROFILE_WIN_OPTIMIZED_BUFFER_SIZE;
-        s_bladerf_config.num_transfers = BLADERF_PROFILE_WIN_OPTIMIZED_NUM_TRANSFERS;
-#else
-        int detected_mb = get_usbfs_memory_mb_for_linux();
-        log_debug("BladeRF: Using High-Throughput (Optimized) profile for sample rate > 40 MSPS.");
-        log_debug("BladeRF: (Linux Optimization: Dynamically calculating profile based on %d MB usbfs limit).", detected_mb);
-
-        long long memory_budget = (long long)detected_mb * 1024 * 1024 * BLADERF_PROFILE_LINUX_MEM_BUDGET_FACTOR;
-        unsigned int calculated_transfers = memory_budget / BLADERF_PROFILE_LINUX_OPTIMIZED_BUFFER_SIZE;
-
-        if (calculated_transfers > BLADERF_PROFILE_LINUX_MAX_TRANSFERS) {
-            calculated_transfers = BLADERF_PROFILE_LINUX_MAX_TRANSFERS;
-        }
-        if (calculated_transfers < 16) {
-            calculated_transfers = 16;
-        }
-
-        s_bladerf_config.buffer_size = BLADERF_PROFILE_LINUX_OPTIMIZED_BUFFER_SIZE;
-        s_bladerf_config.num_transfers = calculated_transfers;
-        s_bladerf_config.num_buffers = calculated_transfers;
-        log_debug("BladeRF: Calculated profile: num_buffers=%u, buffer_size=%u, num_transfers=%u",
-                 s_bladerf_config.num_buffers, s_bladerf_config.buffer_size, s_bladerf_config.num_transfers);
-#endif
-    } else if (actual_rate >= 5000000) {
-        log_debug("BladeRF: Using High-Throughput profile for sample rate between 5 and 40 MSPS.");
+    // Select a streaming profile based on the sample rate.
+    // These profiles are unified and safe for both Windows and default Linux systems.
+    if (actual_rate >= 5000000) {
+        log_debug("BladeRF: Using High-Throughput profile for sample rate >= 5 MSPS.");
         s_bladerf_config.num_buffers = BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_BUFFERS;
         s_bladerf_config.buffer_size = BLADERF_PROFILE_HIGHTHROUGHPUT_BUFFER_SIZE;
         s_bladerf_config.num_transfers = BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS;

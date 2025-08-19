@@ -93,33 +93,30 @@
 #define BLADERF_TRANSFER_SIZE_SECONDS    0.25
 
 // --- BladeRF Adaptive Streaming Profiles ---
-// These profiles are selected at runtime based on the sample rate to ensure
-// stability and performance across the device's full range.
+// These profiles are designed to be safe and reliable on both Windows and a default
+// Linux system (with a 16MB usbfs memory limit). They prioritize stability over
+// aggressive optimization that may fail on un-tuned systems.
 
-// Profile for sample rates < 1 MSPS (Low-Latency)
+// Tier 1: Low Latency (< 1 MSPS)
+// Memory Footprint: 32 * 16384 = 0.5 MB
 #define BLADERF_PROFILE_LOWLATENCY_NUM_BUFFERS        32
 #define BLADERF_PROFILE_LOWLATENCY_BUFFER_SIZE        16384
 #define BLADERF_PROFILE_LOWLATENCY_NUM_TRANSFERS      16
 
-// Profile for sample rates between 1 MSPS and 5 MSPS (Balanced)
+// Tier 2: Balanced (1 to 5 MSPS)
+// Memory Footprint: 64 * 32768 = 2 MB
 #define BLADERF_PROFILE_BALANCED_NUM_BUFFERS          64
 #define BLADERF_PROFILE_BALANCED_BUFFER_SIZE          32768
 #define BLADERF_PROFILE_BALANCED_NUM_TRANSFERS        32
 
-// Profile for sample rates between 5 MSPS and 40 MSPS (High-Throughput)
-#define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_BUFFERS    128
+// Tier 3: High-Throughput (>= 5 MSPS)
+// Memory Footprint: 64 * 65536 = 4 MB
+// This is the most robust profile for all high-speed rates on a default system.
+// Advanced Linux users can increase system usbfs memory for even better performance.
+// Example: `sudo sh -c 'echo 128 > /sys/module/usbcore/parameters/usbfs_memory_mb'`
+#define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_BUFFERS    64
 #define BLADERF_PROFILE_HIGHTHROUGHPUT_BUFFER_SIZE    65536
-#define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS  64
-
-// Profile for sample rates > 40 MSPS on Windows (Optimized for Throughput)
-#define BLADERF_PROFILE_WIN_OPTIMIZED_NUM_BUFFERS     64
-#define BLADERF_PROFILE_WIN_OPTIMIZED_BUFFER_SIZE     65536
-#define BLADERF_PROFILE_WIN_OPTIMIZED_NUM_TRANSFERS   64
-
-// Parameters for calculating the Optimized profile on Linux for sample rates > 40 MSPS
-#define BLADERF_PROFILE_LINUX_OPTIMIZED_BUFFER_SIZE   65536
-#define BLADERF_PROFILE_LINUX_MEM_BUDGET_FACTOR       0.75  // Use 75% of available usbfs memory
-#define BLADERF_PROFILE_LINUX_MAX_TRANSFERS           256   // Sanity cap on calculated transfers
+#define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS  32
 #endif // defined(WITH_BLADERF)
 
 #endif // CONFIG_H_
