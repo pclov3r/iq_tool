@@ -10,7 +10,7 @@ I originally built this tool for a very specific need: processing NRSC-5 (HD Rad
 
 Let's be upfront: a large language model (AI) helped write a significant portion of this code, *if not most.* I guided it, reviewed its output, and tested the result, but this project didn't evolve through the typical trial-and-error of a human-only endeavor. Even this README you're reading was drafted by the AI based on the source code, then edited and refined by me.
 
-Second, it's worth knowing that this was a learning project for me. I chose to write it in C for its simplicity and how it keeps you close to the metal; I also figured it would be a better target for AI collaboration versus a more complex language like C++. Since I was learning the language as I went, what you'll see in the code is my journey of tackling C, threading, and DSP all at once. The focus was always on getting a practical, working result, which means some of the solutions are probably not what you'd find in a textbook. However, I have made a effort to clean up and refactor the code to the best of my knowledge and research.
+Second, it's worth knowing that this was a learning project for me. I chose to write it in C for its simplicity and how it keeps you close to the metal; I also figured it would be a better target for AI code versus a more complex language like C++. Since I was learning the language as I went, what you'll see in the code is my journey of tackling C, threading, and DSP all at once. The focus was always on getting a practical, working result, which means some of the solutions are probably not what you'd find in a textbook. However, I have made a effort to clean up and refactor the code to the best of my knowledge and research.
 
 *What does this mean for you?*
 
