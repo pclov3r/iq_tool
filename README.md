@@ -55,7 +55,7 @@ You'll need a pretty standard C development environment.
 *   **liquid-dsp**
 *   **libexpat**
 *   **pthreads:** This is a standard system component on Linux/macOS. On Windows, a compatible version is typically included with the MinGW-w64 toolchain.
-*   **(Optional) libfftw3:** For a significant performance boost with FFT-based filtering, install this library (`libfftw3-dev`) **before** building `liquid-dsp`.
+*   **(Optional) libfftw3:** For a performance boost with FFT-based filtering, install (`libfftw3-dev`) **before** building or installing `liquid-dsp`.
 *   **(Optional) RTL-SDR Library (librtlsdr):** For RTL-SDR support (e.g., `librtlsdr-dev`).
 *   **(Optional) BladeRF Library (libbladeRF):** For BladeRF support (e.g., `libbladerf-dev`).
 *   **(Optional) HackRF Library (libhackrf):** For HackRF support (e.g., `libhackrf-dev`).
