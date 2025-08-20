@@ -15,7 +15,7 @@
 #define PROGRESS_UPDATE_INTERVAL_SECONDS 1
 
 #define NUM_BUFFERS                     512 // Increased for stability against pipeline stalls
-#define BUFFER_SIZE_SAMPLES             131072
+#define BUFFER_SIZE_SAMPLES             16384
 #define RESAMPLER_OUTPUT_SAFETY_MARGIN  128 // Extra samples for resampler output buffer
 
 // Size of the decoupled I/O ring buffer. A large size is critical for absorbing
