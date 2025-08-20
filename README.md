@@ -178,7 +178,8 @@ Available Presets:
     cs16-fm-nrsc5                         Sets sample type to cs16, rate to 744187.5 Hz for FM NRSC5 decoding (produces headerless raw output).
     cs16-am-nrsc5                         Sets sample type to cs16, rate to 46511.71875 Hz for AM NRSC5 decoding (produces headerless raw output).
 
-Help
+Help & Version
+    -v, --version                         show program's version number and exit
     -h, --help                            show this help message and exit
 ```
 
