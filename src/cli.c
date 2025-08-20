@@ -451,7 +451,6 @@ static bool validate_output_type_and_sample_format(AppConfig *config) {
                 if (p->iq_correction_provided && !config->iq_correction.enable) {
                     config->iq_correction.enable = p->iq_correction_enable;
                 }
-
                 if (p->lowpass_cutoff_hz_provided && config->lowpass_cutoff_hz_arg == 0.0f) {
                     config->lowpass_cutoff_hz_arg = p->lowpass_cutoff_hz;
                 }
