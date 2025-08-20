@@ -30,8 +30,6 @@
 #include "file_write_buffer.h"
 #include "sdr_packet_serializer.h"
 
-// --- NOTE: All module-specific library includes have been removed ---
-
 // --- Forward Declarations ---
 struct InputSourceOps;
 struct AppConfig;
@@ -68,17 +66,16 @@ typedef enum {
     FILTER_TYPE_STOPBAND
 } FilterType;
 
-// CHANGE: Renamed TIME_... to FIR_... for clarity.
 typedef enum {
     FILTER_IMPL_NONE,
-    FILTER_IMPL_FIR_SYMMETRIC,    // firfilt_crcf
-    FILTER_IMPL_FIR_ASYMMETRIC,   // firfilt_cccf
-    FILTER_IMPL_FFT_SYMMETRIC,    // fftfilt_crcf
-    FILTER_IMPL_FFT_ASYMMETRIC    // fftfilt_cccf
+    FILTER_IMPL_FIR_SYMMETRIC,
+    FILTER_IMPL_FIR_ASYMMETRIC,
+    FILTER_IMPL_FFT_SYMMETRIC,
+    FILTER_IMPL_FFT_ASYMMETRIC
 } FilterImplementationType;
 
 typedef enum {
-    FILTER_TYPE_FIR, // Default, time-domain
+    FILTER_TYPE_FIR,
     FILTER_TYPE_FFT
 } FilterTypeRequest;
 
@@ -111,6 +108,23 @@ typedef union {
 
 // --- Struct Definitions ---
 
+// Definitions for the preset parser dispatch table
+typedef enum {
+    PRESET_KEY_STRDUP,
+    PRESET_KEY_STRTOD,
+    PRESET_KEY_STRTOF,
+    PRESET_KEY_STRTOL,
+    PRESET_KEY_BOOL,
+    PRESET_KEY_OUTPUT_TYPE
+} PresetKeyAction;
+
+typedef struct {
+    const char* key_name;
+    PresetKeyAction action;
+    size_t value_offset;
+    size_t provided_flag_offset;
+} PresetKeyHandler;
+
 typedef struct {
     char* name;
     char* description;
@@ -123,6 +137,25 @@ typedef struct {
     bool dc_block_provided;
     bool iq_correction_enable;
     bool iq_correction_provided;
+
+    // Filter Fields
+    float lowpass_cutoff_hz;
+    bool  lowpass_cutoff_hz_provided;
+    float highpass_cutoff_hz;
+    bool  highpass_cutoff_hz_provided;
+    char* pass_range_str;
+    bool  pass_range_str_provided;
+    char* stopband_str;
+    bool  stopband_str_provided;
+    float transition_width_hz;
+    bool  transition_width_hz_provided;
+    int   filter_taps;
+    bool  filter_taps_provided;
+    float attenuation_db;
+    bool  attenuation_db_provided;
+    char* filter_type_str;
+    bool  filter_type_str_provided;
+
 } PresetDefinition;
 
 typedef struct {
@@ -190,8 +223,8 @@ typedef struct {
 
 typedef struct {
     FilterType type;
-    float freq1_hz; // Represents cutoff for LPF/HPF, or center frequency for BPF/BSF
-    float freq2_hz; // Represents bandwidth for BPF/BSF
+    float freq1_hz;
+    float freq2_hz;
 } FilterRequest;
 
 typedef struct AppConfig {
@@ -242,7 +275,6 @@ typedef struct AppConfig {
 
 #if defined(ANY_SDR_SUPPORT_ENABLED)
     struct {
-        // Clean, un-prefixed members within the 'sdr' namespace
         double rf_freq_hz;
         float  rf_freq_hz_arg;
         bool   rf_freq_provided;
@@ -334,7 +366,6 @@ typedef struct AppResources {
     void* user_fir_filter_object;
     unsigned int user_filter_block_size;
 
-    // This single opaque pointer replaces ALL module-specific handles.
     void* input_module_private_data;
 
     SampleChunk* sample_chunk_pool;

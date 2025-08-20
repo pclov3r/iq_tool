@@ -71,7 +71,6 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
         OPT_GROUP("Filtering Options"),
         OPT_FLOAT(0, "lowpass", &g_config.lowpass_cutoff_hz_arg, "Apply a low-pass filter, keeping frequencies from -<freq> to +<freq>.", NULL, 0, 0),
         OPT_FLOAT(0, "highpass", &g_config.highpass_cutoff_hz_arg, "Apply a high-pass filter, keeping frequencies above +<freq> and below -<freq>.", NULL, 0, 0),
-        // CHANGE: Removed the implementation detail "with a FIR filter".
         OPT_STRING(0, "pass-range", &g_config.pass_range_str_arg, "Isolate a frequency range. Format: 'start_freq:end_freq' (e.g., '100e3:200e3').", NULL, 0, 0),
         OPT_STRING(0, "stopband", &g_config.stopband_str_arg, "Apply a stop-band (notch) filter. Format: 'start_freq:end_freq' (e.g., '-65:65').", NULL, 0, 0),
         OPT_GROUP("Filter Quality Options"),
@@ -452,6 +451,32 @@ static bool validate_output_type_and_sample_format(AppConfig *config) {
                 if (p->iq_correction_provided && !config->iq_correction.enable) {
                     config->iq_correction.enable = p->iq_correction_enable;
                 }
+
+                if (p->lowpass_cutoff_hz_provided && config->lowpass_cutoff_hz_arg == 0.0f) {
+                    config->lowpass_cutoff_hz_arg = p->lowpass_cutoff_hz;
+                }
+                if (p->highpass_cutoff_hz_provided && config->highpass_cutoff_hz_arg == 0.0f) {
+                    config->highpass_cutoff_hz_arg = p->highpass_cutoff_hz;
+                }
+                if (p->pass_range_str_provided && !config->pass_range_str_arg) {
+                    config->pass_range_str_arg = p->pass_range_str;
+                }
+                if (p->stopband_str_provided && !config->stopband_str_arg) {
+                    config->stopband_str_arg = p->stopband_str;
+                }
+                if (p->transition_width_hz_provided && config->transition_width_hz_arg == 0.0f) {
+                    config->transition_width_hz_arg = p->transition_width_hz;
+                }
+                if (p->filter_taps_provided && config->filter_taps_arg == 0) {
+                    config->filter_taps_arg = p->filter_taps;
+                }
+                if (p->attenuation_db_provided && config->attenuation_db_arg == 0.0f) {
+                    config->attenuation_db_arg = p->attenuation_db;
+                }
+                if (p->filter_type_str_provided && !config->filter_type_str_arg) {
+                    config->filter_type_str_arg = p->filter_type_str;
+                }
+
                 preset_found = true;
                 break;
             }

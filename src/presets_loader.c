@@ -3,13 +3,14 @@
 #include "log.h"
 #include "config.h"
 #include "utils.h"
-#include "platform.h" // <<< ADDED
+#include "platform.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
+#include <stddef.h> // For offsetof
 
 #ifdef _WIN32
 #include <windows.h>
@@ -25,13 +26,32 @@
 #include <libgen.h>
 #endif
 
+// --- The Dispatch Table ---
+// To add a new key, simply add a new entry to this table.
+static const PresetKeyHandler key_handlers[] = {
+    { "description",      PRESET_KEY_STRDUP, offsetof(PresetDefinition, description),         0 },
+    { "target_rate",      PRESET_KEY_STRTOD, offsetof(PresetDefinition, target_rate),         0 },
+    { "sample_format_name", PRESET_KEY_STRDUP, offsetof(PresetDefinition, sample_format_name),  0 },
+    { "output_type",      PRESET_KEY_OUTPUT_TYPE, offsetof(PresetDefinition, output_type),       0 },
+    { "gain",             PRESET_KEY_STRTOF, offsetof(PresetDefinition, gain),              offsetof(PresetDefinition, gain_provided) },
+    { "dc_block",         PRESET_KEY_BOOL,   offsetof(PresetDefinition, dc_block_enable),   offsetof(PresetDefinition, dc_block_provided) },
+    { "iq_correction",    PRESET_KEY_BOOL,   offsetof(PresetDefinition, iq_correction_enable),offsetof(PresetDefinition, iq_correction_provided) },
+    { "lowpass",          PRESET_KEY_STRTOF, offsetof(PresetDefinition, lowpass_cutoff_hz), offsetof(PresetDefinition, lowpass_cutoff_hz_provided) },
+    { "highpass",         PRESET_KEY_STRTOF, offsetof(PresetDefinition, highpass_cutoff_hz),offsetof(PresetDefinition, highpass_cutoff_hz_provided) },
+    { "pass_range",       PRESET_KEY_STRDUP, offsetof(PresetDefinition, pass_range_str),    offsetof(PresetDefinition, pass_range_str_provided) },
+    { "stopband",         PRESET_KEY_STRDUP, offsetof(PresetDefinition, stopband_str),      offsetof(PresetDefinition, stopband_str_provided) },
+    { "transition_width", PRESET_KEY_STRTOF, offsetof(PresetDefinition, transition_width_hz), offsetof(PresetDefinition, transition_width_hz_provided) },
+    { "filter_taps",      PRESET_KEY_STRTOL, offsetof(PresetDefinition, filter_taps),       offsetof(PresetDefinition, filter_taps_provided) },
+    { "attenuation",      PRESET_KEY_STRTOF, offsetof(PresetDefinition, attenuation_db),    offsetof(PresetDefinition, attenuation_db_provided) },
+    { "filter_type",      PRESET_KEY_STRDUP, offsetof(PresetDefinition, filter_type_str),   offsetof(PresetDefinition, filter_type_str_provided) },
+};
+static const size_t num_key_handlers = sizeof(key_handlers) / sizeof(key_handlers[0]);
+
+
 // --- Helper function declarations ---
 static void free_dynamic_paths(char** paths, int count);
 
 
-/**
- * @brief Helper function to free dynamically allocated path strings.
- */
 static void free_dynamic_paths(char** paths, int count) {
     for (int i = 0; i < count; ++i) {
         free(paths[i]);
@@ -39,11 +59,7 @@ static void free_dynamic_paths(char** paths, int count) {
     }
 }
 
-/**
- * @brief Loads preset definitions from a text file, searching common locations.
- */
 bool presets_load_from_file(AppConfig* config) {
-    // Initialize config fields
     config->presets = NULL;
     config->num_presets = 0;
 
@@ -58,20 +74,16 @@ bool presets_load_from_file(AppConfig* config) {
     int current_path_idx = 0;
 
 #ifdef _WIN32
-    // 1. Executable directory
     char exe_dir[MAX_PATH_BUFFER];
-    if (platform_get_executable_dir(exe_dir, sizeof(exe_dir))) { // <<< CHANGED
+    if (platform_get_executable_dir(exe_dir, sizeof(exe_dir))) {
         search_paths_list[current_path_idx++] = exe_dir;
     }
-
-    // 2. %APPDATA%\APP_NAME
     wchar_t* appdata_path_w = NULL;
     if (SHGetKnownFolderPath(&FOLDERID_RoamingAppData, 0, NULL, &appdata_path_w) == S_OK) {
         wchar_t full_appdata_path_w[MAX_PATH_BUFFER];
         wcsncpy(full_appdata_path_w, appdata_path_w, MAX_PATH_BUFFER - 1);
         full_appdata_path_w[MAX_PATH_BUFFER - 1] = L'\0';
         CoTaskMemFree(appdata_path_w);
-
         PathAppendW(full_appdata_path_w, L"\\" APP_NAME);
         char* appdata_path_utf8 = (char*)malloc(MAX_PATH_BUFFER);
         if (appdata_path_utf8) {
@@ -88,15 +100,12 @@ bool presets_load_from_file(AppConfig* config) {
             return false;
         }
     }
-
-    // 3. %PROGRAMDATA%\APP_NAME
     wchar_t* programdata_path_w = NULL;
     if (SHGetKnownFolderPath(&FOLDERID_ProgramData, 0, NULL, &programdata_path_w) == S_OK) {
         wchar_t full_programdata_path_w[MAX_PATH_BUFFER];
         wcsncpy(full_programdata_path_w, programdata_path_w, MAX_PATH_BUFFER - 1);
         full_programdata_path_w[MAX_PATH_BUFFER - 1] = L'\0';
         CoTaskMemFree(programdata_path_w);
-
         PathAppendW(full_programdata_path_w, L"\\" APP_NAME);
         char* programdata_path_utf8 = (char*)malloc(MAX_PATH_BUFFER);
         if (programdata_path_utf8) {
@@ -114,7 +123,6 @@ bool presets_load_from_file(AppConfig* config) {
         }
     }
 #else // POSIX
-    // ... (POSIX paths remain the same) ...
     search_paths_list[current_path_idx++] = ".";
     const char* xdg_config_home = getenv("XDG_CONFIG_HOME");
     char* xdg_path = (char*)malloc(MAX_PATH_BUFFER);
@@ -142,14 +150,11 @@ bool presets_load_from_file(AppConfig* config) {
     search_paths_list[current_path_idx++] = "/usr/local/etc/" APP_NAME;
 #endif
 
-    // --- Search for the presets file in all defined locations ---
     for (int i = 0; i < current_path_idx; ++i) {
         const char* base_dir = search_paths_list[i];
         if (base_dir == NULL) continue;
-
         snprintf(full_path_buffer, sizeof(full_path_buffer), "%s/%s", base_dir, PRESETS_FILENAME);
-
-        if (utils_check_file_exists(full_path_buffer)) { // <<< CHANGED
+        if (utils_check_file_exists(full_path_buffer)) {
             if (num_found_files < (int)(sizeof(found_preset_files) / sizeof(found_preset_files[0]))) {
                 found_preset_files[num_found_files] = strdup(full_path_buffer);
                 if (!found_preset_files[num_found_files]) {
@@ -163,7 +168,6 @@ bool presets_load_from_file(AppConfig* config) {
         }
     }
 
-    // ... (The rest of the function remains unchanged) ...
     if (num_found_files > 1) {
         log_warn("Conflicting presets files found. No presets will be loaded. Please resolve the conflict by keeping only one of the following files:");
         for (int i = 0; i < num_found_files; ++i) {
@@ -214,7 +218,6 @@ bool presets_load_from_file(AppConfig* config) {
                 current_preset = NULL;
                 continue;
             }
-
             if (config->num_presets == capacity) {
                 capacity *= 2;
                 PresetDefinition* new_presets = realloc(config->presets, capacity * sizeof(PresetDefinition));
@@ -228,10 +231,8 @@ bool presets_load_from_file(AppConfig* config) {
                 }
                 config->presets = new_presets;
             }
-
             current_preset = &config->presets[config->num_presets];
             memset(current_preset, 0, sizeof(PresetDefinition));
-
             char* name_start = trimmed_line + strlen("[preset:");
             char* name_end = strchr(name_start, ']');
             if (name_end) {
@@ -253,7 +254,6 @@ bool presets_load_from_file(AppConfig* config) {
         } else if (current_preset && strchr(trimmed_line, '=')) {
             char* key = strtok(trimmed_line, "=");
             char* value = strtok(NULL, "");
-
             if (!key || !value) {
                 log_warn("Malformed key-value pair at line %d.", line_num);
                 continue;
@@ -261,70 +261,46 @@ bool presets_load_from_file(AppConfig* config) {
             key = trim_whitespace(key);
             value = trim_whitespace(value);
 
-            if (strcasecmp(key, "description") == 0) {
-                current_preset->description = strdup(value);
-                if (!current_preset->description) {
-                    log_fatal("Failed to duplicate preset description string.");
-                    presets_free_loaded(config);
-                    fclose(fp);
-                    free(found_preset_files[0]);
-                    free_dynamic_paths(dynamic_paths, dynamic_paths_count);
-                    return false;
+            bool key_found = false;
+            for (size_t i = 0; i < num_key_handlers; ++i) {
+                const PresetKeyHandler* handler = &key_handlers[i];
+                if (strcasecmp(key, handler->key_name) == 0) {
+                    char* value_ptr = (char*)current_preset + handler->value_offset;
+                    bool* provided_ptr = (bool*)((char*)current_preset + handler->provided_flag_offset);
+
+                    switch (handler->action) {
+                        case PRESET_KEY_STRDUP:
+                            *(char**)value_ptr = strdup(value);
+                            break;
+                        case PRESET_KEY_STRTOD:
+                            *(double*)value_ptr = strtod(value, NULL);
+                            break;
+                        case PRESET_KEY_STRTOF:
+                            *(float*)value_ptr = strtof(value, NULL);
+                            break;
+                        case PRESET_KEY_STRTOL:
+                            *(int*)value_ptr = (int)strtol(value, NULL, 10);
+                            break;
+                        case PRESET_KEY_BOOL:
+                            if (strcasecmp(value, "true") == 0) *(bool*)value_ptr = true;
+                            else if (strcasecmp(value, "false") == 0) *(bool*)value_ptr = false;
+                            break;
+                        case PRESET_KEY_OUTPUT_TYPE:
+                            if (strcasecmp(value, "raw") == 0) *(OutputType*)value_ptr = OUTPUT_TYPE_RAW;
+                            else if (strcasecmp(value, "wav") == 0) *(OutputType*)value_ptr = OUTPUT_TYPE_WAV;
+                            else if (strcasecmp(value, "wav-rf64") == 0) *(OutputType*)value_ptr = OUTPUT_TYPE_WAV_RF64;
+                            break;
+                    }
+
+                    if (handler->provided_flag_offset > 0) {
+                        *provided_ptr = true;
+                    }
+                    key_found = true;
+                    break;
                 }
-            } else if (strcasecmp(key, "target_rate") == 0) {
-                char* endptr;
-                current_preset->target_rate = strtod(value, &endptr);
-                if (*endptr != '\0' || current_preset->target_rate <= 0 || !isfinite(current_preset->target_rate)) {
-                    log_warn("Invalid value for 'target_rate' in preset '%s' at line %d: '%s'", current_preset->name, line_num, value);
-                    current_preset->target_rate = 0.0;
-                }
-            } else if (strcasecmp(key, "sample_format_name") == 0) {
-                current_preset->sample_format_name = strdup(value);
-                if (!current_preset->sample_format_name) {
-                    log_fatal("Failed to duplicate preset sample format name string.");
-                    presets_free_loaded(config);
-                    fclose(fp);
-                    free(found_preset_files[0]);
-                    free_dynamic_paths(dynamic_paths, dynamic_paths_count);
-                    return false;
-                }
-            } else if (strcasecmp(key, "output_type") == 0) {
-                if (strcasecmp(value, "raw") == 0) current_preset->output_type = OUTPUT_TYPE_RAW;
-                else if (strcasecmp(value, "wav") == 0) current_preset->output_type = OUTPUT_TYPE_WAV;
-                else if (strcasecmp(value, "wav-rf64") == 0) current_preset->output_type = OUTPUT_TYPE_WAV_RF64;
-                else {
-                    log_warn("Invalid value for 'output_type' in preset '%s' at line %d: '%s'", current_preset->name, line_num, value);
-                }
-            } else if (strcasecmp(key, "gain") == 0) {
-                char* endptr;
-                float parsed_gain = strtof(value, &endptr);
-                if (*endptr == '\0' && parsed_gain > 0.0f && isfinite(parsed_gain)) {
-                    current_preset->gain = parsed_gain;
-                    current_preset->gain_provided = true;
-                } else {
-                    log_warn("Invalid value for 'gain' in preset '%s' at line %d: '%s'", current_preset->name, line_num, value);
-                }
-            } else if (strcasecmp(key, "dc_block") == 0) {
-                if (strcasecmp(value, "true") == 0) {
-                    current_preset->dc_block_enable = true;
-                    current_preset->dc_block_provided = true;
-                } else if (strcasecmp(value, "false") == 0) {
-                    current_preset->dc_block_enable = false;
-                    current_preset->dc_block_provided = true;
-                } else {
-                    log_warn("Invalid value for 'dc_block' in preset '%s' at line %d: '%s'. Use 'true' or 'false'.", current_preset->name, line_num, value);
-                }
-            } else if (strcasecmp(key, "iq_correction") == 0) {
-                if (strcasecmp(value, "true") == 0) {
-                    current_preset->iq_correction_enable = true;
-                    current_preset->iq_correction_provided = true;
-                } else if (strcasecmp(value, "false") == 0) {
-                    current_preset->iq_correction_enable = false;
-                    current_preset->iq_correction_provided = true;
-                } else {
-                    log_warn("Invalid value for 'iq_correction' in preset '%s' at line %d: '%s'. Use 'true' or 'false'.", current_preset->name, line_num, value);
-                }
-            } else {
+            }
+
+            if (!key_found) {
                 log_warn("Unknown key '%s' in preset '%s' at line %d.", key, current_preset->name, line_num);
             }
         }
@@ -336,9 +312,6 @@ bool presets_load_from_file(AppConfig* config) {
     return true;
 }
 
-/**
- * @brief Frees the memory allocated for the presets.
- */
 void presets_free_loaded(AppConfig* config) {
     if (!config || !config->presets) return;
 
@@ -349,6 +322,12 @@ void presets_free_loaded(AppConfig* config) {
         config->presets[i].description = NULL;
         free(config->presets[i].sample_format_name);
         config->presets[i].sample_format_name = NULL;
+        free(config->presets[i].pass_range_str);
+        config->presets[i].pass_range_str = NULL;
+        free(config->presets[i].stopband_str);
+        config->presets[i].stopband_str = NULL;
+        free(config->presets[i].filter_type_str);
+        config->presets[i].filter_type_str = NULL;
     }
     free(config->presets);
     config->presets = NULL;
