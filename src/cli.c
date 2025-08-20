@@ -31,13 +31,28 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
 static bool resolve_frequency_shift_options(AppConfig *config);
 static bool validate_filter_options(AppConfig *config);
 static bool validate_iq_correction_options(AppConfig *config);
-
+static int version_cb(struct argparse *self, const struct argparse_option *option);
 
 void print_usage(const char *prog_name) {
     const char* help_argv[] = { prog_name, "--help" };
     parse_arguments(2, (char**)help_argv, &g_config);
 }
 
+static int version_cb(struct argparse *self, const struct argparse_option *option) {
+    (void)self;
+    (void)option;
+
+    // The GIT_HASH macro is provided by the CMake build system.
+    // We check if it's defined to handle cases where the code is
+    // compiled outside of a Git repository.
+#ifdef GIT_HASH
+    fprintf(stdout, "%s version %s\n", APP_NAME, GIT_HASH);
+#else
+    fprintf(stdout, "%s version unknown\n", APP_NAME);
+#endif
+
+    exit(EXIT_SUCCESS);
+}
 
 bool parse_arguments(int argc, char *argv[], AppConfig *config) {
     #define MAX_STATIC_OPTIONS 128
@@ -92,7 +107,8 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config) {
     #endif
 
     static struct argparse_option final_options[] = {
-        OPT_GROUP("Help"),
+        OPT_GROUP("Help & Version"),
+        OPT_BOOLEAN('v', "version", NULL, "show program's version number and exit", version_cb, 0, OPT_NONEG), // <-- ADDED: The new version option
         OPT_BOOLEAN('h', "help", NULL, "show this help message and exit", argparse_help_cb, 0, OPT_NONEG),
         OPT_END(),
     };

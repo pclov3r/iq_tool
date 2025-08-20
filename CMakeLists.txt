@@ -659,6 +659,35 @@ endif()
 # Create the executable from ALL source files
 add_executable(iq_resample_tool ${DSP_SOURCES} ${OTHER_SOURCES})
 
+#=======================================================================
+# Versioning (Git Commit Hash)
+#=======================================================================
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE GIT_RESULT
+        ERROR_QUIET
+    )
+    if(GIT_RESULT EQUAL 0)
+        set(VERSION_INFO "${GIT_HASH}")
+        message(STATUS "Detected Git commit hash: ${VERSION_INFO}")
+    else()
+        set(VERSION_INFO "unknown-git-error")
+        message(STATUS "Could not get Git commit hash.")
+    endif()
+else()
+    set(VERSION_INFO "unknown-no-git")
+    message(STATUS "Git not found. Version will be unknown.")
+endif()
+
+# Pass the hash to the C code as a preprocessor macro: #define GIT_HASH "..."
+target_compile_definitions(iq_resample_tool PRIVATE GIT_HASH="${VERSION_INFO}")
+#=======================================================================
+
 # Apply special compile options ONLY to the DSP source files for Release builds
 if(NOT MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
     set_source_files_properties(${DSP_SOURCES}
