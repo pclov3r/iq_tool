@@ -1,11 +1,12 @@
 // src/input_sdrplay.c
 
 #include "input_sdrplay.h"
+#include "constants.h"
 #include "log.h"
 #include "signal_handler.h"
 #include "config.h"
 #include "types.h"
-#include "spectrum_shift.h"
+#include "frequency_shift.h"
 #include "utils.h"
 #include "sample_convert.h"
 #include "input_common.h"
@@ -416,9 +417,9 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
         }
         item->stream_discontinuity_event = false;
         size_t samples_to_copy = numSamples;
-        if (samples_to_copy > BUFFER_SIZE_SAMPLES) {
+        if (samples_to_copy > PIPELINE_INPUT_CHUNK_SIZE_SAMPLES) {
             log_warn("SDRplay callback provided more samples than buffer can hold. Truncating.");
-            samples_to_copy = BUFFER_SIZE_SAMPLES;
+            samples_to_copy = PIPELINE_INPUT_CHUNK_SIZE_SAMPLES;
         }
         int16_t *raw_buffer = (int16_t*)item->raw_input_data;
         for (unsigned int i = 0; i < samples_to_copy; i++) {

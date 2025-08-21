@@ -617,7 +617,7 @@ set(DSP_SOURCES
     src/iq_correct.c
     src/dc_block.c
     src/filter.c
-    src/spectrum_shift.c
+    src/frequency_shift.c
 )
 
 # Define the list of all other (non-DSP) source files

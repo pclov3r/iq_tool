@@ -1,6 +1,5 @@
-// src/input_wav.c
-
 #include "input_wav.h"
+#include "constants.h"
 #include "log.h"
 #include "signal_handler.h"
 #include "utils.h"
@@ -16,10 +15,8 @@
 #include <stdarg.h>
 #include "argparse.h"
 
-// Module-specific includes that were removed from types.h
 #include <sndfile.h>
 
-// --- Includes from metadata.c ---
 #include <stdlib.h>
 #include <stdbool.h>
 #include <ctype.h>
@@ -29,62 +26,6 @@
 #include <stddef.h>
 #include <math.h>
 
-// --- Private Module State ---
-typedef struct {
-    SNDFILE *infile;
-} WavPrivateData;
-
-// --- Add an external declaration for the global config ---
-extern AppConfig g_config;
-
-// --- Define the CLI options for this module ---
-static const struct argparse_option wav_cli_options[] = {
-    OPT_GROUP("WAV Input Specific Options"),
-    OPT_FLOAT(0, "wav-center-target-freq", &g_config.wav_center_target_hz_arg, "Shift signal to a new target center frequency (e.g., 97.3e6)", NULL, 0, 0),
-};
-
-// --- Implement the interface function to provide the options ---
-const struct argparse_option* wav_get_cli_options(int* count) {
-    *count = sizeof(wav_cli_options) / sizeof(wav_cli_options[0]);
-    return wav_cli_options;
-}
-
-// --- Forward Declarations ---
-static bool wav_initialize(InputSourceContext* ctx);
-static void* wav_start_stream(InputSourceContext* ctx);
-static void wav_stop_stream(InputSourceContext* ctx);
-static void wav_cleanup(InputSourceContext* ctx);
-static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
-static bool wav_validate_options(AppConfig* config);
-
-// --- Ops struct ---
-static InputSourceOps wav_ops = {
-    .initialize = wav_initialize,
-    .start_stream = wav_start_stream,
-    .stop_stream = wav_stop_stream,
-    .cleanup = wav_cleanup,
-    .get_summary_info = wav_get_summary_info,
-    .validate_options = wav_validate_options,
-    .has_known_length = _input_source_has_known_length_true
-};
-
-InputSourceOps* get_wav_input_ops(void) {
-    return &wav_ops;
-}
-
-// --- Module-specific validation function ---
-static bool wav_validate_options(AppConfig* config) {
-    if (config->wav_center_target_hz_arg != 0.0f) {
-        config->frequency_shift_request.type = FREQUENCY_SHIFT_REQUEST_METADATA_CALC_TARGET;
-        config->frequency_shift_request.value = (double)config->wav_center_target_hz_arg;
-    }
-    return true;
-}
-
-
-// =================================================================================
-// START: Private Metadata Parsing Logic (formerly metadata.c)
-// =================================================================================
 #define SDRC_AUXI_CHUNK_ID_STR "auxi"
 #define MAX_METADATA_CHUNK_SIZE (1024 * 1024)
 
@@ -92,12 +33,12 @@ static bool wav_validate_options(AppConfig* config) {
 typedef struct {
     uint16_t wYear;
     uint16_t wMonth;
-    uint16_t wDayOfWeek; // Ignored
+    uint16_t wDayOfWeek;
     uint16_t wDay;
     uint16_t wHour;
     uint16_t wMinute;
     uint16_t wSecond;
-    uint16_t wMilliseconds; // Ignored
+    uint16_t wMilliseconds;
 } SdrUnoSystemTime;
 #pragma pack(pop)
 
@@ -431,10 +372,51 @@ static bool _parse_auxi_xml_expat(const unsigned char *chunk_data, sf_count_t ch
     }
     return any_data_parsed;
 }
-// =================================================================================
-// END: Private Metadata Parsing Logic
-// =================================================================================
 
+typedef struct {
+    SNDFILE *infile;
+} WavPrivateData;
+
+extern AppConfig g_config;
+
+static const struct argparse_option wav_cli_options[] = {
+    OPT_GROUP("WAV Input Specific Options"),
+    OPT_FLOAT(0, "wav-center-target-freq", &g_config.wav_center_target_hz_arg, "Shift signal to a new target center frequency (e.g., 97.3e6)", NULL, 0, 0),
+};
+
+const struct argparse_option* wav_get_cli_options(int* count) {
+    *count = sizeof(wav_cli_options) / sizeof(wav_cli_options[0]);
+    return wav_cli_options;
+}
+
+static bool wav_initialize(InputSourceContext* ctx);
+static void* wav_start_stream(InputSourceContext* ctx);
+static void wav_stop_stream(InputSourceContext* ctx);
+static void wav_cleanup(InputSourceContext* ctx);
+static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
+static bool wav_validate_options(AppConfig* config);
+
+static InputSourceOps wav_ops = {
+    .initialize = wav_initialize,
+    .start_stream = wav_start_stream,
+    .stop_stream = wav_stop_stream,
+    .cleanup = wav_cleanup,
+    .get_summary_info = wav_get_summary_info,
+    .validate_options = wav_validate_options,
+    .has_known_length = _input_source_has_known_length_true
+};
+
+InputSourceOps* get_wav_input_ops(void) {
+    return &wav_ops;
+}
+
+static bool wav_validate_options(AppConfig* config) {
+    if (config->wav_center_target_hz_arg != 0.0f) {
+        config->frequency_shift_request.type = FREQUENCY_SHIFT_REQUEST_METADATA_CALC_TARGET;
+        config->frequency_shift_request.value = (double)config->wav_center_target_hz_arg;
+    }
+    return true;
+}
 
 static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
@@ -570,7 +552,7 @@ static bool wav_initialize(InputSourceContext* ctx) {
     init_sdr_metadata(&resources->sdr_info);
     resources->sdr_info_present = parse_sdr_metadata_chunks(private_data->infile, &sfinfo, &resources->sdr_info);
 
-    char basename_buffer[MAX_PATH_LEN];
+    char basename_buffer[MAX_PATH_BUFFER];
     const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer));
     if (base_filename) {
         bool filename_parsed = parse_sdr_metadata_from_filename(base_filename, &resources->sdr_info);
@@ -583,17 +565,17 @@ static bool wav_initialize(InputSourceContext* ctx) {
 static void* wav_start_stream(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
     WavPrivateData* private_data = (WavPrivateData*)resources->input_module_private_data;
-    size_t bytes_to_read_per_chunk = (size_t)BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
 
     while (!is_shutdown_requested() && !resources->error_occurred) {
         SampleChunk *current_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
         if (!current_item) {
-            break;
+            break; // Shutdown or error signaled
         }
 
         current_item->stream_discontinuity_event = false;
 
-        int64_t bytes_read = sf_read_raw(private_data->infile, current_item->raw_input_data, bytes_to_read_per_chunk);
+        int64_t bytes_read = sf_read_raw(private_data->infile, current_item->raw_input_data, current_item->raw_input_capacity_bytes);
+
         if (bytes_read < 0) {
             log_fatal("libsndfile read error: %s", sf_strerror(private_data->infile));
             pthread_mutex_lock(&resources->progress_mutex);
@@ -605,6 +587,9 @@ static void* wav_start_stream(InputSourceContext* ctx) {
         }
 
         current_item->frames_read = bytes_read / resources->input_bytes_per_sample_pair;
+        
+        // If we read 0 frames, this is the end of the file.
+        // Set the flag on this chunk and send it as the final marker.
         current_item->is_last_chunk = (current_item->frames_read == 0);
 
         if (!current_item->is_last_chunk) {
@@ -613,11 +598,15 @@ static void* wav_start_stream(InputSourceContext* ctx) {
             pthread_mutex_unlock(&resources->progress_mutex);
         }
 
+        // Enqueue the chunk (either data or the final marker).
         if (!queue_enqueue(resources->raw_to_pre_process_queue, current_item)) {
+            // If enqueue fails, it means a shutdown was requested while we were blocked.
+            // Return the item to the free pool and exit.
             queue_enqueue(resources->free_sample_chunk_queue, current_item);
             break;
         }
 
+        // If we just sent the last chunk marker, we're done.
         if (current_item->is_last_chunk) {
             break;
         }

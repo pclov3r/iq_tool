@@ -51,6 +51,7 @@
  */
 
 #include "iq_correct.h"
+#include "constants.h"
 #include "log.h"
 #include "config.h"
 #include <stdlib.h>

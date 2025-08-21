@@ -1,11 +1,12 @@
 // src/input_hackrf.c
 
 #include "input_hackrf.h"
+#include "constants.h"
 #include "config.h"
 #include "types.h"
 #include "signal_handler.h"
 #include "log.h"
-#include "spectrum_shift.h"
+#include "frequency_shift.h"
 #include "utils.h"
 #include "sample_convert.h"
 #include "input_common.h"
@@ -185,7 +186,7 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
         item->stream_discontinuity_event = false;
 
         size_t chunk_size = transfer->valid_length - bytes_processed;
-        const size_t pipeline_buffer_size = BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
+        const size_t pipeline_buffer_size = PIPELINE_INPUT_CHUNK_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
         if (chunk_size > pipeline_buffer_size) {
             chunk_size = pipeline_buffer_size;
         }

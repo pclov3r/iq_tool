@@ -1,6 +1,5 @@
-// src/input_rawfile.c
-
 #include "input_rawfile.h"
+#include "constants.h"
 #include "log.h"
 #include "signal_handler.h"
 #include "utils.h"
@@ -16,7 +15,6 @@
 #include <stdarg.h>
 #include "argparse.h"
 
-// Module-specific includes that were removed from types.h
 #include <sndfile.h>
 
 #ifndef _WIN32
@@ -29,7 +27,6 @@
 
 extern AppConfig g_config;
 
-// --- Private Module Configuration ---
 static struct {
     double sample_rate_hz;
     float raw_file_sample_rate_hz_arg;
@@ -38,7 +35,6 @@ static struct {
     bool format_provided;
 } s_rawfile_config;
 
-// --- Private Module State ---
 typedef struct {
     SNDFILE *infile;
 } RawfilePrivateData;
@@ -77,7 +73,7 @@ InputSourceOps* get_raw_file_input_ops(void) {
 }
 
 static bool rawfile_validate_options(AppConfig* config) {
-    (void)config; // Mark as unused
+    (void)config;
     if (s_rawfile_config.raw_file_sample_rate_hz_arg > 0.0f) {
         s_rawfile_config.sample_rate_hz = (double)s_rawfile_config.raw_file_sample_rate_hz_arg;
         s_rawfile_config.sample_rate_provided = true;
@@ -166,7 +162,6 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
     const AppConfig *config = ctx->config;
     RawfilePrivateData* private_data = (RawfilePrivateData*)resources->input_module_private_data;
-    size_t bytes_to_read_per_chunk = (size_t)BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
 
     if (config->raw_passthrough && resources->input_format != config->output_format) {
         char error_buf[256];
@@ -180,13 +175,15 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
     while (!is_shutdown_requested() && !resources->error_occurred) {
         SampleChunk *current_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
         if (!current_item) {
-            break;
+            break; // Shutdown or error signaled
         }
 
         current_item->stream_discontinuity_event = false;
 
         void* target_buffer = config->raw_passthrough ? current_item->final_output_data : current_item->raw_input_data;
-        int64_t bytes_read = sf_read_raw(private_data->infile, target_buffer, bytes_to_read_per_chunk);
+        size_t bytes_to_read = config->raw_passthrough ? current_item->final_output_capacity_bytes : current_item->raw_input_capacity_bytes;
+        
+        int64_t bytes_read = sf_read_raw(private_data->infile, target_buffer, bytes_to_read);
 
         if (bytes_read < 0) {
             log_fatal("libsndfile read error: %s", sf_strerror(private_data->infile));
@@ -199,11 +196,21 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
         }
 
         if (bytes_read == 0) {
-            queue_enqueue(resources->free_sample_chunk_queue, current_item);
-            break; // End of file
+            // End of file. Send a final chunk with the is_last_chunk flag set.
+            current_item->is_last_chunk = true;
+            current_item->frames_read = 0;
+            if (config->raw_passthrough) {
+                // In passthrough, we also need to signal the writer thread directly.
+                file_write_buffer_signal_end_of_stream(resources->file_write_buffer);
+                queue_enqueue(resources->free_sample_chunk_queue, current_item);
+            } else {
+                queue_enqueue(resources->raw_to_pre_process_queue, current_item);
+            }
+            break; 
         }
 
         current_item->frames_read = bytes_read / resources->input_bytes_per_sample_pair;
+        current_item->is_last_chunk = false;
         
         pthread_mutex_lock(&resources->progress_mutex);
         resources->total_frames_read += current_item->frames_read;
@@ -216,23 +223,9 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
             }
             queue_enqueue(resources->free_sample_chunk_queue, current_item);
         } else {
-            current_item->is_last_chunk = false;
             if (!queue_enqueue(resources->raw_to_pre_process_queue, current_item)) {
                 queue_enqueue(resources->free_sample_chunk_queue, current_item);
                 break;
-            }
-        }
-    }
-
-    if (!is_shutdown_requested()) {
-        if (config->raw_passthrough) {
-            file_write_buffer_signal_end_of_stream(resources->file_write_buffer);
-        } else {
-            SampleChunk *last_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
-            if (last_item) {
-                last_item->is_last_chunk = true;
-                last_item->frames_read = 0;
-                queue_enqueue(resources->raw_to_pre_process_queue, last_item);
             }
         }
     }

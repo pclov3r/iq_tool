@@ -31,7 +31,7 @@
  * the 'make clean' command.
  */
 
-#include <stdio.h>
+#include "constants.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
@@ -54,7 +54,7 @@
 #include "cli.h"
 #include "setup.h"
 #include "utils.h"
-#include "spectrum_shift.h"
+#include "frequency_shift.h"
 #include "signal_handler.h"
 #include "log.h"
 #include "input_manager.h"

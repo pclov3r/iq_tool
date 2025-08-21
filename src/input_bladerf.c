@@ -1,6 +1,7 @@
 // src/input_bladerf.c
 
 #include "input_bladerf.h"
+#include "constants.h"
 #include "log.h"
 #include "signal_handler.h"
 #include "config.h"
@@ -463,8 +464,8 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
     }
 
     unsigned int samples_per_transfer = (unsigned int)(resources->source_info.samplerate * BLADERF_TRANSFER_SIZE_SECONDS);
-    if (samples_per_transfer > BUFFER_SIZE_SAMPLES) {
-        samples_per_transfer = BUFFER_SIZE_SAMPLES;
+    if (samples_per_transfer > PIPELINE_INPUT_CHUNK_SIZE_SAMPLES) {
+        samples_per_transfer = PIPELINE_INPUT_CHUNK_SIZE_SAMPLES;
     }
     if (samples_per_transfer < 4096) {
         samples_per_transfer = 4096;

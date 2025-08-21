@@ -1,11 +1,9 @@
-// src/setup.c
-
 #include "setup.h"
 #include "types.h"
-#include "config.h"
+#include "constants.h"
 #include "platform.h"
 #include "utils.h"
-#include "spectrum_shift.h"
+#include "frequency_shift.h"
 #include "log.h"
 #include "input_source.h"
 #include "input_manager.h"
@@ -106,7 +104,6 @@ bool validate_and_configure_filter_stage(AppConfig *config, AppResources *resour
     if (output_rate < input_rate) {
         float max_filter_freq_hz = 0.0f;
 
-        // Find the highest frequency component across all requested filters
         for (int i = 0; i < config->num_filter_requests; i++) {
             const FilterRequest* req = &config->filter_requests[i];
             float current_max = 0.0f;
@@ -146,59 +143,99 @@ bool validate_and_configure_filter_stage(AppConfig *config, AppResources *resour
 bool allocate_processing_buffers(AppConfig *config, AppResources *resources, float resample_ratio) {
     if (!config || !resources) return false;
 
-    double estimated_output = ceil((double)BUFFER_SIZE_SAMPLES * (double)resample_ratio);
-    resources->max_out_samples = (unsigned int)estimated_output + RESAMPLER_OUTPUT_SAFETY_MARGIN;
+    // --- FIX START ---
+    // Correctly calculate the maximum buffer size needed at any point in the pipeline.
 
-    double upper_limit = 20.0 * (double)BUFFER_SIZE_SAMPLES * fmax(1.0, (double)resample_ratio);
-    if (resources->max_out_samples > upper_limit || resources->max_out_samples > (UINT_MAX - 128)) {
-        log_fatal("Error: Calculated output buffer size per item (%u samples) is unreasonable.", resources->max_out_samples);
+    // 1. Determine the maximum size of a chunk *before* the resampler.
+    // This is usually the input chunk size, but can be larger if a pre-resample FFT filter is used.
+    size_t max_pre_resample_chunk_size = PIPELINE_INPUT_CHUNK_SIZE_SAMPLES;
+    bool is_pre_fft_filter = (resources->user_fir_filter_object && !config->apply_user_filter_post_resample &&
+                             (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC || 
+                              resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC));
+
+    if (is_pre_fft_filter) {
+        if (resources->user_filter_block_size > max_pre_resample_chunk_size) {
+            max_pre_resample_chunk_size = resources->user_filter_block_size;
+        }
+    }
+
+    // 2. Calculate the maximum possible output size from the resampler, based on the
+    //    largest possible input chunk it might receive.
+    size_t resampler_output_capacity = (size_t)ceil((double)max_pre_resample_chunk_size * fmax(1.0, (double)resample_ratio)) + RESAMPLER_OUTPUT_SAFETY_MARGIN;
+
+    // 3. The final capacity for all complex buffers must be the largest of the pre-resample size
+    //    and the post-resample size.
+    size_t required_capacity = (max_pre_resample_chunk_size > resampler_output_capacity) ? max_pre_resample_chunk_size : resampler_output_capacity;
+
+    // 4. Also consider the post-resample FFT filter block size, if any.
+    bool is_post_fft_filter = (resources->user_fir_filter_object && config->apply_user_filter_post_resample &&
+                              (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC || 
+                               resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC));
+    
+    if (is_post_fft_filter) {
+        if (resources->user_filter_block_size > required_capacity) {
+            required_capacity = resources->user_filter_block_size;
+        }
+    }
+
+    // Sanity check against a hard limit to prevent extreme memory allocation.
+    if (required_capacity > MAX_ALLOWED_FFT_BLOCK_SIZE) {
+        log_fatal("Error: Pipeline requires a buffer size (%zu) that exceeds the maximum allowed size (%d).",
+                  required_capacity, MAX_ALLOWED_FFT_BLOCK_SIZE);
         return false;
     }
+    // --- FIX END ---
 
-    size_t raw_input_bytes_per_item = BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
-    size_t complex_pre_resample_elements = BUFFER_SIZE_SAMPLES;
-    size_t complex_resampled_elements = resources->max_out_samples;
-    
-    size_t complex_post_resample_elements = 0;
-    if (config->shift_after_resample || config->apply_user_filter_post_resample) {
-        complex_post_resample_elements = resources->max_out_samples;
-    }
+    resources->max_out_samples = required_capacity;
+    log_debug("Calculated required processing buffer capacity: %u samples.", resources->max_out_samples);
 
+    size_t raw_input_bytes_per_item = PIPELINE_INPUT_CHUNK_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
+    size_t complex_elements_per_item = resources->max_out_samples;
     resources->output_bytes_per_sample_pair = get_bytes_per_sample(config->output_format);
-    size_t final_output_bytes_per_item = resources->max_out_samples * resources->output_bytes_per_sample_pair;
+    size_t final_output_bytes_per_item = complex_elements_per_item * resources->output_bytes_per_sample_pair;
 
     resources->sample_chunk_pool = malloc(NUM_BUFFERS * sizeof(SampleChunk));
     resources->raw_input_data_pool = malloc(NUM_BUFFERS * raw_input_bytes_per_item);
-    resources->complex_pre_resample_data_pool = malloc(NUM_BUFFERS * complex_pre_resample_elements * sizeof(complex_float_t));
-    resources->complex_resampled_data_pool = malloc(NUM_BUFFERS * complex_resampled_elements * sizeof(complex_float_t));
-    if (complex_post_resample_elements > 0) {
-        resources->complex_post_resample_data_pool = malloc(NUM_BUFFERS * complex_post_resample_elements * sizeof(complex_float_t));
+    resources->complex_pre_resample_data_pool = malloc(NUM_BUFFERS * complex_elements_per_item * sizeof(complex_float_t));
+    resources->complex_resampled_data_pool = malloc(NUM_BUFFERS * complex_elements_per_item * sizeof(complex_float_t));
+    
+    if (config->shift_after_resample || config->apply_user_filter_post_resample) {
+        resources->complex_post_resample_data_pool = malloc(NUM_BUFFERS * complex_elements_per_item * sizeof(complex_float_t));
     } else {
         resources->complex_post_resample_data_pool = NULL;
     }
+    
+    resources->complex_scratch_data_pool = malloc(NUM_BUFFERS * complex_elements_per_item * sizeof(complex_float_t));
+    
     resources->final_output_data_pool = malloc(NUM_BUFFERS * final_output_bytes_per_item);
 
     if (!resources->sample_chunk_pool || !resources->raw_input_data_pool || !resources->complex_pre_resample_data_pool ||
-        (complex_post_resample_elements > 0 && !resources->complex_post_resample_data_pool) ||
-        !resources->complex_resampled_data_pool || !resources->final_output_data_pool) {
+        (resources->complex_post_resample_data_pool == NULL && (config->shift_after_resample || config->apply_user_filter_post_resample)) ||
+        !resources->complex_resampled_data_pool || !resources->complex_scratch_data_pool || !resources->final_output_data_pool) {
         log_fatal("Error: Failed to allocate one or more processing buffer pools.");
         return false;
     }
 
     for (size_t i = 0; i < NUM_BUFFERS; ++i) {
         SampleChunk* item = &resources->sample_chunk_pool[i];
+        
         item->raw_input_data = (char*)resources->raw_input_data_pool + i * raw_input_bytes_per_item;
-        item->complex_pre_resample_data = resources->complex_pre_resample_data_pool + i * complex_pre_resample_elements;
-        item->complex_resampled_data = resources->complex_resampled_data_pool + i * complex_resampled_elements;
+        item->complex_pre_resample_data = resources->complex_pre_resample_data_pool + i * complex_elements_per_item;
+        item->complex_resampled_data = resources->complex_resampled_data_pool + i * complex_elements_per_item;
+        item->complex_scratch_data = resources->complex_scratch_data_pool + i * complex_elements_per_item;
         item->final_output_data = (unsigned char*)resources->final_output_data_pool + i * final_output_bytes_per_item;
         
-        item->input_bytes_per_sample_pair = resources->input_bytes_per_sample_pair;
-
-        if (complex_post_resample_elements > 0) {
-            item->complex_post_resample_data = resources->complex_post_resample_data_pool + i * complex_post_resample_elements;
+        if (resources->complex_post_resample_data_pool) {
+            item->complex_post_resample_data = resources->complex_post_resample_data_pool + i * complex_elements_per_item;
         } else {
             item->complex_post_resample_data = NULL;
         }
+        
+        item->raw_input_capacity_bytes = raw_input_bytes_per_item;
+        item->complex_buffer_capacity_samples = complex_elements_per_item;
+        item->final_output_capacity_bytes = final_output_bytes_per_item;
+
+        item->input_bytes_per_sample_pair = resources->input_bytes_per_sample_pair;
     }
 
     return true;
@@ -415,8 +452,10 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     if (!resources->selected_input_ops->initialize(&ctx)) goto cleanup;
     if (!calculate_and_validate_resample_ratio(config, resources, &resample_ratio)) goto cleanup;
     if (!validate_and_configure_filter_stage(config, resources)) goto cleanup;
-    if (!allocate_processing_buffers(config, resources, resample_ratio)) goto cleanup;
+    
     if (!create_dsp_components(config, resources, resample_ratio)) goto cleanup;
+    if (!allocate_processing_buffers(config, resources, resample_ratio)) goto cleanup;
+    
     if (!create_threading_components(resources)) goto cleanup;
 
     if (resources->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
@@ -505,6 +544,19 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
     if (!resources) return;
     InputSourceContext ctx = { .config = config, .resources = resources };
 
+    if (config->dc_block.enable) {
+        dc_block_cleanup(resources);
+    }
+    if (config->iq_correction.enable) {
+        iq_correct_cleanup(resources);
+    }
+    filter_destroy(resources);
+    shift_destroy_ncos(resources);
+    if (resources->resampler) {
+        msresamp_crcf_destroy(resources->resampler);
+        resources->resampler = NULL;
+    }
+
     if (resources->selected_input_ops && resources->selected_input_ops->cleanup) {
         resources->selected_input_ops->cleanup(&ctx);
     }
@@ -515,15 +567,6 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
     if (resources->writer_ctx.ops.get_total_bytes_written) {
         resources->final_output_size_bytes = resources->writer_ctx.ops.get_total_bytes_written(&resources->writer_ctx);
     }
-
-    if (config->dc_block.enable) {
-        dc_block_cleanup(resources);
-    }
-    if (config->iq_correction.enable) {
-        iq_correct_cleanup(resources);
-    }
-
-    filter_destroy(resources);
 
     if (resources->sdr_input_buffer) {
         file_write_buffer_destroy(resources->sdr_input_buffer);
@@ -536,17 +579,12 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
     }
 
     destroy_threading_components(resources);
-    shift_destroy_ncos(resources);
-
-    if (resources->resampler) {
-        msresamp_crcf_destroy(resources->resampler);
-        resources->resampler = NULL;
-    }
 
     free(resources->sample_chunk_pool);
     free(resources->raw_input_data_pool);
     free(resources->complex_pre_resample_data_pool);
     free(resources->complex_post_resample_data_pool);
+    free(resources->complex_scratch_data_pool);
     free(resources->complex_resampled_data_pool);
     free(resources->final_output_data_pool);
 

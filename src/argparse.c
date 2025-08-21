@@ -326,7 +326,6 @@ argparse_usage(struct argparse *self)
         }
         if ((options)->long_name) {
             len += strlen((options)->long_name);
-            // CHANGE: Check for NOPREFIX flag before adding width for "--".
             if (!(options->flags & OPT_LONG_NOPREFIX)) {
                 len += 2;
             }
@@ -356,6 +355,13 @@ argparse_usage(struct argparse *self)
             fputc('\n', stdout);
             continue;
         }
+
+        // If an option has no help text, treat it as a hidden,
+        // internal-only option and do not display it in the usage text.
+        if (!options->help) {
+            continue;
+        }
+
         pos = fprintf(stdout, "    ");
         if (options->short_name) {
             pos += fprintf(stdout, "-%c", options->short_name);
@@ -364,7 +370,6 @@ argparse_usage(struct argparse *self)
             pos += fprintf(stdout, ", ");
         }
         if (options->long_name) {
-            // CHANGE: Check for NOPREFIX flag before printing "--".
             if (options->flags & OPT_LONG_NOPREFIX) {
                 pos += fprintf(stdout, "%s", options->long_name);
             } else {

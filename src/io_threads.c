@@ -5,6 +5,7 @@
 #endif
 
 #include "io_threads.h"
+#include "constants.h"
 #include "types.h" // This now includes sdr_buffer_stream.h
 #include "config.h"
 #include "signal_handler.h"

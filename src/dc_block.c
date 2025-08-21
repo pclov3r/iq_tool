@@ -1,4 +1,5 @@
 #include "dc_block.h"
+#include "constants.h"
 #include "log.h"
 #include "config.h" // For DC_BLOCK_CUTOFF_HZ
 #include <stdlib.h>

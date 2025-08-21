@@ -1,6 +1,7 @@
 // src/input_rtlsdr.c
 
 #include "input_rtlsdr.h"
+#include "constants.h"
 #include "log.h"
 #include "signal_handler.h"
 #include "config.h"
@@ -307,7 +308,7 @@ static void* rtlsdr_start_stream(InputSourceContext* ctx) {
                     if (!item) break;
 
                     int n_read = 0;
-                    size_t bytes_to_read = BUFFER_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
+                    size_t bytes_to_read = PIPELINE_INPUT_CHUNK_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
                     result = rtlsdr_read_sync(private_data->dev, item->raw_input_data, bytes_to_read, &n_read);
 
                     if (result < 0) {

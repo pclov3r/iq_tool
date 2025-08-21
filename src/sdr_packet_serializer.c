@@ -1,6 +1,7 @@
 // src/sdr_buffer_stream.c
 
 #include "sdr_packet_serializer.h"
+#include "constants.h"
 #include "log.h"
 #include "types.h" // --- ADDED --- Now that the header doesn't include it, the C file must.
 #include <string.h>
@@ -89,9 +90,9 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer, SampleChunk* 
     }
 
     uint32_t samples_in_chunk = header.num_samples;
-    if (samples_in_chunk > BUFFER_SIZE_SAMPLES) {
-        log_warn("SDR chunk (%u samples) exceeds buffer capacity (%d). Truncating.", samples_in_chunk, BUFFER_SIZE_SAMPLES);
-        samples_in_chunk = BUFFER_SIZE_SAMPLES;
+    if (samples_in_chunk > PIPELINE_INPUT_CHUNK_SIZE_SAMPLES) {
+        log_warn("SDR chunk (%u samples) exceeds buffer capacity (%d). Truncating.", samples_in_chunk, PIPELINE_INPUT_CHUNK_SIZE_SAMPLES);
+        samples_in_chunk = PIPELINE_INPUT_CHUNK_SIZE_SAMPLES;
     }
 
     // 3. Read the sample data based on the header flags.

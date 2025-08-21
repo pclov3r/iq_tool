@@ -25,7 +25,7 @@
 #endif
 
 // --- Local Project Includes ---
-#include "config.h"
+#include "constants.h"
 #include "queue.h"
 #include "file_write_buffer.h"
 #include "sdr_packet_serializer.h"
@@ -261,10 +261,11 @@ typedef struct AppConfig {
 
     bool apply_user_filter_post_resample;
 
-    float lowpass_cutoff_hz_arg;
-    float highpass_cutoff_hz_arg;
-    const char* pass_range_str_arg;
-    const char* stopband_str_arg;
+    // Filter arguments
+    float lowpass_cutoff_hz_arg[MAX_FILTER_CHAIN];
+    float highpass_cutoff_hz_arg[MAX_FILTER_CHAIN];
+    const char* pass_range_str_arg[MAX_FILTER_CHAIN];
+    const char* stopband_str_arg[MAX_FILTER_CHAIN];
     float transition_width_hz_arg;
     int filter_taps_arg;
     float attenuation_db_arg;
@@ -307,11 +308,20 @@ typedef struct AppConfig {
 } AppConfig;
 
 typedef struct SampleChunk {
+    // --- Buffers ---
     void* raw_input_data;
     complex_float_t* complex_pre_resample_data;
     complex_float_t* complex_resampled_data;
     complex_float_t* complex_post_resample_data;
+    complex_float_t* complex_scratch_data; // <-- ADDED
     unsigned char* final_output_data;
+
+    // --- Capacities ---
+    size_t raw_input_capacity_bytes;
+    size_t complex_buffer_capacity_samples;
+    size_t final_output_capacity_bytes;
+
+    // --- State Variables ---
     int64_t frames_read;
     unsigned int frames_to_write;
     bool is_last_chunk;
@@ -373,6 +383,7 @@ typedef struct AppResources {
     complex_float_t* complex_pre_resample_data_pool;
     complex_float_t* complex_post_resample_data_pool;
     complex_float_t* complex_resampled_data_pool;
+    complex_float_t* complex_scratch_data_pool; // <-- ADDED
     unsigned char* final_output_data_pool;
     unsigned int max_out_samples;
 

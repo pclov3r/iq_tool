@@ -1,5 +1,6 @@
 // presets_loader.c
 #include "presets_loader.h"
+#include "constants.h"
 #include "log.h"
 #include "config.h"
 #include "utils.h"
