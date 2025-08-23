@@ -1,59 +1,8 @@
-/*  iq_correct.c - I/Q imbalance correction and estimation utilities.
- *
- *  This file is part of iq_resample_tool.
- *
- *  Copyright (C) 2025 iq_resample_tool
- *
- *  This program is free software: you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation, either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
-/*
- *
- *  The I/Q correction algorithm in this file is a C port of the
- *  randomized hill-climbing algorithm from the SDR# project.
- *
- *  The original C# code is licensed under the MIT license, and its
- *  copyright and permission notice is included below as required.
- *
- *  Copyright (c) 2012 Youssef Touil and other contributors,
- *  http://sdrsharp.com/
- *
- *  Permission is hereby granted, free of charge, to any person obtaining
- *  a copy of this software and associated documentation files (the
- *  "Software"), to deal in the Software without restriction, including
- *  without limitation the rights to use, copy, modify, merge, publish,
- *  distribute, sublicense, and/or sell copies of the Software, and to
- *  permit persons to whom the Software is furnished to do so, subject to
- *  the following conditions:
- *
- *  The above copyright notice and this permission notice shall be
- *  included in all copies or substantial portions of the Software.
- *
- *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- *  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- *  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- *  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
- *  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
- *  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
- *  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
-
 #include "iq_correct.h"
 #include "constants.h"
 #include "log.h"
 #include "config.h"
+#include "memory_arena.h" // <-- MODIFIED: Add the missing include
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -82,7 +31,7 @@ static void _calculate_power_spectrum(IqCorrectionResources* iq_res, const compl
 
 // --- Public API Functions ---
 
-bool iq_correct_init(AppConfig* config, AppResources* resources) {
+bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* arena) {
     if (!config->iq_correction.enable) {
         resources->iq_correction.fft_plan = NULL;
         return true;
@@ -91,26 +40,25 @@ bool iq_correct_init(AppConfig* config, AppResources* resources) {
     srand((unsigned int)time(NULL));
 
     const unsigned int nfft = IQ_CORRECTION_FFT_SIZE;
-    resources->iq_correction.fft_buffer = (complex_float_t*)fft_malloc(nfft * sizeof(complex_float_t));
-    resources->iq_correction.fft_shift_buffer = (complex_float_t*)fft_malloc(nfft * sizeof(complex_float_t));
-    resources->iq_correction.spectrum_buffer = (float*)malloc(nfft * sizeof(float));
-    resources->iq_correction.window_coeffs = (float*)malloc(nfft * sizeof(float));
-    resources->iq_correction.optimization_accum_buffer = (complex_float_t*)malloc(IQ_CORRECTION_FFT_SIZE * sizeof(complex_float_t));
+    resources->iq_correction.fft_buffer = (complex_float_t*)arena_alloc(arena, nfft * sizeof(complex_float_t));
+    resources->iq_correction.fft_shift_buffer = (complex_float_t*)arena_alloc(arena, nfft * sizeof(complex_float_t));
+    resources->iq_correction.spectrum_buffer = (float*)arena_alloc(arena, nfft * sizeof(float));
+    resources->iq_correction.window_coeffs = (float*)arena_alloc(arena, nfft * sizeof(float));
+    resources->iq_correction.optimization_accum_buffer = (complex_float_t*)arena_alloc(arena, IQ_CORRECTION_FFT_SIZE * sizeof(complex_float_t));
 
     if (!resources->iq_correction.fft_buffer ||
         !resources->iq_correction.fft_shift_buffer ||
         !resources->iq_correction.spectrum_buffer ||
         !resources->iq_correction.window_coeffs ||
         !resources->iq_correction.optimization_accum_buffer) {
-        log_fatal("Failed to allocate memory for I/Q correction buffers: %s", strerror(errno));
-        iq_correct_cleanup(resources);
+        // arena_alloc logs the fatal error, so we just need to return
         return false;
     }
 
+    // The FFT plan itself is managed by liquid-dsp, not our arena
     resources->iq_correction.fft_plan = fft_create_plan(nfft, resources->iq_correction.fft_buffer, resources->iq_correction.fft_buffer, LIQUID_FFT_FORWARD, 0);
     if (!resources->iq_correction.fft_plan) {
         log_fatal("Failed to create liquid-dsp FFT plan for I/Q correction.");
-        iq_correct_cleanup(resources);
         return false;
     }
 
@@ -201,19 +149,11 @@ void iq_correct_cleanup(AppResources* resources) {
         fft_destroy_plan(resources->iq_correction.fft_plan);
         resources->iq_correction.fft_plan = NULL;
     }
-    if (resources->iq_correction.fft_buffer) {
-        fft_free(resources->iq_correction.fft_buffer);
-        resources->iq_correction.fft_buffer = NULL;
-    }
-    if (resources->iq_correction.fft_shift_buffer) {
-        fft_free(resources->iq_correction.fft_shift_buffer);
-        resources->iq_correction.fft_shift_buffer = NULL;
-    }
-    free(resources->iq_correction.spectrum_buffer);
+    // No need to free buffers, they are part of the setup_arena
+    resources->iq_correction.fft_buffer = NULL;
+    resources->iq_correction.fft_shift_buffer = NULL;
     resources->iq_correction.spectrum_buffer = NULL;
-    free(resources->iq_correction.window_coeffs);
     resources->iq_correction.window_coeffs = NULL;
-    free(resources->iq_correction.optimization_accum_buffer);
     resources->iq_correction.optimization_accum_buffer = NULL;
 }
 

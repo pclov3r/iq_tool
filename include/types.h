@@ -1,5 +1,3 @@
-// src/types.h
-
 #ifndef TYPES_H_
 #define TYPES_H_
 
@@ -26,7 +24,6 @@
 
 // --- Local Project Includes ---
 #include "constants.h"
-#include "queue.h"
 #include "file_write_buffer.h"
 #include "sdr_packet_serializer.h"
 
@@ -36,6 +33,38 @@ struct AppConfig;
 struct SampleChunk;
 struct FileWriterContext;
 struct AppResources;
+
+// --- Centralized Core Type Definitions ---
+
+/**
+ * @struct MemoryArena
+ * @brief Manages a single large block of memory for fast, contiguous setup-time allocations.
+ */
+typedef struct {
+    void* memory;
+    size_t capacity;
+    size_t offset;
+} MemoryArena;
+
+/**
+ * @struct ThreadSafeQueue
+ * @brief A standard, blocking, thread-safe queue implementation.
+ */
+struct ThreadSafeQueue {
+    void** buffer;
+    size_t capacity;
+    size_t count;
+    size_t head;
+    size_t tail;
+    pthread_mutex_t mutex;
+    pthread_cond_t not_empty_cond;
+    pthread_cond_t not_full_cond;
+    bool shutting_down;
+};
+
+// Typedef for the queue struct.
+typedef struct ThreadSafeQueue Queue;
+
 
 // --- Enum and Type Definitions ---
 
@@ -75,8 +104,9 @@ typedef enum {
 } FilterImplementationType;
 
 typedef enum {
-    FILTER_TYPE_FIR,
-    FILTER_TYPE_FFT
+    FILTER_TYPE_AUTO, // Value 0: Default, unset state.
+    FILTER_TYPE_FIR,  // Value 1
+    FILTER_TYPE_FFT   // Value 2
 } FilterTypeRequest;
 
 
@@ -293,11 +323,13 @@ typedef struct AppConfig {
     double target_rate;
     bool help_requested;
 
+    // Replaced allocated pointers with fixed-size buffers for Windows
+    // to eliminate heap allocation during path resolution.
 #ifdef _WIN32
-    wchar_t *effective_input_filename_w;
-    wchar_t *effective_output_filename_w;
-    char *effective_input_filename_utf8;
-    char *effective_output_filename_utf8;
+    wchar_t effective_input_filename_w[MAX_PATH_BUFFER];
+    wchar_t effective_output_filename_w[MAX_PATH_BUFFER];
+    char effective_input_filename_utf8[MAX_PATH_BUFFER];
+    char effective_output_filename_utf8[MAX_PATH_BUFFER];
 #else
     char *effective_input_filename;
     char *effective_output_filename;
@@ -313,7 +345,7 @@ typedef struct SampleChunk {
     complex_float_t* complex_pre_resample_data;
     complex_float_t* complex_resampled_data;
     complex_float_t* complex_post_resample_data;
-    complex_float_t* complex_scratch_data; // <-- ADDED
+    complex_float_t* complex_scratch_data;
     unsigned char* final_output_data;
 
     // --- Capacities ---
@@ -378,13 +410,20 @@ typedef struct AppResources {
 
     void* input_module_private_data;
 
+    // Memory Arena for all setup-time allocations
+    MemoryArena setup_arena;
+
+    // Consolidated pipeline buffer pool for cache locality
+    void* pipeline_chunk_data_pool;
     SampleChunk* sample_chunk_pool;
-    void* raw_input_data_pool;
-    complex_float_t* complex_pre_resample_data_pool;
-    complex_float_t* complex_post_resample_data_pool;
-    complex_float_t* complex_resampled_data_pool;
-    complex_float_t* complex_scratch_data_pool; // <-- ADDED
-    unsigned char* final_output_data_pool;
+
+    // Pre-allocated buffer for real-time deserializer
+    void* sdr_deserializer_temp_buffer;
+    size_t sdr_deserializer_buffer_size;
+
+    // Pre-allocated buffer for the writer thread
+    void* writer_local_buffer;
+
     unsigned int max_out_samples;
 
     pthread_t reader_thread_handle;

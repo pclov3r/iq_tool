@@ -291,10 +291,19 @@ bool validate_logical_consistency(AppConfig *config) {
     }
 
     if (config->filter_fft_size_arg != 0) {
-        if (config->filter_type_request != FILTER_TYPE_FFT) {
-            log_fatal("Option --filter-fft-size can only be used with --filter-type fft.");
+        // If user explicitly typed '--filter-type fir' AND '--filter-fft-size', it's a direct contradiction.
+        if (config->filter_type_str_arg && config->filter_type_request == FILTER_TYPE_FIR) {
+            log_fatal("Contradictory options: --filter-fft-size cannot be used with an explicit '--filter-type fir'.");
             return false;
         }
+        
+        // The user's inclusion of --filter-fft-size implies an intent to use an FFT filter, overriding any preset.
+        if (config->filter_type_request != FILTER_TYPE_FFT) {
+            log_debug("Option --filter-fft-size overrides preset; forcing filter type to FFT.");
+            config->filter_type_request = FILTER_TYPE_FFT;
+        }
+
+        // Now, validate the FFT size value itself.
         if (config->filter_fft_size_arg <= 0) {
             log_fatal("--filter-fft-size must be a positive integer.");
             return false;
@@ -302,6 +311,21 @@ bool validate_logical_consistency(AppConfig *config) {
         int n = config->filter_fft_size_arg;
         if ((n > 0) && ((n & (n - 1)) != 0)) {
             log_fatal("--filter-fft-size must be a power of two (e.g., 1024, 2048, 4096).");
+            return false;
+        }
+    }
+
+    // Perform a preliminary check for FFT size vs. taps to fail fast.
+    if (config->filter_type_request == FILTER_TYPE_FFT && config->filter_taps_arg > 0 && config->filter_fft_size_arg > 0) {
+        long adjusted_taps = (config->filter_taps_arg % 2 == 0) 
+                           ? config->filter_taps_arg + 1 
+                           : config->filter_taps_arg;
+        long required_fft_size = (adjusted_taps - 1) * 2;
+        if ((long)config->filter_fft_size_arg < required_fft_size) {
+            log_fatal("Parameter conflict: --filter-fft-size (%d) is too small for --filter-taps (%d).",
+                      config->filter_fft_size_arg, config->filter_taps_arg);
+            log_error("For %ld taps, the FFT size must be at least %ld.",
+                      adjusted_taps, required_fft_size);
             return false;
         }
     }

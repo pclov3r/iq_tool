@@ -1,5 +1,3 @@
-// src/input_hackrf.c
-
 #include "input_hackrf.h"
 #include "constants.h"
 #include "config.h"
@@ -10,6 +8,8 @@
 #include "utils.h"
 #include "sample_convert.h"
 #include "input_common.h"
+#include "memory_arena.h"
+#include "queue.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -186,7 +186,7 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
         item->stream_discontinuity_event = false;
 
         size_t chunk_size = transfer->valid_length - bytes_processed;
-        const size_t pipeline_buffer_size = PIPELINE_INPUT_CHUNK_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
+        const size_t pipeline_buffer_size = PIPELINE_CHUNK_BASE_SAMPLES * resources->input_bytes_per_sample_pair;
         if (chunk_size > pipeline_buffer_size) {
             chunk_size = pipeline_buffer_size;
         }
@@ -227,63 +227,64 @@ static bool hackrf_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
     int result;
+    bool success = false; // Assume failure until the very end
 
-    HackrfPrivateData* private_data = (HackrfPrivateData*)calloc(1, sizeof(HackrfPrivateData));
+    HackrfPrivateData* private_data = (HackrfPrivateData*)arena_alloc(&resources->setup_arena, sizeof(HackrfPrivateData));
     if (!private_data) {
-        log_fatal("Failed to allocate memory for HackRF private data.");
-        return false;
+        return false; // arena_alloc logs error, no resources to clean up yet
     }
+    private_data->dev = NULL; // Initialize resource state
     resources->input_module_private_data = private_data;
 
     result = hackrf_init();
     if (result != HACKRF_SUCCESS) {
         log_fatal("hackrf_init() failed: %s (%d)", hackrf_error_name(result), result);
-        return false;
+        goto cleanup; // On error, jump to the single cleanup point
     }
 
     result = hackrf_open(&private_data->dev);
     if (result != HACKRF_SUCCESS) {
         log_fatal("hackrf_open() failed: %s (%d)", hackrf_error_name(result), result);
-        hackrf_exit();
-        return false;
+        private_data->dev = NULL; // Ensure dev is NULL on failure
+        goto cleanup;
     }
     log_info("Found HackRF One.");
 
     result = hackrf_set_sample_rate(private_data->dev, config->sdr.sample_rate_hz);
     if (result != HACKRF_SUCCESS) {
         log_fatal("hackrf_set_sample_rate() failed: %s (%d)", hackrf_error_name(result), result);
-        hackrf_close(private_data->dev); private_data->dev = NULL; hackrf_exit(); return false;
+        goto cleanup;
     }
 
     result = hackrf_set_freq(private_data->dev, (uint64_t)config->sdr.rf_freq_hz);
     if (result != HACKRF_SUCCESS) {
         log_fatal("hackrf_set_freq() failed: %s (%d)", hackrf_error_name(result), result);
-        hackrf_close(private_data->dev); private_data->dev = NULL; hackrf_exit(); return false;
+        goto cleanup;
     }
 
     result = hackrf_set_lna_gain(private_data->dev, s_hackrf_config.lna_gain);
     if (result != HACKRF_SUCCESS) {
         log_fatal("hackrf_set_lna_gain() failed: %s (%d)", hackrf_error_name(result), result);
-        hackrf_close(private_data->dev); private_data->dev = NULL; hackrf_exit(); return false;
+        goto cleanup;
     }
 
     result = hackrf_set_vga_gain(private_data->dev, s_hackrf_config.vga_gain);
     if (result != HACKRF_SUCCESS) {
         log_fatal("hackrf_set_vga_gain() failed: %s (%d)", hackrf_error_name(result), result);
-        hackrf_close(private_data->dev); private_data->dev = NULL; hackrf_exit(); return false;
+        goto cleanup;
     }
 
     result = hackrf_set_amp_enable(private_data->dev, (uint8_t)s_hackrf_config.amp_enable);
     if (result != HACKRF_SUCCESS) {
         log_fatal("hackrf_set_amp_enable() failed: %s (%d)", hackrf_error_name(result), result);
-        hackrf_close(private_data->dev); private_data->dev = NULL; hackrf_exit(); return false;
+        goto cleanup;
     }
 
     if (config->sdr.bias_t_enable) {
         result = hackrf_set_antenna_enable(private_data->dev, 1);
         if (result != HACKRF_SUCCESS) {
             log_fatal("hackrf_set_antenna_enable() failed: %s (%d)", hackrf_error_name(result), result);
-            hackrf_close(private_data->dev); private_data->dev = NULL; hackrf_exit(); return false;
+            goto cleanup;
         }
     }
 
@@ -294,13 +295,22 @@ static bool hackrf_initialize(InputSourceContext* ctx) {
 
     if (config->raw_passthrough && resources->input_format != config->output_format) {
         log_fatal("Option --raw-passthrough requires input and output formats to be identical. HackRF input is 'cs8', but output was set to '%s'.", config->sample_type_name);
-        hackrf_close(private_data->dev);
-        private_data->dev = NULL;
-        hackrf_exit();
-        return false;
+        goto cleanup;
     }
 
-    return true;
+    // If we made it all the way here, we succeeded.
+    success = true;
+
+cleanup:
+    // This block is the single point of exit. It is only executed on failure.
+    if (!success) {
+        // The main application cleanup will call hackrf_cleanup(), which handles these.
+        // We don't need to call them here, as the higher-level cleanup function
+        // will check if private_data->dev is valid and close it if necessary.
+        // The purpose of the goto is to centralize the error exit path, not to
+        // duplicate cleanup logic.
+    }
+    return success;
 }
 
 static void* hackrf_start_stream(InputSourceContext* ctx) {
@@ -360,7 +370,6 @@ static void hackrf_cleanup(InputSourceContext* ctx) {
             hackrf_close(private_data->dev);
             private_data->dev = NULL;
         }
-        free(private_data);
         resources->input_module_private_data = NULL;
     }
     log_info("Exiting HackRF library...");

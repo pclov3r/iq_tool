@@ -633,6 +633,7 @@ set(OTHER_SOURCES
     src/io_threads.c
     src/log.c
     src/main.c
+    src/memory_arena.c
     src/platform.c
     src/presets_loader.c
     src/processing_threads.c

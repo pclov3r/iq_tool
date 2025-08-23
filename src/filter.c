@@ -2,6 +2,7 @@
 #include "constants.h"
 #include "log.h"
 #include "config.h"
+#include "memory_arena.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -19,12 +20,11 @@
 static liquid_float_complex* convolve_complex_taps(
     const liquid_float_complex* h1, int len1,
     const liquid_float_complex* h2, int len2,
-    int* out_len)
+    int* out_len, MemoryArena* arena)
 {
     *out_len = len1 + len2 - 1;
-    liquid_float_complex* result = (liquid_float_complex*)calloc(*out_len, sizeof(liquid_float_complex));
+    liquid_float_complex* result = (liquid_float_complex*)arena_alloc(arena, *out_len * sizeof(liquid_float_complex));
     if (!result) {
-        log_fatal("Failed to allocate memory for complex convolution result.");
         return NULL;
     }
 
@@ -38,7 +38,7 @@ static liquid_float_complex* convolve_complex_taps(
     return result;
 }
 
-bool filter_create(AppConfig* config, AppResources* resources) {
+bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* arena) {
     bool success = false;
     liquid_float_complex* master_taps = NULL;
 
@@ -51,11 +51,8 @@ bool filter_create(AppConfig* config, AppResources* resources) {
     }
 
     int master_taps_len = 1;
-    master_taps = (liquid_float_complex*)malloc(sizeof(liquid_float_complex));
-    if (!master_taps) {
-        log_fatal("Failed to allocate initial master taps.");
-        goto cleanup;
-    }
+    master_taps = (liquid_float_complex*)arena_alloc(arena, sizeof(liquid_float_complex));
+    if (!master_taps) goto cleanup;
     master_taps[0] = 1.0f + 0.0f * I;
 
     double sample_rate_for_design = config->apply_user_filter_post_resample
@@ -63,7 +60,10 @@ bool filter_create(AppConfig* config, AppResources* resources) {
                                       : (double)resources->source_info.samplerate;
 
     bool is_final_filter_complex = false;
-    bool normalize_by_peak = false; // Flag to track which normalization to use
+    bool normalize_by_peak = false;
+
+    // --- MODIFIED: Unconditional warning message for consistency ---
+    log_info("Designing filter coefficients (this may be slow for large filters)...");
 
     for (int i = 0; i < config->num_filter_requests; ++i) {
         const FilterRequest* req = &config->filter_requests[i];
@@ -73,7 +73,7 @@ bool filter_create(AppConfig* config, AppResources* resources) {
         }
         
         unsigned int current_taps_len;
-        float attenuation_db = (config->attenuation_db_arg > 0.0f) ? config->attenuation_db_arg : STOPBAND_ATTENUATION_DB;
+        float attenuation_db = (config->attenuation_db_arg > 0.0f) ? config->attenuation_db_arg : RESAMPLER_QUALITY_ATTENUATION_DB;
 
         if (config->filter_taps_arg > 0) {
             current_taps_len = (unsigned int)config->filter_taps_arg;
@@ -92,11 +92,8 @@ bool filter_create(AppConfig* config, AppResources* resources) {
             if (current_taps_len < 21) current_taps_len = 21;
         }
 
-        liquid_float_complex* current_taps = (liquid_float_complex*)calloc(current_taps_len, sizeof(liquid_float_complex));
-        if (!current_taps) {
-            log_fatal("Failed to allocate memory for current filter taps.");
-            goto cleanup;
-        }
+        liquid_float_complex* current_taps = (liquid_float_complex*)arena_alloc(arena, current_taps_len * sizeof(liquid_float_complex));
+        if (!current_taps) goto cleanup;
 
         bool is_current_stage_complex = (req->type == FILTER_TYPE_PASSBAND && fabsf(req->freq1_hz) > 1e-9f);
         if (is_current_stage_complex) {
@@ -104,8 +101,8 @@ bool filter_create(AppConfig* config, AppResources* resources) {
         }
 
         if (is_current_stage_complex) {
-            float* real_taps = (float*)malloc(current_taps_len * sizeof(float));
-            if (!real_taps) { log_fatal("Failed to alloc real taps."); free(current_taps); goto cleanup; }
+            float* real_taps = (float*)arena_alloc(arena, current_taps_len * sizeof(float));
+            if (!real_taps) goto cleanup;
             float half_bw_norm = (req->freq2_hz / 2.0f) / (float)sample_rate_for_design;
             liquid_firdes_kaiser(current_taps_len, half_bw_norm, attenuation_db, 0.0f, real_taps);
             float fc_norm = req->freq1_hz / (float)sample_rate_for_design;
@@ -117,10 +114,9 @@ bool filter_create(AppConfig* config, AppResources* resources) {
                 nco_crcf_step(shifter);
             }
             nco_crcf_destroy(shifter);
-            free(real_taps);
         } else {
-            float* real_taps = (float*)malloc(current_taps_len * sizeof(float));
-            if (!real_taps) { log_fatal("Failed to alloc real taps."); free(current_taps); goto cleanup; }
+            float* real_taps = (float*)arena_alloc(arena, current_taps_len * sizeof(float));
+            if (!real_taps) goto cleanup;
             float fc, bw;
             switch (req->type) {
                 case FILTER_TYPE_LOWPASS:
@@ -148,14 +144,11 @@ bool filter_create(AppConfig* config, AppResources* resources) {
             for (unsigned int k = 0; k < current_taps_len; k++) {
                 current_taps[k] = real_taps[k] + 0.0f * I;
             }
-            free(real_taps);
         }
 
         int new_master_len;
-        liquid_float_complex* new_master_taps = convolve_complex_taps(master_taps, master_taps_len, current_taps, current_taps_len, &new_master_len);
+        liquid_float_complex* new_master_taps = convolve_complex_taps(master_taps, master_taps_len, current_taps, current_taps_len, &new_master_len, arena);
 
-        free(master_taps);
-        free(current_taps);
         if (!new_master_taps) goto cleanup;
 
         master_taps = new_master_taps;
@@ -164,13 +157,27 @@ bool filter_create(AppConfig* config, AppResources* resources) {
 
     log_info("Final combined filter requires %d taps.", master_taps_len);
 
+    // Determine filter complexity BEFORE normalization
+    for (int i = 0; i < config->num_filter_requests; ++i) {
+        const FilterRequest* req = &config->filter_requests[i];
+        if (req->type == FILTER_TYPE_PASSBAND && fabsf(req->freq1_hz) > 1e-9f) {
+            is_final_filter_complex = true;
+            break;
+        }
+    }
+
+    if (is_final_filter_complex) {
+        log_info("Asymmetric filter detected.");
+    }
+
     if (normalize_by_peak || is_final_filter_complex) {
+        log_info("Normalizing filter gain (this may be slow for large filters)...");
         float max_mag = 0.0f;
         firfilt_cccf temp_filter = firfilt_cccf_create(master_taps, master_taps_len);
         if (temp_filter) {
             for (int i = 0; i < 2048; i++) {
                 liquid_float_complex H;
-                float freq = 0.5f * (float)i / 2048.0f;
+                float freq = ((float)i / 2048.0f) - 0.5f;
                 firfilt_cccf_freqresponse(temp_filter, freq, &H);
                 float mag = cabsf(H);
                 if (mag > max_mag) max_mag = mag;
@@ -197,7 +204,7 @@ bool filter_create(AppConfig* config, AppResources* resources) {
         final_choice = config->filter_type_request;
     } else {
         if (is_final_filter_complex) {
-            log_info("Asymmetric filter detected. Automatically choosing efficient FFT method by default.");
+            log_info("Automatically choosing efficient FFT method by default.");
             final_choice = FILTER_TYPE_FFT;
         } else {
             log_info("Symmetric filter detected. Using default low-latency FIR method.");
@@ -206,7 +213,8 @@ bool filter_create(AppConfig* config, AppResources* resources) {
     }
 
     if (final_choice == FILTER_TYPE_FFT) {
-        log_info("Using FFT-based filter implementation.");
+        log_info("Preparing FFT-based filter object (this may take a moment)...");
+        
         unsigned int block_size;
         if (config->filter_fft_size_arg > 0) {
             block_size = (unsigned int)config->filter_fft_size_arg / 2;
@@ -231,34 +239,28 @@ bool filter_create(AppConfig* config, AppResources* resources) {
         if (is_final_filter_complex) {
             resources->user_fir_filter_object = (void*)fftfilt_cccf_create(master_taps, master_taps_len, resources->user_filter_block_size);
             resources->user_filter_type_actual = FILTER_IMPL_FFT_ASYMMETRIC;
-            // --- FIX --- Do NOT set master_taps to NULL here. It must be freed at the end.
         } else {
-            float* final_real_taps = (float*)malloc(master_taps_len * sizeof(float));
-            if (!final_real_taps) { log_fatal("Failed to allocate memory for final real taps."); goto cleanup; }
+            float* final_real_taps = (float*)arena_alloc(arena, master_taps_len * sizeof(float));
+            if (!final_real_taps) goto cleanup;
             for(int i=0; i<master_taps_len; i++) {
                 final_real_taps[i] = crealf(master_taps[i]);
             }
             resources->user_fir_filter_object = (void*)fftfilt_crcf_create(final_real_taps, master_taps_len, resources->user_filter_block_size);
             resources->user_filter_type_actual = FILTER_IMPL_FFT_SYMMETRIC;
-            // --- FIX --- Free the temporary real taps buffer after it has been copied by liquid-dsp.
-            free(final_real_taps);
         }
     } else { 
-        log_info("Using FIR (time-domain) filter implementation.");
+        log_info("Preparing FIR (time-domain) filter object...");
         if (is_final_filter_complex) {
             resources->user_fir_filter_object = (void*)firfilt_cccf_create(master_taps, master_taps_len);
             resources->user_filter_type_actual = FILTER_IMPL_FIR_ASYMMETRIC;
-            // --- FIX --- Do NOT set master_taps to NULL here. It must be freed at the end.
         } else {
-            float* final_real_taps = (float*)malloc(master_taps_len * sizeof(float));
-            if (!final_real_taps) { log_fatal("Failed to allocate memory for final real taps."); goto cleanup; }
+            float* final_real_taps = (float*)arena_alloc(arena, master_taps_len * sizeof(float));
+            if (!final_real_taps) goto cleanup;
             for(int i=0; i<master_taps_len; i++) {
                 final_real_taps[i] = crealf(master_taps[i]);
             }
             resources->user_fir_filter_object = (void*)firfilt_crcf_create(final_real_taps, master_taps_len);
             resources->user_filter_type_actual = FILTER_IMPL_FIR_SYMMETRIC;
-            // --- FIX --- Free the temporary real taps buffer after it has been copied by liquid-dsp.
-            free(final_real_taps);
         }
     }
 
@@ -270,8 +272,6 @@ bool filter_create(AppConfig* config, AppResources* resources) {
     success = true;
 
 cleanup:
-    // This will now correctly free the master_taps buffer in all cases.
-    free(master_taps);
     return success;
 }
 

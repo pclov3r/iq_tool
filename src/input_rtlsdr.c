@@ -1,5 +1,3 @@
-// src/input_rtlsdr.c
-
 #include "input_rtlsdr.h"
 #include "constants.h"
 #include "log.h"
@@ -9,6 +7,8 @@
 #include "utils.h"
 #include "sample_convert.h"
 #include "input_common.h"
+#include "memory_arena.h"
+#include "queue.h"
 #include <string.h>
 #include <errno.h>
 #include "argparse.h"
@@ -155,39 +155,41 @@ static bool rtlsdr_initialize(InputSourceContext* ctx) {
     int result;
     uint32_t device_count;
     uint32_t device_index = s_rtlsdr_config.device_index;
+    bool success = false; // Assume failure until the very end
 
     log_info("Attempting to initialize RTL-SDR device...");
 
-    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)calloc(1, sizeof(RtlSdrPrivateData));
+    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)arena_alloc(&resources->setup_arena, sizeof(RtlSdrPrivateData));
     if (!private_data) {
-        log_fatal("Failed to allocate memory for RTL-SDR private data.");
         return false;
     }
+    private_data->dev = NULL; // Initialize resource state
     resources->input_module_private_data = private_data;
 
     device_count = rtlsdr_get_device_count();
     if (device_count == 0) {
         log_fatal("No RTL-SDR devices found.");
-        return false;
+        goto cleanup;
     }
     log_info("Found %d RTL-SDR device(s).", device_count);
 
     if (device_index >= device_count) {
         log_fatal("Device index %u is out of range. Found %u devices.", device_index, device_count);
-        return false;
+        goto cleanup;
     }
 
     log_info("Reading device information for index %d...", device_index);
     if (rtlsdr_get_device_usb_strings(device_index, private_data->manufact, private_data->product, private_data->serial) < 0) {
         log_fatal("Failed to read USB device strings for device %d.", device_index);
-        return false;
+        goto cleanup;
     }
 
     log_info("Opening device %d: %s %s, S/N: %s", device_index, private_data->manufact, private_data->product, private_data->serial);
     result = rtlsdr_open(&private_data->dev, device_index);
     if (result < 0) {
         log_fatal("Failed to open RTL-SDR device: %s", strerror(-result));
-        return false;
+        private_data->dev = NULL; // Ensure dev is NULL on failure
+        goto cleanup;
     }
     
     enum rtlsdr_tuner tuner_type = rtlsdr_get_tuner_type(private_data->dev);
@@ -197,8 +199,7 @@ static bool rtlsdr_initialize(InputSourceContext* ctx) {
     result = rtlsdr_set_sample_rate(private_data->dev, (uint32_t)config->sdr.sample_rate_hz);
     if (result < 0) {
         log_fatal("Failed to set sample rate: %s", strerror(-result));
-        rtlsdr_close(private_data->dev);
-        return false;
+        goto cleanup;
     }
     uint32_t actual_rate = rtlsdr_get_sample_rate(private_data->dev);
     log_info("RTL-SDR: Requested sample rate %.0f Hz, actual rate set to %u Hz.", config->sdr.sample_rate_hz, actual_rate);
@@ -207,8 +208,7 @@ static bool rtlsdr_initialize(InputSourceContext* ctx) {
     result = rtlsdr_set_center_freq(private_data->dev, (uint32_t)config->sdr.rf_freq_hz);
     if (result < 0) {
         log_fatal("Failed to set center frequency: %s", strerror(-result));
-        rtlsdr_close(private_data->dev);
-        return false;
+        goto cleanup;
     }
 
     if (s_rtlsdr_config.gain_provided) {
@@ -245,11 +245,18 @@ static bool rtlsdr_initialize(InputSourceContext* ctx) {
 
     if (config->raw_passthrough && resources->input_format != config->output_format) {
         log_fatal("Option --raw-passthrough requires input and output formats to be identical. RTL-SDR input is 'cu8', but output was set to '%s'.", config->sample_type_name);
-        rtlsdr_close(private_data->dev);
-        return false;
+        goto cleanup;
     }
 
-    return true;
+    success = true; // All steps succeeded
+
+cleanup:
+    if (!success) {
+        // If we failed, the main cleanup routine will be called.
+        // It will check if private_data->dev is non-NULL and close it.
+        // This makes the local cleanup logic much simpler.
+    }
+    return success;
 }
 
 static void* rtlsdr_start_stream(InputSourceContext* ctx) {
@@ -308,7 +315,7 @@ static void* rtlsdr_start_stream(InputSourceContext* ctx) {
                     if (!item) break;
 
                     int n_read = 0;
-                    size_t bytes_to_read = PIPELINE_INPUT_CHUNK_SIZE_SAMPLES * resources->input_bytes_per_sample_pair;
+                    size_t bytes_to_read = PIPELINE_CHUNK_BASE_SAMPLES * resources->input_bytes_per_sample_pair;
                     result = rtlsdr_read_sync(private_data->dev, item->raw_input_data, bytes_to_read, &n_read);
 
                     if (result < 0) {
@@ -347,6 +354,7 @@ static void* rtlsdr_start_stream(InputSourceContext* ctx) {
             break;
         
         case PIPELINE_MODE_FILE_PROCESSING:
+            // This case is not applicable for SDRs, but included for completeness.
             break;
     }
     return NULL;
@@ -370,7 +378,6 @@ static void rtlsdr_cleanup(InputSourceContext* ctx) {
             rtlsdr_close(private_data->dev);
             private_data->dev = NULL;
         }
-        free(private_data);
         resources->input_module_private_data = NULL;
     }
 }

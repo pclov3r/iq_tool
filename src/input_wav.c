@@ -7,6 +7,8 @@
 #include "platform.h"
 #include "sample_convert.h"
 #include "input_common.h"
+#include "memory_arena.h"
+#include "queue.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -423,7 +425,7 @@ static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo
     const AppResources *resources = ctx->resources;
     const char* display_path = config->input_filename_arg;
 #ifdef _WIN32
-    if (config->effective_input_filename_utf8) {
+    if (config->effective_input_filename_utf8[0] != '\0') {
         display_path = config->effective_input_filename_utf8;
     }
 #endif
@@ -490,9 +492,10 @@ static bool wav_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
 
-    WavPrivateData* private_data = (WavPrivateData*)calloc(1, sizeof(WavPrivateData));
+    // --- MODIFIED: Allocate private data from the memory arena ---
+    WavPrivateData* private_data = (WavPrivateData*)arena_alloc(&resources->setup_arena, sizeof(WavPrivateData));
     if (!private_data) {
-        log_fatal("Failed to allocate memory for WAV private data.");
+        // arena_alloc logs the error
         return false;
     }
     resources->input_module_private_data = private_data;
@@ -588,8 +591,6 @@ static void* wav_start_stream(InputSourceContext* ctx) {
 
         current_item->frames_read = bytes_read / resources->input_bytes_per_sample_pair;
         
-        // If we read 0 frames, this is the end of the file.
-        // Set the flag on this chunk and send it as the final marker.
         current_item->is_last_chunk = (current_item->frames_read == 0);
 
         if (!current_item->is_last_chunk) {
@@ -598,15 +599,11 @@ static void* wav_start_stream(InputSourceContext* ctx) {
             pthread_mutex_unlock(&resources->progress_mutex);
         }
 
-        // Enqueue the chunk (either data or the final marker).
         if (!queue_enqueue(resources->raw_to_pre_process_queue, current_item)) {
-            // If enqueue fails, it means a shutdown was requested while we were blocked.
-            // Return the item to the free pool and exit.
             queue_enqueue(resources->free_sample_chunk_queue, current_item);
             break;
         }
 
-        // If we just sent the last chunk marker, we're done.
         if (current_item->is_last_chunk) {
             break;
         }
@@ -627,7 +624,7 @@ static void wav_cleanup(InputSourceContext* ctx) {
             sf_close(private_data->infile);
             private_data->infile = NULL;
         }
-        free(private_data);
+        // --- MODIFIED: No longer need to free the private_data struct ---
         resources->input_module_private_data = NULL;
     }
 }

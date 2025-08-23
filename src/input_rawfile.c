@@ -1,5 +1,5 @@
 #include "input_rawfile.h"
-#include "constants.h"
+#include "constants.h" // <-- MODIFIED
 #include "log.h"
 #include "signal_handler.h"
 #include "utils.h"
@@ -7,6 +7,8 @@
 #include "platform.h"
 #include "sample_convert.h"
 #include "input_common.h"
+#include "memory_arena.h"
+#include "queue.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -98,9 +100,10 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
 
-    RawfilePrivateData* private_data = (RawfilePrivateData*)calloc(1, sizeof(RawfilePrivateData));
+    // --- MODIFIED: Allocate private data from the memory arena ---
+    RawfilePrivateData* private_data = (RawfilePrivateData*)arena_alloc(&resources->setup_arena, sizeof(RawfilePrivateData));
     if (!private_data) {
-        log_fatal("Failed to allocate memory for Raw File private data.");
+        // arena_alloc logs the error
         return false;
     }
     resources->input_module_private_data = private_data;
@@ -246,7 +249,7 @@ static void rawfile_cleanup(InputSourceContext* ctx) {
             sf_close(private_data->infile);
             private_data->infile = NULL;
         }
-        free(private_data);
+        // --- MODIFIED: No longer need to free the private_data struct ---
         resources->input_module_private_data = NULL;
     }
 }
@@ -256,7 +259,7 @@ static void rawfile_get_summary_info(const InputSourceContext* ctx, InputSummary
     const AppResources *resources = ctx->resources;
     const char* display_path = config->input_filename_arg;
 #ifdef _WIN32
-    if (config->effective_input_filename_utf8) {
+    if (config->effective_input_filename_utf8[0] != '\0') {
         display_path = config->effective_input_filename_utf8;
     }
 #endif

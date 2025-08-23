@@ -1,17 +1,17 @@
-// presets_loader.c
 #include "presets_loader.h"
 #include "constants.h"
 #include "log.h"
 #include "config.h"
 #include "utils.h"
 #include "platform.h"
+#include "memory_arena.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
-#include <stddef.h> // For offsetof
+#include <stddef.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -28,7 +28,6 @@
 #endif
 
 // --- The Dispatch Table ---
-// To add a new key, simply add a new entry to this table.
 static const PresetKeyHandler key_handlers[] = {
     { "description",      PRESET_KEY_STRDUP, offsetof(PresetDefinition, description),         0 },
     { "target_rate",      PRESET_KEY_STRTOD, offsetof(PresetDefinition, target_rate),         0 },
@@ -52,6 +51,17 @@ static const size_t num_key_handlers = sizeof(key_handlers) / sizeof(key_handler
 // --- Helper function declarations ---
 static void free_dynamic_paths(char** paths, int count);
 
+// --- Helper function to duplicate a string using the memory arena ---
+static char* arena_strdup(MemoryArena* arena, const char* s) {
+    if (!s) return NULL;
+    size_t len = strlen(s) + 1;
+    char* new_s = (char*)arena_alloc(arena, len);
+    if (new_s) {
+        memcpy(new_s, s, len);
+    }
+    return new_s;
+}
+
 
 static void free_dynamic_paths(char** paths, int count) {
     for (int i = 0; i < count; ++i) {
@@ -60,7 +70,8 @@ static void free_dynamic_paths(char** paths, int count) {
     }
 }
 
-bool presets_load_from_file(AppConfig* config) {
+// --- Function signature updated to match the header ---
+bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
     config->presets = NULL;
     config->num_presets = 0;
 
@@ -195,9 +206,8 @@ bool presets_load_from_file(AppConfig* config) {
     PresetDefinition* current_preset = NULL;
     int capacity = 8;
 
-    config->presets = malloc(capacity * sizeof(PresetDefinition));
+    config->presets = (PresetDefinition*)arena_alloc(arena, capacity * sizeof(PresetDefinition));
     if (!config->presets) {
-        log_fatal("Failed to allocate initial memory for presets.");
         fclose(fp);
         free(found_preset_files[0]);
         free_dynamic_paths(dynamic_paths, dynamic_paths_count);
@@ -220,16 +230,16 @@ bool presets_load_from_file(AppConfig* config) {
                 continue;
             }
             if (config->num_presets == capacity) {
+                int old_capacity = capacity;
                 capacity *= 2;
-                PresetDefinition* new_presets = realloc(config->presets, capacity * sizeof(PresetDefinition));
+                PresetDefinition* new_presets = (PresetDefinition*)arena_alloc(arena, capacity * sizeof(PresetDefinition));
                 if (!new_presets) {
-                    log_fatal("Failed to reallocate memory for presets.");
-                    presets_free_loaded(config);
                     fclose(fp);
                     free(found_preset_files[0]);
                     free_dynamic_paths(dynamic_paths, dynamic_paths_count);
                     return false;
                 }
+                memcpy(new_presets, config->presets, old_capacity * sizeof(PresetDefinition));
                 config->presets = new_presets;
             }
             current_preset = &config->presets[config->num_presets];
@@ -238,10 +248,8 @@ bool presets_load_from_file(AppConfig* config) {
             char* name_end = strchr(name_start, ']');
             if (name_end) {
                 *name_end = '\0';
-                current_preset->name = strdup(trim_whitespace(name_start));
+                current_preset->name = arena_strdup(arena, trim_whitespace(name_start));
                 if (!current_preset->name) {
-                    log_fatal("Failed to duplicate preset name string.");
-                    presets_free_loaded(config);
                     fclose(fp);
                     free(found_preset_files[0]);
                     free_dynamic_paths(dynamic_paths, dynamic_paths_count);
@@ -271,7 +279,13 @@ bool presets_load_from_file(AppConfig* config) {
 
                     switch (handler->action) {
                         case PRESET_KEY_STRDUP:
-                            *(char**)value_ptr = strdup(value);
+                            *(char**)value_ptr = arena_strdup(arena, value);
+                            if (!*(char**)value_ptr) {
+                                fclose(fp);
+                                free(found_preset_files[0]);
+                                free_dynamic_paths(dynamic_paths, dynamic_paths_count);
+                                return false;
+                            }
                             break;
                         case PRESET_KEY_STRTOD:
                             *(double*)value_ptr = strtod(value, NULL);
@@ -311,26 +325,4 @@ bool presets_load_from_file(AppConfig* config) {
     free(found_preset_files[0]);
     free_dynamic_paths(dynamic_paths, dynamic_paths_count);
     return true;
-}
-
-void presets_free_loaded(AppConfig* config) {
-    if (!config || !config->presets) return;
-
-    for (int i = 0; i < config->num_presets; i++) {
-        free(config->presets[i].name);
-        config->presets[i].name = NULL;
-        free(config->presets[i].description);
-        config->presets[i].description = NULL;
-        free(config->presets[i].sample_format_name);
-        config->presets[i].sample_format_name = NULL;
-        free(config->presets[i].pass_range_str);
-        config->presets[i].pass_range_str = NULL;
-        free(config->presets[i].stopband_str);
-        config->presets[i].stopband_str = NULL;
-        free(config->presets[i].filter_type_str);
-        config->presets[i].filter_type_str = NULL;
-    }
-    free(config->presets);
-    config->presets = NULL;
-    config->num_presets = 0;
 }

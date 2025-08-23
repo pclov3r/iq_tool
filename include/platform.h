@@ -1,8 +1,8 @@
-// platform.h
 #ifndef PLATFORM_H_
 #define PLATFORM_H_
 
 #include <stdbool.h> // Needed for bool return types
+#include <stddef.h>  // Needed for size_t
 
 // Include platform-specific headers needed for type definitions in function signatures
 #ifdef _WIN32
@@ -21,22 +21,17 @@ bool set_stdout_binary(void);
 
 /**
  * @brief Converts a path argument (ANSI/MBCS) to absolute Wide and UTF-8 paths.
- *        Resolves relative paths against the Current Working Directory.
+ *        This version writes directly into pre-allocated buffers, avoiding heap allocation.
  * @param path_arg_mbcs The input path string (system's default ANSI code page).
- * @param absolute_path_w Pointer to receive the allocated wide character absolute path.
- * @param absolute_path_utf8 Pointer to receive the allocated UTF-8 encoded absolute path.
- * @return true on success, false on failure (e.g., memory allocation, API errors).
- * @note Caller must free the allocated strings using free_absolute_path_windows().
+ * @param out_path_w Pointer to the destination buffer for the wide character absolute path.
+ * @param out_path_w_size The size of the out_path_w buffer in characters.
+ * @param out_path_utf8 Pointer to the destination buffer for the UTF-8 encoded absolute path.
+ * @param out_path_utf8_size The size of the out_path_utf8 buffer in bytes.
+ * @return true on success, false on failure (e.g., buffer too small, API errors).
  */
-bool get_absolute_path_windows(const char* path_arg_mbcs, wchar_t** absolute_path_w, char** absolute_path_utf8);
-
-/**
- * @brief Frees the memory allocated by get_absolute_path_windows.
- * @param path_w Pointer to the wide character path pointer.
- * @param path_utf8 Pointer to the UTF-8 path pointer.
- * @note Sets the pointers to NULL after freeing.
- */
-void free_absolute_path_windows(wchar_t** path_w, char** path_utf8);
+bool get_absolute_path_windows(const char* path_arg_mbcs,
+                               wchar_t* out_path_w, size_t out_path_w_size,
+                               char* out_path_utf8, size_t out_path_utf8_size);
 
 /**
  * @brief Prints a formatted Windows error message based on the error code.

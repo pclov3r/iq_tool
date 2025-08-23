@@ -13,6 +13,8 @@
 #include "dc_block.h"
 #include "iq_correct.h"
 #include "filter.h"
+#include "queue.h"
+#include "memory_arena.h"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>

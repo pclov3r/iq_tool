@@ -1,5 +1,3 @@
-// src/main.c
-
 /*
  * This file is part of iq_resample_tool.
  *
@@ -62,6 +60,7 @@
 #include "file_writer.h"
 #include "presets_loader.h"
 #include "platform.h"
+#include "memory_arena.h" // <-- MODIFIED: Include arena.h
 #include "iq_correct.h"
 #include "dc_block.h"
 #include "io_threads.h"
@@ -87,10 +86,10 @@ int main(int argc, char *argv[]) {
     signal(SIGPIPE, SIG_IGN);
 #endif
 
-    // CHANGE: Refactored main to use a single, unified cleanup path to prevent double-free errors.
     int exit_status = EXIT_FAILURE;
     AppResources resources;
     bool resources_initialized = false;
+    bool arena_initialized = false;
 
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
@@ -108,6 +107,11 @@ int main(int argc, char *argv[]) {
     initialize_resource_struct(&resources);
     reset_shutdown_flag();
     setup_signal_handlers(&resources);
+
+    if (!arena_init(&resources.setup_arena, MEM_ARENA_SIZE_BYTES)) {
+        goto cleanup;
+    }
+    arena_initialized = true;
 
 #ifndef _WIN32
     pthread_t sig_thread_id;
@@ -129,7 +133,7 @@ int main(int argc, char *argv[]) {
     pthread_attr_destroy(&sig_thread_attr);
 #endif
 
-    if (!presets_load_from_file(&g_config)) {
+    if (!presets_load_from_file(&g_config, &resources.setup_arena)) {
         goto cleanup;
     }
 
@@ -212,7 +216,10 @@ cleanup:
     }
     pthread_mutex_unlock(&g_console_mutex);
 
-    presets_free_loaded(&g_config);
+    if (arena_initialized) {
+        arena_destroy(&resources.setup_arena);
+    }
+    
     pthread_mutex_destroy(&g_console_mutex);
 
     return exit_status;

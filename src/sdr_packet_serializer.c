@@ -1,14 +1,11 @@
-// src/sdr_buffer_stream.c
-
 #include "sdr_packet_serializer.h"
-#include "constants.h"
+#include "constants.h" // <-- MODIFIED
 #include "log.h"
-#include "types.h" // --- ADDED --- Now that the header doesn't include it, the C file must.
+#include "types.h"
 #include <string.h>
 #include <stdlib.h>
 
 // --- Private Packet Definition ---
-// This struct is an internal implementation detail of this file.
 #pragma pack(push, 1)
 typedef struct {
     uint32_t num_samples;
@@ -67,7 +64,12 @@ bool sdr_packet_serializer_write_reset_event(FileWriteBuffer* buffer) {
 
 // --- Deserialization Function ---
 
-int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer, SampleChunk* target_chunk, bool* is_reset_event) {
+// --- MODIFIED: Signature updated and malloc removed ---
+int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
+                                          SampleChunk* target_chunk,
+                                          bool* is_reset_event,
+                                          void* temp_buffer,
+                                          size_t temp_buffer_size) {
     *is_reset_event = false;
     SdrInputChunkHeader header;
 
@@ -90,9 +92,10 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer, SampleChunk* 
     }
 
     uint32_t samples_in_chunk = header.num_samples;
-    if (samples_in_chunk > PIPELINE_INPUT_CHUNK_SIZE_SAMPLES) {
-        log_warn("SDR chunk (%u samples) exceeds buffer capacity (%d). Truncating.", samples_in_chunk, PIPELINE_INPUT_CHUNK_SIZE_SAMPLES);
-        samples_in_chunk = PIPELINE_INPUT_CHUNK_SIZE_SAMPLES;
+    if (samples_in_chunk > PIPELINE_CHUNK_BASE_SAMPLES) {
+        log_warn("SDR chunk (%u samples) exceeds buffer capacity (%d). Truncating.",
+                 samples_in_chunk, PIPELINE_CHUNK_BASE_SAMPLES);
+        samples_in_chunk = PIPELINE_CHUNK_BASE_SAMPLES;
     }
 
     // 3. Read the sample data based on the header flags.
@@ -107,32 +110,39 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer, SampleChunk* 
     } else {
         // Case for SDRplay (de-interleaved cs16).
         size_t bytes_per_plane = samples_in_chunk * sizeof(short);
+        
+        // Sanity check the provided temporary buffer
+        if (bytes_per_plane > temp_buffer_size) {
+            log_fatal("SDR deserializer buffer is too small for this packet. Required: %zu, Available: %zu.",
+                      bytes_per_plane, temp_buffer_size);
+            return -1;
+        }
+
         int16_t* raw_output = (int16_t*)target_chunk->raw_input_data;
         
-        short* temp_i = (short*)malloc(bytes_per_plane);
-        short* temp_q = (short*)malloc(bytes_per_plane);
-        if (!temp_i || !temp_q) {
-            log_fatal("Failed to allocate memory for de-interleaving.");
-            free(temp_i); free(temp_q);
-            return -1;
-        }
-
+        // --- MODIFIED: Use the pre-allocated temp_buffer instead of malloc ---
+        short* temp_i = (short*)temp_buffer;
+        
         size_t i_bytes_read = file_write_buffer_read(buffer, temp_i, bytes_per_plane);
-        size_t q_bytes_read = file_write_buffer_read(buffer, temp_q, bytes_per_plane);
-
-        if (i_bytes_read < bytes_per_plane || q_bytes_read < bytes_per_plane) {
-            log_error("Incomplete data read for de-interleaved chunk. Stream corrupted.");
-            free(temp_i);
-            free(temp_q);
+        if (i_bytes_read < bytes_per_plane) {
+            log_error("Incomplete I-plane read for de-interleaved chunk. Stream corrupted.");
             return -1;
         }
 
+        // We can reuse the same buffer for the Q plane
+        short* temp_q = (short*)temp_buffer;
+        size_t q_bytes_read = file_write_buffer_read(buffer, temp_q, bytes_per_plane);
+        if (q_bytes_read < bytes_per_plane) {
+            log_error("Incomplete Q-plane read for de-interleaved chunk. Stream corrupted.");
+            return -1;
+        }
+
+        // Re-interleave the data into the final destination
         for (uint32_t i = 0; i < samples_in_chunk; i++) {
             raw_output[i * 2]     = temp_i[i];
             raw_output[i * 2 + 1] = temp_q[i];
         }
-        free(temp_i);
-        free(temp_q);
+        // --- MODIFIED: No free() is needed ---
     }
 
     return samples_in_chunk;

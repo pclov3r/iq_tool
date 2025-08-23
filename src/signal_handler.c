@@ -1,9 +1,8 @@
-// src/signal_handler.c
-
 #include "signal_handler.h"
 #include "log.h"
 #include "types.h"
 #include "input_source.h"
+#include "queue.h" // <-- MODIFIED: Added the missing include
 #include <stdio.h>
 #include <string.h>
 

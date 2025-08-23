@@ -1,6 +1,5 @@
-// platform.c
 #include "platform.h"
-#include "constants.h"
+#include "constants.h" // <-- MODIFIED
 #include "log.h"
 #include <stdio.h>
 #include <string.h>
@@ -16,7 +15,6 @@
 #include <io.h>      // For _setmode
 #include <shlwapi.h> // For PathIsRelativeW, PathAppendW
 #include <pathcch.h> // For PathCchCombineEx
-#include "config.h"  // For MAX_PATH_BUFFER
 
 /**
  * @brief Sets stdout to binary mode on Windows.
@@ -44,125 +42,74 @@ void print_win_error(const char* context, DWORD error_code) {
     }
 }
 
+// --- MODIFIED: Rewritten to be heap-free ---
 /**
  * @brief Converts an ANSI/MBCS path argument to absolute Wide and UTF-8 paths.
  */
-bool get_absolute_path_windows(const char* path_arg_mbcs, wchar_t** absolute_path_w, char** absolute_path_utf8) {
-    if (!path_arg_mbcs || !absolute_path_w || !absolute_path_utf8) return false;
-    *absolute_path_w = NULL;
-    *absolute_path_utf8 = NULL;
+bool get_absolute_path_windows(const char* path_arg_mbcs,
+                               wchar_t* out_path_w, size_t out_path_w_size,
+                               char* out_path_utf8, size_t out_path_utf8_size) {
+    if (!path_arg_mbcs || !out_path_w || !out_path_utf8) return false;
 
-    wchar_t* path_arg_w = NULL;
-    wchar_t* path_to_canonicalize_w = NULL;
-    wchar_t* final_w = NULL;
-    char* final_utf8 = NULL;
-    bool success = false;
+    wchar_t path_arg_w[MAX_PATH_BUFFER];
+    wchar_t path_to_canonicalize_w[MAX_PATH_BUFFER];
 
     // 1. Convert input ANSI/MBCS path argument to Wide (using system ACP)
     int required_len_w = MultiByteToWideChar(CP_ACP, 0, path_arg_mbcs, -1, NULL, 0);
-    if (required_len_w <= 0) {
+    if (required_len_w <= 0 || (size_t)required_len_w > MAX_PATH_BUFFER) {
         print_win_error("MultiByteToWideChar (get size)", GetLastError());
-        goto cleanup;
+        return false;
     }
-    path_arg_w = (wchar_t*)malloc(required_len_w * sizeof(wchar_t));
-    if (!path_arg_w) { goto cleanup; }
     if (MultiByteToWideChar(CP_ACP, 0, path_arg_mbcs, -1, path_arg_w, required_len_w) == 0) {
         print_win_error("MultiByteToWideChar (convert)", GetLastError());
-        goto cleanup;
+        return false;
     }
 
     // 2. If path is relative, combine it with the Current Working Directory
     if (PathIsRelativeW(path_arg_w)) {
-        wchar_t* cwd_w = NULL;
-        wchar_t* combined_path_w = NULL;
-        DWORD cwd_len = GetCurrentDirectoryW(0, NULL);
-        if (cwd_len == 0) {
-            print_win_error("GetCurrentDirectoryW (get size)", GetLastError());
-            goto cleanup;
+        wchar_t cwd_w[MAX_PATH_BUFFER];
+        DWORD cwd_len = GetCurrentDirectoryW(MAX_PATH_BUFFER, cwd_w);
+        if (cwd_len == 0 || cwd_len >= MAX_PATH_BUFFER) {
+            print_win_error("GetCurrentDirectoryW", GetLastError());
+            return false;
         }
-        cwd_w = (wchar_t*)malloc(cwd_len * sizeof(wchar_t));
-        if (!cwd_w) { goto cleanup; }
-        if (GetCurrentDirectoryW(cwd_len, cwd_w) == 0) {
-            print_win_error("GetCurrentDirectoryW (get dir)", GetLastError());
-            free(cwd_w);
-            goto cleanup;
-        }
-        size_t combined_len = cwd_len + wcslen(path_arg_w) + 2;
-        combined_path_w = (wchar_t*)malloc(combined_len * sizeof(wchar_t));
-        if (!combined_path_w) {
-            free(cwd_w);
-            goto cleanup;
-        }
-        HRESULT hr = PathCchCombineEx(combined_path_w, combined_len, cwd_w, path_arg_w, PATHCCH_ALLOW_LONG_PATHS);
-        free(cwd_w);
+        HRESULT hr = PathCchCombineEx(path_to_canonicalize_w, MAX_PATH_BUFFER, cwd_w, path_arg_w, PATHCCH_ALLOW_LONG_PATHS);
         if (FAILED(hr)) {
-            free(combined_path_w);
-            goto cleanup;
+            log_error("PathCchCombineEx failed to combine paths.");
+            return false;
         }
-        path_to_canonicalize_w = combined_path_w;
     } else {
-        path_to_canonicalize_w = _wcsdup(path_arg_w);
-        if (!path_to_canonicalize_w) { goto cleanup; }
+        wcsncpy(path_to_canonicalize_w, path_arg_w, MAX_PATH_BUFFER - 1);
+        path_to_canonicalize_w[MAX_PATH_BUFFER - 1] = L'\0';
     }
 
     // 3. Canonicalize the path (resolve ., .. etc.) using GetFullPathNameW
     required_len_w = GetFullPathNameW(path_to_canonicalize_w, 0, NULL, NULL);
-    if (required_len_w == 0) {
+    if (required_len_w == 0 || (size_t)required_len_w > out_path_w_size) {
         print_win_error("GetFullPathNameW (get size)", GetLastError());
-        goto cleanup;
+        return false;
     }
-    final_w = (wchar_t*)malloc(required_len_w * sizeof(wchar_t));
-    if (!final_w) { goto cleanup; }
-    if (GetFullPathNameW(path_to_canonicalize_w, required_len_w, final_w, NULL) == 0) {
+    if (GetFullPathNameW(path_to_canonicalize_w, required_len_w, out_path_w, NULL) == 0) {
         print_win_error("GetFullPathNameW (get path)", GetLastError());
-        goto cleanup;
+        return false;
     }
 
-    // 4. Convert the final Wide path to UTF-8 for internal use (e.g., libsndfile)
-    int required_len_utf8 = WideCharToMultiByte(CP_UTF8, 0, final_w, -1, NULL, 0, NULL, NULL);
-    if (required_len_utf8 <= 0) {
+    // 4. Convert the final Wide path to UTF-8 for internal use
+    int required_len_utf8 = WideCharToMultiByte(CP_UTF8, 0, out_path_w, -1, NULL, 0, NULL, NULL);
+    if (required_len_utf8 <= 0 || (size_t)required_len_utf8 > out_path_utf8_size) {
         print_win_error("WideCharToMultiByte (get size)", GetLastError());
-        goto cleanup;
+        return false;
     }
-    final_utf8 = (char*)malloc(required_len_utf8 * sizeof(char));
-    if (!final_utf8) { goto cleanup; }
-    if (WideCharToMultiByte(CP_UTF8, 0, final_w, -1, final_utf8, required_len_utf8, NULL, NULL) == 0) {
+    if (WideCharToMultiByte(CP_UTF8, 0, out_path_w, -1, out_path_utf8, required_len_utf8, NULL, NULL) == 0) {
         print_win_error("WideCharToMultiByte (convert)", GetLastError());
-        free(final_utf8);
-        final_utf8 = NULL;
-        goto cleanup;
+        return false;
     }
 
-    // 5. Set output pointers and mark success
-    *absolute_path_w = final_w;
-    *absolute_path_utf8 = final_utf8;
-    success = true;
-
-cleanup:
-    free(path_arg_w);
-    free(path_to_canonicalize_w);
-    if (!success) {
-        free(final_w);
-        free(final_utf8);
-        *absolute_path_w = NULL;
-        *absolute_path_utf8 = NULL;
-    }
-    return success;
+    return true;
 }
 
-/**
- * @brief Frees the path pair allocated by get_absolute_path_windows.
- */
-void free_absolute_path_windows(wchar_t** path_w, char** path_utf8) {
-    if (path_w && *path_w) {
-        free(*path_w);
-        *path_w = NULL;
-    }
-    if (path_utf8 && *path_utf8) {
-        free(*path_utf8);
-        *path_utf8 = NULL;
-    }
-}
+// --- MODIFIED: This function is now obsolete and has been removed. ---
+// void free_absolute_path_windows(...) { ... }
 
 /**
  * @brief Gets the directory containing the currently running executable.

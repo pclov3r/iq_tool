@@ -1,14 +1,11 @@
-// src/sdr_buffer_stream.h
-
 #ifndef SDR_BUFFER_STREAM_H_
 #define SDR_BUFFER_STREAM_H_
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <stddef.h> // --- ADDED --- To correctly define size_t.
+#include <stddef.h>
 
 // Forward declare the structs we need pointers to.
-// This tells the compiler "these types exist," without needing the full definition.
 struct FileWriteBuffer;
 struct SampleChunk;
 
@@ -60,9 +57,15 @@ bool sdr_packet_serializer_write_reset_event(struct FileWriteBuffer* buffer);
  * @param target_chunk A pointer to a pre-allocated SampleChunk to be filled.
  * @param[out] is_reset_event A pointer to a boolean that will be set to true if the
  *                            packet was a stream reset event.
+ * @param temp_buffer A pre-allocated buffer for de-interleaving.
+ * @param temp_buffer_size The size of the temp_buffer in bytes.
  * @return The number of frames read and placed in the target_chunk. Returns 0 for
  *         a normal end-of-stream, and a negative value for a fatal parsing error.
  */
-int64_t sdr_packet_serializer_read_packet(struct FileWriteBuffer* buffer, struct SampleChunk* target_chunk, bool* is_reset_event);
+int64_t sdr_packet_serializer_read_packet(struct FileWriteBuffer* buffer,
+                                          struct SampleChunk* target_chunk,
+                                          bool* is_reset_event,
+                                          void* temp_buffer,
+                                          size_t temp_buffer_size);
 
 #endif // SDR_BUFFER_STREAM_H_

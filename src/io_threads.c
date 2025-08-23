@@ -1,16 +1,15 @@
-// src/io_threads.c
-
 #ifdef _WIN32
 #include <windows.h>
 #endif
 
 #include "io_threads.h"
 #include "constants.h"
-#include "types.h" // This now includes sdr_buffer_stream.h
+#include "types.h"
 #include "config.h"
 #include "signal_handler.h"
 #include "log.h"
 #include "input_source.h"
+#include "queue.h" // <-- MODIFIED: Added the missing include for queue functions
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -55,32 +54,33 @@ void* reader_thread_func(void* arg) {
 
     switch (resources->pipeline_mode) {
         case PIPELINE_MODE_BUFFERED_SDR: {
-            // This is the new, robust, universal packet-parsing reader.
-            // It works for all SDR types by deserializing the framed stream.
             log_debug("Reader thread starting in buffered SDR mode.");
 
             while (!is_shutdown_requested() && !resources->error_occurred) {
-                // Get a free processing chunk from the pool. This will block if none are available.
                 SampleChunk* item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
                 if (!item) break; // Shutdown signaled
 
                 bool is_reset = false;
-                // This is the core of the new logic. It's a blocking call that reads
-                // one complete, self-described packet from the ring buffer.
-                int64_t frames_read = sdr_packet_serializer_read_packet(resources->sdr_input_buffer, item, &is_reset);
+                
+                int64_t frames_read = sdr_packet_serializer_read_packet(
+                    resources->sdr_input_buffer,
+                    item,
+                    &is_reset,
+                    resources->sdr_deserializer_temp_buffer,
+                    resources->sdr_deserializer_buffer_size
+                );
 
-                if (frames_read < 0) { // A negative value indicates a fatal parsing error.
+                if (frames_read < 0) {
                     handle_fatal_thread_error("Reader: Fatal error parsing SDR buffer stream.", resources);
                     queue_enqueue(resources->free_sample_chunk_queue, item);
                     break;
                 }
 
-                if (frames_read == 0 && !is_reset) { // A value of 0 indicates a clean end-of-stream.
+                if (frames_read == 0 && !is_reset) {
                     queue_enqueue(resources->free_sample_chunk_queue, item);
-                    break; // Exit the loop.
+                    break; // Exit the loop on clean end-of-stream.
                 }
 
-                // We have a valid packet (either data or a reset event).
                 item->frames_read = frames_read;
                 item->stream_discontinuity_event = is_reset;
                 item->is_last_chunk = false;
@@ -91,15 +91,12 @@ void* reader_thread_func(void* arg) {
                     pthread_mutex_unlock(&resources->progress_mutex);
                 }
 
-                // Send the populated chunk to the first DSP stage.
                 if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
                     queue_enqueue(resources->free_sample_chunk_queue, item);
                     break; // Shutdown while trying to enqueue.
                 }
             }
 
-            // After the loop finishes (either by shutdown or end-of-stream),
-            // send one final "end of stream" marker to the DSP pipeline.
             if (!is_shutdown_requested()) {
                 SampleChunk *last_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
                 if (last_item) {
@@ -113,8 +110,6 @@ void* reader_thread_func(void* arg) {
 
         case PIPELINE_MODE_REALTIME_SDR:
         case PIPELINE_MODE_FILE_PROCESSING: {
-            // These modes remain unchanged. They use a direct, tightly-coupled pipeline
-            // without the intermediate SDR input buffer.
             InputSourceContext ctx = { .config = config, .resources = resources };
             resources->selected_input_ops->start_stream(&ctx);
             break;
@@ -174,17 +169,17 @@ void* writer_thread_func(void* arg) {
             }
         }
     } else {
-        unsigned char* local_write_buffer = (unsigned char*)malloc(WRITER_THREAD_CHUNK_SIZE);
+        unsigned char* local_write_buffer = (unsigned char*)resources->writer_local_buffer;
         if (!local_write_buffer) {
-            handle_fatal_thread_error("Writer: Failed to allocate local write buffer.", resources);
+            handle_fatal_thread_error("Writer: Local write buffer is NULL.", resources);
             return NULL;
         }
 
         while (true) {
-            size_t bytes_read = file_write_buffer_read(resources->file_write_buffer, local_write_buffer, WRITER_THREAD_CHUNK_SIZE);
+            size_t bytes_read = file_write_buffer_read(resources->file_write_buffer, local_write_buffer, IO_FILE_WRITER_CHUNK_SIZE);
 
             if (bytes_read == 0) {
-                break;
+                break; // End of stream or shutdown
             }
 
             size_t written_bytes = resources->writer_ctx.ops.write(&resources->writer_ctx, local_write_buffer, bytes_read);
@@ -207,7 +202,6 @@ void* writer_thread_func(void* arg) {
                 resources->progress_callback(current_frames, resources->expected_total_output_frames, current_bytes, resources->progress_callback_udata);
             }
         }
-        free(local_write_buffer);
     }
 
     log_debug("Writer thread is exiting.");
