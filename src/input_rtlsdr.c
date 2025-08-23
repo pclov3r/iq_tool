@@ -159,7 +159,7 @@ static bool rtlsdr_initialize(InputSourceContext* ctx) {
 
     log_info("Attempting to initialize RTL-SDR device...");
 
-    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)arena_alloc(&resources->setup_arena, sizeof(RtlSdrPrivateData));
+    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(RtlSdrPrivateData));
     if (!private_data) {
         return false;
     }

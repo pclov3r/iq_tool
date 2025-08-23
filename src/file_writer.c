@@ -4,6 +4,8 @@
 #include "log.h"
 #include "platform.h"
 #include "utils.h"
+// MODIFIED: Include memory_arena.h for mem_arena_alloc
+#include "memory_arena.h"
 #include <sndfile.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,14 +32,16 @@ static bool prompt_for_overwrite(const char* path_for_messages);
 
 
 // --- Forward Declarations for RAW Writer Operations ---
-static bool raw_open(FileWriterContext* ctx, const AppConfig* config, AppResources* resources);
+// MODIFIED: Signature updated to accept MemoryArena
+static bool raw_open(FileWriterContext* ctx, const AppConfig* config, AppResources* resources, MemoryArena* arena);
 static size_t raw_write(FileWriterContext* ctx, const void* buffer, size_t bytes_to_write);
 static void raw_close(FileWriterContext* ctx);
 static long long generic_get_total_bytes_written(const FileWriterContext* ctx);
 
 
 // --- Forward Declarations for WAV Writer Operations ---
-static bool wav_open(FileWriterContext* ctx, const AppConfig* config, AppResources* resources);
+// MODIFIED: Signature updated to accept MemoryArena
+static bool wav_open(FileWriterContext* ctx, const AppConfig* config, AppResources* resources, MemoryArena* arena);
 static size_t wav_write(FileWriterContext* ctx, const void* buffer, size_t bytes_to_write);
 static void wav_close(FileWriterContext* ctx);
 
@@ -72,16 +76,18 @@ static long long generic_get_total_bytes_written(const FileWriterContext* ctx) {
 
 
 // --- RAW Writer Implementation ---
-static bool raw_open(FileWriterContext* ctx, const AppConfig* config, AppResources* resources) {
+// MODIFIED: Signature updated to accept MemoryArena
+static bool raw_open(FileWriterContext* ctx, const AppConfig* config, AppResources* resources, MemoryArena* arena) {
     (void)resources;
 
     if (config->output_to_stdout) {
         #ifdef _WIN32
         if (!set_stdout_binary()) return false;
         #endif
-        RawWriterData* data = (RawWriterData*)malloc(sizeof(RawWriterData));
+        // MODIFIED: Allocate from arena instead of malloc
+        RawWriterData* data = (RawWriterData*)mem_arena_alloc(arena, sizeof(RawWriterData));
         if (!data) {
-            log_fatal("Failed to allocate memory for raw writer data.");
+            // mem_arena_alloc logs the error, no need to log again
             return false;
         }
         data->handle = stdout;
@@ -113,9 +119,9 @@ static bool raw_open(FileWriterContext* ctx, const AppConfig* config, AppResourc
         }
     }
 
-    RawWriterData* data = (RawWriterData*)malloc(sizeof(RawWriterData));
+    // MODIFIED: Allocate from arena instead of malloc
+    RawWriterData* data = (RawWriterData*)mem_arena_alloc(arena, sizeof(RawWriterData));
     if (!data) {
-        log_fatal("Failed to allocate memory for raw writer data.");
         return false;
     }
 
@@ -127,7 +133,7 @@ static bool raw_open(FileWriterContext* ctx, const AppConfig* config, AppResourc
 
     if (!data->handle) {
         log_fatal("Error opening output file %s: %s", out_path, strerror(errno));
-        free(data);
+        // REMOVED: free(data); - Memory is now managed by the arena
         return false;
     }
 
@@ -152,13 +158,14 @@ static void raw_close(FileWriterContext* ctx) {
     if (data->handle && data->handle != stdout) {
         fclose(data->handle);
     }
-    free(data);
+    // REMOVED: free(data); - Memory is now managed by the arena
     ctx->private_data = NULL;
 }
 
 
 // --- WAV Writer Implementation ---
-static bool wav_open(FileWriterContext* ctx, const AppConfig* config, AppResources* resources) {
+// MODIFIED: Signature updated to accept MemoryArena
+static bool wav_open(FileWriterContext* ctx, const AppConfig* config, AppResources* resources, MemoryArena* arena) {
     (void)resources;
 
 #ifdef _WIN32
@@ -213,9 +220,9 @@ static bool wav_open(FileWriterContext* ctx, const AppConfig* config, AppResourc
         return false;
     }
 
-    WavWriterData* data = (WavWriterData*)malloc(sizeof(WavWriterData));
+    // MODIFIED: Allocate from arena instead of malloc
+    WavWriterData* data = (WavWriterData*)mem_arena_alloc(arena, sizeof(WavWriterData));
     if (!data) {
-        log_fatal("Failed to allocate memory for WAV writer data.");
         return false;
     }
 
@@ -227,7 +234,7 @@ static bool wav_open(FileWriterContext* ctx, const AppConfig* config, AppResourc
 
     if (!data->handle) {
         log_fatal("Error opening output WAV file %s: %s", out_path, sf_strerror(NULL));
-        free(data);
+        // REMOVED: free(data); - Memory is now managed by the arena
         return false;
     }
 
@@ -253,7 +260,7 @@ static void wav_close(FileWriterContext* ctx) {
     if (data->handle) {
         sf_close(data->handle);
     }
-    free(data);
+    // REMOVED: free(data); - Memory is now managed by the arena
     ctx->private_data = NULL;
 }
 

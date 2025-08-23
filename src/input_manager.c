@@ -1,6 +1,7 @@
-// src/input_manager.c
+// input_manager.c
 
 #include "input_manager.h"
+#include "memory_arena.h" // MODIFIED: Include memory_arena.h
 #include <string.h>
 #include <stdlib.h> // Needed for NULL
 
@@ -31,8 +32,8 @@ static InputModule* all_modules = NULL;
 static int num_all_modules = 0;
 static bool modules_initialized = false;
 
-// This function will build the list on the first call.
-static void initialize_modules_list(void) {
+// MODIFIED: This function now accepts an arena to perform its allocation.
+static void initialize_modules_list(MemoryArena* arena) {
     if (modules_initialized) {
         return;
     }
@@ -93,12 +94,12 @@ static void initialize_modules_list(void) {
 
     num_all_modules = sizeof(temp_modules) / sizeof(temp_modules[0]);
     
-    // Allocate memory on the heap and copy the data
-    all_modules = (InputModule*)malloc(sizeof(temp_modules));
+    // MODIFIED: Allocate memory from the arena instead of the heap.
+    all_modules = (InputModule*)mem_arena_alloc(arena, sizeof(temp_modules));
     if (all_modules) {
         memcpy(all_modules, temp_modules, sizeof(temp_modules));
     } else {
-        // Handle catastrophic memory allocation failure
+        // Handle catastrophic memory allocation failure (mem_arena_alloc logs it)
         num_all_modules = 0;
     }
 
@@ -108,8 +109,9 @@ static void initialize_modules_list(void) {
 /**
  * @brief Iterates through all registered modules and applies their default settings.
  */
-void input_manager_apply_defaults(AppConfig* config) {
-    initialize_modules_list(); // Ensure the list is ready
+// MODIFIED: Signature updated.
+void input_manager_apply_defaults(AppConfig* config, MemoryArena* arena) {
+    initialize_modules_list(arena); // Ensure the list is ready
     if (!all_modules) return;
 
     for (int i = 0; i < num_all_modules; ++i) {
@@ -119,8 +121,9 @@ void input_manager_apply_defaults(AppConfig* config) {
     }
 }
 
-InputSourceOps* get_input_ops_by_name(const char* name) {
-    initialize_modules_list(); // Ensure the list is ready
+// MODIFIED: Signature updated.
+InputSourceOps* get_input_ops_by_name(const char* name, MemoryArena* arena) {
+    initialize_modules_list(arena); // Ensure the list is ready
     if (!name || !all_modules) {
         return NULL;
     }
@@ -132,15 +135,17 @@ InputSourceOps* get_input_ops_by_name(const char* name) {
     return NULL; // Name not recognized
 }
 
-const InputModule* get_all_input_modules(int* count) {
-    initialize_modules_list(); // Ensure the list is ready
+// MODIFIED: Signature updated.
+const InputModule* get_all_input_modules(int* count, MemoryArena* arena) {
+    initialize_modules_list(arena); // Ensure the list is ready
     *count = num_all_modules;
     return all_modules;
 }
 
-bool is_sdr_input(const char* name) {
+// MODIFIED: Signature updated.
+bool is_sdr_input(const char* name, MemoryArena* arena) {
     if (!name) return false;
-    initialize_modules_list(); // Ensure the list is ready
+    initialize_modules_list(arena); // Ensure the list is ready
 
     for (int i = 0; i < num_all_modules; ++i) {
         if (strcasecmp(name, all_modules[i].name) == 0) {

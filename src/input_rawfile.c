@@ -1,5 +1,7 @@
+// input_rawfile.c
+
 #include "input_rawfile.h"
-#include "constants.h" // <-- MODIFIED
+#include "constants.h"
 #include "log.h"
 #include "signal_handler.h"
 #include "utils.h"
@@ -100,10 +102,10 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
 
-    // --- MODIFIED: Allocate private data from the memory arena ---
-    RawfilePrivateData* private_data = (RawfilePrivateData*)arena_alloc(&resources->setup_arena, sizeof(RawfilePrivateData));
+    // MODIFIED: Allocate private data from the memory arena instead of malloc.
+    RawfilePrivateData* private_data = (RawfilePrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(RawfilePrivateData));
     if (!private_data) {
-        // arena_alloc logs the error
+        // mem_arena_alloc logs the error
         return false;
     }
     resources->input_module_private_data = private_data;
@@ -249,7 +251,7 @@ static void rawfile_cleanup(InputSourceContext* ctx) {
             sf_close(private_data->infile);
             private_data->infile = NULL;
         }
-        // --- MODIFIED: No longer need to free the private_data struct ---
+        // REMOVED: No longer need to free the private_data struct as it's in the arena.
         resources->input_module_private_data = NULL;
     }
 }

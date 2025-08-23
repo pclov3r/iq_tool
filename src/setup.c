@@ -59,7 +59,7 @@ static bool create_iq_corrector(AppConfig *config, AppResources *resources) {
 }
 
 static bool create_frequency_shifter(AppConfig *config, AppResources *resources) {
-    return shift_create_ncos(config, resources);
+    return freq_shift_create_ncos(config, resources);
 }
 
 static bool create_resampler(AppConfig *config, AppResources *resources, float resample_ratio) {
@@ -240,14 +240,14 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
         return false;
     }
 
-    resources->sample_chunk_pool = (SampleChunk*)arena_alloc(&resources->setup_arena, PIPELINE_NUM_CHUNKS * sizeof(SampleChunk));
+    resources->sample_chunk_pool = (SampleChunk*)mem_arena_alloc(&resources->setup_arena, PIPELINE_NUM_CHUNKS * sizeof(SampleChunk));
     if (!resources->sample_chunk_pool) return false;
 
     resources->sdr_deserializer_buffer_size = PIPELINE_CHUNK_BASE_SAMPLES * sizeof(short);
-    resources->sdr_deserializer_temp_buffer = arena_alloc(&resources->setup_arena, resources->sdr_deserializer_buffer_size);
+    resources->sdr_deserializer_temp_buffer = mem_arena_alloc(&resources->setup_arena, resources->sdr_deserializer_buffer_size);
     if (!resources->sdr_deserializer_temp_buffer) return false;
 
-    resources->writer_local_buffer = arena_alloc(&resources->setup_arena, IO_FILE_WRITER_CHUNK_SIZE);
+    resources->writer_local_buffer = mem_arena_alloc(&resources->setup_arena, IO_FILE_WRITER_CHUNK_SIZE);
     if (!resources->writer_local_buffer) return false;
 
     for (size_t i = 0; i < PIPELINE_NUM_CHUNKS; ++i) {
@@ -272,11 +272,11 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
 
 bool create_threading_components(AppResources *resources) {
     MemoryArena* arena = &resources->setup_arena;
-    resources->free_sample_chunk_queue = (Queue*)arena_alloc(arena, sizeof(Queue));
-    resources->raw_to_pre_process_queue = (Queue*)arena_alloc(arena, sizeof(Queue));
-    resources->pre_process_to_resampler_queue = (Queue*)arena_alloc(arena, sizeof(Queue));
-    resources->resampler_to_post_process_queue = (Queue*)arena_alloc(arena, sizeof(Queue));
-    resources->stdout_queue = (Queue*)arena_alloc(arena, sizeof(Queue));
+    resources->free_sample_chunk_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue));
+    resources->raw_to_pre_process_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue));
+    resources->pre_process_to_resampler_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue));
+    resources->resampler_to_post_process_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue));
+    resources->stdout_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue));
 
     if (!queue_init(resources->free_sample_chunk_queue, PIPELINE_NUM_CHUNKS, arena) ||
         !queue_init(resources->raw_to_pre_process_queue, PIPELINE_NUM_CHUNKS, arena) ||
@@ -287,7 +287,7 @@ bool create_threading_components(AppResources *resources) {
     }
 
     if (resources->config->iq_correction.enable) {
-        resources->iq_optimization_data_queue = (Queue*)arena_alloc(arena, sizeof(Queue));
+        resources->iq_optimization_data_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue));
         if (!queue_init(resources->iq_optimization_data_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
     } else {
         resources->iq_optimization_data_queue = NULL;
@@ -444,7 +444,7 @@ bool prepare_output_stream(AppConfig *config, AppResources *resources) {
         return false;
     }
 
-    if (!resources->writer_ctx.ops.open(&resources->writer_ctx, config, resources)) {
+    if (!resources->writer_ctx.ops.open(&resources->writer_ctx, config, resources, &resources->setup_arena)) {
         return false;
     }
     return true;
@@ -457,7 +457,8 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     float resample_ratio = 0.0f;
 
     // STEP 1: Determine pipeline mode
-    bool is_sdr = is_sdr_input(config->input_type_str);
+    // MODIFIED: Pass the arena to the is_sdr_input function call.
+    bool is_sdr = is_sdr_input(config->input_type_str, &resources->setup_arena);
     if (is_sdr) {
         if (config->output_to_stdout) {
             resources->pipeline_mode = PIPELINE_MODE_REALTIME_SDR;
@@ -485,6 +486,28 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     if (!create_frequency_shifter(config, resources)) goto cleanup;
     if (!create_resampler(config, resources, resample_ratio)) goto cleanup;
     if (!create_filter(config, resources)) goto cleanup;
+    
+    // Conditionally allocate FFT remainder buffers from the arena if needed.
+    if (resources->user_fir_filter_object &&
+       (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
+        resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC))
+    {
+        if (config->apply_user_filter_post_resample) {
+            // FFT filter is in the post-processor thread
+            resources->post_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
+                &resources->setup_arena,
+                resources->user_filter_block_size * sizeof(complex_float_t)
+            );
+            if (!resources->post_fft_remainder_buffer) goto cleanup; // mem_arena_alloc logs the error
+        } else {
+            // FFT filter is in the pre-processor thread
+            resources->pre_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
+                &resources->setup_arena,
+                resources->user_filter_block_size * sizeof(complex_float_t)
+            );
+            if (!resources->pre_fft_remainder_buffer) goto cleanup; // mem_arena_alloc logs the error
+        }
+    }
     
     // STEP 5: Allocate all memory pools and threading components
     if (!allocate_processing_buffers(config, resources, resample_ratio)) goto cleanup;
@@ -551,7 +574,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
 
 cleanup:
     if (!success) {
-        arena_destroy(&resources->setup_arena);
+        mem_arena_destroy(&resources->setup_arena);
     } else if (!config->output_to_stdout) {
         bool source_has_known_length = resources->selected_input_ops->has_known_length();
         if (!source_has_known_length) {
@@ -574,7 +597,7 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
         iq_correct_cleanup(resources);
     }
     filter_destroy(resources);
-    shift_destroy_ncos(resources);
+    freq_shift_destroy_ncos(resources);
     if (resources->resampler) {
         msresamp_crcf_destroy(resources->resampler);
         resources->resampler = NULL;
@@ -608,5 +631,5 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
 
     // Free the single memory arena, which cleans up everything else
     // (queues, DSP helper buffers, private data structs, etc.)
-    arena_destroy(&resources->setup_arena);
+    mem_arena_destroy(&resources->setup_arena);
 }

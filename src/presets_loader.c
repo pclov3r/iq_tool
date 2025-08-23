@@ -1,3 +1,5 @@
+// presets_loader.c
+
 #include "presets_loader.h"
 #include "constants.h"
 #include "log.h"
@@ -27,7 +29,7 @@
 #include <libgen.h>
 #endif
 
-// --- The Dispatch Table ---
+// --- The Dispatch Table (Unchanged) ---
 static const PresetKeyHandler key_handlers[] = {
     { "description",      PRESET_KEY_STRDUP, offsetof(PresetDefinition, description),         0 },
     { "target_rate",      PRESET_KEY_STRTOD, offsetof(PresetDefinition, target_rate),         0 },
@@ -48,27 +50,18 @@ static const PresetKeyHandler key_handlers[] = {
 static const size_t num_key_handlers = sizeof(key_handlers) / sizeof(key_handlers[0]);
 
 
-// --- Helper function declarations ---
-static void free_dynamic_paths(char** paths, int count);
-
 // --- Helper function to duplicate a string using the memory arena ---
 static char* arena_strdup(MemoryArena* arena, const char* s) {
     if (!s) return NULL;
     size_t len = strlen(s) + 1;
-    char* new_s = (char*)arena_alloc(arena, len);
+    char* new_s = (char*)mem_arena_alloc(arena, len);
     if (new_s) {
         memcpy(new_s, s, len);
     }
     return new_s;
 }
 
-
-static void free_dynamic_paths(char** paths, int count) {
-    for (int i = 0; i < count; ++i) {
-        free(paths[i]);
-        paths[i] = NULL;
-    }
-}
+// REMOVED: The free_dynamic_paths function is no longer needed as the arena manages this memory.
 
 // --- Function signature updated to match the header ---
 bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
@@ -76,9 +69,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
     config->num_presets = 0;
 
     char full_path_buffer[MAX_PATH_BUFFER];
-    char* dynamic_paths[5] = {NULL};
-    int dynamic_paths_count = 0;
-
+    
     char* found_preset_files[5];
     int num_found_files = 0;
 
@@ -97,19 +88,17 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         full_appdata_path_w[MAX_PATH_BUFFER - 1] = L'\0';
         CoTaskMemFree(appdata_path_w);
         PathAppendW(full_appdata_path_w, L"\\" APP_NAME);
-        char* appdata_path_utf8 = (char*)malloc(MAX_PATH_BUFFER);
+        
+        // MODIFIED: Allocate from the arena instead of the heap.
+        char* appdata_path_utf8 = (char*)mem_arena_alloc(arena, MAX_PATH_BUFFER);
         if (appdata_path_utf8) {
             if (WideCharToMultiByte(CP_UTF8, 0, full_appdata_path_w, -1, appdata_path_utf8, MAX_PATH_BUFFER, NULL, NULL) > 0) {
-                dynamic_paths[dynamic_paths_count++] = appdata_path_utf8;
                 search_paths_list[current_path_idx++] = appdata_path_utf8;
             } else {
-                free(appdata_path_utf8);
                 log_warn("Failed to convert AppData path to UTF-8 for presets.");
             }
         } else {
-            log_fatal("Failed to allocate memory for AppData path.");
-            free_dynamic_paths(dynamic_paths, dynamic_paths_count);
-            return false;
+            return false; // mem_arena_alloc already logged the fatal error
         }
     }
     wchar_t* programdata_path_w = NULL;
@@ -119,45 +108,44 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         full_programdata_path_w[MAX_PATH_BUFFER - 1] = L'\0';
         CoTaskMemFree(programdata_path_w);
         PathAppendW(full_programdata_path_w, L"\\" APP_NAME);
-        char* programdata_path_utf8 = (char*)malloc(MAX_PATH_BUFFER);
+
+        // MODIFIED: Allocate from the arena instead of the heap.
+        char* programdata_path_utf8 = (char*)mem_arena_alloc(arena, MAX_PATH_BUFFER);
         if (programdata_path_utf8) {
             if (WideCharToMultiByte(CP_UTF8, 0, full_programdata_path_w, -1, programdata_path_utf8, MAX_PATH_BUFFER, NULL, NULL) > 0) {
-                dynamic_paths[dynamic_paths_count++] = programdata_path_utf8;
                 search_paths_list[current_path_idx++] = programdata_path_utf8;
             } else {
-                free(programdata_path_utf8);
                 log_warn("Failed to convert ProgramData path to UTF-8 for presets.");
             }
         } else {
-            log_fatal("Failed to allocate memory for ProgramData path.");
-            free_dynamic_paths(dynamic_paths, dynamic_paths_count);
-            return false;
+            return false; // mem_arena_alloc already logged the fatal error
         }
     }
 #else // POSIX
     search_paths_list[current_path_idx++] = ".";
     const char* xdg_config_home = getenv("XDG_CONFIG_HOME");
-    char* xdg_path = (char*)malloc(MAX_PATH_BUFFER);
+    
+    // MODIFIED: Allocate from the arena instead of the heap.
+    char* xdg_path = (char*)mem_arena_alloc(arena, MAX_PATH_BUFFER);
     if (!xdg_path) {
-        log_fatal("Failed to allocate memory for XDG path.");
-        free_dynamic_paths(dynamic_paths, dynamic_paths_count);
-        return false;
+        return false; // mem_arena_alloc already logged the fatal error
     }
+    
+    bool xdg_path_set = false;
     if (xdg_config_home && xdg_config_home[0] != '\0') {
         snprintf(xdg_path, MAX_PATH_BUFFER, "%s/%s", xdg_config_home, APP_NAME);
+        xdg_path_set = true;
     } else {
         const char* home_dir = getenv("HOME");
         if (home_dir) {
             snprintf(xdg_path, MAX_PATH_BUFFER, "%s/.config/%s", home_dir, APP_NAME);
-        } else {
-            free(xdg_path);
-            xdg_path = NULL;
+            xdg_path_set = true;
         }
     }
-    if (xdg_path) {
-        dynamic_paths[dynamic_paths_count++] = xdg_path;
+    if (xdg_path_set) {
         search_paths_list[current_path_idx++] = xdg_path;
     }
+    
     search_paths_list[current_path_idx++] = "/etc/" APP_NAME;
     search_paths_list[current_path_idx++] = "/usr/local/etc/" APP_NAME;
 #endif
@@ -168,12 +156,10 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         snprintf(full_path_buffer, sizeof(full_path_buffer), "%s/%s", base_dir, PRESETS_FILENAME);
         if (utils_check_file_exists(full_path_buffer)) {
             if (num_found_files < (int)(sizeof(found_preset_files) / sizeof(found_preset_files[0]))) {
-                found_preset_files[num_found_files] = strdup(full_path_buffer);
+                // MODIFIED: Use arena_strdup instead of strdup.
+                found_preset_files[num_found_files] = arena_strdup(arena, full_path_buffer);
                 if (!found_preset_files[num_found_files]) {
-                    log_fatal("Failed to duplicate found preset file path string.");
-                    free_dynamic_paths(dynamic_paths, dynamic_paths_count);
-                    for(int j=0; j<num_found_files; ++j) free(found_preset_files[j]);
-                    return false;
+                    return false; // mem_arena_alloc already logged the fatal error
                 }
                 num_found_files++;
             }
@@ -184,21 +170,17 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         log_warn("Conflicting presets files found. No presets will be loaded. Please resolve the conflict by keeping only one of the following files:");
         for (int i = 0; i < num_found_files; ++i) {
             log_warn("  - %s", found_preset_files[i]);
-            free(found_preset_files[i]);
+            // REMOVED: No need to free, memory is in the arena.
         }
-        free_dynamic_paths(dynamic_paths, dynamic_paths_count);
         return true;
     } else if (num_found_files == 0) {
         log_info("No presets file '%s' found in any standard location. No external presets will be available.", PRESETS_FILENAME);
-        free_dynamic_paths(dynamic_paths, dynamic_paths_count);
         return true;
     }
 
     FILE* fp = fopen(found_preset_files[0], "r");
     if (!fp) {
         log_fatal("Error opening presets file '%s': %s", found_preset_files[0], strerror(errno));
-        free(found_preset_files[0]);
-        free_dynamic_paths(dynamic_paths, dynamic_paths_count);
         return false;
     }
 
@@ -206,11 +188,9 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
     PresetDefinition* current_preset = NULL;
     int capacity = 8;
 
-    config->presets = (PresetDefinition*)arena_alloc(arena, capacity * sizeof(PresetDefinition));
+    config->presets = (PresetDefinition*)mem_arena_alloc(arena, capacity * sizeof(PresetDefinition));
     if (!config->presets) {
         fclose(fp);
-        free(found_preset_files[0]);
-        free_dynamic_paths(dynamic_paths, dynamic_paths_count);
         return false;
     }
 
@@ -232,11 +212,9 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
             if (config->num_presets == capacity) {
                 int old_capacity = capacity;
                 capacity *= 2;
-                PresetDefinition* new_presets = (PresetDefinition*)arena_alloc(arena, capacity * sizeof(PresetDefinition));
+                PresetDefinition* new_presets = (PresetDefinition*)mem_arena_alloc(arena, capacity * sizeof(PresetDefinition));
                 if (!new_presets) {
                     fclose(fp);
-                    free(found_preset_files[0]);
-                    free_dynamic_paths(dynamic_paths, dynamic_paths_count);
                     return false;
                 }
                 memcpy(new_presets, config->presets, old_capacity * sizeof(PresetDefinition));
@@ -251,8 +229,6 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
                 current_preset->name = arena_strdup(arena, trim_whitespace(name_start));
                 if (!current_preset->name) {
                     fclose(fp);
-                    free(found_preset_files[0]);
-                    free_dynamic_paths(dynamic_paths, dynamic_paths_count);
                     return false;
                 }
                 config->num_presets++;
@@ -282,8 +258,6 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
                             *(char**)value_ptr = arena_strdup(arena, value);
                             if (!*(char**)value_ptr) {
                                 fclose(fp);
-                                free(found_preset_files[0]);
-                                free_dynamic_paths(dynamic_paths, dynamic_paths_count);
                                 return false;
                             }
                             break;
@@ -322,7 +296,5 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
     }
 
     fclose(fp);
-    free(found_preset_files[0]);
-    free_dynamic_paths(dynamic_paths, dynamic_paths_count);
     return true;
 }

@@ -16,7 +16,7 @@
 /**
  * @brief Creates and configures the NCOs (frequency shifters) based on user arguments.
  */
-bool shift_create_ncos(AppConfig *config, AppResources *resources) {
+bool freq_shift_create_ncos(AppConfig *config, AppResources *resources) {
     if (!config || !resources) return false;
 
     resources->pre_resample_nco = NULL;
@@ -66,7 +66,7 @@ bool shift_create_ncos(AppConfig *config, AppResources *resources) {
         resources->post_resample_nco = nco_crcf_create(LIQUID_NCO);
         if (!resources->post_resample_nco) {
             log_error("Failed to create post-resample NCO (frequency shifter).");
-            shift_destroy_ncos(resources); // Clean up pre-resample NCO if it was created
+            freq_shift_destroy_ncos(resources); // Clean up pre-resample NCO if it was created
             return false;
         }
         float nco_freq_rad_per_sample = (float)(2.0 * M_PI * fabs(resources->actual_nco_shift_hz) / rate_for_nco);
@@ -79,7 +79,7 @@ bool shift_create_ncos(AppConfig *config, AppResources *resources) {
 /**
  * @brief Applies the frequency shift to a block of complex samples using a specific NCO.
  */
-void shift_apply(nco_crcf nco, double shift_hz, complex_float_t* input_buffer, complex_float_t* output_buffer, unsigned int num_frames) {
+void freq_shift_apply(nco_crcf nco, double shift_hz, complex_float_t* input_buffer, complex_float_t* output_buffer, unsigned int num_frames) {
     if (!nco || num_frames == 0) {
         return;
     }
@@ -95,7 +95,7 @@ void shift_apply(nco_crcf nco, double shift_hz, complex_float_t* input_buffer, c
  * @brief Resets the NCO's phase accumulator without destroying its frequency.
  * This is the safe way to handle stream discontinuities from SDRs.
  */
-void shift_reset_nco(nco_crcf nco) {
+void freq_shift_reset_nco(nco_crcf nco) {
     if (nco) {
         // This only resets the phase, leaving the frequency configuration intact.
         nco_crcf_set_phase(nco, 0.0f);
@@ -105,7 +105,7 @@ void shift_reset_nco(nco_crcf nco) {
 /**
  * @brief Destroys the NCO objects if they were created.
  */
-void shift_destroy_ncos(AppResources *resources) {
+void freq_shift_destroy_ncos(AppResources *resources) {
     if (resources) {
         if (resources->pre_resample_nco) {
             nco_crcf_destroy(resources->pre_resample_nco);

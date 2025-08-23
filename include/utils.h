@@ -1,4 +1,5 @@
 // utils.h
+
 #ifndef UTILS_H_
 #define UTILS_H_
 
@@ -24,8 +25,9 @@ const char* format_file_size(long long size_bytes, char* buffer, size_t buffer_s
 
 /**
  * @brief Platform-independent helper to get the base filename from a path.
+ * MODIFIED: This function now requires a memory arena for temporary allocations on POSIX.
  */
-const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size_t buffer_size);
+const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size_t buffer_size, MemoryArena* arena);
 
 /**
  * @brief Converts an SdrSoftwareType enum value to a human-readable string.

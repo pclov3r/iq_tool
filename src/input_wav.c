@@ -1,3 +1,5 @@
+// input_wav.c
+
 #include "input_wav.h"
 #include "constants.h"
 #include "log.h"
@@ -64,7 +66,7 @@ static bool _parse_auxi_xml_expat(const unsigned char *chunk_data, sf_count_t ch
 static bool _parse_binary_auxi_data(const unsigned char *chunk_data, sf_count_t chunk_size, SdrMetadata *metadata);
 static time_t timegm_portable(struct tm *tm);
 static void init_sdr_metadata(SdrMetadata *metadata);
-static bool parse_sdr_metadata_chunks(SNDFILE *infile, const SF_INFO *sfinfo, SdrMetadata *metadata);
+static bool parse_sdr_metadata_chunks(SNDFILE *infile, const SF_INFO *sfinfo, SdrMetadata *metadata, MemoryArena* arena);
 static bool parse_sdr_metadata_from_filename(const char* base_filename, SdrMetadata *metadata);
 
 #ifndef HAVE_STRCASESTR
@@ -90,7 +92,7 @@ static void init_sdr_metadata(SdrMetadata *metadata) {
     metadata->source_software = SDR_SOFTWARE_UNKNOWN;
 }
 
-static bool process_specific_chunk(SNDFILE *infile, SdrMetadata *metadata, const char* chunk_id_str) {
+static bool process_specific_chunk(SNDFILE *infile, SdrMetadata *metadata, const char* chunk_id_str, MemoryArena* arena) {
     SF_CHUNK_ITERATOR *iterator = NULL;
     SF_CHUNK_INFO chunk_info_filter, chunk_info_query;
     unsigned char* chunk_data_buffer = NULL;
@@ -107,12 +109,13 @@ static bool process_specific_chunk(SNDFILE *infile, SdrMetadata *metadata, const
     if (sf_get_chunk_size(iterator, &chunk_info_query) != SF_ERR_NO_ERROR) return false;
     if (chunk_info_query.datalen == 0 || chunk_info_query.datalen > MAX_METADATA_CHUNK_SIZE) return false;
 
-    chunk_data_buffer = (unsigned char*)malloc(chunk_info_query.datalen);
-    if (!chunk_data_buffer) return false;
+    chunk_data_buffer = (unsigned char*)mem_arena_alloc(arena, chunk_info_query.datalen);
+    if (!chunk_data_buffer) {
+        return false;
+    }
 
     chunk_info_query.data = chunk_data_buffer;
     if (sf_get_chunk_data(iterator, &chunk_info_query) != SF_ERR_NO_ERROR) {
-        free(chunk_data_buffer);
         return false;
     }
 
@@ -124,14 +127,13 @@ static bool process_specific_chunk(SNDFILE *infile, SdrMetadata *metadata, const
         }
     }
 
-    free(chunk_data_buffer);
     return parsed_successfully;
 }
 
-static bool parse_sdr_metadata_chunks(SNDFILE *infile, const SF_INFO *sfinfo, SdrMetadata *metadata) {
+static bool parse_sdr_metadata_chunks(SNDFILE *infile, const SF_INFO *sfinfo, SdrMetadata *metadata, MemoryArena* arena) {
     if (!infile || !sfinfo || !metadata) return false;
     (void)sfinfo;
-    return process_specific_chunk(infile, metadata, SDRC_AUXI_CHUNK_ID_STR);
+    return process_specific_chunk(infile, metadata, SDRC_AUXI_CHUNK_ID_STR, arena);
 }
 
 static bool parse_sdr_metadata_from_filename(const char* base_filename, SdrMetadata *metadata) {
@@ -492,10 +494,8 @@ static bool wav_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
 
-    // --- MODIFIED: Allocate private data from the memory arena ---
-    WavPrivateData* private_data = (WavPrivateData*)arena_alloc(&resources->setup_arena, sizeof(WavPrivateData));
+    WavPrivateData* private_data = (WavPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(WavPrivateData));
     if (!private_data) {
-        // arena_alloc logs the error
         return false;
     }
     resources->input_module_private_data = private_data;
@@ -553,10 +553,11 @@ static bool wav_initialize(InputSourceContext* ctx) {
     resources->source_info.frames = sfinfo.frames;
 
     init_sdr_metadata(&resources->sdr_info);
-    resources->sdr_info_present = parse_sdr_metadata_chunks(private_data->infile, &sfinfo, &resources->sdr_info);
+    resources->sdr_info_present = parse_sdr_metadata_chunks(private_data->infile, &sfinfo, &resources->sdr_info, &resources->setup_arena);
 
     char basename_buffer[MAX_PATH_BUFFER];
-    const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer));
+    // MODIFIED: Pass the setup_arena to the basename parsing function.
+    const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer), &resources->setup_arena);
     if (base_filename) {
         bool filename_parsed = parse_sdr_metadata_from_filename(base_filename, &resources->sdr_info);
         resources->sdr_info_present = resources->sdr_info_present || filename_parsed;
@@ -624,7 +625,6 @@ static void wav_cleanup(InputSourceContext* ctx) {
             sf_close(private_data->infile);
             private_data->infile = NULL;
         }
-        // --- MODIFIED: No longer need to free the private_data struct ---
         resources->input_module_private_data = NULL;
     }
 }

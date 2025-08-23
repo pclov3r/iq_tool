@@ -660,6 +660,17 @@ endif()
 # Create the executable from ALL source files
 add_executable(iq_resample_tool ${DSP_SOURCES} ${OTHER_SOURCES})
 
+# Enable Link-Time Optimization (LTO) if the compiler supports it.
+# This should be placed after the target is defined.
+include(CheckIPOSupported)
+check_ipo_supported(RESULT LTO_SUPPORTED)
+if(LTO_SUPPORTED)
+    set_property(TARGET iq_resample_tool PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+    message(STATUS "Link-Time Optimization (LTO) enabled for target.")
+else()
+    message(STATUS "Link-Time Optimization (LTO) not supported by this compiler.")
+endif()
+
 #=======================================================================
 # Versioning (Git Commit Hash)
 #=======================================================================
@@ -836,6 +847,11 @@ elseif(UNIX)
     message(STATUS "  Build Target:      ${CMAKE_SYSTEM_NAME} (UNIX-like)")
 else()
     message(STATUS "  Build Target:      ${CMAKE_SYSTEM_NAME} (Unknown)")
+endif()
+if(LTO_SUPPORTED)
+    message(STATUS "  Link-Time Opt:     ENABLED")
+else()
+    message(STATUS "  Link-Time Opt:     DISABLED (not supported by compiler)")
 endif()
 message(STATUS "  Install Prefix:    ${CMAKE_INSTALL_PREFIX}")
 if(BUILD_DOCUMENTATION)

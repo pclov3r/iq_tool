@@ -9,7 +9,7 @@
  * @param capacity The total size of the memory block to allocate.
  * @return true on success, false on memory allocation failure.
  */
-bool arena_init(MemoryArena* arena, size_t capacity) {
+bool mem_arena_init(MemoryArena* arena, size_t capacity) {
     if (!arena) return false;
     arena->capacity = capacity;
     arena->offset = 0;
@@ -29,7 +29,7 @@ bool arena_init(MemoryArena* arena, size_t capacity) {
  * @param size The number of bytes to allocate.
  * @return A void pointer to the allocated memory, or NULL if the arena is full.
  */
-void* arena_alloc(MemoryArena* arena, size_t size) {
+void* mem_arena_alloc(MemoryArena* arena, size_t size) {
     // Align the size to the next multiple of the pointer size for performance
     size_t aligned_size = (size + sizeof(void*) - 1) & ~(sizeof(void*) - 1);
 
@@ -50,7 +50,7 @@ void* arena_alloc(MemoryArena* arena, size_t size) {
  * @brief Destroys a memory arena, freeing its main memory block.
  * @param arena Pointer to the MemoryArena to destroy.
  */
-void arena_destroy(MemoryArena* arena) {
+void mem_arena_destroy(MemoryArena* arena) {
     if (arena && arena->memory) {
         free(arena->memory);
         arena->memory = NULL;

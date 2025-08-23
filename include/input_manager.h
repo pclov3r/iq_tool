@@ -1,3 +1,5 @@
+// input_manager.h
+
 #ifndef INPUT_MANAGER_H_
 #define INPUT_MANAGER_H_
 
@@ -18,37 +20,26 @@ typedef struct {
 
 /**
  * @brief Gets the appropriate InputSourceOps implementation based on a name.
- *
- * This function acts as a factory, returning the set of function pointers
- * for the requested input source (e.g., "wav", "sdrplay").
- *
- * @param name The name of the input source, typically from the --input argument.
- * @return A pointer to the corresponding static InputSourceOps struct, or NULL if
- *         the name is not recognized or the module is not compiled in.
+ * MODIFIED: Now requires a memory arena to initialize the module list on first call.
  */
-InputSourceOps* get_input_ops_by_name(const char* name);
+InputSourceOps* get_input_ops_by_name(const char* name, MemoryArena* arena);
 
 /**
  * @brief Gets a list of all registered and compiled-in input modules.
- *
- * This allows generic code (like the CLI parser) to iterate over all available
- * modules without needing to know their specific names at compile time.
- *
- * @param count A pointer to an integer that will be filled with the number of modules.
- * @return A pointer to a static array of InputModule structs.
+ * MODIFIED: Now requires a memory arena to initialize the module list on first call.
  */
-const InputModule* get_all_input_modules(int* count);
+const InputModule* get_all_input_modules(int* count, MemoryArena* arena);
 
 /**
  * @brief Iterates through all registered modules and applies their default settings.
+ * MODIFIED: Now requires a memory arena to initialize the module list on first call.
  */
-void input_manager_apply_defaults(AppConfig* config);
+void input_manager_apply_defaults(AppConfig* config, MemoryArena* arena);
 
 /**
  * @brief Checks if a given input type name corresponds to an SDR device.
- * @param name The name of the input type (e.g., "rtlsdr", "wav").
- * @return true if the name is a known SDR type, false otherwise.
+ * MODIFIED: Now requires a memory arena to initialize the module list on first call.
  */
-bool is_sdr_input(const char* name);
+bool is_sdr_input(const char* name, MemoryArena* arena);
 
 #endif // INPUT_MANAGER_H_

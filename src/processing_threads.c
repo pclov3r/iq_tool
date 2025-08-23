@@ -27,6 +27,67 @@
 #include <liquid/liquid.h>
 #endif
 
+/**
+ * @brief Executes one pass of a block-based FFT filter in a stateful, stream-oriented manner.
+ *
+ * This function is non-destructive to its input buffer. It uses a temporary
+ * working buffer to combine leftover samples from the previous call with new
+ * incoming samples, creating a single contiguous stream for processing.
+ *
+ * @param filter_object         The liquid-dsp fftfilt_crcf or fftfilt_cccf object.
+ * @param filter_type           The type of the filter, to select the correct execute function.
+ * @param input_buffer          A pointer to the incoming sample data. This buffer is NOT modified.
+ * @param frames_in             The number of valid frames in the input_buffer.
+ * @param output_buffer         A buffer to store the filtered output blocks. Must be large enough.
+ * @param remainder_buffer      The buffer for storing leftover samples between calls.
+ * @param remainder_len_ptr     A pointer to the variable holding the current number of samples
+ *                              in the remainder buffer. This value is read and updated.
+ * @param block_size            The fixed block size the FFT filter operates on.
+ * @param scratch_buffer        A large temporary buffer for internal processing. Must be large
+ *                              enough to hold (remainder + frames_in) samples.
+ * @return The total number of valid output frames written to the output_buffer.
+ */
+static unsigned int
+_execute_fft_filter_pass(
+    void* filter_object,
+    FilterImplementationType filter_type,
+    const complex_float_t* input_buffer,
+    unsigned int frames_in,
+    complex_float_t* output_buffer,
+    complex_float_t* remainder_buffer,
+    unsigned int* remainder_len_ptr,
+    unsigned int block_size,
+    complex_float_t* scratch_buffer
+) {
+    unsigned int old_remainder_len = *remainder_len_ptr;
+    unsigned int total_frames_to_process = old_remainder_len + frames_in;
+
+    // Stage 1: Assemble a single, contiguous stream in the scratch buffer.
+    memcpy(scratch_buffer, remainder_buffer, old_remainder_len * sizeof(complex_float_t));
+    memcpy(scratch_buffer + old_remainder_len, input_buffer, frames_in * sizeof(complex_float_t));
+
+    // Stage 2: Process full blocks from the assembled stream.
+    unsigned int processed_frames = 0;
+    unsigned int total_output_frames = 0;
+    while (total_frames_to_process - processed_frames >= block_size) {
+        if (filter_type == FILTER_IMPL_FFT_SYMMETRIC) {
+            fftfilt_crcf_execute((fftfilt_crcf)filter_object, scratch_buffer + processed_frames, output_buffer + total_output_frames);
+        } else {
+            fftfilt_cccf_execute((fftfilt_cccf)filter_object, scratch_buffer + processed_frames, output_buffer + total_output_frames);
+        }
+        processed_frames += block_size;
+        total_output_frames += block_size;
+    }
+
+    // Stage 3: Save the new remainder for the next call.
+    unsigned int new_remainder_len = total_frames_to_process - processed_frames;
+    // Use memmove for safety, in case buffers could ever overlap.
+    memmove(remainder_buffer, scratch_buffer + processed_frames, new_remainder_len * sizeof(complex_float_t));
+    *remainder_len_ptr = new_remainder_len;
+
+    return total_output_frames;
+}
+
 
 void* pre_processor_thread_func(void* arg) {
 #ifdef _WIN32
@@ -39,20 +100,12 @@ void* pre_processor_thread_func(void* arg) {
     AppResources* resources = args->resources;
     AppConfig* config = args->config;
 
-    complex_float_t* fft_remainder_buffer = NULL;
     unsigned int remainder_len = 0;
     bool is_pre_fft = false;
 
     if (resources->user_fir_filter_object && !config->apply_user_filter_post_resample) {
         is_pre_fft = (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC || 
                       resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC);
-        if (is_pre_fft) {
-            fft_remainder_buffer = (complex_float_t*)calloc(resources->user_filter_block_size, sizeof(complex_float_t));
-            if (!fft_remainder_buffer) {
-                handle_fatal_thread_error("Pre-Processor: Failed to allocate FFT remainder buffer.", resources);
-                return NULL;
-            }
-        }
     }
 
     SampleChunk* item;
@@ -60,8 +113,9 @@ void* pre_processor_thread_func(void* arg) {
         
         if (item->is_last_chunk) {
             if (is_pre_fft && remainder_len > 0) {
+                // Flush the remainder by processing it with zero-padding.
                 memset(item->complex_pre_resample_data, 0, item->complex_buffer_capacity_samples * sizeof(complex_float_t));
-                memcpy(item->complex_pre_resample_data, fft_remainder_buffer, remainder_len * sizeof(complex_float_t));
+                memcpy(item->complex_pre_resample_data, resources->pre_fft_remainder_buffer, remainder_len * sizeof(complex_float_t));
                 
                 if (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC) {
                     fftfilt_crcf_execute((fftfilt_crcf)resources->user_fir_filter_object, item->complex_pre_resample_data, item->complex_pre_resample_data);
@@ -73,6 +127,7 @@ void* pre_processor_thread_func(void* arg) {
                 
                 queue_enqueue(resources->pre_process_to_resampler_queue, item);
 
+                // Enqueue a final marker chunk after the flushed data.
                 SampleChunk* final_marker = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
                 if (final_marker) {
                     final_marker->is_last_chunk = true;
@@ -80,13 +135,14 @@ void* pre_processor_thread_func(void* arg) {
                     queue_enqueue(resources->pre_process_to_resampler_queue, final_marker);
                 }
             } else {
+                // No flush needed, just pass the end-of-stream marker.
                 queue_enqueue(resources->pre_process_to_resampler_queue, item);
             }
             break;
         }
 
         if (item->stream_discontinuity_event) {
-            shift_reset_nco(resources->pre_resample_nco);
+            freq_shift_reset_nco(resources->pre_resample_nco);
             if (resources->user_fir_filter_object) {
                 switch (resources->user_filter_type_actual) {
                     case FILTER_IMPL_FIR_SYMMETRIC: firfilt_crcf_reset((firfilt_crcf)resources->user_fir_filter_object); break;
@@ -97,7 +153,7 @@ void* pre_processor_thread_func(void* arg) {
                 }
             }
             if (is_pre_fft) {
-                memset(fft_remainder_buffer, 0, resources->user_filter_block_size * sizeof(complex_float_t));
+                memset(resources->pre_fft_remainder_buffer, 0, resources->user_filter_block_size * sizeof(complex_float_t));
                 remainder_len = 0;
             }
             if (!queue_enqueue(resources->pre_process_to_resampler_queue, item)) {
@@ -122,54 +178,25 @@ void* pre_processor_thread_func(void* arg) {
         }
 
         if (is_pre_fft) {
-            unsigned int block_size = resources->user_filter_block_size;
-            unsigned int frames_in = item->frames_read;
-            unsigned int total_output_frames = 0;
-            unsigned int processed_in_chunk = 0;
-
-            if (remainder_len > 0) {
-                unsigned int space_in_remainder = block_size - remainder_len;
-                unsigned int to_copy = (frames_in < space_in_remainder) ? frames_in : space_in_remainder;
-                memcpy(fft_remainder_buffer + remainder_len, item->complex_pre_resample_data, to_copy * sizeof(complex_float_t));
-                processed_in_chunk += to_copy;
-                remainder_len += to_copy;
-
-                if (remainder_len == block_size) {
-                    if (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC) {
-                        fftfilt_crcf_execute((fftfilt_crcf)resources->user_fir_filter_object, fft_remainder_buffer, item->complex_scratch_data + total_output_frames);
-                    } else {
-                        fftfilt_cccf_execute((fftfilt_cccf)resources->user_fir_filter_object, fft_remainder_buffer, item->complex_scratch_data + total_output_frames);
-                    }
-                    total_output_frames += block_size;
-                    remainder_len = 0;
-                }
-            }
-
-            while (frames_in - processed_in_chunk >= block_size) {
-                if (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC) {
-                    fftfilt_crcf_execute((fftfilt_crcf)resources->user_fir_filter_object, item->complex_pre_resample_data + processed_in_chunk, item->complex_scratch_data + total_output_frames);
-                } else {
-                    fftfilt_cccf_execute((fftfilt_cccf)resources->user_fir_filter_object, item->complex_pre_resample_data + processed_in_chunk, item->complex_scratch_data + total_output_frames);
-                }
-                processed_in_chunk += block_size;
-                total_output_frames += block_size;
-            }
-
-            if (frames_in - processed_in_chunk > 0) {
-                unsigned int leftover = frames_in - processed_in_chunk;
-                memcpy(fft_remainder_buffer, item->complex_pre_resample_data + processed_in_chunk, leftover * sizeof(complex_float_t));
-                remainder_len = leftover;
-            }
-            
-            memcpy(item->complex_pre_resample_data, item->complex_scratch_data, total_output_frames * sizeof(complex_float_t));
-            item->frames_read = total_output_frames;
-
+            unsigned int output_frames = _execute_fft_filter_pass(
+                resources->user_fir_filter_object,
+                resources->user_filter_type_actual,
+                item->complex_pre_resample_data,
+                (unsigned int)item->frames_read,
+                item->complex_scratch_data,
+                resources->pre_fft_remainder_buffer,
+                &remainder_len,
+                resources->user_filter_block_size,
+                item->complex_post_resample_data // Use another buffer as scratch space
+            );
+            memcpy(item->complex_pre_resample_data, item->complex_scratch_data, output_frames * sizeof(complex_float_t));
+            item->frames_read = output_frames;
         } else if (resources->user_fir_filter_object && !config->apply_user_filter_post_resample) {
             firfilt_crcf_execute_block((firfilt_crcf)resources->user_fir_filter_object, item->complex_pre_resample_data, item->frames_read, item->complex_pre_resample_data);
         }
 
         if (resources->pre_resample_nco) {
-            shift_apply(resources->pre_resample_nco, resources->actual_nco_shift_hz, item->complex_pre_resample_data, item->complex_pre_resample_data, item->frames_read);
+            freq_shift_apply(resources->pre_resample_nco, resources->actual_nco_shift_hz, item->complex_pre_resample_data, item->complex_pre_resample_data, item->frames_read);
         }
 
         if (item->frames_read > 0) {
@@ -182,7 +209,6 @@ void* pre_processor_thread_func(void* arg) {
         }
     }
 
-    free(fft_remainder_buffer);
     log_debug("Pre-processor thread is exiting.");
     return NULL;
 }
@@ -238,20 +264,12 @@ void* post_processor_thread_func(void* arg) {
     AppResources* resources = args->resources;
     AppConfig* config = args->config;
 
-    complex_float_t* fft_remainder_buffer = NULL;
     unsigned int remainder_len = 0;
     bool is_post_fft = false;
 
     if (resources->user_fir_filter_object && config->apply_user_filter_post_resample) {
         is_post_fft = (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC || 
                        resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC);
-        if (is_post_fft) {
-            fft_remainder_buffer = (complex_float_t*)calloc(resources->user_filter_block_size, sizeof(complex_float_t));
-            if (!fft_remainder_buffer) {
-                handle_fatal_thread_error("Post-Processor: Failed to allocate FFT remainder buffer.", resources);
-                return NULL;
-            }
-        }
     }
 
     SampleChunk* item;
@@ -259,8 +277,9 @@ void* post_processor_thread_func(void* arg) {
         
         if (item->is_last_chunk) {
             if (is_post_fft && remainder_len > 0) {
+                // Flush the remainder by processing it with zero-padding.
                 memset(item->complex_resampled_data, 0, item->complex_buffer_capacity_samples * sizeof(complex_float_t));
-                memcpy(item->complex_resampled_data, fft_remainder_buffer, remainder_len * sizeof(complex_float_t));
+                memcpy(item->complex_resampled_data, resources->post_fft_remainder_buffer, remainder_len * sizeof(complex_float_t));
                 
                 if (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC) {
                     fftfilt_crcf_execute((fftfilt_crcf)resources->user_fir_filter_object, item->complex_resampled_data, item->complex_resampled_data);
@@ -272,7 +291,7 @@ void* post_processor_thread_func(void* arg) {
 
                 complex_float_t* data_in = item->complex_resampled_data;
                 if (resources->post_resample_nco) {
-                    shift_apply(resources->post_resample_nco, resources->actual_nco_shift_hz, data_in, item->complex_scratch_data, item->frames_to_write);
+                    freq_shift_apply(resources->post_resample_nco, resources->actual_nco_shift_hz, data_in, item->complex_scratch_data, item->frames_to_write);
                     data_in = item->complex_scratch_data;
                 }
                 if (!convert_cf32_to_block(data_in, item->final_output_data, item->frames_to_write, config->output_format)) {
@@ -287,16 +306,18 @@ void* post_processor_thread_func(void* arg) {
                     }
                 }
                 
+                // Enqueue a final marker chunk after the flushed data.
                 SampleChunk* final_marker = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
                 if (final_marker) {
                     final_marker->is_last_chunk = true;
                     final_marker->frames_read = 0;
                     item = final_marker;
                 } else {
-                    break;
+                    break; // Should not happen if queues are sized correctly
                 }
             }
 
+            // Pass the final end-of-stream marker to the writer.
             if (config->output_to_stdout) {
                 queue_enqueue(resources->stdout_queue, item);
             } else {
@@ -307,9 +328,9 @@ void* post_processor_thread_func(void* arg) {
         }
 
         if (item->stream_discontinuity_event) {
-            shift_reset_nco(resources->post_resample_nco);
+            freq_shift_reset_nco(resources->post_resample_nco);
             if (is_post_fft) {
-                memset(fft_remainder_buffer, 0, resources->user_filter_block_size * sizeof(complex_float_t));
+                memset(resources->post_fft_remainder_buffer, 0, resources->user_filter_block_size * sizeof(complex_float_t));
                 remainder_len = 0;
             }
             if (config->output_to_stdout) {
@@ -324,69 +345,48 @@ void* post_processor_thread_func(void* arg) {
         }
 
         if (is_post_fft) {
-            unsigned int block_size = resources->user_filter_block_size;
-            unsigned int frames_in = item->frames_to_write;
-            unsigned int total_output_frames = 0;
-            unsigned int processed_in_chunk = 0;
-
-            if (remainder_len > 0) {
-                unsigned int space_in_remainder = block_size - remainder_len;
-                unsigned int to_copy = (frames_in < space_in_remainder) ? frames_in : space_in_remainder;
-                memcpy(fft_remainder_buffer + remainder_len, item->complex_resampled_data, to_copy * sizeof(complex_float_t));
-                processed_in_chunk += to_copy;
-                remainder_len += to_copy;
-
-                if (remainder_len == block_size) {
-                    if (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC) {
-                        fftfilt_crcf_execute((fftfilt_crcf)resources->user_fir_filter_object, fft_remainder_buffer, item->complex_scratch_data + total_output_frames);
-                    } else {
-                        fftfilt_cccf_execute((fftfilt_cccf)resources->user_fir_filter_object, fft_remainder_buffer, item->complex_scratch_data + total_output_frames);
-                    }
-                    total_output_frames += block_size;
-                    remainder_len = 0;
-                }
-            }
-
-            while (frames_in - processed_in_chunk >= block_size) {
-                if (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC) {
-                    fftfilt_crcf_execute((fftfilt_crcf)resources->user_fir_filter_object, item->complex_resampled_data + processed_in_chunk, item->complex_scratch_data + total_output_frames);
-                } else {
-                    fftfilt_cccf_execute((fftfilt_cccf)resources->user_fir_filter_object, item->complex_resampled_data + processed_in_chunk, item->complex_scratch_data + total_output_frames);
-                }
-                processed_in_chunk += block_size;
-                total_output_frames += block_size;
-            }
-
-            if (frames_in - processed_in_chunk > 0) {
-                unsigned int leftover = frames_in - processed_in_chunk;
-                memcpy(fft_remainder_buffer, item->complex_resampled_data + processed_in_chunk, leftover * sizeof(complex_float_t));
-                remainder_len = leftover;
-            }
-            
-            memcpy(item->complex_resampled_data, item->complex_scratch_data, total_output_frames * sizeof(complex_float_t));
-            item->frames_to_write = total_output_frames;
+            unsigned int output_frames = _execute_fft_filter_pass(
+                resources->user_fir_filter_object,
+                resources->user_filter_type_actual,
+                item->complex_resampled_data,
+                item->frames_to_write,
+                item->complex_scratch_data,
+                resources->post_fft_remainder_buffer,
+                &remainder_len,
+                resources->user_filter_block_size,
+                item->complex_post_resample_data // Use another buffer as scratch space
+            );
+            memcpy(item->complex_resampled_data, item->complex_scratch_data, output_frames * sizeof(complex_float_t));
+            item->frames_to_write = output_frames;
         }
 
         if (item->frames_to_write > 0) {
-            complex_float_t* data_in = item->complex_resampled_data;
-            complex_float_t* data_out = item->complex_scratch_data;
+            complex_float_t* current_data_ptr = item->complex_resampled_data;
+            complex_float_t* workspace_ptr = item->complex_scratch_data;
 
-            if (resources->user_fir_filter_object && config->apply_user_filter_post_resample && !is_post_fft) {
+            bool is_fir_filter_active = resources->user_fir_filter_object && 
+                                        config->apply_user_filter_post_resample && 
+                                        !is_post_fft;
+
+            if (is_fir_filter_active) {
                 if (resources->user_filter_type_actual == FILTER_IMPL_FIR_SYMMETRIC) {
-                    firfilt_crcf_execute_block((firfilt_crcf)resources->user_fir_filter_object, data_in, item->frames_to_write, data_out);
+                    firfilt_crcf_execute_block((firfilt_crcf)resources->user_fir_filter_object, current_data_ptr, item->frames_to_write, workspace_ptr);
                 } else {
-                    firfilt_cccf_execute_block((firfilt_cccf)resources->user_fir_filter_object, data_in, item->frames_to_write, data_out);
+                    firfilt_cccf_execute_block((firfilt_cccf)resources->user_fir_filter_object, current_data_ptr, item->frames_to_write, workspace_ptr);
                 }
-                data_in = data_out;
-                data_out = item->complex_resampled_data;
+                complex_float_t* temp_ptr = current_data_ptr;
+                current_data_ptr = workspace_ptr;
+                workspace_ptr = temp_ptr;
             }
 
             if (resources->post_resample_nco) {
-                shift_apply(resources->post_resample_nco, resources->actual_nco_shift_hz, data_in, data_out, item->frames_to_write);
-                data_in = data_out;
+                freq_shift_apply(resources->post_resample_nco, resources->actual_nco_shift_hz, current_data_ptr, workspace_ptr, item->frames_to_write);
+                complex_float_t* temp_ptr = current_data_ptr;
+                current_data_ptr = workspace_ptr;
+                workspace_ptr = temp_ptr;
             }
 
-            if (!convert_cf32_to_block(data_in, item->final_output_data, item->frames_to_write, config->output_format)) {
+            if (!convert_cf32_to_block(current_data_ptr, item->final_output_data, item->frames_to_write, config->output_format)) {
                 handle_fatal_thread_error("Post-Processor: Failed to convert samples.", resources);
                 queue_enqueue(resources->free_sample_chunk_queue, item);
                 break;
@@ -409,7 +409,6 @@ void* post_processor_thread_func(void* arg) {
         }
     }
 
-    free(fft_remainder_buffer);
     log_debug("Post-processor thread is exiting.");
     return NULL;
 }

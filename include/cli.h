@@ -1,29 +1,30 @@
+// cli.h
+
 #ifndef CLI_H_
 #define CLI_H_
 
 #include "types.h"
+#include "memory_arena.h"
 
 /**
  * @brief Parses command-line arguments and populates the AppConfig struct.
  *
- * This function iterates through the command-line arguments, populates the
- * config struct with user-provided values, and sets appropriate defaults for
- * any unspecified options. It performs basic validation on the format of
- * individual arguments (e.g., ensuring a number is valid) but does not
- * validate the logical relationships between arguments.
- *
  * @param argc Argument count from main.
  * @param argv Argument vector from main.
  * @param config Pointer to the AppConfig struct to populate.
- * @return true on successful parsing, false on a syntax error (e.g., missing
- *         argument for an option) or an invalid value format.
+ * @param arena Pointer to the memory arena for setup-time allocations.
+ * @return true on successful parsing, false on a syntax error or an invalid value format.
  */
-bool parse_arguments(int argc, char *argv[], AppConfig *config);
+bool parse_arguments(int argc, char *argv[], AppConfig *config, MemoryArena* arena);
 
 /**
  * @brief Prints detailed usage instructions for the application to stderr.
+ *
  * @param prog_name The name of the program (typically argv[0]).
+ * @param config A pointer to the AppConfig struct (needed for presets).
+ * @param arena A pointer to an initialized memory arena (needed for module list).
  */
-void print_usage(const char *prog_name);
+// MODIFIED: Signature updated to accept config and arena.
+void print_usage(const char *prog_name, AppConfig *config, MemoryArena* arena);
 
 #endif // CLI_H_

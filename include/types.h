@@ -1,3 +1,5 @@
+// types.h
+
 #ifndef TYPES_H_
 #define TYPES_H_
 
@@ -33,6 +35,8 @@ struct AppConfig;
 struct SampleChunk;
 struct FileWriterContext;
 struct AppResources;
+// MODIFIED: Added forward declaration for MemoryArena
+struct MemoryArena;
 
 // --- Centralized Core Type Definitions ---
 
@@ -40,17 +44,17 @@ struct AppResources;
  * @struct MemoryArena
  * @brief Manages a single large block of memory for fast, contiguous setup-time allocations.
  */
-typedef struct {
+typedef struct MemoryArena {
     void* memory;
     size_t capacity;
     size_t offset;
 } MemoryArena;
 
 /**
- * @struct ThreadSafeQueue
+ * @struct Queue
  * @brief A standard, blocking, thread-safe queue implementation.
  */
-struct ThreadSafeQueue {
+typedef struct Queue {
     void** buffer;
     size_t capacity;
     size_t count;
@@ -60,10 +64,7 @@ struct ThreadSafeQueue {
     pthread_cond_t not_empty_cond;
     pthread_cond_t not_full_cond;
     bool shutting_down;
-};
-
-// Typedef for the queue struct.
-typedef struct ThreadSafeQueue Queue;
+} Queue;
 
 
 // --- Enum and Type Definitions ---
@@ -220,7 +221,8 @@ typedef struct {
 } InputSummaryInfo;
 
 typedef struct {
-    bool (*open)(struct FileWriterContext* ctx, const struct AppConfig* config, struct AppResources* resources);
+    // MODIFIED: The 'open' function now accepts a MemoryArena pointer.
+    bool (*open)(struct FileWriterContext* ctx, const struct AppConfig* config, struct AppResources* resources, struct MemoryArena* arena);
     size_t (*write)(struct FileWriterContext* ctx, const void* buffer, size_t bytes_to_write);
     void (*close)(struct FileWriterContext* ctx);
     long long (*get_total_bytes_written)(const struct FileWriterContext* ctx);
@@ -407,6 +409,9 @@ typedef struct AppResources {
     FilterImplementationType user_filter_type_actual;
     void* user_fir_filter_object;
     unsigned int user_filter_block_size;
+
+    complex_float_t* pre_fft_remainder_buffer;
+    complex_float_t* post_fft_remainder_buffer;
 
     void* input_module_private_data;
 

@@ -6,10 +6,6 @@
 #include <errno.h>
 #include <string.h>
 
-// --- MODIFIED: The struct definition has been REMOVED from this file. ---
-// The single source of truth for the struct's layout is now in types.h.
-// This file only contains the implementation of the functions that operate on it.
-
 
 bool queue_init(Queue* queue, size_t capacity, MemoryArena* arena) {
     if (!queue || !arena) {
@@ -22,9 +18,9 @@ bool queue_init(Queue* queue, size_t capacity, MemoryArena* arena) {
     }
 
     // Allocate the internal buffer from the memory arena
-    queue->buffer = (void**)arena_alloc(arena, capacity * sizeof(void*));
+    queue->buffer = (void**)mem_arena_alloc(arena, capacity * sizeof(void*));
     if (!queue->buffer) {
-        // arena_alloc will have already logged the fatal error
+        // mem_arena_alloc will have already logged the fatal error
         return false;
     }
 

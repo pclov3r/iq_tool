@@ -120,6 +120,11 @@
 // The cutoff frequency for the DC blocking high-pass filter.
 #define DC_BLOCK_CUTOFF_HZ 10.0f
 
+// --- Filter Design & Analysis Tuning ---
+#define FILTER_MINIMUM_TAPS 21
+#define FILTER_GAIN_ZERO_THRESHOLD 1e-9f
+#define FILTER_FREQ_RESPONSE_POINTS 2048
+
 // --- I/Q Correction Algorithm Tuning ---
 #define IQ_CORRECTION_FFT_SIZE           1024
 #define IQ_CORRECTION_DEFAULT_PERIOD     2000000 // Samples between optimization runs
@@ -198,6 +203,7 @@
 #define MAX_PRESETS               128
 #define MAX_LINE_LENGTH           1024
 #define MAX_SUMMARY_ITEMS         16
+
 // A hard upper limit on buffer sizes to prevent unreasonable memory allocation
 // if filter parameters result in a huge number of taps.
 #define MAX_ALLOWED_FFT_BLOCK_SIZE (1024 * 1024) // 1M samples

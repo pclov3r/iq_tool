@@ -554,7 +554,7 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
     sdrplay_api_ErrT err;
     bool success = false; // Assume failure until the end
 
-    SdrplayPrivateData* private_data = (SdrplayPrivateData*)arena_alloc(&resources->setup_arena, sizeof(SdrplayPrivateData));
+    SdrplayPrivateData* private_data = (SdrplayPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(SdrplayPrivateData));
     if (!private_data) return false;
     
     // Initialize resource state variables for the cleanup block
@@ -592,7 +592,7 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
         goto cleanup;
     }
 
-    private_data->sdr_device = (sdrplay_api_DeviceT *)arena_alloc(&resources->setup_arena, sizeof(sdrplay_api_DeviceT));
+    private_data->sdr_device = (sdrplay_api_DeviceT *)mem_arena_alloc(&resources->setup_arena, sizeof(sdrplay_api_DeviceT));
     if (!private_data->sdr_device) goto cleanup;
     memcpy(private_data->sdr_device, &devs[s_sdrplay_config.device_index], sizeof(sdrplay_api_DeviceT));
 

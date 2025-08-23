@@ -1,12 +1,16 @@
 // utils.c
+
 #include "utils.h"
 #include "log.h"
+// MODIFIED: Include memory_arena.h for mem_arena_alloc
+#include "memory_arena.h"
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
 #include <stdarg.h>
 #include <ctype.h>
 #include <time.h>
+#include <stdlib.h> // For strdup/free on POSIX
 
 #ifdef _WIN32
 #include <windows.h>
@@ -89,7 +93,8 @@ const char* format_file_size(long long size_bytes, char* buffer, size_t buffer_s
     return buffer;
 }
 
-const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size_t buffer_size) {
+// MODIFIED: Function signature updated to accept a MemoryArena pointer.
+const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size_t buffer_size, MemoryArena* arena) {
 #ifdef _WIN32
     if (config->effective_input_filename_w) {
         const wchar_t* base_w = PathFindFileNameW(config->effective_input_filename_w);
@@ -99,12 +104,15 @@ const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size
     }
 #else
     if (config->effective_input_filename) {
-        char* temp_copy = strdup(config->effective_input_filename);
+        // MODIFIED: Use the arena for the temporary copy needed by basename().
+        size_t len = strlen(config->effective_input_filename) + 1;
+        char* temp_copy = (char*)mem_arena_alloc(arena, len);
         if (temp_copy) {
+            strcpy(temp_copy, config->effective_input_filename);
             char* base = basename(temp_copy);
             strncpy(buffer, base, buffer_size - 1);
             buffer[buffer_size - 1] = '\0';
-            free(temp_copy);
+            // REMOVED: free(temp_copy); - The arena now manages this memory.
             return buffer;
         }
     }

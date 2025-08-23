@@ -1,33 +1,4 @@
-/*
- * This file is part of iq_resample_tool.
- *
- * Copyright (C) 2025 iq_resample_tool
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
-/*
- * This tool has undergone extensive, long-duration stability testing
- * using live, FM HD Radio signals. Special thanks to the
- * strong signal strength and highly repetitive playlist of KDON 102.5.
- * If the pipeline can survive that, it can survive anything.
- * It is, for all intents and purposes, Kendrick Lamar Certified.
- *
- * It should also be noted that this codebase is a two-time survivor of a
- * catastrophic 'rm -rf *' event in the wrong directory. Its continued
- * existence is a testament to the importance of git, off-site backups, and
- * the 'make clean' command.
- */
+// main.c
 
 #include "constants.h"
 #include <stdlib.h>
@@ -60,7 +31,7 @@
 #include "file_writer.h"
 #include "presets_loader.h"
 #include "platform.h"
-#include "memory_arena.h" // <-- MODIFIED: Include arena.h
+#include "memory_arena.h"
 #include "iq_correct.h"
 #include "dc_block.h"
 #include "io_threads.h"
@@ -101,17 +72,18 @@ int main(int argc, char *argv[]) {
     log_set_level(LOG_INFO);
     
     memset(&g_config, 0, sizeof(AppConfig));
-    input_manager_apply_defaults(&g_config);
-    g_config.gain = 1.0f;
-
+    
     initialize_resource_struct(&resources);
     reset_shutdown_flag();
     setup_signal_handlers(&resources);
 
-    if (!arena_init(&resources.setup_arena, MEM_ARENA_SIZE_BYTES)) {
+    if (!mem_arena_init(&resources.setup_arena, MEM_ARENA_SIZE_BYTES)) {
         goto cleanup;
     }
     arena_initialized = true;
+
+    input_manager_apply_defaults(&g_config, &resources.setup_arena);
+    g_config.gain = 1.0f;
 
 #ifndef _WIN32
     pthread_t sig_thread_id;
@@ -138,16 +110,17 @@ int main(int argc, char *argv[]) {
     }
 
     if (argc <= 1) {
-        print_usage(argv[0]);
+        // MODIFIED: Pass the config and arena to print_usage.
+        print_usage(argv[0], &g_config, &resources.setup_arena);
         exit_status = EXIT_SUCCESS;
         goto cleanup;
     }
 
-    if (!parse_arguments(argc, argv, &g_config)) {
+    if (!parse_arguments(argc, argv, &g_config, &resources.setup_arena)) {
         goto cleanup;
     }
 
-    resources.selected_input_ops = get_input_ops_by_name(g_config.input_type_str);
+    resources.selected_input_ops = get_input_ops_by_name(g_config.input_type_str, &resources.setup_arena);
     if (!resources.selected_input_ops) {
         log_fatal("Input type '%s' is not supported or not enabled in this build.", g_config.input_type_str);
         goto cleanup;
@@ -217,7 +190,7 @@ cleanup:
     pthread_mutex_unlock(&g_console_mutex);
 
     if (arena_initialized) {
-        arena_destroy(&resources.setup_arena);
+        mem_arena_destroy(&resources.setup_arena);
     }
     
     pthread_mutex_destroy(&g_console_mutex);

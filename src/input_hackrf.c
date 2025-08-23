@@ -229,9 +229,9 @@ static bool hackrf_initialize(InputSourceContext* ctx) {
     int result;
     bool success = false; // Assume failure until the very end
 
-    HackrfPrivateData* private_data = (HackrfPrivateData*)arena_alloc(&resources->setup_arena, sizeof(HackrfPrivateData));
+    HackrfPrivateData* private_data = (HackrfPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(HackrfPrivateData));
     if (!private_data) {
-        return false; // arena_alloc logs error, no resources to clean up yet
+        return false; // mem_arena_alloc logs error, no resources to clean up yet
     }
     private_data->dev = NULL; // Initialize resource state
     resources->input_module_private_data = private_data;
