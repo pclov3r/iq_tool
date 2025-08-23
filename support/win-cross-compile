@@ -40,7 +40,6 @@ LIBUSB_INCLUDE_DIR="${DEPS_BASE_PATH}/libusb/build-win64/include/libusb-1.0/"
 LIBUSB_LIBRARY="${DEPS_BASE_PATH}/libusb/build-win64/lib/libusb-1.0.dll.a"
 LIBUSB_DLL="${DEPS_BASE_PATH}/libusb/build-win64/bin/libusb-1.0.dll"
 
-
 # --- Function to Display Usage ---
 usage() {
     echo "Usage: $0 [options] [make arguments]"
@@ -81,6 +80,13 @@ while [[ "$#" -gt 0 ]]; do
         --package) DO_PACKAGE="YES";;
         --cmake-args) CMAKE_EXTRA_ARGS="$2"; shift;;
         -h|--help) usage;;
+        --*)
+            echo "Error: Unknown option '$1'"
+            usage
+            ;;
+        -?*)
+            MAKE_ARGS+=("$1")
+            ;;
         *)
             MAKE_ARGS+=("$1")
             ;;
@@ -101,15 +107,9 @@ fi
 # --- Determine CPU_TARGET_ARCHITECTURE based on BUILD_TYPE ---
 CPU_TARGET_ARCHITECTURE=""
 case "$BUILD_TYPE" in
-    avx)
-        CPU_TARGET_ARCHITECTURE="x86-64-v2"
-        ;;
-    avx2)
-        CPU_TARGET_ARCHITECTURE="x86-64-v3"
-        ;;
-    *)
-        echo "Warning: Unknown BUILD_TYPE '$BUILD_TYPE'. No specific CPU_TARGET_ARCHITECTURE will be set."
-        ;;
+    avx) CPU_TARGET_ARCHITECTURE="x86-64-v2" ;;
+    avx2) CPU_TARGET_ARCHITECTURE="x86-64-v3" ;;
+    *) echo "Warning: Unknown BUILD_TYPE '$BUILD_TYPE'. No specific CPU_TARGET_ARCHITECTURE will be set." ;;
 esac
 
 # --- Set up environment variables ---
@@ -121,7 +121,6 @@ if [ -n "$WITH_SDRPLAY" ]; then build_suffix+="-sdrplay"; fi
 if [ -n "$WITH_HACKRF" ]; then build_suffix+="-hackrf"; fi
 if [ -n "$WITH_BLADERF" ]; then build_suffix+="-bladerf"; fi
 prefix=${root}/build-win64-${build_suffix}
-
 
 # --- Set up base CMake options in an array ---
 cmake_opts=(
@@ -205,14 +204,10 @@ if [ "$DO_PACKAGE" = "YES" ]; then
         fi
     fi
 
-    # Zipping logic for a flat archive ---
     echo "Creating ZIP archive: ${zip_file_name}"
-    # Go INTO the staging directory to create a flat archive without a root folder.
     cd "${dist_dir}"
-    # Zip all files (*) in the current directory, creating the archive one level up.
     zip -r "../${zip_file_name}" *
 
     echo "Packaging complete!"
-    # The final path is now one level up from the staging directory.
     echo "Distribution file created at: ${prefix}/${zip_file_name}"
 fi
