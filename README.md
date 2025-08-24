@@ -8,15 +8,15 @@ I originally built this tool for a very specific need: processing NRSC-5 (HD Rad
 
 ### ⚠️ A Quick Word of Warning: This is an AI-Assisted Project ⚠️
 
-Let's be upfront: a large language model (AI) helped write a significant portion of this code, *if not most.* I guided it, reviewed its output, and tested the result, but this project didn't evolve through the typical trial-and-error of a human-only endeavor. Even this README you're reading was drafted by the AI based on the source code, then edited and refined by me.
+Let's be upfront: a large language model (AI) helped write a significant portion of this code, *if not most.* I guided it, reviewed its output the best I could, and tested the result, but this project didn't evolve through the typical trial-and-error of a human-only endeavor. Even this README you're reading was drafted by the AI based on the source code, then edited and refined by me.
 
-Second, it's worth knowing that this was a learning project for me. I chose to write it in C for its simplicity and how it keeps you close to the metal; I also figured it would be a better target for AI code versus a more complex language like C++. Since I was learning the language as I went, what you'll see in the code is my journey of tackling C, threading, and DSP all at once. The focus was always on getting a practical, working result, which means some of the solutions are probably not what you'd find in a textbook. However, I have made a effort to clean up and refactor the code to the best of my knowledge and research.
+Second, it's worth knowing that this was a learning project for me. I chose to use  C for its simplicity and how it keeps you close to the metal; I also figured it would be a better target for AI code and DSP versus a more complex language like C++. Since I was learning the language as I went, what you'll see in the code is my journey of tackling C, threading, and DSP all at once. The focus was always on getting a practical, working result, which means some of the solutions are probably not what you'd find in a textbook. However, I have made a effort to clean up and refactor the code to the best of my knowledge and research.
 
-*What does this mean for you?*
+*What does this mean?*
 
 *   **It's Experimental.** While it works, it hasn't been battle-tested across a wide variety of systems and edge cases nor has it had a security review.
-*   **Design choices not stable.** You may see features, command line options, etc. suddenly appear and disappear.
-*   **Bugs are expected.** The logic very likely has quirks that haven't been discovered yet.
+*   **Design choices not stable.** You may see features, command line options, etc. suddenly appear and disappear. You may also see large commits of lots of changes.
+*   **Bugs are expected.** The logic very likely has quirks that haven't been discovered yet. Other issues causing crashes likely exist too. 
 *   **Use with caution!** I wouldn't use this for anything mission-critical without a thorough personal review of the code. *For serious work, a mature framework like* [GNU Radio](https://github.com/gnuradio/gnuradio) *is always a better bet.*
 
 ---
@@ -57,7 +57,7 @@ You'll need a pretty standard C development environment.
 *   **pthreads:** This is a standard system component on Linux/macOS. On Windows, a compatible version is typically included with the MinGW-w64 toolchain.
 *   **(Optional) libfftw3:** For a performance boost with FFT-based filtering, install (`libfftw3-dev`) **before** building or installing `liquid-dsp`.
 *   **(Optional) RTL-SDR Library (librtlsdr):** For RTL-SDR support (e.g., `librtlsdr-dev`).
-*   **(Optional) BladeRF Library (libbladeRF):** For BladeRF support (e.g., `libbladerf-dev`).
+*   **(Optional) BladeRF Library (libbladeRF):** For BladeRF support (e.g., `libbladerf-dev`). Windows installers found **[here](https://github.com/Nuand/bladeRF/releases)**.
 *   **(Optional) HackRF Library (libhackrf):** For HackRF support (e.g., `libhackrf-dev`).
 *   **(Optional) SDRplay API Library:** To build with SDRplay support, you must first download and install the official API from the **[SDRplay website](https://www.sdrplay.com/downloads/)**.
 
@@ -86,9 +86,23 @@ You'll need a pretty standard C development environment.
     ```
 You'll find the `iq_resample_tool` executable in the `build` directory.
 
-#### On Windows
+### On Windows
 
-Cross-compiling with MinGW-w64 or building in MSYS2 is your best bet. The repo may include helper scripts, but you will likely need to ensure all dependencies are manually installed and visible in your build environment's path.
+#### Using Pre-compiled Binaries
+
+Pre-compiled binaries for Windows are available on the project's **[releases page](https://github.com/pclov3r/iq_resample_tool/releases)**.
+    **Note:** Not every commit will result in a new release and Windows binary. Releases are typically made after significant changes.
+
+1.  **Download and Extract:** Download the `.zip` archive. You must extract **all files** (the `.exe` and all `.dll` files) into the same folder for the program to work.
+2.  **Choose the Correct Build:** Pay close attention to the AVX vs. AVX2 builds available.
+    *   **⚠️ Important:** Attempting to run an AVX2-optimized build on a CPU that does not support the AVX2 instruction set **will cause the program to crash.** 
+    *   **Try using a AVX build if the AVX2 build crashes but you should attempt to use a AVX2 build first for better performance.**
+
+#### Building from Source
+
+1.  **Environment:** Your best bet is to use a **MinGW-w64** toolchain. Building within an **MSYS2** environment may also work but has not been tested.
+2.  **Build Script:** The repository includes a Windows build script (`support/win-cross-compile`) that can be used as a starting point.
+    *   **Note:** The script contains hard-coded paths to dependencies. You will need to edit this script and adjust the paths to match your own build environment or build the dependencies matching the layout.
 
 ### How to Use It
 
@@ -130,7 +144,7 @@ Filter Quality Options
     --filter-taps=<int>                   Expert: Set exact filter length. Overrides --transition-width and auto mode.
     --attenuation=<flt>                   Set filter stop-band attenuation in dB. (Default: 60).
 
-Filter Implementation Options
+Filtering Options (Chain up to 5 by combining options or adding suffixes -2, -3, etc. e.g., --lowpass --stopband --lowpass-2 --pass-range --pass-range-2)
     --filter-type=<str>                   Set filter implementation {fir|fft}. (Default: auto - fir for symmetric filters, fft for asymmetric)
     --filter-fft-size=<int>               Expert: Set FFT size for 'fft' filter type. Must be a power of 2. (Default: Auto)
 
@@ -227,14 +241,14 @@ This tool is a work in progress.
     *   It's experimental. Expect bugs.
     *   Windows builds are 64-bit only. I see no reason to post 32-bit ones given Windows 10 is end of life soon and Windows 11 is 64-bit only. If I'm wrong and it's required open an issue.
     *   As mentioned, IQ correction may not be functioning correctly.
-    *   Log verbosity levels are not yet refined. The output is noisy, and some messages might not be at the appropriate level (e.g., INFO vs. DEBUG).
+    *   Log verbosity levels are not yet refined. The output is noisy, and many messages are not be at the appropriate level (e.g., ERROR vs. FATAL).
 
 *   **Roadmap:**
     *   [x] Add RTL-SDR support.
     *   [x] Add BladeRF support.
     *   [x] Refactor configuration system for full modularity.
     *   [x] Implement FFT-based filtering option.
-    *   [ ] Add Airspy support (including SpyServer).
+    *   [ ] Add Airspy & HydaSDR support (including SpyServer).
     *   [ ] Improve I/Q correction algorithm stability.
     *   [ ] Refine and standardize log levels throughout the application.
     *   [ ] General code cleanup and comment refactoring.

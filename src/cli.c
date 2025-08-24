@@ -101,7 +101,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_STRING(0, name "-4",     &g_config.var[3], NULL, NULL, 0, 0), \
         OPT_STRING(0, name "-5",     &g_config.var[4], NULL, NULL, 0, 0)
     static const struct argparse_option filter_options[] = {
-        OPT_GROUP("Filtering Options"),
+        OPT_GROUP("Filtering Options (Chain up to 5 by combining options or adding suffixes -2, -3, etc. e.g., --lowpass --stopband --lowpass-2 --pass-range --pass-range-2)"),
         DEFINE_CHAINABLE_FLOAT_OPTION("lowpass", lowpass_cutoff_hz_arg, "Isolate signal at DC. Keeps freqs from -<hz> to +<hz>."),
         DEFINE_CHAINABLE_FLOAT_OPTION("highpass", highpass_cutoff_hz_arg, "Remove signal at DC. Rejects freqs from -<hz> to +<hz>."),
         DEFINE_CHAINABLE_STRING_OPTION("pass-range", pass_range_str_arg, "Isolate a specific band. Format: 'start_freq:end_freq'."),

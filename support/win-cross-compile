@@ -18,6 +18,8 @@ SNDFILE_DLL="${DEPS_BASE_PATH}/libsndfile/build-win64/libsndfile.dll"
 LIQUID_INCLUDE_DIR="${DEPS_BASE_PATH}/liquid-dsp/include"
 LIQUID_LIB_BASE_PATH="${DEPS_BASE_PATH}/liquid-dsp"
 
+FFTW_DLL="${DEPS_BASE_PATH}/libfftw/build-win64/bin/libfftw3f-3.dll"
+
 EXPAT_INCLUDE_DIR="${DEPS_BASE_PATH}/libexpat/expat/lib"
 EXPAT_LIBRARY="${DEPS_BASE_PATH}/libexpat/expat/build-win64/libexpat.dll.a"
 EXPAT_DLL="${DEPS_BASE_PATH}/libexpat/expat/build-win64/libexpat-1.dll"
@@ -186,6 +188,10 @@ if [ "$DO_PACKAGE" = "YES" ]; then
     cp "${SNDFILE_DLL}" "${dist_dir}/"
     cp "${LIQUID_LIB_BASE_PATH}/build-win64-${BUILD_TYPE}/libliquid.dll" "${dist_dir}/"
     cp "${EXPAT_DLL}" "${dist_dir}/"
+
+
+    echo "Copying FFTW DLL..."
+    cp "${FFTW_DLL}" "${dist_dir}/"
 
     echo "Copying MinGW runtime DLLs..."
     cp "${MINGW_GCC_DLL}" "${dist_dir}/"
