@@ -91,6 +91,7 @@ You'll find the `iq_resample_tool` executable in the `build` directory.
 #### Using Pre-compiled Binaries
 
 Pre-compiled binaries for Windows are available on the project's **[releases page](https://github.com/pclov3r/iq_resample_tool/releases)**.
+
     *   **Note:** Not every commit will result in a new release and Windows binary. Releases are typically made after significant changes.
 
 1.  **Download and Extract:** Download the `.zip` archive. You must extract **all files** (the `.exe` and all `.dll` files) into the same folder for the program to work.
