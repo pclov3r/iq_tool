@@ -1,3 +1,5 @@
+// constants.h
+
 #ifndef CONSTANTS_H_
 #define CONSTANTS_H_
 
@@ -117,6 +119,10 @@
 // A smaller value results in a sharper, higher-quality (but more CPU-intensive) filter.
 #define DEFAULT_FILTER_TRANSITION_FACTOR 0.25f
 
+// The number of separate components in a complex sample (I and Q).
+// Used for sizing buffers that handle de-interleaved data.
+#define COMPLEX_SAMPLE_COMPONENTS 2
+
 // The cutoff frequency for the DC blocking high-pass filter.
 #define DC_BLOCK_CUTOFF_HZ 10.0f
 
@@ -163,27 +169,12 @@
 #define BLADERF_TRANSFER_SIZE_SECONDS    0.25
 
 // --- BladeRF Adaptive Streaming Profiles ---
-// These profiles are designed to be safe and reliable on both Windows and a default
-// Linux system (with a 16MB usbfs memory limit). They prioritize stability over
-// aggressive optimization that may fail on un-tuned systems.
-
-// Tier 1: Low Latency (< 1 MSPS)
-// Memory Footprint: 32 * 16384 = 0.5 MB
 #define BLADERF_PROFILE_LOWLATENCY_NUM_BUFFERS        32
 #define BLADERF_PROFILE_LOWLATENCY_BUFFER_SIZE        16384
 #define BLADERF_PROFILE_LOWLATENCY_NUM_TRANSFERS      16
-
-// Tier 2: Balanced (1 to 5 MSPS)
-// Memory Footprint: 64 * 32768 = 2 MB
 #define BLADERF_PROFILE_BALANCED_NUM_BUFFERS          64
 #define BLADERF_PROFILE_BALANCED_BUFFER_SIZE          32768
 #define BLADERF_PROFILE_BALANCED_NUM_TRANSFERS        32
-
-// Tier 3: High-Throughput (>= 5 MSPS)
-// Memory Footprint: 64 * 65536 = 4 MB
-// This is the most robust profile for all high-speed rates on a default system.
-// Advanced Linux users can increase system usbfs memory for even better performance.
-// Example: `sudo sh -c 'echo 128 > /sys/module/usbcore/parameters/usbfs_memory_mb'`
 #define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_BUFFERS    64
 #define BLADERF_PROFILE_HIGHTHROUGHPUT_BUFFER_SIZE    65536
 #define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS  32
@@ -193,8 +184,6 @@
 // =============================================================================
 // == Tier 5: Sanity Checks & Hard Limits
 // =============================================================================
-// These values are not for performance tuning but act as safety rails to
-// prevent crashes from invalid input or extreme configurations.
 
 #define MIN_ACCEPTABLE_RATIO      0.001f
 #define MAX_ACCEPTABLE_RATIO      1000.0f
@@ -203,10 +192,7 @@
 #define MAX_PRESETS               128
 #define MAX_LINE_LENGTH           1024
 #define MAX_SUMMARY_ITEMS         16
-
-// A hard upper limit on buffer sizes to prevent unreasonable memory allocation
-// if filter parameters result in a huge number of taps.
-#define MAX_ALLOWED_FFT_BLOCK_SIZE (1024 * 1024) // 1M samples
+#define MAX_ALLOWED_FFT_BLOCK_SIZE (1024 * 1024)
 #define MAX_PATH_BUFFER           4096
 
 #endif // CONSTANTS_H_

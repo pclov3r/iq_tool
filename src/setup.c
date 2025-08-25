@@ -243,7 +243,9 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     resources->sample_chunk_pool = (SampleChunk*)mem_arena_alloc(&resources->setup_arena, PIPELINE_NUM_CHUNKS * sizeof(SampleChunk));
     if (!resources->sample_chunk_pool) return false;
 
-    resources->sdr_deserializer_buffer_size = PIPELINE_CHUNK_BASE_SAMPLES * sizeof(short);
+    // Allocate the de-interleaving buffer. It must be large enough to hold
+    // both planes (I and Q) of a full sample chunk.
+    resources->sdr_deserializer_buffer_size = PIPELINE_CHUNK_BASE_SAMPLES * sizeof(short) * COMPLEX_SAMPLE_COMPONENTS;
     resources->sdr_deserializer_temp_buffer = mem_arena_alloc(&resources->setup_arena, resources->sdr_deserializer_buffer_size);
     if (!resources->sdr_deserializer_temp_buffer) return false;
 
@@ -457,7 +459,6 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     float resample_ratio = 0.0f;
 
     // STEP 1: Determine pipeline mode
-    // MODIFIED: Pass the arena to the is_sdr_input function call.
     bool is_sdr = is_sdr_input(config->input_type_str, &resources->setup_arena);
     if (is_sdr) {
         if (config->output_to_stdout) {
@@ -498,14 +499,14 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
                 &resources->setup_arena,
                 resources->user_filter_block_size * sizeof(complex_float_t)
             );
-            if (!resources->post_fft_remainder_buffer) goto cleanup; // mem_arena_alloc logs the error
+            if (!resources->post_fft_remainder_buffer) goto cleanup;
         } else {
             // FFT filter is in the pre-processor thread
             resources->pre_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
                 &resources->setup_arena,
                 resources->user_filter_block_size * sizeof(complex_float_t)
             );
-            if (!resources->pre_fft_remainder_buffer) goto cleanup; // mem_arena_alloc logs the error
+            if (!resources->pre_fft_remainder_buffer) goto cleanup;
         }
     }
     
@@ -574,7 +575,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
 
 cleanup:
     if (!success) {
-        mem_arena_destroy(&resources->setup_arena);
+        // Let main() handle the destruction of the arena.
     } else if (!config->output_to_stdout) {
         bool source_has_known_length = resources->selected_input_ops->has_known_length();
         if (!source_has_known_length) {
@@ -626,10 +627,10 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
 
     destroy_threading_components(resources);
 
-    // Free the large, separately-managed pools.
-    free(resources->pipeline_chunk_data_pool);
+    if (resources->pipeline_chunk_data_pool) {
+        free(resources->pipeline_chunk_data_pool);
+        resources->pipeline_chunk_data_pool = NULL;
+    }
 
-    // Free the single memory arena, which cleans up everything else
-    // (queues, DSP helper buffers, private data structs, etc.)
-    mem_arena_destroy(&resources->setup_arena);
+    // The memory arena is destroyed in main(), not here.
 }

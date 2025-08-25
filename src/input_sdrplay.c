@@ -1,3 +1,5 @@
+// input_sdrplay.c
+
 #include "input_sdrplay.h"
 #include "constants.h"
 #include "log.h"
@@ -195,6 +197,9 @@ typedef struct {
 void sdrplay_set_default_config(AppConfig* config) {
     config->sdr.sample_rate_hz = SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
     s_sdrplay_config.bandwidth_hz = SDRPLAY_DEFAULT_BANDWIDTH_HZ;
+    s_sdrplay_config.sdrplay_bandwidth_hz_arg = 0.0f;
+    s_sdrplay_config.sdrplay_if_gain_db_arg = 0;
+    s_sdrplay_config.sdrplay_hdr_bw_hz_arg = 0.0f;
 }
 
 static const struct argparse_option sdrplay_cli_options[] = {
@@ -250,7 +255,9 @@ static bool sdrplay_validate_generic_options(const AppConfig* config) {
 }
 
 static bool sdrplay_validate_options(AppConfig* config) {
-    if (s_sdrplay_config.gain_level != 0) s_sdrplay_config.gain_level_provided = true;
+    if (s_sdrplay_config.gain_level != 0) {
+        s_sdrplay_config.gain_level_provided = true;
+    }
     
     if (s_sdrplay_config.sdrplay_if_gain_db_arg != 0) {
         if (s_sdrplay_config.sdrplay_if_gain_db_arg > 0 || s_sdrplay_config.sdrplay_if_gain_db_arg < -59) {
@@ -552,20 +559,17 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
     sdrplay_api_ErrT err;
-    bool success = false; // Assume failure until the end
+    bool success = false;
 
     SdrplayPrivateData* private_data = (SdrplayPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(SdrplayPrivateData));
     if (!private_data) return false;
     
-    // Initialize resource state variables for the cleanup block
     private_data->sdr_device = NULL;
     private_data->sdr_api_is_open = false;
     resources->input_module_private_data = private_data;
 
 #if defined(_WIN32)
-    if (!sdrplay_load_api()) {
-        goto cleanup;
-    }
+    if (!sdrplay_load_api()) goto cleanup;
 #endif
 
     err = sdrplay_api_Open();
@@ -599,7 +603,7 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
     err = sdrplay_api_SelectDevice(private_data->sdr_device);
     if (err != sdrplay_api_Success) {
         log_fatal("Failed to select SDRplay device %d: %s", s_sdrplay_config.device_index, sdrplay_api_GetErrorString(err));
-        private_data->sdr_device = NULL; // Mark as un-selected
+        private_data->sdr_device = NULL;
         goto cleanup;
     }
     log_info("Using SDRplay device: %s (S/N: %s)",
@@ -636,17 +640,106 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
         private_data->sdr_device->tuner = sdrplay_api_Tuner_A;
     }
 
+    bool antenna_request_handled = false;
+    bool biast_request_handled = false;
     bool hiz_port_selected = false;
-    // ... (Antenna, Bias-T, and gain logic remains the same, but with 'goto cleanup' on fatal errors)
+
+    if (s_sdrplay_config.antenna_port_name || config->sdr.bias_t_enable) {
+        switch (private_data->sdr_device->hwVer) {
+            case SDRPLAY_RSP1A_ID:
+            case SDRPLAY_RSP1B_ID:
+                if (config->sdr.bias_t_enable) {
+                    chParams->rsp1aTunerParams.biasTEnable = 1;
+                    biast_request_handled = true;
+                }
+                break;
+            case SDRPLAY_RSP2_ID:
+                if (config->sdr.bias_t_enable) {
+                    chParams->rsp2TunerParams.biasTEnable = 1;
+                    biast_request_handled = true;
+                }
+                if (s_sdrplay_config.antenna_port_name) {
+                    if (strcasecmp(s_sdrplay_config.antenna_port_name, "A") == 0) {
+                        chParams->rsp2TunerParams.antennaSel = sdrplay_api_Rsp2_ANTENNA_A;
+                    } else if (strcasecmp(s_sdrplay_config.antenna_port_name, "B") == 0) {
+                        chParams->rsp2TunerParams.antennaSel = sdrplay_api_Rsp2_ANTENNA_B;
+                    } else if (strcasecmp(s_sdrplay_config.antenna_port_name, "HIZ") == 0) {
+                        chParams->rsp2TunerParams.amPortSel = sdrplay_api_Rsp2_AMPORT_2;
+                        hiz_port_selected = true;
+                    } else {
+                        log_fatal("Invalid antenna port '%s' for RSP2. Use A, B, or HIZ.", s_sdrplay_config.antenna_port_name);
+                        goto cleanup;
+                    }
+                    antenna_request_handled = true;
+                }
+                break;
+            case SDRPLAY_RSPduo_ID:
+                if (config->sdr.bias_t_enable) {
+                    chParams->rspDuoTunerParams.biasTEnable = 1;
+                    biast_request_handled = true;
+                }
+                if (s_sdrplay_config.antenna_port_name) {
+                    if (strcasecmp(s_sdrplay_config.antenna_port_name, "A") == 0) {
+                        // Port A is default, no change needed.
+                    } else if (strcasecmp(s_sdrplay_config.antenna_port_name, "HIZ") == 0) {
+                        chParams->rspDuoTunerParams.tuner1AmPortSel = sdrplay_api_RspDuo_AMPORT_2;
+                        hiz_port_selected = true;
+                    } else {
+                        log_fatal("Invalid antenna port '%s' for RSPduo. Use A or HIZ.", s_sdrplay_config.antenna_port_name);
+                        goto cleanup;
+                    }
+                    antenna_request_handled = true;
+                }
+                break;
+            case SDRPLAY_RSPdx_ID:
+            case SDRPLAY_RSPdxR2_ID:
+                if (config->sdr.bias_t_enable) {
+                    devParams->rspDxParams.biasTEnable = 1;
+                    biast_request_handled = true;
+                }
+                if (s_sdrplay_config.antenna_port_name) {
+                    if (strcasecmp(s_sdrplay_config.antenna_port_name, "A") == 0) {
+                        devParams->rspDxParams.antennaSel = sdrplay_api_RspDx_ANTENNA_A;
+                    } else if (strcasecmp(s_sdrplay_config.antenna_port_name, "B") == 0) {
+                        devParams->rspDxParams.antennaSel = sdrplay_api_RspDx_ANTENNA_B;
+                    } else if (strcasecmp(s_sdrplay_config.antenna_port_name, "C") == 0) {
+                        devParams->rspDxParams.antennaSel = sdrplay_api_RspDx_ANTENNA_C;
+                    } else {
+                        log_fatal("Invalid antenna port '%s' for RSPdx/RSPdx-R2. Use A, B, or C.", s_sdrplay_config.antenna_port_name);
+                        goto cleanup;
+                    }
+                    antenna_request_handled = true;
+                }
+                break;
+        }
+    }
+
+    if (s_sdrplay_config.antenna_port_name && !antenna_request_handled) {
+        log_warn("Antenna selection not applicable for the detected device.");
+    }
+    if (config->sdr.bias_t_enable && !biast_request_handled) {
+        log_warn("Bias-T is not supported on the detected device.");
+    }
+
+    if (s_sdrplay_config.gain_level_provided || s_sdrplay_config.if_gain_db_provided) {
+        chParams->ctrlParams.agc.enable = sdrplay_api_AGC_DISABLE;
+        log_info("SDRplay: AGC disabled due to manual gain setting.");
+    }
+
+    if (s_sdrplay_config.if_gain_db_provided) {
+        chParams->tunerParams.gain.gRdB = -s_sdrplay_config.if_gain_db;
+    }
 
     if (s_sdrplay_config.gain_level_provided) {
         int num_lna_states = get_num_lna_states(private_data->sdr_device->hwVer, config->sdr.rf_freq_hz, s_sdrplay_config.use_hdr_mode, hiz_port_selected);
         if (s_sdrplay_config.gain_level < 0 || s_sdrplay_config.gain_level >= num_lna_states) {
-            log_fatal("Invalid LNA state '%d'. Valid range for this device/frequency is 0 to %d.",
+            log_fatal("Invalid LNA state '%d'. Valid range for this device/frequency/port is 0 to %d.",
                       s_sdrplay_config.gain_level, num_lna_states - 1);
             goto cleanup;
         }
-        chParams->tunerParams.gain.LNAstate = num_lna_states - 1 - s_sdrplay_config.gain_level;
+        // Per API, LNAstate is an index into the gain reduction table. 0 = min reduction (max gain).
+        // The help text says 0=max gain, so the user's input maps directly.
+        chParams->tunerParams.gain.LNAstate = s_sdrplay_config.gain_level;
     }
 
     resources->input_format = CS16;
@@ -659,13 +752,19 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
         goto cleanup;
     }
 
-    success = true; // All steps succeeded
+    success = true;
 
 cleanup:
     if (!success) {
-        // If we failed, the main cleanup routine will call sdrplay_cleanup(),
-        // which will inspect the state of the private_data struct and clean up
-        // only the resources that were successfully acquired.
+        if (private_data && private_data->sdr_device) {
+            sdrplay_api_ReleaseDevice(private_data->sdr_device);
+        }
+        if (private_data && private_data->sdr_api_is_open) {
+            sdrplay_api_Close();
+        }
+#if defined(_WIN32)
+        sdrplay_unload_api();
+#endif
     }
     return success;
 }
@@ -733,6 +832,7 @@ static void sdrplay_cleanup(InputSourceContext* ctx) {
             log_debug("Waiting for SDRplay daemon to release device...");
             sleep(1);
 #endif
+            // No free() needed, memory is in the arena
             private_data->sdr_device = NULL;
         }
         if (private_data->sdr_api_is_open) {

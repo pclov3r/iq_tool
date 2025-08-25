@@ -1,5 +1,7 @@
+// sdr_packet_serializer.c
+
 #include "sdr_packet_serializer.h"
-#include "constants.h" // <-- MODIFIED
+#include "constants.h"
 #include "log.h"
 #include "types.h"
 #include <string.h>
@@ -64,7 +66,6 @@ bool sdr_packet_serializer_write_reset_event(FileWriteBuffer* buffer) {
 
 // --- Deserialization Function ---
 
-// --- MODIFIED: Signature updated and malloc removed ---
 int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
                                           SampleChunk* target_chunk,
                                           bool* is_reset_event,
@@ -111,17 +112,18 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
         // Case for SDRplay (de-interleaved cs16).
         size_t bytes_per_plane = samples_in_chunk * sizeof(short);
         
-        // Sanity check the provided temporary buffer
-        if (bytes_per_plane > temp_buffer_size) {
+        // BUGFIX: Sanity check the provided temporary buffer can hold BOTH planes.
+        if ((bytes_per_plane * 2) > temp_buffer_size) {
             log_fatal("SDR deserializer buffer is too small for this packet. Required: %zu, Available: %zu.",
-                      bytes_per_plane, temp_buffer_size);
+                      (bytes_per_plane * 2), temp_buffer_size);
             return -1;
         }
 
         int16_t* raw_output = (int16_t*)target_chunk->raw_input_data;
         
-        // --- MODIFIED: Use the pre-allocated temp_buffer instead of malloc ---
+        // BUGFIX: Correctly partition the temporary buffer for I and Q planes.
         short* temp_i = (short*)temp_buffer;
+        short* temp_q = (short*)((char*)temp_buffer + bytes_per_plane);
         
         size_t i_bytes_read = file_write_buffer_read(buffer, temp_i, bytes_per_plane);
         if (i_bytes_read < bytes_per_plane) {
@@ -129,8 +131,6 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
             return -1;
         }
 
-        // We can reuse the same buffer for the Q plane
-        short* temp_q = (short*)temp_buffer;
         size_t q_bytes_read = file_write_buffer_read(buffer, temp_q, bytes_per_plane);
         if (q_bytes_read < bytes_per_plane) {
             log_error("Incomplete Q-plane read for de-interleaved chunk. Stream corrupted.");
@@ -142,7 +142,6 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
             raw_output[i * 2]     = temp_i[i];
             raw_output[i * 2 + 1] = temp_q[i];
         }
-        // --- MODIFIED: No free() is needed ---
     }
 
     return samples_in_chunk;
