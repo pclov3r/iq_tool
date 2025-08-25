@@ -1,11 +1,14 @@
-#ifndef SDR_BUFFER_STREAM_H_
-#define SDR_BUFFER_STREAM_H_
+// File: include/sdr_packet_serializer.h
+
+#ifndef SDR_PACKET_SERIALIZER_H_
+#define SDR_PACKET_SERIALIZER_H_
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
 
-// Forward declare the structs we need pointers to.
+// Forward declare the structs we need pointers to, without needing their full definitions.
+// This keeps the public header clean and minimizes dependencies.
 struct FileWriteBuffer;
 struct SampleChunk;
 
@@ -60,7 +63,7 @@ bool sdr_packet_serializer_write_reset_event(struct FileWriteBuffer* buffer);
  * @param temp_buffer A pre-allocated buffer for de-interleaving.
  * @param temp_buffer_size The size of the temp_buffer in bytes.
  * @return The number of frames read and placed in the target_chunk. Returns 0 for
- *         a normal end-of-stream, and a negative value for a fatal parsing error.
+ *         a normal end-of-stream or a non-data event, and a negative value for a fatal parsing error.
  */
 int64_t sdr_packet_serializer_read_packet(struct FileWriteBuffer* buffer,
                                           struct SampleChunk* target_chunk,
@@ -68,4 +71,4 @@ int64_t sdr_packet_serializer_read_packet(struct FileWriteBuffer* buffer,
                                           void* temp_buffer,
                                           size_t temp_buffer_size);
 
-#endif // SDR_BUFFER_STREAM_H_
+#endif // SDR_PACKET_SERIALIZER_H_
