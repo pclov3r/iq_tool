@@ -1,4 +1,4 @@
-// File: src/sdr_packet_serializer.c
+// src/sdr_packet_serializer.c
 
 #include "sdr_packet_serializer.h"
 #include "constants.h"
@@ -8,8 +8,6 @@
 #include <stdlib.h>
 
 // --- PRIVATE DEFINITIONS ---
-// These are the internal implementation details, hidden from the rest of the application.
-// By placing them here, we achieve encapsulation without needing an extra `_internal.h` file.
 #pragma pack(push, 1)
 typedef struct {
     uint32_t num_samples;
@@ -75,7 +73,6 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
     *is_reset_event = false;
     SdrInputChunkHeader header;
 
-    // 1. Read the header. This is the only read in this main function.
     size_t header_bytes_read = file_write_buffer_read(buffer, &header, sizeof(header));
     if (header_bytes_read == 0) {
         return 0; // Normal end of stream
@@ -85,7 +82,6 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
         return -1; // Fatal error
     }
 
-    // 2. Handle special event packets first.
     if (header.flags & SDR_CHUNK_FLAG_STREAM_RESET) {
         *is_reset_event = true;
     }
@@ -93,7 +89,6 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
         return 0; // Return 0 frames, but the caller will check is_reset_event.
     }
 
-    // 3. Dispatch to the correct payload handler based on the header flag.
     if (header.flags & SDR_CHUNK_FLAG_INTERLEAVED) {
         return _read_interleaved_payload(buffer, target_chunk, header.num_samples);
     } else {
@@ -104,9 +99,6 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
 
 // --- PRIVATE HELPER FUNCTION IMPLEMENTATIONS ---
 
-/**
- * @brief Reads a simple interleaved payload from the buffer.
- */
 static int64_t _read_interleaved_payload(FileWriteBuffer* buffer, SampleChunk* target_chunk, uint32_t num_samples) {
     uint32_t samples_to_read = num_samples;
     if (samples_to_read > PIPELINE_CHUNK_BASE_SAMPLES) {
@@ -126,9 +118,6 @@ static int64_t _read_interleaved_payload(FileWriteBuffer* buffer, SampleChunk* t
     return samples_to_read;
 }
 
-/**
- * @brief Reads a de-interleaved payload, re-interleaves it, and places it in the target chunk.
- */
 static int64_t _read_and_reinterleave_payload(FileWriteBuffer* buffer, SampleChunk* target_chunk, uint32_t num_samples, void* temp_buffer, size_t temp_buffer_size) {
     uint32_t samples_to_read = num_samples;
     if (samples_to_read > PIPELINE_CHUNK_BASE_SAMPLES) {
@@ -137,7 +126,6 @@ static int64_t _read_and_reinterleave_payload(FileWriteBuffer* buffer, SampleChu
         samples_to_read = PIPELINE_CHUNK_BASE_SAMPLES;
     }
 
-    // This logic is now cleanly isolated.
     size_t bytes_per_plane = samples_to_read * sizeof(short);
     if ((bytes_per_plane * 2) > temp_buffer_size) {
         log_fatal("SDR deserializer temp buffer is too small for this packet. Required: %zu, Available: %zu.",
@@ -158,11 +146,41 @@ static int64_t _read_and_reinterleave_payload(FileWriteBuffer* buffer, SampleChu
         return -1;
     }
 
-    // The re-interleaving loop
     for (uint32_t i = 0; i < samples_to_read; i++) {
         raw_output[i * 2]     = temp_i[i];
         raw_output[i * 2 + 1] = temp_q[i];
     }
     
     return samples_to_read;
+}
+
+// --- NEW REUSABLE CHUNKING FUNCTION ---
+void sdr_write_interleaved_chunks(AppResources* resources, const unsigned char* data, uint32_t length_bytes, size_t bytes_per_sample_pair) {
+    if (length_bytes == 0) {
+        return;
+    }
+
+    uint32_t total_samples_in_transfer = length_bytes / bytes_per_sample_pair;
+    uint32_t samples_processed = 0;
+    const unsigned char* current_buffer_pos = data;
+
+    while (samples_processed < total_samples_in_transfer) {
+        uint32_t samples_this_chunk = total_samples_in_transfer - samples_processed;
+        if (samples_this_chunk > PIPELINE_CHUNK_BASE_SAMPLES) {
+            samples_this_chunk = PIPELINE_CHUNK_BASE_SAMPLES;
+        }
+
+        if (!sdr_packet_serializer_write_interleaved_chunk(
+                resources->sdr_input_buffer,
+                samples_this_chunk,
+                current_buffer_pos,
+                bytes_per_sample_pair))
+        {
+            log_warn("SDR input buffer overrun! Dropped %u samples.", total_samples_in_transfer - samples_processed);
+            break;
+        }
+
+        samples_processed += samples_this_chunk;
+        current_buffer_pos += (samples_this_chunk * bytes_per_sample_pair);
+    }
 }

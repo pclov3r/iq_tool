@@ -1,3 +1,5 @@
+// src/input_hackrf.c
+
 #include "input_hackrf.h"
 #include "constants.h"
 #include "config.h"
@@ -138,19 +140,18 @@ static int hackrf_buffered_stream_callback(hackrf_transfer* transfer) {
     AppResources *resources = (AppResources*)transfer->rx_ctx;
 
     if (is_shutdown_requested() || resources->error_occurred) {
-        return -1; // Signal to libhackrf to stop streaming
+        return -1;
     }
 
-    if (transfer->valid_length == 0) {
-        return 0; // Continue streaming
-    }
+    // Simply hand off the entire buffer to the reusable chunker.
+    sdr_write_interleaved_chunks(
+        resources,
+        transfer->buffer,
+        transfer->valid_length,
+        resources->input_bytes_per_sample_pair
+    );
 
-    uint32_t num_samples = transfer->valid_length / resources->input_bytes_per_sample_pair;
-    if (!sdr_packet_serializer_write_interleaved_chunk(resources->sdr_input_buffer, num_samples, transfer->buffer, resources->input_bytes_per_sample_pair)) {
-        log_warn("SDR input buffer overrun! Dropped %d bytes.", transfer->valid_length);
-    }
-
-    return 0; // Continue streaming
+    return 0;
 }
 
 static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
@@ -218,7 +219,10 @@ static void hackrf_get_summary_info(const InputSourceContext* ctx, InputSummaryI
     add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
     add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
     add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr.rf_freq_hz);
-    add_summary_item(info, "Gain", "LNA: %u dB, VGA: %u dB", s_hackrf_config.lna_gain, s_hackrf_config.vga_gain);
+
+    // as HackRF does not have a true hardware AGC. The gain is always fixed.
+    add_summary_item(info, "LNA Gain", "%u dB", s_hackrf_config.lna_gain);
+    add_summary_item(info, "VGA Gain", "%u dB", s_hackrf_config.vga_gain);
     add_summary_item(info, "RF Amp", "%s", s_hackrf_config.amp_enable ? "Enabled" : "Disabled");
     add_summary_item(info, "Bias-T", "%s", config->sdr.bias_t_enable ? "Enabled" : "Disabled");
 }
@@ -298,17 +302,11 @@ static bool hackrf_initialize(InputSourceContext* ctx) {
         goto cleanup;
     }
 
-    // If we made it all the way here, we succeeded.
     success = true;
 
 cleanup:
-    // This block is the single point of exit. It is only executed on failure.
     if (!success) {
         // The main application cleanup will call hackrf_cleanup(), which handles these.
-        // We don't need to call them here, as the higher-level cleanup function
-        // will check if private_data->dev is valid and close it if necessary.
-        // The purpose of the goto is to centralize the error exit path, not to
-        // duplicate cleanup logic.
     }
     return success;
 }

@@ -1,4 +1,4 @@
-// File: include/sdr_packet_serializer.h
+// include/sdr_packet_serializer.h
 
 #ifndef SDR_PACKET_SERIALIZER_H_
 #define SDR_PACKET_SERIALIZER_H_
@@ -11,6 +11,7 @@
 // This keeps the public header clean and minimizes dependencies.
 struct FileWriteBuffer;
 struct SampleChunk;
+struct AppResources;
 
 // --- Serialization Functions (Writing to the Stream) ---
 
@@ -70,5 +71,11 @@ int64_t sdr_packet_serializer_read_packet(struct FileWriteBuffer* buffer,
                                           bool* is_reset_event,
                                           void* temp_buffer,
                                           size_t temp_buffer_size);
+
+/**
+ * @brief A reusable utility to take a large, interleaved buffer from an SDR,
+ *        break it into pipeline-sized chunks, and write each as a packet to the ring buffer.
+ */
+void sdr_write_interleaved_chunks(struct AppResources* resources, const unsigned char* data, uint32_t length_bytes, size_t bytes_per_sample_pair);
 
 #endif // SDR_PACKET_SERIALIZER_H_

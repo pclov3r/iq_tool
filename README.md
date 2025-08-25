@@ -124,8 +124,8 @@ Output Options
     --output-sample-format=<str>          Sample format for output data {cs8|cu8|cs16|...}
 
 Processing Options
-    --output-rate=<flt>                   Output sample rate in Hz. (Required if no preset is used)
-    --gain=<flt>                          Apply a linear gain multiplier to the samples (Default: 1.0)
+    --output-rate=<flt>                   Output sample rate in Hz. (Required if no preset or --no-resample is used)
+    --gain-multiplier=<flt>               Apply a linear gain multiplier to the samples
     --freq-shift=<flt>                    Apply a direct frequency shift in Hz (e.g., -100e3)
     --shift-after-resample                Apply frequency shift AFTER resampling (default is before)
     --no-resample                         Process at native input rate. Bypasses the resampler but applies all other DSP.
@@ -134,20 +134,20 @@ Processing Options
     --dc-block                            (Optional) Enable DC offset removal (high-pass filter).
     --preset=<str>                        Use a preset for a common target.
 
-Filtering Options
-    --lowpass=<flt>                       Apply a low-pass filter, keeping frequencies from -<freq> to +<freq>.
-    --highpass=<flt>                      Apply a high-pass filter, keeping frequencies above +<freq> and below -<freq>.
-    --pass-range=<str>                    Isolate a frequency range. Format: 'start_freq:end_freq' (e.g., '100e3:200e3').
-    --stopband=<str>                      Apply a stop-band (notch) filter. Format: 'start_freq:end_freq' (e.g., '-65:65').
+Filtering Options (Chain up to 5 by combining options or adding suffixes -2, -3, etc. e.g., --lowpass --stopband --lowpass-2 --pass-range --pass-range-2)
+    --lowpass=<flt>                       Isolate signal at DC. Keeps freqs from -<hz> to +<hz>.
+    --highpass=<flt>                      Remove signal at DC. Rejects freqs from -<hz> to +<hz>.
+    --pass-range=<str>                    Isolate a specific band. Format: 'start_freq:end_freq'.
+    --stopband=<str>                      Remove a specific band (notch). Format: 'start_freq:end_freq'.
 
 Filter Quality Options
     --transition-width=<flt>              Set filter sharpness by transition width in Hz. (Default: Auto).
-    --filter-taps=<int>                   Expert: Set exact filter length. Overrides --transition-width and auto mode.
+    --filter-taps=<int>                   Set exact filter length. Overrides --transition-width.
     --attenuation=<flt>                   Set filter stop-band attenuation in dB. (Default: 60).
 
-Filtering Options (Chain up to 5 by combining options or adding suffixes -2, -3, etc. e.g., --lowpass --stopband --lowpass-2 --pass-range --pass-range-2)
-    --filter-type=<str>                   Set filter implementation {fir|fft}. (Default: auto - fir for symmetric filters, fft for asymmetric)
-    --filter-fft-size=<int>               Expert: Set FFT size for 'fft' filter type. Must be a power of 2. (Default: Auto)
+Filter Implementation Options (Advanced)
+    --filter-type=<str>                   Set filter implementation {fir|fft}. (Default: auto).
+    --filter-fft-size=<int>               Set FFT size for 'fft' filter type. Must be a power of 2.
 
 SDR General Options
     --sdr-rf-freq=<flt>                   (Required for SDR) Tuner center frequency in Hz
@@ -170,8 +170,8 @@ RTL-SDR-Specific Options
 SDRplay-Specific Options
     --sdrplay-bandwidth=<flt>             Set analog bandwidth in Hz. (Optional, Default: 1.536e6)
     --sdrplay-device-idx=<int>            Select specific SDRplay device by index (0-indexed). (Default: 0)
-    --sdrplay-gain-level=<int>            Set LNA state (coarse gain, 0=max gain). Disables AGC.
-    --sdrplay-if-gain=<int>               Set IF gain in dB (fine gain, e.g., -20, -35, -59). Disables AGC.
+    --sdrplay-lna-state=<int>             Set LNA state (0=min gain). Disables AGC.
+    --sdrplay-if-gain=<int>               Set IF gain in dB (fine gain, e.g., -20, -35, -59). (Default: -50 if --sdrplay-lna-state is specified.) Disables AGC.
     --sdrplay-antenna=<str>               Select antenna port (device-specific).
     --sdrplay-hdr-mode                    (Optional) Enable HDR mode on RSPdx/RSPdxR2.
     --sdrplay-hdr-bw=<flt>                Set bandwidth for HDR mode. Requires --sdrplay-hdr-mode.
@@ -184,11 +184,12 @@ HackRF-Specific Options
 BladeRF-Specific Options
     --bladerf-device-idx=<int>            Select specific BladeRF device by index (0-indexed). (Default: 0)
     --bladerf-load-fpga=<str>             Load an FPGA bitstream from the specified file.
-    --bladerf-bandwidth=<flt>             Set analog bandwidth in Hz. (Default: Auto-selected)
+    --bladerf-bandwidth=<flt>             Set analog bandwidth in Hz. (Not applicable in 8-bit high-speed mode)
     --bladerf-gain=<int>                  Set overall manual gain in dB. Disables AGC.
     --bladerf-channel=<int>               For BladeRF 2.0: Select RX channel 0 (RXA) or 1 (RXB). (Default: 0)
+    --bladerf-bit-depth=<int>             Set capture bit depth {8|12}. 8-bit mode is for BladeRF 2.0 only. (Default: 12, auto-switches to 8 for rates > 61.44 MHz on BladeRF 2.0)
 
-Available Presets:
+Available Presets
     cu8-nrsc5                             Sets sample type to cu8, rate to 1488375.0 Hz for FM/AM NRSC5 decoding (produces headerless raw output).
     cs16-fm-nrsc5                         Sets sample type to cs16, rate to 744187.5 Hz for FM NRSC5 decoding (produces headerless raw output).
     cs16-am-nrsc5                         Sets sample type to cs16, rate to 46511.71875 Hz for AM NRSC5 decoding (produces headerless raw output).

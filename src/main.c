@@ -70,9 +70,9 @@ int main(int argc, char *argv[]) {
 
     log_set_lock(console_lock_function, &g_console_mutex);
     log_set_level(LOG_INFO);
-    
+
     memset(&g_config, 0, sizeof(AppConfig));
-    
+
     initialize_resource_struct(&resources);
     reset_shutdown_flag();
     setup_signal_handlers(&resources);
@@ -192,7 +192,7 @@ cleanup:
     if (arena_initialized) {
         mem_arena_destroy(&resources.setup_arena);
     }
-    
+
     pthread_mutex_destroy(&g_console_mutex);
 
     return exit_status;
@@ -203,7 +203,7 @@ cleanup:
 
 static void initialize_resource_struct(AppResources *resources) {
     memset(resources, 0, sizeof(AppResources));
-    
+
     g_config.iq_correction.enable = false;
     g_config.dc_block.enable = false;
 }
@@ -225,6 +225,8 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
     format_file_size(resources->final_output_size_bytes, size_buf, sizeof(size_buf));
     double duration_secs = difftime(time(NULL), resources->start_time);
     format_duration(duration_secs, duration_buf, sizeof(duration_buf));
+
+    unsigned long long total_input_samples = resources->total_frames_read * 2;
     unsigned long long total_output_samples = resources->total_output_frames * 2;
 
     double avg_write_speed_mbps = 0.0;
@@ -243,6 +245,7 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
         fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Completed Successfully");
         fprintf(stderr, "%-*s %s\n", label_width, "Processing Duration:", duration_buf);
         fprintf(stderr, "%-*s %llu / %lld (100.0%%)\n", label_width, "Input Frames Read:", resources->total_frames_read, (long long)resources->source_info.frames);
+        fprintf(stderr, "%-*s %llu\n", label_width, "Input Samples Read:", total_input_samples);
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", resources->total_output_frames);
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Written:", total_output_samples);
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
@@ -258,12 +261,14 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
         fprintf(stderr, "%-*s %s\n", label_width, duration_label, duration_buf);
         if (!source_has_known_length) {
             fprintf(stderr, "%-*s %llu\n", label_width, "Input Frames Read:", resources->total_frames_read);
+            fprintf(stderr, "%-*s %llu\n", label_width, "Input Samples Read:", total_input_samples);
         } else {
             double percentage = 0.0;
             if (resources->source_info.frames > 0) {
                 percentage = ((double)resources->total_frames_read / (double)resources->source_info.frames) * 100.0;
             }
             fprintf(stderr, "%-*s %llu / %lld (%.1f%%)\n", label_width, "Input Frames Read:", resources->total_frames_read, (long long)resources->source_info.frames, percentage);
+            fprintf(stderr, "%-*s %llu\n", label_width, "Input Samples Read:", total_input_samples);
         }
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", resources->total_output_frames);
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Written:", total_output_samples);
@@ -290,7 +295,7 @@ static void application_progress_callback(unsigned long long current_output_fram
 
     static double last_progress_log_time = 0.0;
     static long long last_bytes_written = 0;
-    
+
     double current_time = get_monotonic_time_sec();
 
     if (current_time - last_progress_log_time >= PROGRESS_UPDATE_INTERVAL_SECONDS) {
@@ -309,17 +314,17 @@ static void application_progress_callback(unsigned long long current_output_fram
             double percentage = ((double)current_output_frames / (double)total_output_frames) * 100.0;
             if (percentage > 100.0) percentage = 100.0;
             if (is_first_update) {
-                log_info("Writing: %llu / %lld frames (%.1f%%)", 
+                log_info("Writing: %llu / %lld frames (%.1f%%)",
                          current_output_frames, total_output_frames, percentage);
             } else {
-                log_info("Writing: %llu / %lld frames (%.1f%%) %.2f MB/s", 
+                log_info("Writing: %llu / %lld frames (%.1f%%) %.2f MB/s",
                          current_output_frames, total_output_frames, percentage, rate_mb_per_sec);
             }
         } else {
             if (is_first_update) {
                 log_info("Written %llu frames", current_output_frames);
             } else {
-                log_info("Written %llu frames %.2f MB/s", 
+                log_info("Written %llu frames %.2f MB/s",
                          current_output_frames, rate_mb_per_sec);
             }
         }

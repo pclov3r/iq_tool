@@ -171,8 +171,8 @@ extern AppConfig g_config;
 // --- Private Module Configuration ---
 static struct {
     int device_index;
-    int gain_level;
-    bool gain_level_provided;
+    int lna_state;
+    bool lna_state_provided;
     int if_gain_db;
     bool if_gain_db_provided;
     int sdrplay_if_gain_db_arg;
@@ -206,8 +206,8 @@ static const struct argparse_option sdrplay_cli_options[] = {
     OPT_GROUP("SDRplay-Specific Options"),
     OPT_FLOAT(0, "sdrplay-bandwidth", &s_sdrplay_config.sdrplay_bandwidth_hz_arg, "Set analog bandwidth in Hz. (Optional, Default: 1.536e6)", NULL, 0, 0),
     OPT_INTEGER(0, "sdrplay-device-idx", &s_sdrplay_config.device_index, "Select specific SDRplay device by index (0-indexed). (Default: 0)", NULL, 0, 0),
-    OPT_INTEGER(0, "sdrplay-gain-level", &s_sdrplay_config.gain_level, "Set LNA state (coarse gain, 0=max gain). Disables AGC.", NULL, 0, 0),
-    OPT_INTEGER(0, "sdrplay-if-gain", &s_sdrplay_config.sdrplay_if_gain_db_arg, "Set IF gain in dB (fine gain, e.g., -20, -35, -59). Disables AGC.", NULL, 0, 0),
+    OPT_INTEGER(0, "sdrplay-lna-state", &s_sdrplay_config.lna_state, "Set LNA state (0=min gain). Disables AGC.", NULL, 0, 0),
+    OPT_INTEGER(0, "sdrplay-if-gain", &s_sdrplay_config.sdrplay_if_gain_db_arg, "Set IF gain in dB (fine gain, e.g., -20, -35, -59). (Default: -50 if --sdrplay-lna-state is specified.) Disables AGC.", NULL, 0, 0),
     OPT_STRING(0, "sdrplay-antenna", &s_sdrplay_config.antenna_port_name, "Select antenna port (device-specific).", NULL, 0, 0),
     OPT_BOOLEAN(0, "sdrplay-hdr-mode", &s_sdrplay_config.use_hdr_mode, "(Optional) Enable HDR mode on RSPdx/RSPdxR2.", NULL, 0, 0),
     OPT_FLOAT(0, "sdrplay-hdr-bw", &s_sdrplay_config.sdrplay_hdr_bw_hz_arg, "Set bandwidth for HDR mode. Requires --sdrplay-hdr-mode.", NULL, 0, 0),
@@ -255,8 +255,10 @@ static bool sdrplay_validate_generic_options(const AppConfig* config) {
 }
 
 static bool sdrplay_validate_options(AppConfig* config) {
-    if (s_sdrplay_config.gain_level != 0) {
-        s_sdrplay_config.gain_level_provided = true;
+    if (s_sdrplay_config.lna_state != 0) {
+        s_sdrplay_config.lna_state_provided = true;
+    } else {
+        s_sdrplay_config.lna_state = 0; // Ensure default is 0 if not provided
     }
     
     if (s_sdrplay_config.sdrplay_if_gain_db_arg != 0) {
@@ -266,6 +268,8 @@ static bool sdrplay_validate_options(AppConfig* config) {
         }
         s_sdrplay_config.if_gain_db = s_sdrplay_config.sdrplay_if_gain_db_arg;
         s_sdrplay_config.if_gain_db_provided = true;
+    } else {
+        s_sdrplay_config.if_gain_db = SDRPLAY_DEFAULT_IF_GAIN_DB;
     }
 
     if (s_sdrplay_config.sdrplay_bandwidth_hz_arg != 0.0f) {
@@ -521,20 +525,13 @@ static void sdrplay_get_summary_info(const InputSourceContext* ctx, InputSummary
     add_summary_item(info, "Bandwidth", "%.0f Hz", s_sdrplay_config.bandwidth_hz);
     add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr.rf_freq_hz);
 
-    if (s_sdrplay_config.gain_level_provided || s_sdrplay_config.if_gain_db_provided) {
-        char gain_buf[128];
-        char lna_str[40];
-        char if_str[40];
-
-        if (s_sdrplay_config.gain_level_provided) snprintf(lna_str, sizeof(lna_str), "LNA State: %d", s_sdrplay_config.gain_level);
-        else snprintf(lna_str, sizeof(lna_str), "LNA State: (auto)");
-
-        if (s_sdrplay_config.if_gain_db_provided) snprintf(if_str, sizeof(if_str), "IF Gain: %d dB", s_sdrplay_config.if_gain_db);
-        else snprintf(if_str, sizeof(if_str), "IF Gain: (auto)");
-
-        snprintf(gain_buf, sizeof(gain_buf), "%s, %s", lna_str, if_str);
-        add_summary_item(info, "Gain", "%s", gain_buf);
+    if (s_sdrplay_config.lna_state_provided || s_sdrplay_config.if_gain_db_provided) {
+        // Manual gain mode is active. Show the status of both components.
+        // The values in s_sdrplay_config will be either user-provided or the manual-mode defaults.
+        add_summary_item(info, "LNA State", "%d", s_sdrplay_config.lna_state);
+        add_summary_item(info, "IF Gain", "%d dB", s_sdrplay_config.if_gain_db);
     } else {
+        // AGC is active.
         add_summary_item(info, "Gain", "Automatic (AGC)");
     }
 
@@ -721,7 +718,7 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
         log_warn("Bias-T is not supported on the detected device.");
     }
 
-    if (s_sdrplay_config.gain_level_provided || s_sdrplay_config.if_gain_db_provided) {
+    if (s_sdrplay_config.lna_state_provided || s_sdrplay_config.if_gain_db_provided) {
         chParams->ctrlParams.agc.enable = sdrplay_api_AGC_DISABLE;
         log_info("SDRplay: AGC disabled due to manual gain setting.");
     }
@@ -730,16 +727,19 @@ static bool sdrplay_initialize(InputSourceContext* ctx) {
         chParams->tunerParams.gain.gRdB = -s_sdrplay_config.if_gain_db;
     }
 
-    if (s_sdrplay_config.gain_level_provided) {
+    if (s_sdrplay_config.lna_state_provided) {
         int num_lna_states = get_num_lna_states(private_data->sdr_device->hwVer, config->sdr.rf_freq_hz, s_sdrplay_config.use_hdr_mode, hiz_port_selected);
-        if (s_sdrplay_config.gain_level < 0 || s_sdrplay_config.gain_level >= num_lna_states) {
-            log_fatal("Invalid LNA state '%d'. Valid range for this device/frequency/port is 0 to %d.",
-                      s_sdrplay_config.gain_level, num_lna_states - 1);
+        if (s_sdrplay_config.lna_state < 0 || s_sdrplay_config.lna_state >= num_lna_states) {
+            log_fatal("Invalid LNA state '%d'. Valid range for this device/frequency is 0 (min gain) to %d (max gain).",
+                      s_sdrplay_config.lna_state, num_lna_states - 1);
             goto cleanup;
         }
-        // Per API, LNAstate is an index into the gain reduction table. 0 = min reduction (max gain).
-        // The help text says 0=max gain, so the user's input maps directly.
-        chParams->tunerParams.gain.LNAstate = s_sdrplay_config.gain_level;
+        // CORRECTED: Invert the user's gain level to map to the API's LNAstate.
+        // The user provides a level where 0 = min gain and (num_lna_states - 1) = max gain.
+        // The API expects an LNAstate where 0 = max gain (min reduction) and (num_lna_states - 1) = min gain (max reduction).
+        // Therefore, we apply the formula: LNAstate = (Total States - 1) - User Level.
+        int lna_state_for_api = (num_lna_states - 1) - s_sdrplay_config.lna_state;
+        chParams->tunerParams.gain.LNAstate = lna_state_for_api;
     }
 
     resources->input_format = CS16;

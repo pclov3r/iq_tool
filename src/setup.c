@@ -339,8 +339,8 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     }
 
     const char* base_output_labels[] = {
-        "Output Type", "Sample Type", "Output Rate", "Gain", "Frequency Shift",
-        "I/Q Correction", "DC Block", "Resampling", "Output Target", "FIR Filter", "FFT Filter"
+        "Container Type", "Sample Type", "Output Rate", "Gain Multiplier", "Frequency Shift",
+        "Resampling", "Output Target", "FIR Filter", "FFT Filter"
     };
     for (size_t i = 0; i < sizeof(base_output_labels) / sizeof(base_output_labels[0]); i++) {
         int len = (int)strlen(base_output_labels[i]);
@@ -361,6 +361,10 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
             fprintf(stderr, " %-*s : %s\n", max_label_len, summary_info.items[i].label, summary_info.items[i].value);
         }
     }
+    
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "I/Q Correction", config->iq_correction.enable ? "Enabled" : "Disabled");
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "DC Block", config->dc_block.enable ? "Enabled" : "Disabled");
+
 
     fprintf(stderr, "--- Output Details ---\n");
     const char* output_type_str;
@@ -370,13 +374,13 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
         case OUTPUT_TYPE_WAV_RF64: output_type_str = "WAV (RF64)"; break;
         default: output_type_str = "Unknown"; break;
     }
-    fprintf(stderr, " %-*s : %s\n", max_label_len, "Output Type", output_type_str);
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "Container Type", output_type_str);
 
     const char* sample_type_str = utils_get_format_description_string(config->output_format);
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Sample Type", sample_type_str);
 
     fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Output Rate", config->target_rate);
-    fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Gain", config->gain);
+    fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Gain Multiplier", config->gain);
 
     if (config->set_center_frequency_target_hz) {
         fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Target Frequency", config->center_frequency_target_hz);
@@ -386,9 +390,6 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
         snprintf(shift_buf, sizeof(shift_buf), "%+.2f Hz%s", resources->actual_nco_shift_hz, config->shift_after_resample ? " (Post-Resample)" : "");
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Frequency Shift", shift_buf);
     }
-
-    fprintf(stderr, " %-*s : %s\n", max_label_len, "I/Q Correction", config->iq_correction.enable ? "Enabled" : "Disabled");
-    fprintf(stderr, " %-*s : %s\n", max_label_len, "DC Block", config->dc_block.enable ? "Enabled" : "Disabled");
 
     if (config->num_filter_requests == 0) {
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Filter", "Disabled");
@@ -436,7 +437,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 #else
     output_path_for_messages = config->effective_output_filename;
 #endif
-    fprintf(stderr, " %-*s : %s\n", max_label_len, "Output Target", config->output_to_stdout ? "<stdout>" : output_path_for_messages);
+    fprintf(stderr, " %-*s : %s\n", max_label_len, config->output_to_stdout ? "Output Target" : "Output File", config->output_to_stdout ? "<stdout>" : output_path_for_messages);
 }
 
 bool prepare_output_stream(AppConfig *config, AppResources *resources) {

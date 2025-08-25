@@ -78,8 +78,8 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_STRING(0, "output-container", &g_config.output_type_name, "Specifies the output file container format {raw|wav|wav-rf64}", NULL, 0, 0),
         OPT_STRING(0, "output-sample-format", &g_config.sample_type_name, "Sample format for output data {cs8|cu8|cs16|...}", NULL, 0, 0),
         OPT_GROUP("Processing Options"),
-        OPT_FLOAT(0, "output-rate", &g_config.user_defined_target_rate_arg, "Output sample rate in Hz. (Required if no preset is used)", NULL, 0, 0),
-        OPT_FLOAT(0, "gain", &g_config.gain, "Apply a linear gain multiplier to the samples (Default: 1.0)", NULL, 0, 0),
+        OPT_FLOAT(0, "output-rate", &g_config.user_defined_target_rate_arg, "Output sample rate in Hz. (Required if no preset or --no-resample is used)", NULL, 0, 0),
+        OPT_FLOAT(0, "gain-multiplier", &g_config.gain, "Apply a linear gain multiplier to the samples", NULL, 0, 0),
         OPT_FLOAT(0, "freq-shift", &g_config.freq_shift_hz_arg, "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0, 0),
         OPT_BOOLEAN(0, "shift-after-resample", &g_config.shift_after_resample, "Apply frequency shift AFTER resampling (default is before)", NULL, 0, 0),
         OPT_BOOLEAN(0, "no-resample", &g_config.no_resample, "Process at native input rate. Bypasses the resampler but applies all other DSP.", NULL, 0, 0),
@@ -88,6 +88,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_BOOLEAN(0, "dc-block", &g_config.dc_block.enable, "(Optional) Enable DC offset removal (high-pass filter).", NULL, 0, 0),
         OPT_STRING(0, "preset", &g_config.preset_name, "Use a preset for a common target.", NULL, 0, 0),
     };
+
     #define DEFINE_CHAINABLE_FLOAT_OPTION(name, var, help_text) \
         OPT_FLOAT( 0, name,        &g_config.var[0], help_text, NULL, 0, 0), \
         OPT_FLOAT( 0, name "-2",     &g_config.var[1], NULL, NULL, 0, 0), \
@@ -114,6 +115,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_STRING(0, "filter-type", &g_config.filter_type_str_arg, "Set filter implementation {fir|fft}. (Default: auto).", NULL, 0, 0),
         OPT_INTEGER(0, "filter-fft-size", &g_config.filter_fft_size_arg, "Set FFT size for 'fft' filter type. Must be a power of 2.", NULL, 0, 0),
     };
+
     #if defined(ANY_SDR_SUPPORT_ENABLED)
     static const struct argparse_option sdr_general_options[] = {
         OPT_GROUP("SDR General Options"),
@@ -122,6 +124,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_BOOLEAN(0, "sdr-bias-t", &g_config.sdr.bias_t_enable, "(Optional) Enable Bias-T power.", NULL, 0, 0),
     };
     #endif
+
     static struct argparse_option final_options[] = {
         OPT_GROUP("Help & Version"),
         OPT_BOOLEAN('v', "version", NULL, "show program's version number and exit", version_cb, 0, OPT_NONEG),
@@ -129,7 +132,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_END(),
     };
 
-    #define SAFE_MEMCPY(dest, src, n) \
+    #define APPEND_OPTIONS_MEMCPY(dest, src, n) \
         do { \
             if ((size_t)(total_opts + (n)) > (size_t)max_options) { \
                 log_fatal("Internal error: Exceeded maximum number of CLI options."); \
@@ -139,10 +142,10 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
             total_opts += (n); \
         } while (0)
 
-    SAFE_MEMCPY(&options_buffer[total_opts], generic_options, sizeof(generic_options) / sizeof(generic_options[0]));
-    SAFE_MEMCPY(&options_buffer[total_opts], filter_options, sizeof(filter_options) / sizeof(filter_options[0]));
+    APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], generic_options, sizeof(generic_options) / sizeof(generic_options[0]));
+    APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], filter_options, sizeof(filter_options) / sizeof(filter_options[0]));
     #if defined(ANY_SDR_SUPPORT_ENABLED)
-    SAFE_MEMCPY(&options_buffer[total_opts], sdr_general_options, sizeof(sdr_general_options) / sizeof(sdr_general_options[0]));
+    APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], sdr_general_options, sizeof(sdr_general_options) / sizeof(sdr_general_options[0]));
     #endif
 
     int num_modules = 0;
@@ -152,14 +155,14 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
             int count = 0;
             const struct argparse_option* opts = modules[i].get_cli_options(&count);
             if (opts && count > 0) {
-                SAFE_MEMCPY(&options_buffer[total_opts], opts, count);
+                APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], opts, count);
             }
         }
     }
 
     if (config->num_presets > 0) {
         struct argparse_option preset_header[] = { OPT_GROUP("Available Presets") };
-        SAFE_MEMCPY(&options_buffer[total_opts], preset_header, 1);
+        APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], preset_header, 1);
         
         struct argparse_option preset_opts[MAX_PRESETS];
         int presets_to_add = (config->num_presets > MAX_PRESETS) ? MAX_PRESETS : config->num_presets;
@@ -171,10 +174,10 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
                 .flags = OPT_LONG_NOPREFIX,
             };
         }
-        SAFE_MEMCPY(&options_buffer[total_opts], preset_opts, presets_to_add);
+        APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], preset_opts, presets_to_add);
     }
 
-    SAFE_MEMCPY(&options_buffer[total_opts], final_options, sizeof(final_options) / sizeof(final_options[0]));
+    APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], final_options, sizeof(final_options) / sizeof(final_options[0]));
 
     return total_opts;
 }

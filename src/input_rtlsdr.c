@@ -1,3 +1,5 @@
+// src/input_rtlsdr.c
+
 #include "input_rtlsdr.h"
 #include "constants.h"
 #include "log.h"
@@ -139,14 +141,17 @@ static bool rtlsdr_validate_options(AppConfig* config) {
 static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ctx) {
     AppResources *resources = (AppResources*)cb_ctx;
 
-    if (is_shutdown_requested() || resources->error_occurred || len == 0) {
+    if (is_shutdown_requested() || resources->error_occurred) {
         return;
     }
 
-    uint32_t num_samples = len / resources->input_bytes_per_sample_pair;
-    if (!sdr_packet_serializer_write_interleaved_chunk(resources->sdr_input_buffer, num_samples, buf, resources->input_bytes_per_sample_pair)) {
-        log_warn("SDR input buffer overrun! Dropped %u bytes.", len);
-    }
+    // Simply hand off the entire buffer to the reusable chunker.
+    sdr_write_interleaved_chunks(
+        resources,
+        buf,
+        len,
+        resources->input_bytes_per_sample_pair
+    );
 }
 
 static bool rtlsdr_initialize(InputSourceContext* ctx) {
@@ -253,8 +258,6 @@ static bool rtlsdr_initialize(InputSourceContext* ctx) {
 cleanup:
     if (!success) {
         // If we failed, the main cleanup routine will be called.
-        // It will check if private_data->dev is non-NULL and close it.
-        // This makes the local cleanup logic much simpler.
     }
     return success;
 }

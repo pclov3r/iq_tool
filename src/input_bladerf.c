@@ -387,7 +387,6 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
         }
     }
     
-    // --- Configure all RF and clocking parameters based on the selected mode ---
     bool is_high_speed_mode = (config->sdr.sample_rate_hz > 61440000.0);
 
     if (is_high_speed_mode) {
@@ -405,7 +404,6 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
         goto cleanup;
     }
 
-    // Set remaining parameters (gain, bias-t)
     if (s_bladerf_config.gain_provided) {
         status = bladerf_set_gain_mode(private_data->dev, rx_channel, BLADERF_GAIN_MGC);
         if (status == 0) status = bladerf_set_gain(private_data->dev, rx_channel, s_bladerf_config.gain);
@@ -431,7 +429,6 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
         }
     }
 
-    // Set internal format and allocate temporary buffer
     resources->input_format = (s_bladerf_config.active_bit_depth == 8) ? CS8 : SC16Q11;
     resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
 
@@ -440,7 +437,7 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
     if (!private_data->stream_temp_buffer) goto cleanup;
 
     log_info("BladeRF initialized successfully.");
-    success = true; // All steps completed successfully.
+    success = true;
 
 cleanup:
     return success;
@@ -459,14 +456,6 @@ static bool bladerf_configure_high_speed_rate_and_rf(InputSourceContext* ctx, bl
         return false;
     }
 
-    /**************************************************************************************************
-     * CRITICAL API NUANCE FOR HIGH-SPEED MODE:
-     * When the BLADERF_FEATURE_OVERSAMPLE flag is enabled, the behavior of the
-     * bladerf_set_rational_sample_rate function changes. The library and firmware IGNORE the
-     * `.integer` field and expect the ENTIRE desired sample rate to be represented as a
-     * fraction using only the `.num` and `.den` fields. This is the correct, albeit
-     * unintuitive, way to use the API for sample rates > 61.44 MSPS.
-     **************************************************************************************************/
     struct bladerf_rational_rate rate_to_set = { .integer = 0, .num = (uint64_t)config->sdr.sample_rate_hz, .den = 1 };
 
     struct bladerf_rational_rate actual_rate_from_device;
@@ -630,9 +619,16 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
                         log_warn("BladeRF reported a stream overrun (discontinuity). Sending reset event.");
                         sdr_packet_serializer_write_reset_event(resources->sdr_input_buffer);
                     }
-                    if (!sdr_packet_serializer_write_interleaved_chunk(resources->sdr_input_buffer, meta.actual_count, temp_buffer, resources->input_bytes_per_sample_pair)) {
-                        log_warn("SDR input buffer overrun! Dropped %u samples.", meta.actual_count);
-                    }
+                    
+                    // --- FIX APPLIED HERE ---
+                    // The original code wrote one large packet. This version now calls the
+                    // reusable chunking function to correctly packetize the data.
+                    sdr_write_interleaved_chunks(
+                        resources,
+                        (const unsigned char*)temp_buffer,
+                        meta.actual_count * resources->input_bytes_per_sample_pair,
+                        resources->input_bytes_per_sample_pair
+                    );
                 }
             }
             break;
