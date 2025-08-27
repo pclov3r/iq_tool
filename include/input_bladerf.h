@@ -1,10 +1,13 @@
-// include/input_bladerf.h
-
 #ifndef INPUT_BLADERF_H_
 #define INPUT_BLADERF_H_
 
 #include "input_source.h"
 #include "argparse.h"
+
+// --- Forward Declaration ---
+struct AppConfig;
+
+// --- Function Declarations ---
 
 /**
  * @brief Returns a pointer to the InputSourceOps struct that implements
@@ -20,6 +23,6 @@ const struct argparse_option* bladerf_get_cli_options(int* count);
 /**
  * @brief Sets the default configuration values for the BladeRF module.
  */
-void bladerf_set_default_config(AppConfig* config);
+void bladerf_set_default_config(struct AppConfig* config);
 
 #endif // INPUT_BLADERF_H_

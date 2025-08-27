@@ -1,8 +1,9 @@
 #include "signal_handler.h"
 #include "log.h"
-#include "types.h"
-#include "input_source.h"
-#include "queue.h" // <-- MODIFIED: Added the missing include
+#include "app_context.h"       // Provides AppResources
+#include "input_source.h"      // Provides InputSourceContext
+#include "queue.h"             // Provides queue_signal_shutdown
+#include "file_write_buffer.h" // Provides file_write_buffer_signal_shutdown
 #include <stdio.h>
 #include <string.h>
 
@@ -16,7 +17,6 @@
 #include <unistd.h>
 #include <strings.h>
 #endif
-
 
 extern pthread_mutex_t g_console_mutex;
 

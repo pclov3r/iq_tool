@@ -1,10 +1,10 @@
 #include "dc_block.h"
 #include "constants.h"
 #include "log.h"
-#include "config.h" // For DC_BLOCK_CUTOFF_HZ
+#include "app_context.h" // Provides AppConfig, AppResources
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>   // For M_PI, fabs
+#include <math.h>
 #include <errno.h>
 
 #ifndef M_PI
@@ -17,7 +17,7 @@
 #include <liquid/liquid.h>
 #endif
 
-bool dc_block_init(AppConfig* config, AppResources* resources) {
+bool dc_block_create(AppConfig* config, AppResources* resources) {
     if (!config->dc_block.enable) {
         resources->dc_block.dc_block_filter = NULL; // Ensure no filter if disabled
         return true;
@@ -65,6 +65,14 @@ bool dc_block_init(AppConfig* config, AppResources* resources) {
     return true;
 }
 
+void dc_block_reset(AppResources* resources) {
+    if (!resources->config->dc_block.enable || !resources->dc_block.dc_block_filter) {
+        return; // DC block is disabled or not initialized
+    }
+    log_debug("DC block filter reset due to stream discontinuity.");
+    iirfilt_crcf_reset(resources->dc_block.dc_block_filter);
+}
+
 void dc_block_apply(AppResources* resources, complex_float_t* samples, int num_samples) {
     if (!resources->config->dc_block.enable || !resources->dc_block.dc_block_filter) {
         return; // DC block is disabled or not initialized
@@ -77,7 +85,7 @@ void dc_block_apply(AppResources* resources, complex_float_t* samples, int num_s
                                (liquid_float_complex*)samples);
 }
 
-void dc_block_cleanup(AppResources* resources) {
+void dc_block_destroy(AppResources* resources) {
     if (resources->dc_block.dc_block_filter) {
         iirfilt_crcf_destroy(resources->dc_block.dc_block_filter);
         resources->dc_block.dc_block_filter = NULL;

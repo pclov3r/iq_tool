@@ -1,7 +1,4 @@
-// setup.c
-
 #include "setup.h"
-#include "types.h"
 #include "constants.h"
 #include "platform.h"
 #include "utils.h"
@@ -16,6 +13,8 @@
 #include "filter.h"
 #include "memory_arena.h"
 #include "queue.h"
+#include "file_write_buffer.h"
+#include "app_context.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,7 +49,7 @@ static bool create_filter(AppConfig *config, AppResources *resources);
 
 static bool create_dc_blocker(AppConfig *config, AppResources *resources) {
     if (!config->dc_block.enable) return true;
-    return dc_block_init(config, resources);
+    return dc_block_create(config, resources);
 }
 
 static bool create_iq_corrector(AppConfig *config, AppResources *resources) {
@@ -593,10 +592,10 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
     InputSourceContext ctx = { .config = config, .resources = resources };
 
     if (config->dc_block.enable) {
-        dc_block_cleanup(resources);
+        dc_block_destroy(resources);
     }
     if (config->iq_correction.enable) {
-        iq_correct_cleanup(resources);
+        iq_correct_destroy(resources);
     }
     filter_destroy(resources);
     freq_shift_destroy_ncos(resources);

@@ -1,4 +1,18 @@
-// include/sdr_packet_serializer.h
+/**
+ * @file sdr_packet_serializer.h
+ * @brief Defines the data protocol for the ring buffer between the SDR Capture and Reader threads.
+ *
+ * This module provides a standardized data protocol for writing different types
+ * of SDR data (interleaved, de-interleaved) and events (stream reset) into the
+ * single, contiguous byte stream managed by the `sdr_input_buffer` ring buffer.
+ *
+ * Its primary role is to decouple the SDR hardware callback (running in the
+ * `sdr_capture_thread`) from the main processing pipeline. The capture thread
+ * uses the `sdr_packet_serializer_write_*` functions to serialize data into
+ * framed packets. The `reader_thread` then uses `sdr_packet_serializer_read_packet`
+ * to deserialize these packets, ensuring a robust and orderly flow of data and
+ * events, even if the SDR hardware provides data in inconvenient chunks or formats.
+ */
 
 #ifndef SDR_PACKET_SERIALIZER_H_
 #define SDR_PACKET_SERIALIZER_H_
@@ -7,8 +21,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
-// Forward declare the structs we need pointers to, without needing their full definitions.
-// This keeps the public header clean and minimizes dependencies.
+// --- Forward Declarations ---
+// We only use pointers to these structs, so we don't need their full definitions.
 struct FileWriteBuffer;
 struct SampleChunk;
 struct AppResources;
@@ -53,6 +67,7 @@ bool sdr_packet_serializer_write_reset_event(struct FileWriteBuffer* buffer);
 
 /**
  * @brief Reads and parses the next complete packet from the ring buffer.
+ *
  * This is a blocking call. It handles the logic of reading the header, determining
  * the packet type and size, and reading the correct amount of data. It will
  * always return a correctly interleaved block of samples in the target_chunk.
@@ -75,6 +90,11 @@ int64_t sdr_packet_serializer_read_packet(struct FileWriteBuffer* buffer,
 /**
  * @brief A reusable utility to take a large, interleaved buffer from an SDR,
  *        break it into pipeline-sized chunks, and write each as a packet to the ring buffer.
+ *
+ * @param resources Pointer to the application resources (needed for the buffer handle).
+ * @param data Pointer to the start of the large interleaved data block from the SDR.
+ * @param length_bytes The total size in bytes of the data block.
+ * @param bytes_per_sample_pair The size in bytes of one I/Q pair for this data.
  */
 void sdr_write_interleaved_chunks(struct AppResources* resources, const unsigned char* data, uint32_t length_bytes, size_t bytes_per_sample_pair);
 

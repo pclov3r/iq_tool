@@ -1,9 +1,7 @@
-// presets_loader.c
-
 #include "presets_loader.h"
 #include "constants.h"
 #include "log.h"
-#include "config.h"
+#include "app_context.h"
 #include "utils.h"
 #include "platform.h"
 #include "memory_arena.h"
@@ -18,7 +16,8 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <shlobj.h>
-#include <shlwapi.h>
+#include <shlwapi.h> // For PathFileExistsW
+#include <io.h>      // For _get_osfhandle, _fileno
 #define strcasecmp _stricmp
 #else
 #include <strings.h>
@@ -61,9 +60,6 @@ static char* arena_strdup(MemoryArena* arena, const char* s) {
     return new_s;
 }
 
-// REMOVED: The free_dynamic_paths function is no longer needed as the arena manages this memory.
-
-// --- Function signature updated to match the header ---
 bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
     config->presets = NULL;
     config->num_presets = 0;
@@ -89,7 +85,6 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         CoTaskMemFree(appdata_path_w);
         PathAppendW(full_appdata_path_w, L"\\" APP_NAME);
         
-        // MODIFIED: Allocate from the arena instead of the heap.
         char* appdata_path_utf8 = (char*)mem_arena_alloc(arena, MAX_PATH_BUFFER);
         if (appdata_path_utf8) {
             if (WideCharToMultiByte(CP_UTF8, 0, full_appdata_path_w, -1, appdata_path_utf8, MAX_PATH_BUFFER, NULL, NULL) > 0) {
@@ -98,7 +93,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
                 log_warn("Failed to convert AppData path to UTF-8 for presets.");
             }
         } else {
-            return false; // mem_arena_alloc already logged the fatal error
+            return false;
         }
     }
     wchar_t* programdata_path_w = NULL;
@@ -109,7 +104,6 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         CoTaskMemFree(programdata_path_w);
         PathAppendW(full_programdata_path_w, L"\\" APP_NAME);
 
-        // MODIFIED: Allocate from the arena instead of the heap.
         char* programdata_path_utf8 = (char*)mem_arena_alloc(arena, MAX_PATH_BUFFER);
         if (programdata_path_utf8) {
             if (WideCharToMultiByte(CP_UTF8, 0, full_programdata_path_w, -1, programdata_path_utf8, MAX_PATH_BUFFER, NULL, NULL) > 0) {
@@ -118,17 +112,16 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
                 log_warn("Failed to convert ProgramData path to UTF-8 for presets.");
             }
         } else {
-            return false; // mem_arena_alloc already logged the fatal error
+            return false;
         }
     }
 #else // POSIX
     search_paths_list[current_path_idx++] = ".";
     const char* xdg_config_home = getenv("XDG_CONFIG_HOME");
     
-    // MODIFIED: Allocate from the arena instead of the heap.
     char* xdg_path = (char*)mem_arena_alloc(arena, MAX_PATH_BUFFER);
     if (!xdg_path) {
-        return false; // mem_arena_alloc already logged the fatal error
+        return false;
     }
     
     bool xdg_path_set = false;
@@ -154,12 +147,26 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         const char* base_dir = search_paths_list[i];
         if (base_dir == NULL) continue;
         snprintf(full_path_buffer, sizeof(full_path_buffer), "%s/%s", base_dir, PRESETS_FILENAME);
-        if (utils_check_file_exists(full_path_buffer)) {
+        
+        bool file_found = false;
+        #ifdef _WIN32
+        wchar_t full_path_w[MAX_PATH_BUFFER];
+        if (MultiByteToWideChar(CP_UTF8, 0, full_path_buffer, -1, full_path_w, MAX_PATH_BUFFER) > 0) {
+            if (PathFileExistsW(full_path_w)) {
+                file_found = true;
+            }
+        }
+        #else
+        if (access(full_path_buffer, F_OK) == 0) {
+            file_found = true;
+        }
+        #endif
+
+        if (file_found) {
             if (num_found_files < (int)(sizeof(found_preset_files) / sizeof(found_preset_files[0]))) {
-                // MODIFIED: Use arena_strdup instead of strdup.
                 found_preset_files[num_found_files] = arena_strdup(arena, full_path_buffer);
                 if (!found_preset_files[num_found_files]) {
-                    return false; // mem_arena_alloc already logged the fatal error
+                    return false;
                 }
                 num_found_files++;
             }
@@ -170,7 +177,6 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         log_warn("Conflicting presets files found. No presets will be loaded. Please resolve the conflict by keeping only one of the following files:");
         for (int i = 0; i < num_found_files; ++i) {
             log_warn("  - %s", found_preset_files[i]);
-            // REMOVED: No need to free, memory is in the arena.
         }
         return true;
     } else if (num_found_files == 0) {
@@ -178,11 +184,48 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         return true;
     }
 
-    FILE* fp = fopen(found_preset_files[0], "r");
+    FILE* fp = NULL;
+    #ifdef _WIN32
+    wchar_t preset_file_w[MAX_PATH_BUFFER];
+    if (MultiByteToWideChar(CP_UTF8, 0, found_preset_files[0], -1, preset_file_w, MAX_PATH_BUFFER) > 0) {
+        fp = _wfopen(preset_file_w, L"r");
+    }
+    #else
+    fp = fopen(found_preset_files[0], "r");
+    #endif
+
     if (!fp) {
         log_fatal("Error opening presets file '%s': %s", found_preset_files[0], strerror(errno));
         return false;
     }
+
+    #ifdef _WIN32
+    HANDLE hFile = (HANDLE)_get_osfhandle(_fileno(fp));
+    BY_HANDLE_FILE_INFORMATION fileInfo;
+    if (GetFileInformationByHandle(hFile, &fileInfo)) {
+        if (fileInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            log_fatal("Security risk!: Presets file '%s' is a directory. Aborting.", found_preset_files[0]);
+            fclose(fp);
+            return false;
+        }
+    } else {
+        log_fatal("Could not get file status for '%s'", found_preset_files[0]);
+        fclose(fp);
+        return false;
+    }
+    #else
+    struct stat file_stat;
+    if (fstat(fileno(fp), &file_stat) != 0) {
+        log_fatal("Could not get file status for '%s': %s", found_preset_files[0], strerror(errno));
+        fclose(fp);
+        return false;
+    }
+    if (!S_ISREG(file_stat.st_mode)) {
+        log_fatal("Security risk!: Presets file '%s' is not a regular file. Aborting.", found_preset_files[0]);
+        fclose(fp);
+        return false;
+    }
+    #endif
 
     char line[MAX_LINE_LENGTH];
     PresetDefinition* current_preset = NULL;

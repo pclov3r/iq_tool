@@ -1,13 +1,23 @@
-// sample_convert.h
+/**
+ * @file sample_convert.h
+ * @brief Defines the interface for converting between I/Q sample formats.
+ *
+ * This module provides a set of highly optimized functions for converting
+ * between the various raw integer sample formats (e.g., cs16, cu8) and the
+ * pipeline's internal 32-bit complex float format. These functions are a
+ * critical part of the pre-processor and post-processor stages.
+ */
 
 #ifndef SAMPLE_CONVERT_H_
 #define SAMPLE_CONVERT_H_
 
-#include "types.h" // For format_t, complex_float_t
+#include <stddef.h>
+#include "common_types.h" // Provides format_t and complex_float_t
+
+// --- Function Declarations ---
 
 /**
- * @brief Gets the number of bytes for a single sample of the given format.
- *        For complex formats, this is the size of the I/Q pair.
+ * @brief Gets the number of bytes for a single I/Q pair of the given format.
  * @param format The sample format.
  * @return The size in bytes, or 0 for unknown formats.
  */
@@ -16,9 +26,9 @@ size_t get_bytes_per_sample(format_t format);
 /**
  * @brief Converts a block of raw input samples into normalized, gain-adjusted complex floats.
  *
- * This function handles all integer and float input formats, normalizes them to the
- * standard [-1.0, 1.0] range, and applies the specified linear gain multiplier in a
- * single pass.
+ * This function handles all supported integer and float input formats, normalizes
+ * them to the standard [-1.0, 1.0] range, and applies the specified linear gain
+ * multiplier in a single pass.
  *
  * @param input_buffer Pointer to the raw input data.
  * @param output_buffer Pointer to the destination buffer for complex float data.
@@ -31,6 +41,10 @@ bool convert_raw_to_cf32(const void* input_buffer, complex_float_t* output_buffe
 
 /**
  * @brief Converts a block of normalized complex floats into the specified output byte format.
+ *
+ * This function takes the pipeline's internal complex float data and converts it
+ * to the final integer-based format for output, performing the necessary scaling
+ * and clamping.
  *
  * @param input_buffer Pointer to the source complex float data.
  * @param output_buffer Pointer to the destination buffer for raw output data.

@@ -1,11 +1,8 @@
-// input_sdrplay.c
-
 #include "input_sdrplay.h"
 #include "constants.h"
 #include "log.h"
 #include "signal_handler.h"
-#include "config.h"
-#include "types.h"
+#include "app_context.h"
 #include "frequency_shift.h"
 #include "utils.h"
 #include "sample_convert.h"
@@ -13,13 +10,14 @@
 #include "memory_arena.h"
 #include "queue.h"
 #include "file_write_buffer.h"
+#include "sdr_packet_serializer.h"
+#include "argparse.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
 #include <errno.h>
 #include <stdarg.h>
-#include "argparse.h"
 
 // Module-specific includes
 #include "sdrplay_api.h"
@@ -35,7 +33,6 @@
 #include <strings.h>
 #include <time.h>
 #endif
-
 
 #if defined(_WIN32) && defined(WITH_SDRPLAY)
 // --- Private Windows Dynamic API Loading ---

@@ -1,9 +1,8 @@
-// input_manager.c
-
 #include "input_manager.h"
-#include "memory_arena.h" // MODIFIED: Include memory_arena.h
+#include "app_context.h"
+#include "memory_arena.h"
 #include <string.h>
-#include <stdlib.h> // Needed for NULL
+#include <stdlib.h>
 
 // --- Include the headers for ALL concrete input source implementations ---
 #include "input_wav.h"

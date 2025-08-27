@@ -25,6 +25,7 @@
  */
 
 #include "sample_convert.h"
+#include "common_types.h" // Provides format_t, complex_float_t
 #include "log.h"
 #include <string.h>
 #include <math.h>

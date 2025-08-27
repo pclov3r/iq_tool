@@ -1,6 +1,7 @@
 // src/config.c
 
-#include "config.h"    // For function prototypes this file implements
+#include "config.h"
+#include "app_context.h" // Provides the full definition for AppConfig
 #include "constants.h"
 #include "log.h"
 #include "utils.h"

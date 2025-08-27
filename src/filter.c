@@ -1,8 +1,8 @@
 #include "filter.h"
 #include "constants.h"
 #include "log.h"
-#include "config.h"
-#include "memory_arena.h"
+#include "app_context.h"  // Provides AppConfig, AppResources
+#include "memory_arena.h" // Provides MemoryArena
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -294,5 +294,26 @@ void filter_destroy(AppResources* resources) {
                 break;
         }
         resources->user_fir_filter_object = NULL;
+    }
+}
+
+void filter_reset(AppResources* resources) {
+    if (resources->user_fir_filter_object) {
+        switch (resources->user_filter_type_actual) {
+            case FILTER_IMPL_FIR_SYMMETRIC:
+                firfilt_crcf_reset((firfilt_crcf)resources->user_fir_filter_object);
+                break;
+            case FILTER_IMPL_FIR_ASYMMETRIC:
+                firfilt_cccf_reset((firfilt_cccf)resources->user_fir_filter_object);
+                break;
+            case FILTER_IMPL_FFT_SYMMETRIC:
+                fftfilt_crcf_reset((fftfilt_crcf)resources->user_fir_filter_object);
+                break;
+            case FILTER_IMPL_FFT_ASYMMETRIC:
+                fftfilt_cccf_reset((fftfilt_cccf)resources->user_fir_filter_object);
+                break;
+            default:
+                break;
+        }
     }
 }
