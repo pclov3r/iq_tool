@@ -16,8 +16,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #else
-#include <io.h>      // For _open_osfhandle, _fdopen
-#include <fcntl.h>   // For _O_* constants ---
+#include <io.h>
+#include <fcntl.h>
 #endif
 
 // --- Private Data Structs ---
@@ -105,37 +105,54 @@ static FILE* _secure_open_for_write(const AppConfig* config, const char* out_pat
     return _fdopen(fd, "wb");
 }
 #else
+// --- START MODIFICATION: Fully secure POSIX open logic ---
 static FILE* _secure_open_for_write(const char* out_path_utf8) {
-    int fd = -1;
-    
-    fd = open(out_path_utf8, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0666);
-    if (fd < 0) {
-        if (errno == EEXIST) {
-            struct stat stat_buf;
-            if (lstat(out_path_utf8, &stat_buf) != 0) {
-                log_fatal("Could not stat existing output file %s: %s", out_path_utf8, strerror(errno));
-                return NULL;
-            }
-            if (!S_ISREG(stat_buf.st_mode)) {
-                log_fatal("Output path '%s' exists but is not a regular file. Aborting.", out_path_utf8);
-                return NULL;
-            }
-
-            if (!prompt_for_overwrite(out_path_utf8)) {
-                return NULL;
-            }
-
-            fd = open(out_path_utf8, O_WRONLY | O_TRUNC | O_NOFOLLOW, 0666);
+    int fd = open(out_path_utf8, O_WRONLY | O_NOFOLLOW);
+    if (fd >= 0) {
+        // --- FILE EXISTS ---
+        // We have a valid handle, now we verify it.
+        struct stat stat_buf;
+        if (fstat(fd, &stat_buf) != 0) {
+            log_fatal("Could not fstat opened file %s: %s", out_path_utf8, strerror(errno));
+            close(fd);
+            return NULL;
         }
-    }
+        if (!S_ISREG(stat_buf.st_mode)) {
+            log_fatal("Output path '%s' exists but is not a regular file. Aborting.", out_path_utf8);
+            close(fd);
+            return NULL;
+        }
 
-    if (fd < 0) {
+        // Now we can safely prompt the user. The handle is already open.
+        if (!prompt_for_overwrite(out_path_utf8)) {
+            close(fd);
+            return NULL; // User cancelled
+        }
+
+        // User agreed. Truncate the file using the descriptor. This is safe.
+        if (ftruncate(fd, 0) != 0) {
+            log_fatal("Could not truncate file %s: %s", out_path_utf8, strerror(errno));
+            close(fd);
+            return NULL;
+        }
+        // We can now use this fd.
+    } else if (errno == ENOENT) {
+        // --- FILE DOES NOT EXIST ---
+        // We can now safely create it. O_NOFOLLOW is still good practice.
+        fd = open(out_path_utf8, O_WRONLY | O_CREAT | O_NOFOLLOW, 0666);
+        if (fd < 0) {
+            log_fatal("Could not create file %s: %s", out_path_utf8, strerror(errno));
+            return NULL;
+        }
+    } else {
+        // Another error occurred during the initial open attempt.
         log_fatal("Error opening output file %s: %s", out_path_utf8, strerror(errno));
         return NULL;
     }
 
     return fdopen(fd, "wb");
 }
+// --- END MODIFICATION ---
 #endif
 
 static long long generic_get_total_bytes_written(const FileWriterContext* ctx) {
