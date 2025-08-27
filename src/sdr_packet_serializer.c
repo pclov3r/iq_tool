@@ -1,9 +1,9 @@
-// src/sdr_packet_serializer.c
-
 #include "sdr_packet_serializer.h"
 #include "constants.h"
 #include "log.h"
-#include "types.h"
+#include "app_context.h"       // Provides AppResources
+#include "pipeline_types.h"    // Provides SampleChunk
+#include "file_write_buffer.h" // Provides FileWriteBuffer
 #include <string.h>
 #include <stdlib.h>
 

@@ -1,9 +1,6 @@
-// src/input_hackrf.c
-
 #include "input_hackrf.h"
 #include "constants.h"
-#include "config.h"
-#include "types.h"
+#include "app_context.h"
 #include "signal_handler.h"
 #include "log.h"
 #include "frequency_shift.h"
@@ -12,12 +9,13 @@
 #include "input_common.h"
 #include "memory_arena.h"
 #include "queue.h"
+#include "sdr_packet_serializer.h" // <-- THE FIX IS HERE
+#include "argparse.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <stdarg.h>
-#include "argparse.h"
 
 // Module-specific includes
 #include <hackrf.h>

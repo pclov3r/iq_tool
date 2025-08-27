@@ -1,6 +1,21 @@
-// main.c
-
 #include "constants.h"
+#include "app_context.h"      // Provides AppConfig, AppResources
+#include "cli.h"              // Provides parse_arguments()
+#include "setup.h"            // Provides initialize_application()
+#include "utils.h"
+#include "signal_handler.h"   // Provides setup_signal_handlers()
+#include "log.h"
+#include "input_manager.h"    // Provides input_manager_apply_defaults()
+#include "sample_convert.h"
+#include "file_writer.h"
+#include "presets_loader.h"
+#include "platform.h"
+#include "memory_arena.h"     // Provides mem_arena_init()
+#include "iq_correct.h"
+#include "dc_block.h"
+#include "io_threads.h"       // Provides the I/O thread functions
+#include "processing_threads.h" // Provides the DSP thread functions
+#include "pipeline_context.h" // Provides PipelineContext
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
@@ -17,26 +32,6 @@
 #include <sys/stat.h>
 #include <io.h>
 #endif
-
-#include "types.h"
-#include "config.h"
-#include "cli.h"
-#include "setup.h"
-#include "utils.h"
-#include "frequency_shift.h"
-#include "signal_handler.h"
-#include "log.h"
-#include "input_manager.h"
-#include "sample_convert.h"
-#include "file_writer.h"
-#include "presets_loader.h"
-#include "platform.h"
-#include "memory_arena.h"
-#include "iq_correct.h"
-#include "dc_block.h"
-#include "io_threads.h"
-#include "processing_threads.h"
-
 
 // --- Global Variable Definitions ---
 pthread_mutex_t g_console_mutex;

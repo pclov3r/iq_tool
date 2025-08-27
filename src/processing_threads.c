@@ -1,10 +1,7 @@
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
 #include "processing_threads.h"
-#include "types.h"
+#include "pipeline_context.h"
 #include "constants.h"
+#include "app_context.h"
 #include "utils.h"
 #include "frequency_shift.h"
 #include "signal_handler.h"
@@ -15,6 +12,7 @@
 #include "filter.h"
 #include "queue.h"
 #include "memory_arena.h"
+#include "file_write_buffer.h"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -22,6 +20,7 @@
 #include <stdlib.h>
 
 #ifdef _WIN32
+#include <windows.h>
 #include <liquid.h>
 #else
 #include <liquid/liquid.h>
@@ -142,15 +141,13 @@ void* pre_processor_thread_func(void* arg) {
         }
 
         if (item->stream_discontinuity_event) {
+            // Reset all stateful objects in this thread
             freq_shift_reset_nco(resources->pre_resample_nco);
-            if (resources->user_fir_filter_object) {
-                switch (resources->user_filter_type_actual) {
-                    case FILTER_IMPL_FIR_SYMMETRIC: firfilt_crcf_reset((firfilt_crcf)resources->user_fir_filter_object); break;
-                    case FILTER_IMPL_FIR_ASYMMETRIC: firfilt_cccf_reset((firfilt_cccf)resources->user_fir_filter_object); break;
-                    case FILTER_IMPL_FFT_SYMMETRIC: fftfilt_crcf_reset((fftfilt_crcf)resources->user_fir_filter_object); break;
-                    case FILTER_IMPL_FFT_ASYMMETRIC: fftfilt_cccf_reset((fftfilt_cccf)resources->user_fir_filter_object); break;
-                    default: break;
-                }
+            dc_block_reset(resources);
+
+            if (resources->user_fir_filter_object && !config->apply_user_filter_post_resample) {
+                log_debug("Pre-resample filter reset due to stream discontinuity.");
+                filter_reset(resources);
             }
             if (is_pre_fft) {
                 memset(resources->pre_fft_remainder_buffer, 0, resources->user_filter_block_size * sizeof(complex_float_t));
@@ -329,6 +326,10 @@ void* post_processor_thread_func(void* arg) {
 
         if (item->stream_discontinuity_event) {
             freq_shift_reset_nco(resources->post_resample_nco);
+            if (resources->user_fir_filter_object && config->apply_user_filter_post_resample) {
+                log_debug("Post-resample filter reset due to stream discontinuity.");
+                filter_reset(resources);
+            }
             if (is_post_fft) {
                 memset(resources->post_fft_remainder_buffer, 0, resources->user_filter_block_size * sizeof(complex_float_t));
                 remainder_len = 0;

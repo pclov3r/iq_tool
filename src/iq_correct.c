@@ -1,14 +1,13 @@
 #include "iq_correct.h"
 #include "constants.h"
 #include "log.h"
-#include "config.h"
-#include "memory_arena.h" // <-- MODIFIED: Add the missing include
+#include "app_context.h"  // Provides AppConfig, AppResources
+#include "memory_arena.h" // Provides MemoryArena
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <errno.h>
 #include <time.h>
-
 #include <stdatomic.h>
 
 #ifndef M_PI
@@ -144,7 +143,7 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
     log_debug("IQ_OPT_PROBE: Smoothed global params updated to: mag=%.6f, phase=%.6f", smoothed_gain, smoothed_phase);
 }
 
-void iq_correct_cleanup(AppResources* resources) {
+void iq_correct_destroy(AppResources* resources) {
     if (resources->iq_correction.fft_plan) {
         fft_destroy_plan(resources->iq_correction.fft_plan);
         resources->iq_correction.fft_plan = NULL;

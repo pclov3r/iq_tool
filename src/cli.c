@@ -2,10 +2,12 @@
 
 #include "cli.h"
 #include "constants.h"
-#include "types.h"
-#include "config.h"
+#include "app_context.h"      // Provides AppConfig, MemoryArena
+#include "config.h"           // Provides validation function prototypes
 #include "log.h"
 #include "utils.h"
+#include "argparse.h"
+#include "input_manager.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,10 +15,6 @@
 #include <errno.h>
 #include <math.h>
 #include <limits.h>
-
-#include "argparse.h"
-#include "input_manager.h"
-#include "memory_arena.h"
 
 #ifdef _WIN32
 #define strcasecmp _stricmp

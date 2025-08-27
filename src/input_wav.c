@@ -1,26 +1,22 @@
-// input_wav.c
-
 #include "input_wav.h"
 #include "constants.h"
 #include "log.h"
 #include "signal_handler.h"
 #include "utils.h"
-#include "config.h"
+#include "app_context.h"  // Provides AppConfig, AppResources
 #include "platform.h"
 #include "sample_convert.h"
 #include "input_common.h"
-#include "memory_arena.h"
+#include "memory_arena.h" // Provides MemoryArena
 #include "queue.h"
+#include "argparse.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
 #include <pthread.h>
 #include <sys/stat.h>
 #include <stdarg.h>
-#include "argparse.h"
-
 #include <sndfile.h>
-
 #include <stdlib.h>
 #include <stdbool.h>
 #include <ctype.h>

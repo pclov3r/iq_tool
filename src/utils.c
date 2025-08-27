@@ -1,16 +1,14 @@
-// utils.c
-
 #include "utils.h"
 #include "log.h"
-// MODIFIED: Include memory_arena.h for mem_arena_alloc
-#include "memory_arena.h"
+#include "memory_arena.h" // Provides MemoryArena
+#include "app_context.h"  // Provides AppConfig
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
 #include <stdarg.h>
 #include <ctype.h>
 #include <time.h>
-#include <stdlib.h> // For strdup/free on POSIX
+#include <stdlib.h>
 
 #ifdef _WIN32
 #include <windows.h>

@@ -1,9 +1,38 @@
-#ifndef ARENA_H_
-#define ARENA_H_
+/**
+ * @file memory_arena.h
+ * @brief Defines the interface for a simple, fast memory arena allocator.
+ *
+ * The memory arena is used for all setup-time allocations (e.g., DSP objects,
+ * configuration strings, buffers). It works by allocating one large block of
+ * memory upfront and then servicing subsequent allocation requests by simply
+ * "bumping" a pointer. This is much faster than repeated calls to malloc()
+ * and prevents memory fragmentation. All memory is freed at once when the
+ * arena is destroyed.
+ */
 
-#include "types.h" // Needed for MemoryArena struct definition
-#include <stdbool.h>
+#ifndef MEMORY_ARENA_H_
+#define MEMORY_ARENA_H_
+
 #include <stddef.h>
+#include <stdbool.h>
+
+// --- Struct Definition ---
+
+/**
+ * @struct MemoryArena
+ * @brief Manages a single large block of memory for fast, contiguous allocations.
+ *
+ * This struct should be treated as an opaque handle by client code and only
+ * manipulated through the mem_arena_* functions.
+ */
+typedef struct MemoryArena {
+    void*  memory;      ///< Pointer to the start of the large allocated memory block.
+    size_t capacity;    ///< The total size in bytes of the memory block.
+    size_t offset;      ///< The current offset in bytes for the next allocation (the "bump pointer").
+} MemoryArena;
+
+
+// --- Function Declarations ---
 
 /**
  * @brief Initializes a memory arena with a specified capacity.
@@ -15,7 +44,11 @@ bool mem_arena_init(MemoryArena* arena, size_t capacity);
 
 /**
  * @brief Allocates a block of memory from the arena.
- * This is a simple, fast bump-pointer allocator.
+ *
+ * This function is not thread-safe. It is intended for use during the
+ * single-threaded setup phase of the application. The allocated memory is
+ * automatically zeroed.
+ *
  * @param arena Pointer to the initialized MemoryArena.
  * @param size The number of bytes to allocate.
  * @return A void pointer to the allocated memory, or NULL if the arena is full.
@@ -28,4 +61,4 @@ void* mem_arena_alloc(MemoryArena* arena, size_t size);
  */
 void mem_arena_destroy(MemoryArena* arena);
 
-#endif // ARENA_H_
+#endif // MEMORY_ARENA_H_

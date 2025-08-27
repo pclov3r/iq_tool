@@ -4,12 +4,14 @@
 
 #include "io_threads.h"
 #include "constants.h"
-#include "types.h"
-#include "config.h"
+#include "app_context.h"
 #include "signal_handler.h"
 #include "log.h"
 #include "input_source.h"
-#include "queue.h" // <-- MODIFIED: Added the missing include for queue functions
+#include "queue.h"
+#include "sdr_packet_serializer.h"
+#include "pipeline_context.h"
+#include "file_write_buffer.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>

@@ -1,11 +1,10 @@
 #include "queue.h"
 #include "log.h"
-#include "memory_arena.h"
+#include "memory_arena.h" // For mem_arena_alloc
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
-
 
 bool queue_init(Queue* queue, size_t capacity, MemoryArena* arena) {
     if (!queue || !arena) {

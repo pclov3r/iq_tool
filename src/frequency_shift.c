@@ -1,7 +1,6 @@
-// spectrum_shift.c
 #include "frequency_shift.h"
 #include "constants.h"
-#include "config.h"
+#include "app_context.h" // Provides AppConfig, AppResources
 #include "utils.h"
 #include "log.h"
 #include <stdio.h>

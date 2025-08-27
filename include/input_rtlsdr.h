@@ -1,10 +1,13 @@
-// include/input_rtlsdr.h
-
 #ifndef INPUT_RTLSDR_H_
 #define INPUT_RTLSDR_H_
 
 #include "input_source.h"
 #include "argparse.h"
+
+// --- Forward Declaration ---
+struct AppConfig;
+
+// --- Function Declarations ---
 
 /**
  * @brief Returns a pointer to the InputSourceOps struct that implements
@@ -20,6 +23,6 @@ const struct argparse_option* rtlsdr_get_cli_options(int* count);
 /**
  * @brief Sets the default configuration values for the RTL-SDR module.
  */
-void rtlsdr_set_default_config(AppConfig* config);
+void rtlsdr_set_default_config(struct AppConfig* config);
 
 #endif // INPUT_RTLSDR_H_
