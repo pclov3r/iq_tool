@@ -111,7 +111,7 @@ void* queue_try_dequeue(Queue* queue) {
 
     pthread_mutex_lock(&queue->mutex);
 
-    if (queue->count == 0 || queue->shutting_down) {
+    if (queue->count == 0)  {
         pthread_mutex_unlock(&queue->mutex);
         return NULL;
     }
