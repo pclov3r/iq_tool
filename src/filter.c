@@ -28,6 +28,8 @@ static liquid_float_complex* convolve_complex_taps(
         return NULL;
     }
 
+    memset(result, 0, *out_len * sizeof(liquid_float_complex));
+
     for (int i = 0; i < *out_len; i++) {
         for (int j = 0; j < len2; j++) {
             if (i - j >= 0 && i - j < len1) {
