@@ -113,8 +113,11 @@ void* pre_processor_thread_func(void* arg) {
         if (item->is_last_chunk) {
             if (is_pre_fft && remainder_len > 0) {
                 // Flush the remainder by processing it with zero-padding.
-                memset(item->complex_pre_resample_data, 0, item->complex_buffer_capacity_samples * sizeof(complex_float_t));
+                // BUG FIX: Correctly copy remainder then zero-pad the rest of the block.
                 memcpy(item->complex_pre_resample_data, resources->pre_fft_remainder_buffer, remainder_len * sizeof(complex_float_t));
+                if (resources->user_filter_block_size > remainder_len) {
+                    memset(item->complex_pre_resample_data + remainder_len, 0, (resources->user_filter_block_size - remainder_len) * sizeof(complex_float_t));
+                }
                 
                 if (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC) {
                     fftfilt_crcf_execute((fftfilt_crcf)resources->user_fir_filter_object, item->complex_pre_resample_data, item->complex_pre_resample_data);
@@ -189,7 +192,12 @@ void* pre_processor_thread_func(void* arg) {
             memcpy(item->complex_pre_resample_data, item->complex_scratch_data, output_frames * sizeof(complex_float_t));
             item->frames_read = output_frames;
         } else if (resources->user_fir_filter_object && !config->apply_user_filter_post_resample) {
-            firfilt_crcf_execute_block((firfilt_crcf)resources->user_fir_filter_object, item->complex_pre_resample_data, item->frames_read, item->complex_pre_resample_data);
+            // BUG FIX: Handle both symmetric and asymmetric FIR filters, not just symmetric.
+            if (resources->user_filter_type_actual == FILTER_IMPL_FIR_SYMMETRIC) {
+                firfilt_crcf_execute_block((firfilt_crcf)resources->user_fir_filter_object, item->complex_pre_resample_data, item->frames_read, item->complex_pre_resample_data);
+            } else { // FILTER_IMPL_FIR_ASYMMETRIC
+                firfilt_cccf_execute_block((firfilt_cccf)resources->user_fir_filter_object, item->complex_pre_resample_data, item->frames_read, item->complex_pre_resample_data);
+            }
         }
 
         if (resources->pre_resample_nco) {
@@ -275,8 +283,11 @@ void* post_processor_thread_func(void* arg) {
         if (item->is_last_chunk) {
             if (is_post_fft && remainder_len > 0) {
                 // Flush the remainder by processing it with zero-padding.
-                memset(item->complex_resampled_data, 0, item->complex_buffer_capacity_samples * sizeof(complex_float_t));
+                // BUG FIX: Correctly copy remainder then zero-pad the rest of the block.
                 memcpy(item->complex_resampled_data, resources->post_fft_remainder_buffer, remainder_len * sizeof(complex_float_t));
+                if (resources->user_filter_block_size > remainder_len) {
+                    memset(item->complex_resampled_data + remainder_len, 0, (resources->user_filter_block_size - remainder_len) * sizeof(complex_float_t));
+                }
                 
                 if (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC) {
                     fftfilt_crcf_execute((fftfilt_crcf)resources->user_fir_filter_object, item->complex_resampled_data, item->complex_resampled_data);
@@ -362,6 +373,14 @@ void* post_processor_thread_func(void* arg) {
         }
 
         if (item->frames_to_write > 0) {
+            // --- Buffer Management for Post-Processing ---
+            // To maximize performance, we use a "ping-pong" buffer strategy with pointer swapping.
+            // This avoids large, slow memory copies between processing stages (e.g., filter, NCO).
+            //
+            // - 'current_data_ptr' always points to the buffer holding the latest valid data.
+            // - 'workspace_ptr' is used as the destination for the next processing stage.
+            // - After each stage, the pointers are swapped, making the output of one stage the
+            //   input for the next, all without a single memcpy.
             complex_float_t* current_data_ptr = item->complex_resampled_data;
             complex_float_t* workspace_ptr = item->complex_scratch_data;
 
@@ -370,23 +389,28 @@ void* post_processor_thread_func(void* arg) {
                                         !is_post_fft;
 
             if (is_fir_filter_active) {
+                // Input: current_data_ptr, Output: workspace_ptr
                 if (resources->user_filter_type_actual == FILTER_IMPL_FIR_SYMMETRIC) {
                     firfilt_crcf_execute_block((firfilt_crcf)resources->user_fir_filter_object, current_data_ptr, item->frames_to_write, workspace_ptr);
                 } else {
                     firfilt_cccf_execute_block((firfilt_cccf)resources->user_fir_filter_object, current_data_ptr, item->frames_to_write, workspace_ptr);
                 }
+                // Swap pointers: The valid data is now in workspace_ptr.
                 complex_float_t* temp_ptr = current_data_ptr;
                 current_data_ptr = workspace_ptr;
                 workspace_ptr = temp_ptr;
             }
 
             if (resources->post_resample_nco) {
+                // Input: current_data_ptr, Output: workspace_ptr
                 freq_shift_apply(resources->post_resample_nco, resources->actual_nco_shift_hz, current_data_ptr, workspace_ptr, item->frames_to_write);
+                // Swap pointers: The valid data is now in workspace_ptr.
                 complex_float_t* temp_ptr = current_data_ptr;
                 current_data_ptr = workspace_ptr;
                 workspace_ptr = temp_ptr;
             }
 
+            // At this point, 'current_data_ptr' holds the final processed data for this chunk.
             if (!convert_cf32_to_block(current_data_ptr, item->final_output_data, item->frames_to_write, config->output_format)) {
                 handle_fatal_thread_error("Post-Processor: Failed to convert samples.", resources);
                 queue_enqueue(resources->free_sample_chunk_queue, item);
