@@ -309,10 +309,10 @@ static void application_progress_callback(unsigned long long current_output_fram
             double percentage = ((double)current_output_frames / (double)total_output_frames) * 100.0;
             if (percentage > 100.0) percentage = 100.0;
             if (is_first_update) {
-                log_info("Writing: %llu / %lld frames (%.1f%%)",
+                log_info("Writing: %llu / ~%lld frames (%.1f%%)",
                          current_output_frames, total_output_frames, percentage);
             } else {
-                log_info("Writing: %llu / %lld frames (%.1f%%) %.2f MB/s",
+                log_info("Writing: %llu / ~%lld frames (%.1f%%) %.2f MB/s",
                          current_output_frames, total_output_frames, percentage, rate_mb_per_sec);
             }
         } else {
