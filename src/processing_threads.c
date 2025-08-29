@@ -163,7 +163,7 @@ void* pre_processor_thread_func(void* arg) {
             continue;
         }
 
-        if (!convert_raw_to_cf32(item->raw_input_data, item->complex_pre_resample_data, item->frames_read, resources->input_format, config->gain)) {
+        if (!convert_raw_to_cf32(item->raw_input_data, item->complex_pre_resample_data, item->frames_read, item->packet_sample_format, config->gain)) {
             handle_fatal_thread_error("Pre-Processor: Failed to convert samples.", resources);
             queue_enqueue(resources->free_sample_chunk_queue, item);
             continue;

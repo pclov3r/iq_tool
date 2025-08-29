@@ -9,7 +9,7 @@
 #include "input_common.h"
 #include "memory_arena.h"
 #include "queue.h"
-#include "sdr_packet_serializer.h" // <-- THE FIX IS HERE
+#include "sdr_packet_serializer.h"
 #include "argparse.h"
 #include <stdio.h>
 #include <string.h>
@@ -146,7 +146,8 @@ static int hackrf_buffered_stream_callback(hackrf_transfer* transfer) {
         resources,
         transfer->buffer,
         transfer->valid_length,
-        resources->input_bytes_per_sample_pair
+        resources->input_bytes_per_sample_pair,
+        CS8
     );
 
     return 0;

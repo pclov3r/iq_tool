@@ -45,6 +45,7 @@ typedef struct SampleChunk {
 
     // --- State Variables ---
     int64_t      frames_read;                 ///< Number of valid frames read from the source.
+    format_t     packet_sample_format;        ///< The sample format of the raw data in this chunk (for SDRs).
     unsigned int frames_to_write;             ///< Number of valid frames to be written to the output.
     bool         is_last_chunk;               ///< Flag indicating this is the final chunk in a stream.
     bool         stream_discontinuity_event;  ///< Flag indicating a stream reset (e.g., SDR overrun).

@@ -20,6 +20,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include "common_types.h"
 
 // --- Forward Declarations ---
 // We only use pointers to these structs, so we don't need their full definitions.
@@ -37,9 +38,10 @@ struct AppResources;
  * @param num_samples The number of I/Q pairs to write.
  * @param i_data A pointer to the buffer of I samples.
  * @param q_data A pointer to the buffer of Q samples.
+ * @param format The sample format of the provided data (e.g., CS16).
  * @return true on success, false if the buffer did not have enough space.
  */
-bool sdr_packet_serializer_write_deinterleaved_chunk(struct FileWriteBuffer* buffer, uint32_t num_samples, const short* i_data, const short* q_data);
+bool sdr_packet_serializer_write_deinterleaved_chunk(struct FileWriteBuffer* buffer, uint32_t num_samples, const short* i_data, const short* q_data, format_t format);
 
 /**
  * @brief Writes a packet of INTERLEAVED samples (e.g., from RTL-SDR) to the buffer.
@@ -49,9 +51,10 @@ bool sdr_packet_serializer_write_deinterleaved_chunk(struct FileWriteBuffer* buf
  * @param num_samples The number of I/Q pairs to write.
  * @param sample_data A pointer to the interleaved sample data ([I, Q, I, Q, ...]).
  * @param bytes_per_sample_pair The size in bytes of one I/Q pair (e.g., 2 for cu8, 4 for cs16).
+ * @param format The sample format of the provided data (e.g., CU8).
  * @return true on success, false if the buffer did not have enough space.
  */
-bool sdr_packet_serializer_write_interleaved_chunk(struct FileWriteBuffer* buffer, uint32_t num_samples, const void* sample_data, size_t bytes_per_sample_pair);
+bool sdr_packet_serializer_write_interleaved_chunk(struct FileWriteBuffer* buffer, uint32_t num_samples, const void* sample_data, size_t bytes_per_sample_pair, format_t format);
 
 /**
  * @brief Writes a special "stream reset" event packet to the buffer.
@@ -73,7 +76,7 @@ bool sdr_packet_serializer_write_reset_event(struct FileWriteBuffer* buffer);
  * always return a correctly interleaved block of samples in the target_chunk.
  *
  * @param buffer The source ring buffer.
- * @param target_chunk A pointer to a pre-allocated SampleChunk to be filled.
+ * @param target_chunk A pointer to a pre-allocated SampleChunk to be filled. The `packet_sample_format` field will be populated.
  * @param[out] is_reset_event A pointer to a boolean that will be set to true if the
  *                            packet was a stream reset event.
  * @param temp_buffer A pre-allocated buffer for de-interleaving.
@@ -95,7 +98,8 @@ int64_t sdr_packet_serializer_read_packet(struct FileWriteBuffer* buffer,
  * @param data Pointer to the start of the large interleaved data block from the SDR.
  * @param length_bytes The total size in bytes of the data block.
  * @param bytes_per_sample_pair The size in bytes of one I/Q pair for this data.
+ * @param format The sample format of the provided data.
  */
-void sdr_write_interleaved_chunks(struct AppResources* resources, const unsigned char* data, uint32_t length_bytes, size_t bytes_per_sample_pair);
+void sdr_write_interleaved_chunks(struct AppResources* resources, const unsigned char* data, uint32_t length_bytes, size_t bytes_per_sample_pair, format_t format);
 
 #endif // SDR_PACKET_SERIALIZER_H_

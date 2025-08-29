@@ -625,7 +625,8 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
                         resources,
                         (const unsigned char*)temp_buffer,
                         meta.actual_count * resources->input_bytes_per_sample_pair,
-                        resources->input_bytes_per_sample_pair
+                        resources->input_bytes_per_sample_pair,
+                        resources->input_format
                     );
                 }
             }

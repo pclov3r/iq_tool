@@ -148,7 +148,8 @@ static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ct
         resources,
         buf,
         len,
-        resources->input_bytes_per_sample_pair
+        resources->input_bytes_per_sample_pair,
+        CU8
     );
 }
 
