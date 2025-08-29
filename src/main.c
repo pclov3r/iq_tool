@@ -57,10 +57,26 @@ int main(int argc, char *argv[]) {
     bool resources_initialized = false;
     bool arena_initialized = false;
 
+    // FIX: Add error checking for all pthread calls.
+    int ret; // Variable to hold return codes
+
     pthread_mutexattr_t attr;
-    pthread_mutexattr_init(&attr);
-    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-    pthread_mutex_init(&g_console_mutex, &attr);
+    if ((ret = pthread_mutexattr_init(&attr)) != 0) {
+        // Cannot use log_fatal yet as the mutex isn't set up.
+        fprintf(stderr, "FATAL: Failed to initialize mutex attributes: %s\n", strerror(ret));
+        return EXIT_FAILURE;
+    }
+    if ((ret = pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE)) != 0) {
+        fprintf(stderr, "FATAL: Failed to set mutex type to recursive: %s\n", strerror(ret));
+        pthread_mutexattr_destroy(&attr);
+        return EXIT_FAILURE;
+    }
+    if ((ret = pthread_mutex_init(&g_console_mutex, &attr)) != 0) {
+        fprintf(stderr, "FATAL: Failed to initialize console mutex: %s\n", strerror(ret));
+        pthread_mutexattr_destroy(&attr);
+        return EXIT_FAILURE;
+    }
+    // The attribute object is no longer needed after the mutex is initialized.
     pthread_mutexattr_destroy(&attr);
 
     log_set_lock(console_lock_function, &g_console_mutex);

@@ -150,7 +150,14 @@ static FILE* _secure_open_for_write(const char* out_path_utf8) {
         return NULL;
     }
 
-    return fdopen(fd, "wb");
+    // FIX: Check the return value of fdopen and close the descriptor on failure.
+    FILE *file_stream = fdopen(fd, "wb");
+    if (!file_stream) {
+        log_fatal("Could not associate FILE stream with file descriptor: %s", strerror(errno));
+        close(fd);
+        return NULL;
+    }
+    return file_stream;
 }
 // --- END MODIFICATION ---
 #endif
