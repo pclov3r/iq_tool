@@ -457,7 +457,7 @@ static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_S
     }
 
     if (numSamples > 0) {
-        if (!sdr_packet_serializer_write_deinterleaved_chunk(resources->sdr_input_buffer, numSamples, xi, xq)) {
+        if (!sdr_packet_serializer_write_deinterleaved_chunk(resources->sdr_input_buffer, numSamples, xi, xq, CS16)) {
             log_warn("SDR input buffer overrun! Dropped data.");
         }
     }

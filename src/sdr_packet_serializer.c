@@ -12,6 +12,7 @@
 typedef struct {
     uint32_t num_samples;
     uint8_t  flags;
+    uint8_t  format_id;
 } SdrInputChunkHeader;
 #pragma pack(pop)
 
@@ -27,10 +28,11 @@ static int64_t _read_and_reinterleave_payload(FileWriteBuffer* buffer, SampleChu
 
 // --- PUBLIC API: SERIALIZATION FUNCTIONS ---
 
-bool sdr_packet_serializer_write_deinterleaved_chunk(FileWriteBuffer* buffer, uint32_t num_samples, const short* i_data, const short* q_data) {
+bool sdr_packet_serializer_write_deinterleaved_chunk(FileWriteBuffer* buffer, uint32_t num_samples, const short* i_data, const short* q_data, format_t format) {
     SdrInputChunkHeader header;
     header.num_samples = num_samples;
     header.flags = 0; // De-interleaved (interleaved flag is NOT set)
+    header.format_id = (uint8_t)format;
 
     size_t bytes_per_plane = num_samples * sizeof(short);
     
@@ -41,10 +43,11 @@ bool sdr_packet_serializer_write_deinterleaved_chunk(FileWriteBuffer* buffer, ui
     return true;
 }
 
-bool sdr_packet_serializer_write_interleaved_chunk(FileWriteBuffer* buffer, uint32_t num_samples, const void* sample_data, size_t bytes_per_sample_pair) {
+bool sdr_packet_serializer_write_interleaved_chunk(FileWriteBuffer* buffer, uint32_t num_samples, const void* sample_data, size_t bytes_per_sample_pair, format_t format) {
     SdrInputChunkHeader header;
     header.num_samples = num_samples;
     header.flags = SDR_CHUNK_FLAG_INTERLEAVED;
+    header.format_id = (uint8_t)format;
 
     size_t data_bytes = num_samples * bytes_per_sample_pair;
 
@@ -58,6 +61,7 @@ bool sdr_packet_serializer_write_reset_event(FileWriteBuffer* buffer) {
     SdrInputChunkHeader header;
     header.num_samples = 0;
     header.flags = SDR_CHUNK_FLAG_STREAM_RESET;
+    header.format_id = (uint8_t)FORMAT_UNKNOWN;
 
     return (file_write_buffer_write(buffer, &header, sizeof(header)) == sizeof(header));
 }
@@ -81,6 +85,8 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
         log_error("Incomplete header read from SDR buffer. Stream corrupted.");
         return -1; // Fatal error
     }
+
+    target_chunk->packet_sample_format = (format_t)header.format_id;
 
     if (header.flags & SDR_CHUNK_FLAG_STREAM_RESET) {
         *is_reset_event = true;
@@ -155,7 +161,7 @@ static int64_t _read_and_reinterleave_payload(FileWriteBuffer* buffer, SampleChu
 }
 
 // --- NEW REUSABLE CHUNKING FUNCTION ---
-void sdr_write_interleaved_chunks(AppResources* resources, const unsigned char* data, uint32_t length_bytes, size_t bytes_per_sample_pair) {
+void sdr_write_interleaved_chunks(AppResources* resources, const unsigned char* data, uint32_t length_bytes, size_t bytes_per_sample_pair, format_t format) {
     if (length_bytes == 0) {
         return;
     }
@@ -174,7 +180,8 @@ void sdr_write_interleaved_chunks(AppResources* resources, const unsigned char* 
                 resources->sdr_input_buffer,
                 samples_this_chunk,
                 current_buffer_pos,
-                bytes_per_sample_pair))
+                bytes_per_sample_pair,
+                format))
         {
             log_warn("SDR input buffer overrun! Dropped %u samples.", total_samples_in_transfer - samples_processed);
             break;

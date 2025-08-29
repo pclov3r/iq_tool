@@ -587,6 +587,7 @@ static void* wav_start_stream(InputSourceContext* ctx) {
         }
 
         current_item->frames_read = bytes_read / resources->input_bytes_per_sample_pair;
+        current_item->packet_sample_format = resources->input_format;
         
         current_item->is_last_chunk = (current_item->frames_read == 0);
 

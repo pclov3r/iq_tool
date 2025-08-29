@@ -203,6 +203,7 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
             // End of file. Send a final chunk with the is_last_chunk flag set.
             current_item->is_last_chunk = true;
             current_item->frames_read = 0;
+            current_item->packet_sample_format = resources->input_format;
             if (config->raw_passthrough) {
                 // In passthrough, we also need to signal the writer thread directly.
                 file_write_buffer_signal_end_of_stream(resources->file_write_buffer);
@@ -214,6 +215,7 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
         }
 
         current_item->frames_read = bytes_read / resources->input_bytes_per_sample_pair;
+        current_item->packet_sample_format = resources->input_format;
         current_item->is_last_chunk = false;
         
         pthread_mutex_lock(&resources->progress_mutex);
