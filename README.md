@@ -4,6 +4,8 @@ A multi-threaded command-line tool for resampling, filtering, shifting, and corr
 
 I originally built this tool for a very specific need: processing NRSC-5 (HD Radio) captures for use with the awesome [NRSC5](https://github.com/theori-io/nrsc5) decoder. This means it's particularly good at handling the frequency shifts and metadata found in WAV files from SDR software, but it has grown into a more general-purpose utility for prepping I/Q data for any downstream tool.
 
+The goal of this tool is to provide an easy, fast, and lightweight command-line utility for converting I/Q data from files or SDRs to a specific sample rate and format, and then either piping it to other programs or writing it to a file.
+
 ---
 
 ### ⚠️ A Quick Word of Warning: This is a fast moving AI-Assisted Project ⚠️
