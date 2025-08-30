@@ -15,7 +15,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
 *What does this mean?*
 
 *   **It's Experimental.** While it works, it hasn't been battle-tested across a wide variety of systems and edge cases nor has it had a security review.
-*   **Design choices not stable.** You may see features, command line options, etc. suddenly appear and disappear. You may also see large commits of lots of changes.
+*   **Design choices not stable.** You may see features, command line options, etc. suddenly appear and disappear. You may also see large commits of lots of changes. **The mainline codebase may also be broken at times. Releases may be more stable.** 
 *   **Bugs are expected.** The logic very likely has quirks that haven't been discovered yet. Other issues causing crashes likely exist too. 
 *   **Use with caution!** I wouldn't use this for anything mission-critical without a thorough personal review of the code. *For serious work, a mature framework like* [GNU Radio](https://github.com/gnuradio/gnuradio) *is always a better bet.*
 
