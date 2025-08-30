@@ -193,11 +193,17 @@ int main(int argc, char *argv[]) {
 
 cleanup:
     pthread_mutex_lock(&g_console_mutex);
+    
+    // This is now called unconditionally, which is correct.
+    bool final_ok = !resources.error_occurred;
+    cleanup_application(&g_config, &resources);
+
+    // The summary, however, should only be printed if initialization
+    // was fully completed.
     if (resources_initialized) {
-        bool final_ok = !resources.error_occurred;
-        cleanup_application(&g_config, &resources);
         print_final_summary(&g_config, &resources, final_ok);
     }
+
     pthread_mutex_unlock(&g_console_mutex);
 
     if (arena_initialized) {
