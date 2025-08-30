@@ -239,16 +239,16 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
         return false;
     }
 
-    resources->sample_chunk_pool = (SampleChunk*)mem_arena_alloc(&resources->setup_arena, PIPELINE_NUM_CHUNKS * sizeof(SampleChunk));
+    resources->sample_chunk_pool = (SampleChunk*)mem_arena_alloc(&resources->setup_arena, PIPELINE_NUM_CHUNKS * sizeof(SampleChunk), true);
     if (!resources->sample_chunk_pool) return false;
 
     // Allocate the de-interleaving buffer. It must be large enough to hold
     // both planes (I and Q) of a full sample chunk.
     resources->sdr_deserializer_buffer_size = PIPELINE_CHUNK_BASE_SAMPLES * sizeof(short) * COMPLEX_SAMPLE_COMPONENTS;
-    resources->sdr_deserializer_temp_buffer = mem_arena_alloc(&resources->setup_arena, resources->sdr_deserializer_buffer_size);
+    resources->sdr_deserializer_temp_buffer = mem_arena_alloc(&resources->setup_arena, resources->sdr_deserializer_buffer_size, false);
     if (!resources->sdr_deserializer_temp_buffer) return false;
 
-    resources->writer_local_buffer = mem_arena_alloc(&resources->setup_arena, IO_FILE_WRITER_CHUNK_SIZE);
+    resources->writer_local_buffer = mem_arena_alloc(&resources->setup_arena, IO_FILE_WRITER_CHUNK_SIZE, false);
     if (!resources->writer_local_buffer) return false;
 
     for (size_t i = 0; i < PIPELINE_NUM_CHUNKS; ++i) {
@@ -273,11 +273,11 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
 
 bool create_threading_components(AppResources *resources) {
     MemoryArena* arena = &resources->setup_arena;
-    resources->free_sample_chunk_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue));
-    resources->raw_to_pre_process_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue));
-    resources->pre_process_to_resampler_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue));
-    resources->resampler_to_post_process_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue));
-    resources->stdout_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue));
+    resources->free_sample_chunk_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
+    resources->raw_to_pre_process_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
+    resources->pre_process_to_resampler_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
+    resources->resampler_to_post_process_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
+    resources->stdout_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
 
     if (!queue_init(resources->free_sample_chunk_queue, PIPELINE_NUM_CHUNKS, arena) ||
         !queue_init(resources->raw_to_pre_process_queue, PIPELINE_NUM_CHUNKS, arena) ||
@@ -288,7 +288,7 @@ bool create_threading_components(AppResources *resources) {
     }
 
     if (resources->config->iq_correction.enable) {
-        resources->iq_optimization_data_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue));
+        resources->iq_optimization_data_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
         if (!queue_init(resources->iq_optimization_data_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
     } else {
         resources->iq_optimization_data_queue = NULL;
@@ -497,14 +497,16 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
             // FFT filter is in the post-processor thread
             resources->post_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
                 &resources->setup_arena,
-                resources->user_filter_block_size * sizeof(complex_float_t)
+                resources->user_filter_block_size * sizeof(complex_float_t),
+                false
             );
             if (!resources->post_fft_remainder_buffer) goto cleanup;
         } else {
             // FFT filter is in the pre-processor thread
             resources->pre_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
                 &resources->setup_arena,
-                resources->user_filter_block_size * sizeof(complex_float_t)
+                resources->user_filter_block_size * sizeof(complex_float_t),
+                false
             );
             if (!resources->pre_fft_remainder_buffer) goto cleanup;
         }

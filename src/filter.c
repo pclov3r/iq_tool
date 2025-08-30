@@ -23,7 +23,7 @@ static liquid_float_complex* convolve_complex_taps(
     int* out_len, MemoryArena* arena)
 {
     *out_len = len1 + len2 - 1;
-    liquid_float_complex* result = (liquid_float_complex*)mem_arena_alloc(arena, *out_len * sizeof(liquid_float_complex));
+    liquid_float_complex* result = (liquid_float_complex*)mem_arena_alloc(arena, *out_len * sizeof(liquid_float_complex), false);
     if (!result) {
         return NULL;
     }
@@ -54,7 +54,7 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
     }
 
     int master_taps_len = 1;
-    master_taps = (liquid_float_complex*)mem_arena_alloc(arena, sizeof(liquid_float_complex));
+    master_taps = (liquid_float_complex*)mem_arena_alloc(arena, sizeof(liquid_float_complex), false);
     if (!master_taps) goto cleanup;
     master_taps[0] = 1.0f + 0.0f * I;
 
@@ -95,7 +95,7 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
             if (current_taps_len < FILTER_MINIMUM_TAPS) current_taps_len = FILTER_MINIMUM_TAPS;
         }
 
-        liquid_float_complex* current_taps = (liquid_float_complex*)mem_arena_alloc(arena, current_taps_len * sizeof(liquid_float_complex));
+        liquid_float_complex* current_taps = (liquid_float_complex*)mem_arena_alloc(arena, current_taps_len * sizeof(liquid_float_complex), false);
         if (!current_taps) goto cleanup;
 
         bool is_current_stage_complex = (req->type == FILTER_TYPE_PASSBAND && fabsf(req->freq1_hz) > 1e-9f);
@@ -104,7 +104,7 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
         }
 
         if (is_current_stage_complex) {
-            float* real_taps = (float*)mem_arena_alloc(arena, current_taps_len * sizeof(float));
+            float* real_taps = (float*)mem_arena_alloc(arena, current_taps_len * sizeof(float), false);
             if (!real_taps) goto cleanup;
             float half_bw_norm = (req->freq2_hz / 2.0f) / (float)sample_rate_for_design;
             liquid_firdes_kaiser(current_taps_len, half_bw_norm, attenuation_db, 0.0f, real_taps);
@@ -118,7 +118,7 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
             }
             nco_crcf_destroy(shifter);
         } else {
-            float* real_taps = (float*)mem_arena_alloc(arena, current_taps_len * sizeof(float));
+            float* real_taps = (float*)mem_arena_alloc(arena, current_taps_len * sizeof(float), false);
             if (!real_taps) goto cleanup;
             float fc, bw;
             switch (req->type) {
@@ -243,7 +243,7 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
             resources->user_fir_filter_object = (void*)fftfilt_cccf_create(master_taps, master_taps_len, resources->user_filter_block_size);
             resources->user_filter_type_actual = FILTER_IMPL_FFT_ASYMMETRIC;
         } else {
-            float* final_real_taps = (float*)mem_arena_alloc(arena, master_taps_len * sizeof(float));
+            float* final_real_taps = (float*)mem_arena_alloc(arena, master_taps_len * sizeof(float), false);
             if (!final_real_taps) goto cleanup;
             for(int i=0; i<master_taps_len; i++) {
                 final_real_taps[i] = crealf(master_taps[i]);
@@ -257,7 +257,7 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
             resources->user_fir_filter_object = (void*)firfilt_cccf_create(master_taps, master_taps_len);
             resources->user_filter_type_actual = FILTER_IMPL_FIR_ASYMMETRIC;
         } else {
-            float* final_real_taps = (float*)mem_arena_alloc(arena, master_taps_len * sizeof(float));
+            float* final_real_taps = (float*)mem_arena_alloc(arena, master_taps_len * sizeof(float), false);
             if (!final_real_taps) goto cleanup;
             for(int i=0; i<master_taps_len; i++) {
                 final_real_taps[i] = crealf(master_taps[i]);

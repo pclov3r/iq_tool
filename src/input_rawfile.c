@@ -102,7 +102,7 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
 
     // MODIFIED: Allocate private data from the memory arena instead of malloc.
-    RawfilePrivateData* private_data = (RawfilePrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(RawfilePrivateData));
+    RawfilePrivateData* private_data = (RawfilePrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(RawfilePrivateData), true);
     if (!private_data) {
         // mem_arena_alloc logs the error
         return false;

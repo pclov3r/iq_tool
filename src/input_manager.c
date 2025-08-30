@@ -94,7 +94,7 @@ static void initialize_modules_list(MemoryArena* arena) {
     num_all_modules = sizeof(temp_modules) / sizeof(temp_modules[0]);
     
     // MODIFIED: Allocate memory from the arena instead of the heap.
-    all_modules = (InputModule*)mem_arena_alloc(arena, sizeof(temp_modules));
+    all_modules = (InputModule*)mem_arena_alloc(arena, sizeof(temp_modules), true);
     if (all_modules) {
         memcpy(all_modules, temp_modules, sizeof(temp_modules));
     } else {

@@ -53,7 +53,7 @@ static const size_t num_key_handlers = sizeof(key_handlers) / sizeof(key_handler
 static char* arena_strdup(MemoryArena* arena, const char* s) {
     if (!s) return NULL;
     size_t len = strlen(s) + 1;
-    char* new_s = (char*)mem_arena_alloc(arena, len);
+    char* new_s = (char*)mem_arena_alloc(arena, len, false);
     if (new_s) {
         memcpy(new_s, s, len);
     }
@@ -85,7 +85,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         CoTaskMemFree(appdata_path_w);
         PathAppendW(full_appdata_path_w, L"\\" APP_NAME);
         
-        char* appdata_path_utf8 = (char*)mem_arena_alloc(arena, MAX_PATH_BUFFER);
+        char* appdata_path_utf8 = (char*)mem_arena_alloc(arena, MAX_PATH_BUFFER, false);
         if (appdata_path_utf8) {
             if (WideCharToMultiByte(CP_UTF8, 0, full_appdata_path_w, -1, appdata_path_utf8, MAX_PATH_BUFFER, NULL, NULL) > 0) {
                 search_paths_list[current_path_idx++] = appdata_path_utf8;
@@ -104,7 +104,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         CoTaskMemFree(programdata_path_w);
         PathAppendW(full_programdata_path_w, L"\\" APP_NAME);
 
-        char* programdata_path_utf8 = (char*)mem_arena_alloc(arena, MAX_PATH_BUFFER);
+        char* programdata_path_utf8 = (char*)mem_arena_alloc(arena, MAX_PATH_BUFFER, false);
         if (programdata_path_utf8) {
             if (WideCharToMultiByte(CP_UTF8, 0, full_programdata_path_w, -1, programdata_path_utf8, MAX_PATH_BUFFER, NULL, NULL) > 0) {
                 search_paths_list[current_path_idx++] = programdata_path_utf8;
@@ -119,7 +119,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
     search_paths_list[current_path_idx++] = ".";
     const char* xdg_config_home = getenv("XDG_CONFIG_HOME");
     
-    char* xdg_path = (char*)mem_arena_alloc(arena, MAX_PATH_BUFFER);
+    char* xdg_path = (char*)mem_arena_alloc(arena, MAX_PATH_BUFFER, false);
     if (!xdg_path) {
         return false;
     }
@@ -231,7 +231,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
     PresetDefinition* current_preset = NULL;
     int capacity = 8;
 
-    config->presets = (PresetDefinition*)mem_arena_alloc(arena, capacity * sizeof(PresetDefinition));
+    config->presets = (PresetDefinition*)mem_arena_alloc(arena, capacity * sizeof(PresetDefinition), true);
     if (!config->presets) {
         fclose(fp);
         return false;
@@ -255,7 +255,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
             if (config->num_presets == capacity) {
                 int old_capacity = capacity;
                 capacity *= 2;
-                PresetDefinition* new_presets = (PresetDefinition*)mem_arena_alloc(arena, capacity * sizeof(PresetDefinition));
+                PresetDefinition* new_presets = (PresetDefinition*)mem_arena_alloc(arena, capacity * sizeof(PresetDefinition), true);
                 if (!new_presets) {
                     fclose(fp);
                     return false;

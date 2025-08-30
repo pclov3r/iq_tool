@@ -32,6 +32,20 @@
 // memory footprint and real-time performance.
 
 /**
+ * @def MEM_ARENA_ALIGNMENT
+ * @brief The memory alignment boundary for all allocations within the memory arena.
+ *
+ * Purpose: To ensure that all pointers returned by the arena are aligned to a
+ * boundary suitable for high-performance SIMD (SSE/AVX) instructions, which
+ * are heavily used by DSP libraries like liquid-dsp.
+ *
+ * Trade-off: A larger alignment may waste a few bytes per allocation but can
+ * provide significant performance gains. 32 bytes is a safe default for
+ * modern CPUs with AVX/AVX2 support.
+ */
+#define MEM_ARENA_ALIGNMENT 32
+
+/**
  * @def MEM_ARENA_SIZE_BYTES
  * @brief The size of the single memory arena for all startup allocations.
  *
@@ -173,9 +187,11 @@
 #define BLADERF_PROFILE_LOWLATENCY_NUM_BUFFERS        32
 #define BLADERF_PROFILE_LOWLATENCY_BUFFER_SIZE        16384
 #define BLADERF_PROFILE_LOWLATENCY_NUM_TRANSFERS      16
+
 #define BLADERF_PROFILE_BALANCED_NUM_BUFFERS          64
 #define BLADERF_PROFILE_BALANCED_BUFFER_SIZE          32768
 #define BLADERF_PROFILE_BALANCED_NUM_TRANSFERS        32
+
 #define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_BUFFERS    64
 #define BLADERF_PROFILE_HIGHTHROUGHPUT_BUFFER_SIZE    65536
 #define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS  32

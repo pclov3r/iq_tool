@@ -105,7 +105,7 @@ static bool process_specific_chunk(SNDFILE *infile, SdrMetadata *metadata, const
     if (sf_get_chunk_size(iterator, &chunk_info_query) != SF_ERR_NO_ERROR) return false;
     if (chunk_info_query.datalen == 0 || chunk_info_query.datalen > MAX_METADATA_CHUNK_SIZE) return false;
 
-    chunk_data_buffer = (unsigned char*)mem_arena_alloc(arena, chunk_info_query.datalen);
+    chunk_data_buffer = (unsigned char*)mem_arena_alloc(arena, chunk_info_query.datalen, false);
     if (!chunk_data_buffer) {
         return false;
     }
@@ -490,7 +490,7 @@ static bool wav_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
 
-    WavPrivateData* private_data = (WavPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(WavPrivateData));
+    WavPrivateData* private_data = (WavPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(WavPrivateData), true);
     if (!private_data) {
         return false;
     }
