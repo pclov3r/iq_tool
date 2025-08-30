@@ -104,7 +104,7 @@ const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size
     if (config->effective_input_filename) {
         // MODIFIED: Use the arena for the temporary copy needed by basename().
         size_t len = strlen(config->effective_input_filename) + 1;
-        char* temp_copy = (char*)mem_arena_alloc(arena, len);
+        char* temp_copy = (char*)mem_arena_alloc(arena, len, false);
         if (temp_copy) {
             strcpy(temp_copy, config->effective_input_filename);
             char* base = basename(temp_copy);

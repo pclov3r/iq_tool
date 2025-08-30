@@ -175,7 +175,7 @@ static bool raw_open(FileWriterContext* ctx, const AppConfig* config, AppResourc
         #ifdef _WIN32
         if (!set_stdout_binary()) return false;
         #endif
-        RawWriterData* data = (RawWriterData*)mem_arena_alloc(arena, sizeof(RawWriterData));
+        RawWriterData* data = (RawWriterData*)mem_arena_alloc(arena, sizeof(RawWriterData), true);
         if (!data) {
             return false;
         }
@@ -201,7 +201,7 @@ static bool raw_open(FileWriterContext* ctx, const AppConfig* config, AppResourc
         return false;
     }
 
-    RawWriterData* data = (RawWriterData*)mem_arena_alloc(arena, sizeof(RawWriterData));
+    RawWriterData* data = (RawWriterData*)mem_arena_alloc(arena, sizeof(RawWriterData), true);
     if (!data) {
         fclose(handle);
         return false;
@@ -295,7 +295,7 @@ static bool wav_open(FileWriterContext* ctx, const AppConfig* config, AppResourc
         return false;
     }
 
-    WavWriterData* data = (WavWriterData*)mem_arena_alloc(arena, sizeof(WavWriterData));
+    WavWriterData* data = (WavWriterData*)mem_arena_alloc(arena, sizeof(WavWriterData), true);
     if (!data) {
         return false;
     }

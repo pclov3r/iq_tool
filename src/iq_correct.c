@@ -39,11 +39,11 @@ bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* ar
     srand((unsigned int)time(NULL));
 
     const unsigned int nfft = IQ_CORRECTION_FFT_SIZE;
-    resources->iq_correction.fft_buffer = (complex_float_t*)mem_arena_alloc(arena, nfft * sizeof(complex_float_t));
-    resources->iq_correction.fft_shift_buffer = (complex_float_t*)mem_arena_alloc(arena, nfft * sizeof(complex_float_t));
-    resources->iq_correction.spectrum_buffer = (float*)mem_arena_alloc(arena, nfft * sizeof(float));
-    resources->iq_correction.window_coeffs = (float*)mem_arena_alloc(arena, nfft * sizeof(float));
-    resources->iq_correction.optimization_accum_buffer = (complex_float_t*)mem_arena_alloc(arena, IQ_CORRECTION_FFT_SIZE * sizeof(complex_float_t));
+    resources->iq_correction.fft_buffer = (complex_float_t*)mem_arena_alloc(arena, nfft * sizeof(complex_float_t), false);
+    resources->iq_correction.fft_shift_buffer = (complex_float_t*)mem_arena_alloc(arena, nfft * sizeof(complex_float_t), false);
+    resources->iq_correction.spectrum_buffer = (float*)mem_arena_alloc(arena, nfft * sizeof(float), false);
+    resources->iq_correction.window_coeffs = (float*)mem_arena_alloc(arena, nfft * sizeof(float), false);
+    resources->iq_correction.optimization_accum_buffer = (complex_float_t*)mem_arena_alloc(arena, IQ_CORRECTION_FFT_SIZE * sizeof(complex_float_t), false);
 
     if (!resources->iq_correction.fft_buffer ||
         !resources->iq_correction.fft_shift_buffer ||

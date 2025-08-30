@@ -1,20 +1,9 @@
-/**
- * @file memory_arena.h
- * @brief Defines the interface for a simple, fast memory arena allocator.
- *
- * The memory arena is used for all setup-time allocations (e.g., DSP objects,
- * configuration strings, buffers). It works by allocating one large block of
- * memory upfront and then servicing subsequent allocation requests by simply
- * "bumping" a pointer. This is much faster than repeated calls to malloc()
- * and prevents memory fragmentation. All memory is freed at once when the
- * arena is destroyed.
- */
-
 #ifndef MEMORY_ARENA_H_
 #define MEMORY_ARENA_H_
 
 #include <stddef.h>
 #include <stdbool.h>
+#include <pthread.h>
 
 // --- Struct Definition ---
 
@@ -29,6 +18,7 @@ typedef struct MemoryArena {
     void*  memory;      ///< Pointer to the start of the large allocated memory block.
     size_t capacity;    ///< The total size in bytes of the memory block.
     size_t offset;      ///< The current offset in bytes for the next allocation (the "bump pointer").
+    pthread_mutex_t mutex; ///< Mutex to make allocations thread-safe.
 } MemoryArena;
 
 
@@ -45,15 +35,15 @@ bool mem_arena_init(MemoryArena* arena, size_t capacity);
 /**
  * @brief Allocates a block of memory from the arena.
  *
- * This function is not thread-safe. It is intended for use during the
- * single-threaded setup phase of the application. The allocated memory is
- * automatically zeroed.
+ * This function is now thread-safe. It is intended for use during the
+ * setup phase of the application.
  *
  * @param arena Pointer to the initialized MemoryArena.
  * @param size The number of bytes to allocate.
+ * @param zero_memory If true, the allocated memory will be zero-initialized.
  * @return A void pointer to the allocated memory, or NULL if the arena is full.
  */
-void* mem_arena_alloc(MemoryArena* arena, size_t size);
+void* mem_arena_alloc(MemoryArena* arena, size_t size, bool zero_memory);
 
 /**
  * @brief Destroys a memory arena, freeing its main memory block.

@@ -291,7 +291,7 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
 
     log_info("Attempting to initialize BladeRF device...");
 
-    BladerfPrivateData* private_data = (BladerfPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(BladerfPrivateData));
+    BladerfPrivateData* private_data = (BladerfPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(BladerfPrivateData), true);
     if (!private_data) goto cleanup; // mem_arena_alloc logs the error
 
     // Initialize state variables that the main cleanup function will check.
@@ -431,7 +431,7 @@ static bool bladerf_initialize(InputSourceContext* ctx) {
     resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
 
     size_t buffer_size_bytes = PIPELINE_CHUNK_BASE_SAMPLES * resources->input_bytes_per_sample_pair;
-    private_data->stream_temp_buffer = mem_arena_alloc(&resources->setup_arena, buffer_size_bytes);
+    private_data->stream_temp_buffer = mem_arena_alloc(&resources->setup_arena, buffer_size_bytes, false);
     if (!private_data->stream_temp_buffer) goto cleanup;
 
     log_info("BladeRF initialized successfully.");

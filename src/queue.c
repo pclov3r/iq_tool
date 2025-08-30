@@ -17,7 +17,7 @@ bool queue_init(Queue* queue, size_t capacity, MemoryArena* arena) {
     }
 
     // Allocate the internal buffer from the memory arena
-    queue->buffer = (void**)mem_arena_alloc(arena, capacity * sizeof(void*));
+    queue->buffer = (void**)mem_arena_alloc(arena, capacity * sizeof(void*), false);
     if (!queue->buffer) {
         // mem_arena_alloc will have already logged the fatal error
         return false;
