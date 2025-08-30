@@ -432,6 +432,8 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
         }
         item->frames_read = samples_to_copy;
         item->is_last_chunk = false;
+	item->packet_sample_format = resources->input_format;
+
         if (samples_to_copy > 0) {
             pthread_mutex_lock(&resources->progress_mutex);
             resources->total_frames_read += samples_to_copy;

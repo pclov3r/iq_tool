@@ -690,7 +690,6 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
                     }
                     item->frames_read = meta.actual_count;
                     item->is_last_chunk = false;
-
                     item->packet_sample_format = resources->input_format;
 
                     if (item->frames_read > 0) {
