@@ -6,7 +6,9 @@ I originally built this tool for a very specific need: processing NRSC-5 (HD Rad
 
 ---
 
-### ⚠️ A Quick Word of Warning: This is an AI-Assisted Project ⚠️
+### ⚠️ A Quick Word of Warning: This is a fast moving AI-Assisted Project ⚠️
+
+TL;DR: If you're looking for a stable platform, look at [GNU Radio](https://github.com/gnuradio/gnuradio)
 
 Let's be upfront: a large language model (AI) helped write a significant portion of this code, *if not most.* I guided it, reviewed its output the best I could, and tested the result, but this project didn't evolve through the typical trial-and-error of a human-only endeavor. Even this README you're reading was drafted by the AI based on the source code, then edited and refined by me.
 
