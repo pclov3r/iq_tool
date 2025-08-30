@@ -206,6 +206,7 @@ typedef struct {
     float               power_range;
     complex_float_t*    optimization_accum_buffer;
     int                 samples_in_accum;
+    double              last_optimization_time;
 } IqCorrectionResources;
 
 /**

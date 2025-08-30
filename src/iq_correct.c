@@ -3,6 +3,7 @@
 #include "log.h"
 #include "app_context.h"  // Provides AppConfig, AppResources
 #include "memory_arena.h" // Provides MemoryArena
+#include "utils.h"        // Provides get_monotonic_time_sec()
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -74,6 +75,7 @@ bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* ar
     resources->iq_correction.average_power = 0.0f;
     resources->iq_correction.power_range = 0.0f;
     resources->iq_correction.samples_in_accum = 0;
+    resources->iq_correction.last_optimization_time = 0.0;
 
     log_info("I/Q Correction enabled");
     return true;
@@ -92,18 +94,24 @@ void iq_correct_apply(AppResources* resources, complex_float_t* samples, int num
 void iq_correct_run_optimization(AppResources* resources, const complex_float_t* optimization_data) {
     if (!resources->config->iq_correction.enable) return;
 
+    double current_time = get_monotonic_time_sec();
+    double time_since_last_run = (current_time - resources->iq_correction.last_optimization_time) * 1000.0;
+
+    if (time_since_last_run < IQ_CORRECTION_INTERVAL_MS) {
+        return;
+    }
+
     log_debug("IQ_OPT_PROBE: Optimization function was called.");
 
     _estimate_power(&resources->iq_correction, optimization_data);
 
-    const float absolute_peak_threshold_db = IQ_CORRECTION_PEAK_THRESHOLD_DB;
-    float peak_power = resources->iq_correction.average_power + resources->iq_correction.power_range;
-    log_debug("IQ_OPT_PROBE: Peak power estimated at %.2f dB (Threshold is %.1f dB)", peak_power, absolute_peak_threshold_db);
-
-    if (peak_power < absolute_peak_threshold_db) {
-        log_debug("IQ_OPT_PROBE: Skipping optimization pass, no significant signal peak detected.");
+    const float power_threshold_db = IQ_CORRECTION_POWER_THRESHOLD_DB;
+    if (resources->iq_correction.power_range < power_threshold_db) {
+        log_debug("IQ_OPT_PROBE: Skipping optimization pass, signal peak-to-average power ratio is too low.");
         return;
     }
+
+    resources->iq_correction.last_optimization_time = current_time;
 
     log_debug("IQ_OPT_PROBE: Signal is strong enough, starting optimization...");
 
@@ -112,14 +120,15 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
     float current_phase = resources->iq_correction.factors_buffer[active_idx].phase;
 
     float best_metric = _calculate_imbalance_metric(&resources->iq_correction, optimization_data, current_gain, current_phase);
-    log_debug("IQ_OPT_PROBE: Initial metric (error score) is %.4e", best_metric);
+    log_debug("IQ_OPT_PROBE: Initial metric (utility score) is %.4e", best_metric);
 
     for (int i = 0; i < IQ_MAX_PASSES; i++) {
         float candidate_gain = current_gain + IQ_BASE_INCREMENT * _get_random_direction();
         float candidate_phase = current_phase + IQ_BASE_INCREMENT * _get_random_direction();
         float candidate_metric = _calculate_imbalance_metric(&resources->iq_correction, optimization_data, candidate_gain, candidate_phase);
 
-        if (candidate_metric < best_metric) {
+        // CRITICAL FIX: We want to MAXIMIZE the metric, not minimize it.
+        if (candidate_metric > best_metric) {
             best_metric = candidate_metric;
             current_gain = candidate_gain;
             current_phase = candidate_phase;
@@ -196,19 +205,21 @@ static float _calculate_imbalance_metric(IqCorrectionResources* iq_res, const co
 
     _calculate_power_spectrum(iq_res, signal_block, gain_adj, phase_adj);
 
-    float total_error = 0.0f;
+    float total_utility = 0.0f;
     const int lower_bound = (int)(0.05f * half_nfft);
     const int upper_bound = (int)(0.95f * half_nfft);
 
     for (int i = lower_bound; i < upper_bound; i++) {
         float p_neg = iq_res->spectrum_buffer[i];
         float p_pos = iq_res->spectrum_buffer[nfft - 1 - i];
-        if (p_pos > -60.0f || p_neg > -60.0f) {
+        // This check is slightly different from C# but achieves the same goal:
+        // only consider bins where there is significant energy above the noise floor.
+        if (p_pos > -80.0f || p_neg > -80.0f) {
             float difference = p_pos - p_neg;
-            total_error += difference * difference;
+            total_utility += difference * difference;
         }
     }
-    return total_error;
+    return total_utility;
 }
 
 static void _estimate_power(IqCorrectionResources* iq_res, const complex_float_t* signal_block) {
