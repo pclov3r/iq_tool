@@ -169,12 +169,28 @@ void* pre_processor_thread_func(void* arg) {
             continue;
         }
 
+        // STEP 1: Apply the DC Block to the main data stream first.
         if (config->dc_block.enable) {
             dc_block_apply(resources, item->complex_pre_resample_data, item->frames_read);
         }
 
+        // STEP 2: Now that the data is clean, handle I/Q correction.
         if (config->iq_correction.enable) {
-            // IQ correction logic...
+            // A. If the chunk is large enough, try to get a free buffer and send a
+            //    copy of the clean data to the optimization thread for analysis.
+            //    This is non-blocking to ensure the main pipeline never stalls.
+            if (item->frames_read >= IQ_CORRECTION_FFT_SIZE) {
+                SampleChunk* opt_item = (SampleChunk*)queue_try_dequeue(resources->free_sample_chunk_queue);
+                if (opt_item) {
+                    // Copy the clean data to the new chunk for the optimizer.
+                    memcpy(opt_item->complex_pre_resample_data, item->complex_pre_resample_data, IQ_CORRECTION_FFT_SIZE * sizeof(complex_float_t));
+                    // Send it to the optimization thread.
+                    queue_enqueue(resources->iq_optimization_data_queue, opt_item);
+                }
+            }
+            
+            // B. Apply the most recent correction factors to the main data stream.
+            iq_correct_apply(resources, item->complex_pre_resample_data, item->frames_read);
         }
 
         if (is_pre_fft) {

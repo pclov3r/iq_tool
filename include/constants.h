@@ -24,7 +24,6 @@
 // Set to 0 to disable progress updates entirely.
 #define PROGRESS_UPDATE_INTERVAL_SECONDS 1
 
-
 // =============================================================================
 // == Tier 2: Core Memory & Pipeline Architecture
 // =============================================================================
@@ -119,7 +118,6 @@
  */
 #define RESAMPLER_OUTPUT_SAFETY_MARGIN  128
 
-
 // =============================================================================
 // == Tier 3: DSP Algorithm Quality & Tuning
 // =============================================================================
@@ -147,12 +145,11 @@
 
 // --- I/Q Correction Algorithm Tuning ---
 #define IQ_CORRECTION_FFT_SIZE           1024
-#define IQ_CORRECTION_DEFAULT_PERIOD     2000000 // Samples between optimization runs
-#define IQ_BASE_INCREMENT                0.0001f // Step size for the optimizer
-#define IQ_MAX_PASSES                    25      // Iterations per optimization run
-#define IQ_CORRECTION_PEAK_THRESHOLD_DB -60.0f   // Signal power threshold to trigger optimization
-#define IQ_CORRECTION_SMOOTHING_FACTOR   0.05f   // Smoothing factor for updating correction params
-
+#define IQ_CORRECTION_INTERVAL_MS        500
+#define IQ_BASE_INCREMENT                0.0001f
+#define IQ_MAX_PASSES                    25
+#define IQ_CORRECTION_POWER_THRESHOLD_DB 20.0f
+#define IQ_CORRECTION_SMOOTHING_FACTOR   0.05f
 
 // =============================================================================
 // == Tier 4: SDR Hardware Interaction & Tuning
