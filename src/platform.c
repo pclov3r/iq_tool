@@ -29,7 +29,7 @@ void print_win_error(const char* context, DWORD error_code) {
     LPWSTR messageBuffer = NULL;
     size_t size = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
                                  NULL, error_code, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPWSTR)&messageBuffer, 0, NULL);
-    if (messageBuffer && size > 0) {
+    if (size > 0) {
         log_error("%s failed. Code: %lu, Message: %ls", context, error_code, messageBuffer);
         LocalFree(messageBuffer);
     } else {
