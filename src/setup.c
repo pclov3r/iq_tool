@@ -58,6 +58,19 @@ static bool create_iq_corrector(AppConfig *config, AppResources *resources) {
 }
 
 static bool create_frequency_shifter(AppConfig *config, AppResources *resources) {
+    // If a shift hasn't already been calculated by a module (like WAV),
+    // then check for the generic manual shift option.
+    if (resources->nco_shift_hz == 0.0 && config->freq_shift_hz_arg != 0.0f) {
+        resources->nco_shift_hz = (double)config->freq_shift_hz_arg;
+    }
+
+    // Now that the final shift value is resolved, validate dependent options.
+    if (config->shift_after_resample && fabs(resources->nco_shift_hz) < 1e-9) {
+        log_fatal("Option --shift-after-resample was used, but no effective frequency shift was requested or calculated.");
+        return false;
+    }
+
+    // Now, create the NCOs with the final, resolved value.
     return freq_shift_create_ncos(config, resources);
 }
 
@@ -347,12 +360,6 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
             max_label_len = len;
         }
     }
-    if (config->set_center_frequency_target_hz) {
-        int len = (int)strlen("Target Frequency");
-        if (len > max_label_len) {
-            max_label_len = len;
-        }
-    }
 
     fprintf(stderr, "\n--- Input Details ---\n");
     if (summary_info.count > 0) {
@@ -381,12 +388,9 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Output Rate", config->target_rate);
     fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Gain Multiplier", config->gain);
 
-    if (config->set_center_frequency_target_hz) {
-        fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Target Frequency", config->center_frequency_target_hz);
-    }
-    if (fabs(resources->actual_nco_shift_hz) > 1e-9) {
+    if (fabs(resources->nco_shift_hz) > 1e-9) {
         char shift_buf[64];
-        snprintf(shift_buf, sizeof(shift_buf), "%+.2f Hz%s", resources->actual_nco_shift_hz, config->shift_after_resample ? " (Post-Resample)" : "");
+        snprintf(shift_buf, sizeof(shift_buf), "%+.2f Hz%s", resources->nco_shift_hz, config->shift_after_resample ? " (Post-Resample)" : "");
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Frequency Shift", shift_buf);
     }
 
@@ -538,9 +542,9 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     if (!config->output_to_stdout) {
         print_configuration_summary(config, resources);
 
-        if (fabs(resources->actual_nco_shift_hz) > 1e-9) {
+        if (fabs(resources->nco_shift_hz) > 1e-9) {
             double rate_for_shift_check = config->shift_after_resample ? config->target_rate : (double)resources->source_info.samplerate;
-            if (!utils_check_nyquist_warning(fabs(resources->actual_nco_shift_hz), rate_for_shift_check, "Frequency Shift")) {
+            if (!utils_check_nyquist_warning(fabs(resources->nco_shift_hz), rate_for_shift_check, "Frequency Shift")) {
                 goto cleanup;
             }
         }

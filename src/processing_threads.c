@@ -217,7 +217,7 @@ void* pre_processor_thread_func(void* arg) {
         }
 
         if (resources->pre_resample_nco) {
-            freq_shift_apply(resources->pre_resample_nco, resources->actual_nco_shift_hz, item->complex_pre_resample_data, item->complex_pre_resample_data, item->frames_read);
+            freq_shift_apply(resources->pre_resample_nco, resources->nco_shift_hz, item->complex_pre_resample_data, item->complex_pre_resample_data, item->frames_read);
         }
 
         if (item->frames_read > 0) {
@@ -315,7 +315,7 @@ void* post_processor_thread_func(void* arg) {
 
                 complex_float_t* data_in = item->complex_resampled_data;
                 if (resources->post_resample_nco) {
-                    freq_shift_apply(resources->post_resample_nco, resources->actual_nco_shift_hz, data_in, item->complex_scratch_data, item->frames_to_write);
+                    freq_shift_apply(resources->post_resample_nco, resources->nco_shift_hz, data_in, item->complex_scratch_data, item->frames_to_write);
                     data_in = item->complex_scratch_data;
                 }
                 if (!convert_cf32_to_block(data_in, item->final_output_data, item->frames_to_write, config->output_format)) {
@@ -419,7 +419,7 @@ void* post_processor_thread_func(void* arg) {
 
             if (resources->post_resample_nco) {
                 // Input: current_data_ptr, Output: workspace_ptr
-                freq_shift_apply(resources->post_resample_nco, resources->actual_nco_shift_hz, current_data_ptr, workspace_ptr, item->frames_to_write);
+                freq_shift_apply(resources->post_resample_nco, resources->nco_shift_hz, current_data_ptr, workspace_ptr, item->frames_to_write);
                 // Swap pointers: The valid data is now in workspace_ptr.
                 complex_float_t* temp_ptr = current_data_ptr;
                 current_data_ptr = workspace_ptr;

@@ -236,8 +236,6 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
     }
 
     // 3. Post-process SDR arguments
-    config->frequency_shift_request.type = FREQUENCY_SHIFT_REQUEST_NONE;
-
     #if defined(ANY_SDR_SUPPORT_ENABLED)
     if (config->sdr.rf_freq_hz_arg > 0.0f) {
         config->sdr.rf_freq_hz = (double)config->sdr.rf_freq_hz_arg;
@@ -255,9 +253,8 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
     if (!validate_output_type_and_sample_format(config)) return false;
     if (selected_ops->validate_generic_options && !selected_ops->validate_generic_options(config)) return false;
     if (!validate_filter_options(config)) return false;
-    if (!resolve_frequency_shift_options(config)) return false;
     if (!validate_iq_correction_options(config)) return false;
-    if (!validate_logical_consistency(config)) return false;
+    if (!validate_option_combinations(config)) return false;
 
     return true;
 }

@@ -59,25 +59,6 @@ typedef struct {
 } DcBlockConfig;
 
 /**
- * @enum FrequencyShiftRequestType
- * @brief Describes the origin of a frequency shift request.
- */
-typedef enum {
-    FREQUENCY_SHIFT_REQUEST_NONE,
-    FREQUENCY_SHIFT_REQUEST_MANUAL,
-    FREQUENCY_SHIFT_REQUEST_METADATA_CALC_TARGET
-} FrequencyShiftRequestType;
-
-/**
- * @struct FrequencyShiftRequest
- * @brief Holds the details of a frequency shift request before it is resolved.
- */
-typedef struct {
-    FrequencyShiftRequestType type;
-    double value;
-} FrequencyShiftRequest;
-
-/**
  * @struct FilterRequest
  * @brief Holds the parameters for a single user-requested filter stage.
  */
@@ -106,7 +87,6 @@ typedef struct AppConfig {
     float       gain;
     bool        gain_provided;
     float       freq_shift_hz_arg;
-    float       wav_center_target_hz_arg;
     bool        shift_after_resample;
     bool        no_resample;
     bool        raw_passthrough;
@@ -116,11 +96,6 @@ typedef struct AppConfig {
     DcBlockConfig      dc_block;
 
     // --- Internal State from CLI Parsing ---
-    FrequencyShiftRequest frequency_shift_request;
-    double      freq_shift_hz;
-    bool        freq_shift_requested;
-    double      center_frequency_target_hz;
-    bool        set_center_frequency_target_hz;
     FilterRequest filter_requests[MAX_FILTER_CHAIN];
     int         num_filter_requests;
     bool        apply_user_filter_post_resample;
@@ -228,7 +203,7 @@ typedef struct AppResources {
     msresamp_crcf   resampler;
     nco_crcf        pre_resample_nco;
     nco_crcf        post_resample_nco;
-    double          actual_nco_shift_hz;
+    double          nco_shift_hz;
     bool            is_passthrough;
     IqCorrectionResources iq_correction;
     DcBlockResources      dc_block;

@@ -377,11 +377,15 @@ typedef struct {
     SNDFILE *infile;
 } WavPrivateData;
 
+static struct {
+    float center_target_hz_arg;
+} s_wav_config;
+
 extern AppConfig g_config;
 
 static const struct argparse_option wav_cli_options[] = {
     OPT_GROUP("WAV Input Specific Options"),
-    OPT_FLOAT(0, "wav-center-target-freq", &g_config.wav_center_target_hz_arg, "Shift signal to a new target center frequency (e.g., 97.3e6)", NULL, 0, 0),
+    OPT_FLOAT(0, "wav-center-target-freq", &s_wav_config.center_target_hz_arg, "Shift signal to a new target center frequency (e.g., 97.3e6)", NULL, 0, 0),
 };
 
 const struct argparse_option* wav_get_cli_options(int* count) {
@@ -394,7 +398,6 @@ static void* wav_start_stream(InputSourceContext* ctx);
 static void wav_stop_stream(InputSourceContext* ctx);
 static void wav_cleanup(InputSourceContext* ctx);
 static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
-static bool wav_validate_options(AppConfig* config);
 
 static InputSourceOps wav_ops = {
     .initialize = wav_initialize,
@@ -402,20 +405,11 @@ static InputSourceOps wav_ops = {
     .stop_stream = wav_stop_stream,
     .cleanup = wav_cleanup,
     .get_summary_info = wav_get_summary_info,
-    .validate_options = wav_validate_options,
     .has_known_length = _input_source_has_known_length_true
 };
 
 InputSourceOps* get_wav_input_ops(void) {
     return &wav_ops;
-}
-
-static bool wav_validate_options(AppConfig* config) {
-    if (config->wav_center_target_hz_arg != 0.0f) {
-        config->frequency_shift_request.type = FREQUENCY_SHIFT_REQUEST_METADATA_CALC_TARGET;
-        config->frequency_shift_request.value = (double)config->wav_center_target_hz_arg;
-    }
-    return true;
 }
 
 static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
@@ -552,11 +546,27 @@ static bool wav_initialize(InputSourceContext* ctx) {
     resources->sdr_info_present = parse_sdr_metadata_chunks(private_data->infile, &sfinfo, &resources->sdr_info, &resources->setup_arena);
 
     char basename_buffer[MAX_PATH_BUFFER];
-    // MODIFIED: Pass the setup_arena to the basename parsing function.
     const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer), &resources->setup_arena);
     if (base_filename) {
         bool filename_parsed = parse_sdr_metadata_from_filename(base_filename, &resources->sdr_info);
         resources->sdr_info_present = resources->sdr_info_present || filename_parsed;
+    }
+
+    if (s_wav_config.center_target_hz_arg != 0.0f) {
+        if (config->freq_shift_hz_arg != 0.0f) {
+            log_fatal("Conflicting frequency shift options provided. Cannot use --freq-shift and --wav-center-target-freq at the same time.");
+            sf_close(private_data->infile);
+            return false;
+        }
+
+        if (!resources->sdr_info.center_freq_hz_present) {
+            log_fatal("Option --wav-center-target-freq was used, but the input WAV file does not contain the required center frequency metadata.");
+            sf_close(private_data->infile);
+            return false;
+        }
+
+        double target_freq = (double)s_wav_config.center_target_hz_arg;
+        resources->nco_shift_hz = resources->sdr_info.center_freq_hz - target_freq;
     }
 
     return true;

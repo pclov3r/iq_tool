@@ -43,13 +43,6 @@ bool validate_output_type_and_sample_format(struct AppConfig *config);
 bool validate_filter_options(struct AppConfig *config);
 
 /**
- * @brief Resolves and validates all frequency shifting options.
- * @param config The application configuration struct.
- * @return true if valid, false otherwise.
- */
-bool resolve_frequency_shift_options(struct AppConfig *config);
-
-/**
  * @brief Validates I/Q correction dependencies.
  * @param config The application configuration struct.
  * @return true if valid, false otherwise.
@@ -61,6 +54,6 @@ bool validate_iq_correction_options(struct AppConfig *config);
  * @param config The application configuration struct.
  * @return true if the configuration is logically consistent, false otherwise.
  */
-bool validate_logical_consistency(struct AppConfig *config);
+bool validate_option_combinations(struct AppConfig *config);
 
 #endif // CONFIG_H_
