@@ -30,14 +30,16 @@ size_t get_bytes_per_sample(format_t format);
  * them to the standard [-1.0, 1.0] range, and applies the specified linear gain
  * multiplier in a single pass.
  *
- * @param input_buffer Pointer to the raw input data.
+ * @param input_buffer Pointer to the raw input data. Marked 'const' as it's read-only.
  * @param output_buffer Pointer to the destination buffer for complex float data.
  * @param num_frames The number of frames (I/Q pairs) to convert.
  * @param input_format The format of the raw input data.
  * @param gain The linear gain multiplier to apply.
  * @return true on success, false if the input format is unhandled.
+ * @note The 'restrict' keyword is a promise to the compiler that the input and
+ *       output buffers do not overlap, allowing for more aggressive optimizations.
  */
-bool convert_raw_to_cf32(const void* input_buffer, complex_float_t* output_buffer, size_t num_frames, format_t input_format, float gain);
+bool convert_raw_to_cf32(const void* restrict input_buffer, complex_float_t* restrict output_buffer, size_t num_frames, format_t input_format, float gain);
 
 /**
  * @brief Converts a block of normalized complex floats into the specified output byte format.
@@ -46,12 +48,14 @@ bool convert_raw_to_cf32(const void* input_buffer, complex_float_t* output_buffe
  * to the final integer-based format for output, performing the necessary scaling
  * and clamping.
  *
- * @param input_buffer Pointer to the source complex float data.
+ * @param input_buffer Pointer to the source complex float data. Marked 'const' as it's read-only.
  * @param output_buffer Pointer to the destination buffer for raw output data.
  * @param num_frames The number of frames (I/Q pairs) to convert.
  * @param output_format The target format for the raw output data.
  * @return true on success, false if the output format is unhandled.
+ * @note The 'restrict' keyword is a promise to the compiler that the input and
+ *       output buffers do not overlap, allowing for more aggressive optimizations.
  */
-bool convert_cf32_to_block(const complex_float_t* input_buffer, void* output_buffer, size_t num_frames, format_t output_format);
+bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* restrict output_buffer, size_t num_frames, format_t output_format);
 
 #endif // SAMPLE_CONVERT_H_
