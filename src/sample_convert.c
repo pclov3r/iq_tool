@@ -30,10 +30,47 @@
 #include <string.h>
 #include <math.h>
 #include <limits.h>
+#include <assert.h> // Added for robust error checking in debug builds
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+
+#define CONVERT_LOOP_SIGNED(TYPE, TYPE_MAX_CONST, TYPE_MIN_CONST, SCALE) \
+    do { \
+        TYPE* out = (TYPE*)output_buffer; \
+        const float max_val = (float)TYPE_MAX_CONST; \
+        const float min_val = (float)TYPE_MIN_CONST; \
+        for (size_t i = 0; i < num_frames; ++i) { \
+            float i_val = crealf(input_buffer[i]) * (SCALE); \
+            float q_val = cimagf(input_buffer[i]) * (SCALE); \
+            i_val = (i_val > 0.0f) ? i_val + 0.5f : i_val - 0.5f; \
+            q_val = (q_val > 0.0f) ? q_val + 0.5f : q_val - 0.5f; \
+            if (i_val > max_val) i_val = max_val; \
+            if (i_val < min_val) i_val = min_val; \
+            if (q_val > max_val) q_val = max_val; \
+            if (q_val < min_val) q_val = min_val; \
+            out[i * 2]     = (TYPE)i_val; \
+            out[i * 2 + 1] = (TYPE)q_val; \
+        } \
+    } while (0)
+
+#define CONVERT_LOOP_UNSIGNED(TYPE, TYPE_MAX_CONST, SCALE, OFFSET) \
+    do { \
+        TYPE* out = (TYPE*)output_buffer; \
+        const float max_val = (float)TYPE_MAX_CONST; \
+        for (size_t i = 0; i < num_frames; ++i) { \
+            float i_val = (crealf(input_buffer[i]) * (SCALE)) + (OFFSET); \
+            float q_val = (cimagf(input_buffer[i]) * (SCALE)) + (OFFSET); \
+            if (i_val > max_val) i_val = max_val; \
+            if (i_val < 0.0f)    i_val = 0.0f; \
+            if (q_val > max_val) q_val = max_val; \
+            if (q_val < 0.0f)    q_val = 0.0f; \
+            out[i * 2]     = (TYPE)(i_val + 0.5f); \
+            out[i * 2 + 1] = (TYPE)(q_val + 0.5f); \
+        } \
+    } while (0)
+
 
 /**
  * @brief Gets the number of bytes for a single sample of the given format.
@@ -62,14 +99,20 @@ size_t get_bytes_per_sample(format_t format) {
 /**
  * @brief Converts a block of raw input samples into normalized, gain-adjusted complex floats.
  */
-bool convert_raw_to_cf32(const void* input_buffer, complex_float_t* output_buffer, size_t num_frames, format_t input_format, float gain) {
-    size_t i;
+bool convert_raw_to_cf32(const void* restrict input_buffer, complex_float_t* restrict output_buffer, size_t num_frames, format_t input_format, float gain) {
+    // Add robustness checks for debug builds. These compile to nothing in release builds.
+    assert(input_buffer != NULL && "Input buffer cannot be null.");
+    assert(output_buffer != NULL && "Output buffer cannot be null.");
 
+    // The switch statement is placed OUTSIDE the main loop. This is critical.
+    // It allows the compiler to select the correct, simple inner loop at the
+    // start, enabling effective auto-vectorization.
     switch (input_format) {
         case CS8: {
             const int8_t* in = (const int8_t*)input_buffer;
-            const float normalizer = 1.0f / ((float)SCHAR_MAX + 1.0f);
-            for (i = 0; i < num_frames; ++i) {
+            // Normalize by 128.0 to map [-128, 127] to [-1.0, ~0.992]
+            const float normalizer = 1.0f / 128.0f;
+            for (size_t i = 0; i < num_frames; ++i) {
                 float i_norm = (float)in[i * 2] * normalizer;
                 float q_norm = (float)in[i * 2 + 1] * normalizer;
                 output_buffer[i] = (i_norm * gain) + I * (q_norm * gain);
@@ -78,18 +121,20 @@ bool convert_raw_to_cf32(const void* input_buffer, complex_float_t* output_buffe
         }
         case CU8: {
             const uint8_t* in = (const uint8_t*)input_buffer;
-            const float normalizer = 1.0f / ((float)SCHAR_MAX + 1.0f);
-            for (i = 0; i < num_frames; ++i) {
-                float i_norm = ((float)in[i * 2] - 127.5f) * normalizer;
-                float q_norm = ((float)in[i * 2 + 1] - 127.5f) * normalizer;
+            // Offset by 127.5 (midpoint of [0,255]) to center the range on zero.
+            const float offset = 127.5f;
+            const float normalizer = 1.0f / 128.0f;
+            for (size_t i = 0; i < num_frames; ++i) {
+                float i_norm = ((float)in[i * 2] - offset) * normalizer;
+                float q_norm = ((float)in[i * 2 + 1] - offset) * normalizer;
                 output_buffer[i] = (i_norm * gain) + I * (q_norm * gain);
             }
             break;
         }
         case CS16: {
             const int16_t* in = (const int16_t*)input_buffer;
-            const float normalizer = 1.0f / ((float)SHRT_MAX + 1.0f);
-            for (i = 0; i < num_frames; ++i) {
+            const float normalizer = 1.0f / 32768.0f;
+            for (size_t i = 0; i < num_frames; ++i) {
                 float i_norm = (float)in[i * 2] * normalizer;
                 float q_norm = (float)in[i * 2 + 1] * normalizer;
                 output_buffer[i] = (i_norm * gain) + I * (q_norm * gain);
@@ -98,8 +143,10 @@ bool convert_raw_to_cf32(const void* input_buffer, complex_float_t* output_buffe
         }
         case SC16Q11: {
             const int16_t* in = (const int16_t*)input_buffer;
-            const float normalizer = 1.0f / 2048.0f; // This is the correct, specific divisor for Q4.11
-            for (i = 0; i < num_frames; ++i) {
+            // For Q4.11 format, the value is stored with 11 fractional bits.
+            // To convert to float, we divide by 2^11.
+            const float normalizer = 1.0f / 2048.0f;
+            for (size_t i = 0; i < num_frames; ++i) {
                 float i_norm = (float)in[i * 2] * normalizer;
                 float q_norm = (float)in[i * 2 + 1] * normalizer;
                 output_buffer[i] = (i_norm * gain) + I * (q_norm * gain);
@@ -108,18 +155,20 @@ bool convert_raw_to_cf32(const void* input_buffer, complex_float_t* output_buffe
         }
         case CU16: {
             const uint16_t* in = (const uint16_t*)input_buffer;
-            const float normalizer = 1.0f / ((float)SHRT_MAX + 1.0f);
-            for (i = 0; i < num_frames; ++i) {
-                float i_norm = ((float)in[i * 2] - 32767.5f) * normalizer;
-                float q_norm = ((float)in[i * 2 + 1] - 32767.5f) * normalizer;
+            const float offset = 32767.5f;
+            const float normalizer = 1.0f / 32768.0f;
+            for (size_t i = 0; i < num_frames; ++i) {
+                float i_norm = ((float)in[i * 2] - offset) * normalizer;
+                float q_norm = ((float)in[i * 2 + 1] - offset) * normalizer;
                 output_buffer[i] = (i_norm * gain) + I * (q_norm * gain);
             }
             break;
         }
         case CS32: {
             const int32_t* in = (const int32_t*)input_buffer;
-            const double normalizer = 1.0 / ((double)INT_MAX + 1.0);
-            for (i = 0; i < num_frames; ++i) {
+            // Use double for intermediate precision to avoid losing info from the 32-bit int.
+            const double normalizer = 1.0 / 2147483648.0;
+            for (size_t i = 0; i < num_frames; ++i) {
                 double i_norm = (double)in[i * 2] * normalizer;
                 double q_norm = (double)in[i * 2 + 1] * normalizer;
                 output_buffer[i] = (float)(i_norm * gain) + I * (float)(q_norm * gain);
@@ -128,17 +177,18 @@ bool convert_raw_to_cf32(const void* input_buffer, complex_float_t* output_buffe
         }
         case CU32: {
             const uint32_t* in = (const uint32_t*)input_buffer;
-            const double normalizer = 1.0 / ((double)INT_MAX + 1.0);
-            for (i = 0; i < num_frames; ++i) {
-                double i_norm = ((double)in[i * 2] - 2147483647.5) * normalizer;
-                double q_norm = ((double)in[i * 2 + 1] - 2147483647.5) * normalizer;
+            const double offset = 2147483647.5; // (UINT_MAX + 1) / 2.0
+            const double normalizer = 1.0 / 2147483648.0;
+            for (size_t i = 0; i < num_frames; ++i) {
+                double i_norm = ((double)in[i * 2] - offset) * normalizer;
+                double q_norm = ((double)in[i * 2 + 1] - offset) * normalizer;
                 output_buffer[i] = (float)(i_norm * gain) + I * (float)(q_norm * gain);
             }
             break;
         }
         case CF32: {
             const complex_float_t* in = (const complex_float_t*)input_buffer;
-            for (i = 0; i < num_frames; ++i) {
+            for (size_t i = 0; i < num_frames; ++i) {
                 output_buffer[i] = in[i] * gain;
             }
             break;
@@ -152,137 +202,69 @@ bool convert_raw_to_cf32(const void* input_buffer, complex_float_t* output_buffe
 
 /**
  * @brief Converts a block of normalized complex floats into the specified output byte format.
- * @note The logic in this function has been intentionally written to avoid math library
- *       calls (e.g. fminf, lrintf) within the loops. This makes the operations
- *       transparent to the compiler, allowing for much more effective autovectorization.
  */
-bool convert_cf32_to_block(const complex_float_t* input_buffer, void* output_buffer, size_t num_frames, format_t output_format) {
-    size_t i;
+bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* restrict output_buffer, size_t num_frames, format_t output_format) {
+    // Add robustness checks for debug builds.
+    assert(input_buffer != NULL && "Input buffer cannot be null.");
+    assert(output_buffer != NULL && "Output buffer cannot be null.");
 
     switch (output_format) {
-        case CS8: {
-            int8_t* out = (int8_t*)output_buffer;
-            for (i = 0; i < num_frames; ++i) {
-                float i_val = crealf(input_buffer[i]) * (float)SCHAR_MAX;
-                float q_val = cimagf(input_buffer[i]) * (float)SCHAR_MAX;
-
-                if (i_val > (float)SCHAR_MAX) i_val = (float)SCHAR_MAX;
-                else if (i_val < (float)SCHAR_MIN) i_val = (float)SCHAR_MIN;
-
-                if (q_val > (float)SCHAR_MAX) q_val = (float)SCHAR_MAX;
-                else if (q_val < (float)SCHAR_MIN) q_val = (float)SCHAR_MIN;
-
-                out[i * 2]     = (int8_t)(i_val > 0.0f ? i_val + 0.5f : i_val - 0.5f);
-                out[i * 2 + 1] = (int8_t)(q_val > 0.0f ? q_val + 0.5f : q_val - 0.5f);
-            }
+        case CS8:
+            CONVERT_LOOP_SIGNED(int8_t, SCHAR_MAX, SCHAR_MIN, (float)SCHAR_MAX);
             break;
-        }
-        case CU8: {
-            uint8_t* out = (uint8_t*)output_buffer;
-            for (i = 0; i < num_frames; ++i) {
-                float i_val = (crealf(input_buffer[i]) * 127.0f) + 127.5f;
-                float q_val = (cimagf(input_buffer[i]) * 127.0f) + 127.5f;
-
-                if (i_val > (float)UCHAR_MAX) i_val = (float)UCHAR_MAX;
-                else if (i_val < 0.0f) i_val = 0.0f;
-
-                if (q_val > (float)UCHAR_MAX) q_val = (float)UCHAR_MAX;
-                else if (q_val < 0.0f) q_val = 0.0f;
-
-                out[i * 2]     = (uint8_t)(i_val + 0.5f);
-                out[i * 2 + 1] = (uint8_t)(q_val + 0.5f);
-            }
+        case CU8:
+            CONVERT_LOOP_UNSIGNED(uint8_t, UCHAR_MAX, 127.0f, 127.5f);
             break;
-        }
-        case CS16: {
-            int16_t* out = (int16_t*)output_buffer;
-            for (i = 0; i < num_frames; ++i) {
-                float i_val = crealf(input_buffer[i]) * (float)SHRT_MAX;
-                float q_val = cimagf(input_buffer[i]) * (float)SHRT_MAX;
-
-                if (i_val > (float)SHRT_MAX) i_val = (float)SHRT_MAX;
-                else if (i_val < (float)SHRT_MIN) i_val = (float)SHRT_MIN;
-
-                if (q_val > (float)SHRT_MAX) q_val = (float)SHRT_MAX;
-                else if (q_val < (float)SHRT_MIN) q_val = (float)SHRT_MIN;
-
-                out[i * 2]     = (int16_t)(i_val > 0.0f ? i_val + 0.5f : i_val - 0.5f);
-                out[i * 2 + 1] = (int16_t)(q_val > 0.0f ? q_val + 0.5f : q_val - 0.5f);
-            }
+        case CS16:
+            CONVERT_LOOP_SIGNED(int16_t, SHRT_MAX, SHRT_MIN, (float)SHRT_MAX);
             break;
-        }
-        case SC16Q11: {
-            int16_t* out = (int16_t*)output_buffer;
-            for (i = 0; i < num_frames; ++i) {
-                float i_val = crealf(input_buffer[i]) * 2048.0f;
-                float q_val = cimagf(input_buffer[i]) * 2048.0f;
-
-                if (i_val > (float)SHRT_MAX) i_val = (float)SHRT_MAX;
-                else if (i_val < (float)SHRT_MIN) i_val = (float)SHRT_MIN;
-
-                if (q_val > (float)SHRT_MAX) q_val = (float)SHRT_MAX;
-                else if (q_val < (float)SHRT_MIN) q_val = (float)SHRT_MIN;
-
-                out[i * 2]     = (int16_t)(i_val > 0.0f ? i_val + 0.5f : i_val - 0.5f);
-                out[i * 2 + 1] = (int16_t)(q_val > 0.0f ? q_val + 0.5f : q_val - 0.5f);
-            }
+        case SC16Q11:
+            CONVERT_LOOP_SIGNED(int16_t, SHRT_MAX, SHRT_MIN, 2048.0f);
             break;
-        }
-        case CU16: {
-            uint16_t* out = (uint16_t*)output_buffer;
-            for (i = 0; i < num_frames; ++i) {
-                float i_val = (crealf(input_buffer[i]) * 32767.0f) + 32767.5f;
-                float q_val = (cimagf(input_buffer[i]) * 32767.0f) + 32767.5f;
-
-                if (i_val > (float)USHRT_MAX) i_val = (float)USHRT_MAX;
-                else if (i_val < 0.0f) i_val = 0.0f;
-
-                if (q_val > (float)USHRT_MAX) q_val = (float)USHRT_MAX;
-                else if (q_val < 0.0f) q_val = 0.0f;
-
-                out[i * 2]     = (uint16_t)(i_val + 0.5f);
-                out[i * 2 + 1] = (uint16_t)(q_val + 0.5f);
-            }
+        case CU16:
+            CONVERT_LOOP_UNSIGNED(uint16_t, USHRT_MAX, 32767.0f, 32767.5f);
             break;
-        }
-        case CS32: {
-            int32_t* out = (int32_t*)output_buffer;
-            for (i = 0; i < num_frames; ++i) {
-                double i_val = creal(input_buffer[i]) * (double)INT_MAX;
-                double q_val = cimag(input_buffer[i]) * (double)INT_MAX;
-
-                if (i_val > (double)INT_MAX) i_val = (double)INT_MAX;
-                else if (i_val < (double)INT_MIN) i_val = (double)INT_MIN;
-
-                if (q_val > (double)INT_MAX) q_val = (double)INT_MAX;
-                else if (q_val < (double)INT_MIN) q_val = (double)INT_MIN;
-
-                out[i * 2]     = (int32_t)(i_val > 0.0 ? i_val + 0.5 : i_val - 0.5);
-                out[i * 2 + 1] = (int32_t)(q_val > 0.0 ? q_val + 0.5 : q_val - 0.5);
-            }
+        case CS32:
+            // This case is handled separately from the macro because it requires
+            // double precision for intermediate calculations to avoid data loss.
+            do {
+                int32_t* out = (int32_t*)output_buffer;
+                const double max_val = (double)INT_MAX;
+                const double min_val = (double)INT_MIN;
+                for (size_t i = 0; i < num_frames; ++i) {
+                    double i_val = creal(input_buffer[i]) * max_val;
+                    double q_val = cimag(input_buffer[i]) * max_val;
+                    i_val = (i_val > 0.0) ? i_val + 0.5 : i_val - 0.5;
+                    q_val = (q_val > 0.0) ? q_val + 0.5 : q_val - 0.5;
+                    if (i_val > max_val) i_val = max_val;
+                    if (i_val < min_val) i_val = min_val;
+                    if (q_val > max_val) q_val = max_val;
+                    if (q_val < min_val) q_val = min_val;
+                    out[i * 2]     = (int32_t)i_val;
+                    out[i * 2 + 1] = (int32_t)q_val;
+                }
+            } while (0);
             break;
-        }
-        case CU32: {
-            uint32_t* out = (uint32_t*)output_buffer;
-            for (i = 0; i < num_frames; ++i) {
-                double i_val = (creal(input_buffer[i]) * 2147483647.0) + 2147483647.5;
-                double q_val = (cimag(input_buffer[i]) * 2147483647.0) + 2147483647.5;
-
-                if (i_val > (double)UINT_MAX) i_val = (double)UINT_MAX;
-                else if (i_val < 0.0) i_val = 0.0;
-
-                if (q_val > (double)UINT_MAX) q_val = (double)UINT_MAX;
-                else if (q_val < 0.0) q_val = 0.0;
-
-                out[i * 2]     = (uint32_t)(i_val + 0.5);
-                out[i * 2 + 1] = (uint32_t)(q_val + 0.5);
-            }
+        case CU32:
+            // This case also requires double precision.
+            do {
+                uint32_t* out = (uint32_t*)output_buffer;
+                const double max_val = (double)UINT_MAX;
+                for (size_t i = 0; i < num_frames; ++i) {
+                    double i_val = (creal(input_buffer[i]) * 2147483647.0) + 2147483647.5;
+                    double q_val = (cimag(input_buffer[i]) * 2147483647.0) + 2147483647.5;
+                    if (i_val > max_val) i_val = max_val;
+                    if (i_val < 0.0)     i_val = 0.0;
+                    if (q_val > max_val) q_val = max_val;
+                    if (q_val < 0.0)     q_val = 0.0;
+                    out[i * 2]     = (uint32_t)(i_val + 0.5);
+                    out[i * 2 + 1] = (uint32_t)(q_val + 0.5);
+                }
+            } while(0);
             break;
-        }
-        case CF32: {
+        case CF32:
             memcpy(output_buffer, input_buffer, num_frames * sizeof(complex_float_t));
             break;
-        }
         default:
             log_error("Unhandled output format in convert_cf32_to_block: %d", output_format);
             return false;
