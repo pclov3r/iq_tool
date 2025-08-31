@@ -1,7 +1,7 @@
 #include "utils.h"
 #include "log.h"
-#include "memory_arena.h" // Provides MemoryArena
-#include "app_context.h"  // Provides AppConfig
+#include "memory_arena.h"
+#include "app_context.h"
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
@@ -91,7 +91,6 @@ const char* format_file_size(long long size_bytes, char* buffer, size_t buffer_s
     return buffer;
 }
 
-// MODIFIED: Function signature updated to accept a MemoryArena pointer.
 const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size_t buffer_size, MemoryArena* arena) {
 #ifdef _WIN32
     if (config->effective_input_filename_w) {
@@ -102,7 +101,6 @@ const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size
     }
 #else
     if (config->effective_input_filename) {
-        // MODIFIED: Use the arena for the temporary copy needed by basename().
         size_t len = strlen(config->effective_input_filename) + 1;
         char* temp_copy = (char*)mem_arena_alloc(arena, len, false);
         if (temp_copy) {
@@ -110,23 +108,11 @@ const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size
             char* base = basename(temp_copy);
             strncpy(buffer, base, buffer_size - 1);
             buffer[buffer_size - 1] = '\0';
-            // REMOVED: free(temp_copy); - The arena now manages this memory.
             return buffer;
         }
     }
 #endif
     return NULL;
-}
-
-const char* sdr_software_type_to_string(SdrSoftwareType type) {
-    switch (type) {
-        case SDR_SOFTWARE_UNKNOWN: return "Unknown";
-        case SDR_CONSOLE:          return "SDR Console";
-        case SDR_SHARP:            return "SDR#";
-        case SDR_UNO:              return "SDRuno";
-        case SDR_CONNECT:          return "SDRconnect";
-        default:                   return "Invalid Type";
-    }
 }
 
 void add_summary_item(InputSummaryInfo* info, const char* label, const char* value_fmt, ...) {

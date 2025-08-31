@@ -3,11 +3,11 @@
 #include "log.h"
 #include "signal_handler.h"
 #include "utils.h"
-#include "app_context.h"  // Provides AppConfig, AppResources
+#include "app_context.h"
 #include "platform.h"
 #include "sample_convert.h"
 #include "input_common.h"
-#include "memory_arena.h" // Provides MemoryArena
+#include "memory_arena.h"
 #include "queue.h"
 #include "argparse.h"
 #include <stdio.h>
@@ -43,6 +43,30 @@ typedef struct {
 #pragma pack(pop)
 
 typedef enum {
+    SDR_SOFTWARE_UNKNOWN,
+    SDR_CONSOLE,
+    SDR_SHARP,
+    SDR_UNO,
+    SDR_CONNECT,
+} SdrSoftwareType;
+
+typedef struct SdrMetadata {
+    SdrSoftwareType source_software;
+    char            software_name[64];
+    char            software_version[64];
+    char            radio_model[128];
+    bool            software_name_present;
+    bool            software_version_present;
+    bool            radio_model_present;
+    double          center_freq_hz;
+    bool            center_freq_hz_present;
+    time_t          timestamp_unix;
+    char            timestamp_str[64];
+    bool            timestamp_unix_present;
+    bool            timestamp_str_present;
+} SdrMetadata;
+
+typedef enum {
     ATTR_TYPE_STRING,
     ATTR_TYPE_DOUBLE,
     ATTR_TYPE_TIME_T_SECONDS,
@@ -64,6 +88,17 @@ static time_t timegm_portable(struct tm *tm);
 static void init_sdr_metadata(SdrMetadata *metadata);
 static bool parse_sdr_metadata_chunks(SNDFILE *infile, const SF_INFO *sfinfo, SdrMetadata *metadata, MemoryArena* arena);
 static bool parse_sdr_metadata_from_filename(const char* base_filename, SdrMetadata *metadata);
+
+static const char* sdr_software_type_to_string(SdrSoftwareType type) {
+    switch (type) {
+        case SDR_SOFTWARE_UNKNOWN: return "Unknown";
+        case SDR_CONSOLE:          return "SDR Console";
+        case SDR_SHARP:            return "SDR#";
+        case SDR_UNO:              return "SDRuno";
+        case SDR_CONNECT:          return "SDRconnect";
+        default:                   return "Invalid Type";
+    }
+}
 
 #ifndef HAVE_STRCASESTR
 static char *strcasestr(const char *haystack, const char *needle) {
@@ -302,6 +337,9 @@ static void XMLCALL expat_start_element_handler(void *userData, const XML_Char *
                 errno = 0;
                 switch (parser->type) {
                     case ATTR_TYPE_STRING:
+                        if (strlen(attr_value) >= parser->buffer_size) {
+                            log_warn("Metadata contains overly long string for attribute '%s'. Truncating.", attr_name);
+                        }
                         snprintf(data_ptr, parser->buffer_size, "%s", attr_value);
                         *present_flag_ptr = true;
                         break;
@@ -375,6 +413,8 @@ static bool _parse_auxi_xml_expat(const unsigned char *chunk_data, sf_count_t ch
 
 typedef struct {
     SNDFILE *infile;
+    SdrMetadata sdr_info;
+    bool sdr_info_present;
 } WavPrivateData;
 
 static struct {
@@ -415,6 +455,8 @@ InputSourceOps* get_wav_input_ops(void) {
 static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppResources *resources = ctx->resources;
+    WavPrivateData* private_data = (WavPrivateData*)resources->input_module_private_data;
+
     const char* display_path = config->input_filename_arg;
 #ifdef _WIN32
     if (config->effective_input_filename_utf8[0] != '\0') {
@@ -446,36 +488,36 @@ static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo
     char size_buf[40];
     add_summary_item(info, "Input File Size", "%s", format_file_size(input_file_size, size_buf, sizeof(size_buf)));
 
-    if (resources->sdr_info_present) {
-        if (resources->sdr_info.timestamp_unix_present) {
+    if (private_data->sdr_info_present) {
+        if (private_data->sdr_info.timestamp_unix_present) {
             char time_buf[64];
             struct tm time_info;
 #ifdef _WIN32
-            if (gmtime_s(&time_info, &resources->sdr_info.timestamp_unix) == 0) {
+            if (gmtime_s(&time_info, &private_data->sdr_info.timestamp_unix) == 0) {
                 strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC", &time_info);
                 add_summary_item(info, "Timestamp", "%s", time_buf);
             }
 #else
-            if (gmtime_r(&resources->sdr_info.timestamp_unix, &time_info)) {
+            if (gmtime_r(&private_data->sdr_info.timestamp_unix, &time_info)) {
                 strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC", &time_info);
                 add_summary_item(info, "Timestamp", "%s", time_buf);
             }
 #endif
-        } else if (resources->sdr_info.timestamp_str_present) {
-            add_summary_item(info, "Timestamp", "%s", resources->sdr_info.timestamp_str);
+        } else if (private_data->sdr_info.timestamp_str_present) {
+            add_summary_item(info, "Timestamp", "%s", private_data->sdr_info.timestamp_str);
         }
-        if (resources->sdr_info.center_freq_hz_present) {
-            add_summary_item(info, "Center Frequency", "%.0f Hz", resources->sdr_info.center_freq_hz);
+        if (private_data->sdr_info.center_freq_hz_present) {
+            add_summary_item(info, "Center Frequency", "%.0f Hz", private_data->sdr_info.center_freq_hz);
         }
-        if (resources->sdr_info.software_name_present) {
+        if (private_data->sdr_info.software_name_present) {
             char sw_buf[128];
             snprintf(sw_buf, sizeof(sw_buf), "%s %s",
-                     resources->sdr_info.software_name,
-                     resources->sdr_info.software_version_present ? resources->sdr_info.software_version : "");
+                     private_data->sdr_info.software_name,
+                     private_data->sdr_info.software_version_present ? private_data->sdr_info.software_version : "");
             add_summary_item(info, "SDR Software", "%s", sw_buf);
         }
-        if (resources->sdr_info.radio_model_present) {
-            add_summary_item(info, "Radio Model", "%s", resources->sdr_info.radio_model);
+        if (private_data->sdr_info.radio_model_present) {
+            add_summary_item(info, "Radio Model", "%s", private_data->sdr_info.radio_model);
         }
     }
 }
@@ -542,14 +584,14 @@ static bool wav_initialize(InputSourceContext* ctx) {
     resources->source_info.samplerate = sfinfo.samplerate;
     resources->source_info.frames = sfinfo.frames;
 
-    init_sdr_metadata(&resources->sdr_info);
-    resources->sdr_info_present = parse_sdr_metadata_chunks(private_data->infile, &sfinfo, &resources->sdr_info, &resources->setup_arena);
+    init_sdr_metadata(&private_data->sdr_info);
+    private_data->sdr_info_present = parse_sdr_metadata_chunks(private_data->infile, &sfinfo, &private_data->sdr_info, &resources->setup_arena);
 
     char basename_buffer[MAX_PATH_BUFFER];
     const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer), &resources->setup_arena);
     if (base_filename) {
-        bool filename_parsed = parse_sdr_metadata_from_filename(base_filename, &resources->sdr_info);
-        resources->sdr_info_present = resources->sdr_info_present || filename_parsed;
+        bool filename_parsed = parse_sdr_metadata_from_filename(base_filename, &private_data->sdr_info);
+        private_data->sdr_info_present = private_data->sdr_info_present || filename_parsed;
     }
 
     if (s_wav_config.center_target_hz_arg != 0.0f) {
@@ -559,14 +601,14 @@ static bool wav_initialize(InputSourceContext* ctx) {
             return false;
         }
 
-        if (!resources->sdr_info.center_freq_hz_present) {
+        if (!private_data->sdr_info.center_freq_hz_present) {
             log_fatal("Option --wav-center-target-freq was used, but the input WAV file does not contain the required center frequency metadata.");
             sf_close(private_data->infile);
             return false;
         }
 
         double target_freq = (double)s_wav_config.center_target_hz_arg;
-        resources->nco_shift_hz = resources->sdr_info.center_freq_hz - target_freq;
+        resources->nco_shift_hz = private_data->sdr_info.center_freq_hz - target_freq;
     }
 
     return true;

@@ -27,23 +27,6 @@ struct AppResources;
 struct InputSummaryInfo;
 struct InputSourceContext;
 
-// --- Enumerations ---
-
-/**
- * @enum SdrSoftwareType
- * @brief Enumerates known software applications that create I/Q recordings.
- *
- * This is used to identify the source of a recording when parsing metadata,
- * which can help in interpreting non-standard or ambiguous metadata fields.
- */
-typedef enum {
-    SDR_SOFTWARE_UNKNOWN,
-    SDR_CONSOLE,
-    SDR_SHARP,
-    SDR_UNO,
-    SDR_CONNECT,
-} SdrSoftwareType;
-
 
 // --- Data Structures ---
 
@@ -55,26 +38,6 @@ typedef struct InputSourceInfo {
     int64_t frames;     ///< Total number of I/Q frames in the source. -1 for a live stream.
     int     samplerate; ///< The native sample rate of the source in Hz.
 } InputSourceInfo;
-
-/**
- * @struct SdrMetadata
- * @brief Stores detailed metadata parsed from an I/Q recording file.
- */
-typedef struct SdrMetadata {
-    SdrSoftwareType source_software;        ///< The identified software that created the file.
-    char            software_name[64];      ///< The software name string from metadata.
-    char            software_version[64];   ///< The software version string from metadata.
-    char            radio_model[128];       ///< The SDR hardware model string from metadata.
-    bool            software_name_present;
-    bool            software_version_present;
-    bool            radio_model_present;
-    double          center_freq_hz;         ///< The tuner center frequency in Hz.
-    bool            center_freq_hz_present;
-    time_t          timestamp_unix;         ///< The recording start time as a Unix timestamp (UTC).
-    char            timestamp_str[64];      ///< The recording start time as a formatted string.
-    bool            timestamp_unix_present;
-    bool            timestamp_str_present;
-} SdrMetadata;
 
 /**
  * @struct SummaryItem
