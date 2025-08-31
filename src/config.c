@@ -1,5 +1,3 @@
-// src/config.c
-
 #include "config.h"
 #include "app_context.h" // Provides the full definition for AppConfig
 #include "constants.h"
@@ -235,39 +233,6 @@ bool validate_filter_options(AppConfig *config) {
     return true;
 }
 
-bool resolve_frequency_shift_options(AppConfig *config) {
-    if (config->freq_shift_hz_arg != 0.0f) {
-        if (config->frequency_shift_request.type != FREQUENCY_SHIFT_REQUEST_NONE) {
-            log_fatal("Conflicting frequency shift options provided. Cannot use --freq-shift and --wav-center-target-freq at the same time.");
-            return false;
-        }
-        config->frequency_shift_request.type = FREQUENCY_SHIFT_REQUEST_MANUAL;
-        config->frequency_shift_request.value = (double)config->freq_shift_hz_arg;
-    }
-
-    switch (config->frequency_shift_request.type) {
-        case FREQUENCY_SHIFT_REQUEST_NONE:
-            config->freq_shift_requested = false;
-            break;
-        case FREQUENCY_SHIFT_REQUEST_MANUAL:
-            config->freq_shift_requested = true;
-            config->freq_shift_hz = config->frequency_shift_request.value;
-            break;
-        case FREQUENCY_SHIFT_REQUEST_METADATA_CALC_TARGET:
-            config->freq_shift_requested = true;
-            config->set_center_frequency_target_hz = true;
-            config->center_frequency_target_hz = config->frequency_shift_request.value;
-            break;
-    }
-
-    if (config->shift_after_resample && !config->freq_shift_requested) {
-        log_fatal("Option --shift-after-resample was used, but no frequency shift was requested.");
-        return false;
-    }
-
-    return true;
-}
-
 bool validate_iq_correction_options(AppConfig *config) {
     if (config->iq_correction.enable) {
         if (!config->dc_block.enable) {
@@ -278,7 +243,7 @@ bool validate_iq_correction_options(AppConfig *config) {
     return true;
 }
 
-bool validate_logical_consistency(AppConfig *config) {
+bool validate_option_combinations(AppConfig *config) {
     // --- Validate Filter Implementation Options ---
     if (config->filter_type_str_arg) {
         if (strcasecmp(config->filter_type_str_arg, "fir") == 0) {
@@ -346,6 +311,7 @@ bool validate_logical_consistency(AppConfig *config) {
             return false;
         }
     }
+
     if (config->raw_passthrough) {
         if (config->num_filter_requests > 0) {
             log_fatal("Option --raw-passthrough cannot be used with any filtering options.");
@@ -355,7 +321,7 @@ bool validate_logical_consistency(AppConfig *config) {
             log_warn("Option --raw-passthrough implies --no-resample. Forcing resampler off.");
             config->no_resample = true;
         }
-        if (config->freq_shift_requested) {
+        if (config->freq_shift_hz_arg != 0.0f) {
             log_fatal("Option --raw-passthrough cannot be used with frequency shifting options.");
             return false;
         }
