@@ -172,6 +172,7 @@ typedef struct {
 typedef struct {
     IqCorrectionFactors factors_buffer[2];
     _Atomic int         active_buffer_idx;
+    pthread_mutex_t     iq_factors_mutex;
     fftplan             fft_plan;
     complex_float_t*    fft_buffer;
     complex_float_t*    fft_shift_buffer;

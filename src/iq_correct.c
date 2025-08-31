@@ -90,6 +90,11 @@ bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* ar
 
     srand((unsigned int)time(NULL));
 
+    if (pthread_mutex_init(&resources->iq_correction.iq_factors_mutex, NULL) != 0) {
+        log_fatal("Failed to initialize I/Q correction mutex.");
+        return false;
+    }
+
     const unsigned int nfft = IQ_CORRECTION_FFT_SIZE;
     resources->iq_correction.fft_buffer = (complex_float_t*)mem_arena_alloc(arena, nfft * sizeof(complex_float_t), false);
     resources->iq_correction.fft_shift_buffer = (complex_float_t*)mem_arena_alloc(arena, nfft * sizeof(complex_float_t), false);
@@ -135,11 +140,14 @@ bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* ar
 void iq_correct_apply(AppResources* resources, complex_float_t* samples, int num_samples) {
     if (!resources->config->iq_correction.enable) return;
 
-    int active_idx = atomic_load(&resources->iq_correction.active_buffer_idx);
-    float gain_adj = resources->iq_correction.factors_buffer[active_idx].mag;
-    float phase_adj = resources->iq_correction.factors_buffer[active_idx].phase;
+    IqCorrectionFactors local_factors;
 
-    _apply_correction_to_buffer(samples, num_samples, gain_adj, phase_adj);
+    pthread_mutex_lock(&resources->iq_correction.iq_factors_mutex);
+    int active_idx = atomic_load(&resources->iq_correction.active_buffer_idx);
+    local_factors = resources->iq_correction.factors_buffer[active_idx];
+    pthread_mutex_unlock(&resources->iq_correction.iq_factors_mutex);
+
+    _apply_correction_to_buffer(samples, num_samples, local_factors.mag, local_factors.phase);
 }
 
 void iq_correct_run_optimization(AppResources* resources, const complex_float_t* optimization_data) {
@@ -195,15 +203,19 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
     float smoothed_gain = ((1.0f - IQ_CORRECTION_SMOOTHING_FACTOR) * resources->iq_correction.factors_buffer[current_active_idx].mag) + (IQ_CORRECTION_SMOOTHING_FACTOR * current_gain);
     float smoothed_phase = ((1.0f - IQ_CORRECTION_SMOOTHING_FACTOR) * resources->iq_correction.factors_buffer[current_active_idx].phase) + (IQ_CORRECTION_SMOOTHING_FACTOR * current_phase);
 
+    pthread_mutex_lock(&resources->iq_correction.iq_factors_mutex);
     resources->iq_correction.factors_buffer[inactive_idx].mag = smoothed_gain;
     resources->iq_correction.factors_buffer[inactive_idx].phase = smoothed_phase;
-
     atomic_store(&resources->iq_correction.active_buffer_idx, inactive_idx);
+    pthread_mutex_unlock(&resources->iq_correction.iq_factors_mutex);
 
     log_debug("IQ_OPT_PROBE: Smoothed global params updated to: mag=%.6f, phase=%.6f", smoothed_gain, smoothed_phase);
 }
 
 void iq_correct_destroy(AppResources* resources) {
+    if (resources->config->iq_correction.enable) {
+        pthread_mutex_destroy(&resources->iq_correction.iq_factors_mutex);
+    }
     if (resources->iq_correction.fft_plan) {
         fft_destroy_plan(resources->iq_correction.fft_plan);
         resources->iq_correction.fft_plan = NULL;
