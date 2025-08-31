@@ -219,8 +219,6 @@ typedef struct AppResources {
     InputSourceInfo source_info;
     format_t        input_format;
     size_t          input_bytes_per_sample_pair;
-    SdrMetadata     sdr_info;
-    bool            sdr_info_present;
     FileWriterContext writer_ctx;
     size_t          output_bytes_per_sample_pair;
     void*           input_module_private_data;

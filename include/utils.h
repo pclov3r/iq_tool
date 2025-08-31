@@ -13,9 +13,9 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "app_context.h"  // Provides AppConfig
-#include "input_source.h" // Provides InputSummaryInfo, SdrSoftwareType
-#include "memory_arena.h" // Provides MemoryArena
+#include "app_context.h"
+#include "input_source.h"
+#include "memory_arena.h"
 
 // --- Function Declarations ---
 
@@ -48,13 +48,6 @@ const char* format_file_size(long long size_bytes, char* buffer, size_t buffer_s
  * @return A pointer to the provided buffer containing the basename.
  */
 const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size_t buffer_size, MemoryArena* arena);
-
-/**
- * @brief Converts an SdrSoftwareType enum value to a human-readable string.
- * @param type The enum value.
- * @return A constant string representing the software name.
- */
-const char* sdr_software_type_to_string(SdrSoftwareType type);
 
 /**
  * @brief A helper to safely add a new key-value pair to the summary info struct.
