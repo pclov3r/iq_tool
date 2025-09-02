@@ -160,57 +160,47 @@ int main(int argc, char *argv[]) {
     thread_args.config = &g_config;
     thread_args.resources = &resources;
 
+    // Define the list of threads to be started.
+    typedef struct {
+        const char* name;
+        void* (*func)(void*);
+        bool required;
+    } ThreadStarter;
+
+    ThreadStarter threads_to_start[] = {
+        { "SDR Capture",   sdr_capture_thread_func,     (resources.pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) },
+        { "Reader",        reader_thread_func,          true },
+        { "Pre-Processor", pre_processor_thread_func,   true },
+        { "Resampler",     resampler_thread_func,       true },
+        { "Post-Processor",post_processor_thread_func,  true },
+        { "Writer",        writer_thread_func,          true },
+        { "I/Q Optimizer", iq_optimization_thread_func, g_config.iq_correction.enable },
+    };
+    int num_thread_starters = sizeof(threads_to_start) / sizeof(threads_to_start[0]);
+
     log_debug("Starting processing threads...");
 
-    if (resources.pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
-        if (pthread_create(&resources.sdr_capture_thread_handle, NULL, sdr_capture_thread_func, &thread_args) != 0) {
-            log_fatal("Failed to create SDR capture thread: %s", strerror(errno));
-            goto thread_join;
-        }
-        resources.threads_started = true;
-    }
-    if (pthread_create(&resources.reader_thread_handle, NULL, reader_thread_func, &thread_args) != 0) {
-        log_fatal("Failed to create reader thread: %s", strerror(errno));
-        goto thread_join;
-    }
-    resources.threads_started = true;
-    if (pthread_create(&resources.pre_processor_thread_handle, NULL, pre_processor_thread_func, &thread_args) != 0) {
-        log_fatal("Failed to create pre-processor thread: %s", strerror(errno));
-        goto thread_join;
-    }
-    if (pthread_create(&resources.resampler_thread_handle, NULL, resampler_thread_func, &thread_args) != 0) {
-        log_fatal("Failed to create resampler thread: %s", strerror(errno));
-        goto thread_join;
-    }
-    if (pthread_create(&resources.post_processor_thread_handle, NULL, post_processor_thread_func, &thread_args) != 0) {
-        log_fatal("Failed to create post-processor thread: %s", strerror(errno));
-        goto thread_join;
-    }
-    if (pthread_create(&resources.writer_thread_handle, NULL, writer_thread_func, &thread_args) != 0) {
-        log_fatal("Failed to create writer thread: %s", strerror(errno));
-        goto thread_join;
-    }
-    if (g_config.iq_correction.enable) {
-        if (pthread_create(&resources.iq_optimization_thread_handle, NULL, iq_optimization_thread_func, &thread_args) != 0) {
-            log_fatal("Failed to create I/Q optimization thread: %s", strerror(errno));
-            goto thread_join;
+    for (int i = 0; i < num_thread_starters; ++i) {
+        if (threads_to_start[i].required) {
+            if (pthread_create(&resources.thread_handles[resources.num_threads_started], NULL, threads_to_start[i].func, &thread_args) != 0) {
+                log_fatal("Failed to create %s thread: %s", threads_to_start[i].name, strerror(errno));
+                // A thread failed to create. Signal all already-running threads to shut down.
+                request_shutdown();
+                goto thread_join;
+            }
+            // Only increment the counter on success.
+            resources.num_threads_started++;
         }
     }
 
 thread_join:
-    if (resources.threads_started) {
+    // This block is now safe to enter even on a partial startup failure.
+    if (resources.num_threads_started > 0) {
         log_debug("Waiting for processing threads to complete...");
-        if (pthread_join(resources.post_processor_thread_handle, NULL) != 0) log_warn("Error joining post-processor thread.");
-        if (pthread_join(resources.writer_thread_handle, NULL) != 0) log_warn("Error joining writer thread.");
-        if (pthread_join(resources.resampler_thread_handle, NULL) != 0) log_warn("Error joining resampler thread.");
-        if (pthread_join(resources.pre_processor_thread_handle, NULL) != 0) log_warn("Error joining pre-processor thread.");
-        if (g_config.iq_correction.enable) {
-            if (pthread_join(resources.iq_optimization_thread_handle, NULL) != 0) log_warn("Error joining I/Q optimization thread.");
-        }
-        if (pthread_join(resources.reader_thread_handle, NULL) != 0) log_warn("Error joining reader thread.");
-
-        if (resources.pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
-            if (pthread_join(resources.sdr_capture_thread_handle, NULL) != 0) log_warn("Error joining SDR capture thread.");
+        for (int i = 0; i < resources.num_threads_started; i++) {
+            if (pthread_join(resources.thread_handles[i], NULL) != 0) {
+                log_warn("Error joining thread %d.", i);
+            }
         }
         log_debug("All processing threads have joined.");
     }
