@@ -117,7 +117,7 @@ static FILE* _secure_open_for_write(const char* out_path_utf8) {
             close(fd);
             return NULL;
         }
-        if (!S_ISREG(stat_buf.st_mode)) {
+        if (!S_ISREG(stat_buf.st_mode) && !S_ISCHR(stat_buf.st_mode)) {
             log_fatal("Output path '%s' exists but is not a regular file. Aborting.", out_path_utf8);
             close(fd);
             return NULL;
