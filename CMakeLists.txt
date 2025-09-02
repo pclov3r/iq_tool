@@ -34,7 +34,7 @@ option(BUILD_DOCUMENTATION "Enable building Doxygen documentation (requires Doxy
 #=======================================================================
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS OFF)
+set(CMAKE_C_EXTENSIONS ON)
 
 # New variable to control the target CPU architecture for GCC/Clang
 # Default to 'native' for convenience on local builds, but allow override.
@@ -59,7 +59,7 @@ else()
     if(("${CMAKE_C_COMPILER_ID}" MATCHES "Clang") OR ("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL "7.0.0"))
         add_compile_options(-Wimplicit-fallthrough)
     endif()
-    add_compile_definitions(_POSIX_C_SOURCE=200809L)
+    add_compile_definitions(_GNU_SOURCE)
     add_compile_options(-fvisibility=hidden)
 
     option(FORCE_COLORED_BUILD "Always produce ANSI-colored build output (GNU/Clang only)." FALSE)
