@@ -129,8 +129,10 @@ static FILE* _secure_open_for_write(const char* out_path_utf8) {
             return NULL; // User cancelled
         }
 
-        // User agreed. Truncate the file using the descriptor. This is safe.
-        if (ftruncate(fd, 0) != 0) {
+        // User agreed. Truncate the file *if it's a regular file*. This is safe.
+        // For special files like /dev/null, truncation is not needed and will fail.
+        if (S_ISREG(stat_buf.st_mode)) {
+            if (ftruncate(fd, 0) != 0) {
             log_fatal("Could not truncate file %s: %s", out_path_utf8, strerror(errno));
             close(fd);
             return NULL;
