@@ -22,7 +22,6 @@
 #include <math.h>
 #include <errno.h>
 #include <ctype.h>
-#include <limits.h>
 #include <sys/stat.h>
 #include <time.h>
 
@@ -36,6 +35,7 @@
 #include <unistd.h>
 #include <libgen.h>
 #include <strings.h>
+#include <limits.h>
 #endif
 
 // --- Forward declarations for static functions ---
@@ -77,8 +77,8 @@ static bool create_filter(AppConfig *config, AppResources *resources) {
 }
 
 
-bool resolve_file_paths(AppConfig *config) {
-    if (!config) return false;
+bool resolve_file_paths(AppConfig *config, AppResources *resources) {
+    if (!config || !resources) return false;
 
 #ifdef _WIN32
     // Writes directly into the fixed-size buffers in AppConfig
@@ -97,8 +97,43 @@ bool resolve_file_paths(AppConfig *config) {
         }
     }
 #else
-    config->effective_input_filename = config->input_filename_arg;
-    config->effective_output_filename = config->output_filename_arg;
+    if (config->input_filename_arg) {
+        char resolved_input_path[PATH_MAX];
+        if (realpath(config->input_filename_arg, resolved_input_path) == NULL) {
+            log_fatal("Input file not found or path is invalid: %s (%s)", config->input_filename_arg, strerror(errno));
+            return false;
+        }
+        config->effective_input_filename = mem_arena_alloc(&resources->setup_arena, strlen(resolved_input_path) + 1, false);
+        if (!config->effective_input_filename) return false;
+        strcpy(config->effective_input_filename, resolved_input_path);
+    }
+
+    if (config->output_filename_arg) {
+        // Since dirname() and basename() can modify the input string, we must work on copies.
+        char* path_copy_for_dirname = mem_arena_alloc(&resources->setup_arena, strlen(config->output_filename_arg) + 1, false);
+        char* path_copy_for_basename = mem_arena_alloc(&resources->setup_arena, strlen(config->output_filename_arg) + 1, false);
+        if (!path_copy_for_dirname || !path_copy_for_basename) return false;
+
+        strcpy(path_copy_for_dirname, config->output_filename_arg);
+        strcpy(path_copy_for_basename, config->output_filename_arg);
+
+        char* dir = dirname(path_copy_for_dirname);
+        char* base = basename(path_copy_for_basename);
+
+        char resolved_dir_path[PATH_MAX];
+        if (realpath(dir, resolved_dir_path) == NULL) {
+            log_fatal("Output directory does not exist or path is invalid: %s (%s)", dir, strerror(errno));
+            return false;
+        }
+
+        // Allocate space for the final, combined path.
+        size_t final_len = strlen(resolved_dir_path) + 1 + strlen(base) + 1;
+        config->effective_output_filename = mem_arena_alloc(&resources->setup_arena, final_len, false);
+        if (!config->effective_output_filename) return false;
+
+        // Safely combine the resolved directory and the original basename.
+        snprintf(config->effective_output_filename, final_len, "%s/%s", resolved_dir_path, base);
+    }
 #endif
     return true;
 }
@@ -463,7 +498,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     }
 
     // STEP 2: Initialize hardware and file handles
-    if (!resolve_file_paths(config)) goto cleanup;
+    if (!resolve_file_paths(config, resources)) goto cleanup;
     if (!resources->selected_input_ops->initialize(&ctx)) goto cleanup;
     resources->lifecycle_state = LIFECYCLE_STATE_INPUT_INITIALIZED;
 
