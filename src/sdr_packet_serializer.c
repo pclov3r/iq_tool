@@ -1,9 +1,9 @@
 #include "sdr_packet_serializer.h"
 #include "constants.h"
 #include "log.h"
-#include "app_context.h"       // Provides AppResources
-#include "pipeline_types.h"    // Provides SampleChunk
-#include "file_write_buffer.h" // Provides FileWriteBuffer
+#include "app_context.h"
+#include "pipeline_types.h"
+#include "file_write_buffer.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -24,6 +24,35 @@ typedef struct {
 // --- PRIVATE HELPER FUNCTION DECLARATIONS (PROTOTYPES) ---
 static int64_t _read_interleaved_payload(FileWriteBuffer* buffer, SampleChunk* target_chunk, uint32_t num_samples);
 static int64_t _read_and_reinterleave_payload(FileWriteBuffer* buffer, SampleChunk* target_chunk, uint32_t num_samples, void* temp_buffer, size_t temp_buffer_size);
+
+/**
+ * @brief Checks if a raw format ID from a packet header is a valid, defined member of the format_t enum.
+ * @param format_id The integer ID to check.
+ * @return true if the ID is a valid enum member, false otherwise.
+ */
+static bool _is_packet_format_id_valid(uint8_t format_id) {
+    switch ((format_t)format_id) {
+        case U8:
+        case S8:
+        case U16:
+        case S16:
+        case U32:
+        case S32:
+        case F32:
+        case CU8:
+        case CS8:
+        case CU16:
+        case CS16:
+        case CU32:
+        case CS32:
+        case CF32:
+        case SC16Q11:
+        case FORMAT_UNKNOWN: // FORMAT_UNKNOWN is valid for non-data events (e.g., reset)
+            return true;
+        default:
+            return false;
+    }
+}
 
 
 // --- PUBLIC API: SERIALIZATION FUNCTIONS ---
@@ -86,11 +115,30 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
         return -1; // Fatal error
     }
 
+    if (!_is_packet_format_id_valid(header.format_id)) {
+        log_error("SDR stream corrupted: received invalid sample format ID (%u).", header.format_id);
+        return -1;
+    }
+
     target_chunk->packet_sample_format = (format_t)header.format_id;
 
     if (header.flags & SDR_CHUNK_FLAG_STREAM_RESET) {
         *is_reset_event = true;
     }
+
+    // A data packet must not have an UNKNOWN format.
+    if (header.num_samples > 0 && target_chunk->packet_sample_format == FORMAT_UNKNOWN) {
+        log_error("SDR stream corrupted: received data packet with FORMAT_UNKNOWN.");
+        return -1;
+    }
+
+    // Sanity check the packet length to prevent deadlocks from corrupted headers.
+    // The limit is generous but prevents impossibly large values.
+    if (header.num_samples > (PIPELINE_CHUNK_BASE_SAMPLES * 2)) {
+        log_error("SDR stream corrupted: received impossibly large packet length (%u).", header.num_samples);
+        return -1;
+    }
+
     if (header.num_samples == 0) {
         return 0; // Return 0 frames, but the caller will check is_reset_event.
     }
