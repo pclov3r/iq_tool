@@ -52,9 +52,9 @@
 #include "iq_correct.h"
 #include "constants.h"
 #include "log.h"
-#include "app_context.h"  // Provides AppConfig, AppResources
-#include "memory_arena.h" // Provides MemoryArena
-#include "utils.h"        // Provides get_monotonic_time_sec()
+#include "app_context.h"
+#include "memory_arena.h"
+#include "utils.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -62,14 +62,14 @@
 #include <time.h>
 #include <stdatomic.h>
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
 #ifdef _WIN32
 #include <liquid.h>
 #else
 #include <liquid/liquid.h>
+#endif
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
 #endif
 
 // --- Forward Declarations for Static Helper Functions ---
@@ -112,7 +112,7 @@ bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* ar
     }
 
     // The FFT plan itself is managed by liquid-dsp, not our arena
-    resources->iq_correction.fft_plan = fft_create_plan(nfft, resources->iq_correction.fft_buffer, resources->iq_correction.fft_buffer, LIQUID_FFT_FORWARD, 0);
+    resources->iq_correction.fft_plan = fft_create_plan(nfft, (liquid_float_complex*)resources->iq_correction.fft_buffer, (liquid_float_complex*)resources->iq_correction.fft_buffer, LIQUID_FFT_FORWARD, 0);
     if (!resources->iq_correction.fft_plan) {
         log_fatal("Failed to create liquid-dsp FFT plan for I/Q correction.");
         return false;
@@ -202,7 +202,7 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
 
     float smoothed_gain = ((1.0f - IQ_CORRECTION_SMOOTHING_FACTOR) * resources->iq_correction.factors_buffer[current_active_idx].mag) + (IQ_CORRECTION_SMOOTHING_FACTOR * current_gain);
     float smoothed_phase = ((1.0f - IQ_CORRECTION_SMOOTHING_FACTOR) * resources->iq_correction.factors_buffer[current_active_idx].phase) + (IQ_CORRECTION_SMOOTHING_FACTOR * current_phase);
-
+    
     pthread_mutex_lock(&resources->iq_correction.iq_factors_mutex);
     resources->iq_correction.factors_buffer[inactive_idx].mag = smoothed_gain;
     resources->iq_correction.factors_buffer[inactive_idx].phase = smoothed_phase;
@@ -217,7 +217,7 @@ void iq_correct_destroy(AppResources* resources) {
         pthread_mutex_destroy(&resources->iq_correction.iq_factors_mutex);
     }
     if (resources->iq_correction.fft_plan) {
-        fft_destroy_plan(resources->iq_correction.fft_plan);
+        fft_destroy_plan((fftplan)resources->iq_correction.fft_plan);
         resources->iq_correction.fft_plan = NULL;
     }
     // No need to free buffers, they are part of the setup_arena
@@ -250,7 +250,7 @@ static void _calculate_power_spectrum(IqCorrectionResources* iq_res, const compl
         iq_res->fft_buffer[i] *= iq_res->window_coeffs[i];
     }
 
-    fft_execute(iq_res->fft_plan);
+    fft_execute((fftplan)iq_res->fft_plan);
 
     memcpy(iq_res->fft_shift_buffer, iq_res->fft_buffer + half_nfft, half_nfft * sizeof(complex_float_t));
     memcpy(iq_res->fft_shift_buffer + half_nfft, iq_res->fft_buffer, half_nfft * sizeof(complex_float_t));

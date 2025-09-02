@@ -11,6 +11,7 @@
 #include "iq_correct.h"
 #include "dc_block.h"
 #include "filter.h"
+#include "resampler.h"
 #include "memory_arena.h"
 #include "queue.h"
 #include "file_write_buffer.h"
@@ -26,13 +27,11 @@
 #include <time.h>
 
 #ifdef _WIN32
-#include <liquid.h>
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <fcntl.h>
 #include <io.h>
 #else
-#include <liquid/liquid.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <libgen.h>
@@ -43,7 +42,6 @@
 static bool create_dc_blocker(AppConfig *config, AppResources *resources);
 static bool create_iq_corrector(AppConfig *config, AppResources *resources);
 static bool create_frequency_shifter(AppConfig *config, AppResources *resources);
-static bool create_resampler(AppConfig *config, AppResources *resources, float resample_ratio);
 static bool create_filter(AppConfig *config, AppResources *resources);
 
 
@@ -72,20 +70,6 @@ static bool create_frequency_shifter(AppConfig *config, AppResources *resources)
 
     // Now, create the NCOs with the final, resolved value.
     return freq_shift_create_ncos(config, resources);
-}
-
-static bool create_resampler(AppConfig *config, AppResources *resources, float resample_ratio) {
-    (void)config; // config is not used in this specific function but kept for consistency
-    if (resources->is_passthrough) {
-        resources->resampler = NULL;
-        return true;
-    }
-    resources->resampler = msresamp_crcf_create(resample_ratio, RESAMPLER_QUALITY_ATTENUATION_DB);
-    if (!resources->resampler) {
-        log_fatal("Error: Failed to create liquid-dsp resampler object.");
-        return false;
-    }
-    return true;
 }
 
 static bool create_filter(AppConfig *config, AppResources *resources) {
@@ -459,6 +443,7 @@ bool prepare_output_stream(AppConfig *config, AppResources *resources) {
 bool initialize_application(AppConfig *config, AppResources *resources) {
     bool success = false;
     resources->config = config;
+    resources->lifecycle_state = LIFECYCLE_STATE_START;
     InputSourceContext ctx = { .config = config, .resources = resources };
     float resample_ratio = 0.0f;
 
@@ -480,6 +465,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     // STEP 2: Initialize hardware and file handles
     if (!resolve_file_paths(config)) goto cleanup;
     if (!resources->selected_input_ops->initialize(&ctx)) goto cleanup;
+    resources->lifecycle_state = LIFECYCLE_STATE_INPUT_INITIALIZED;
 
     // STEP 3: Perform initial calculations and validations
     if (!calculate_and_validate_resample_ratio(config, resources, &resample_ratio)) goto cleanup;
@@ -487,10 +473,22 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     
     // STEP 4: Initialize all individual DSP components in a consistent, logical order
     if (!create_dc_blocker(config, resources)) goto cleanup;
+    resources->lifecycle_state = LIFECYCLE_STATE_DC_BLOCK_CREATED;
+
     if (!create_iq_corrector(config, resources)) goto cleanup;
+    resources->lifecycle_state = LIFECYCLE_STATE_IQ_CORRECTOR_CREATED;
+
     if (!create_frequency_shifter(config, resources)) goto cleanup;
-    if (!create_resampler(config, resources, resample_ratio)) goto cleanup;
+    resources->lifecycle_state = LIFECYCLE_STATE_FREQ_SHIFTER_CREATED;
+
+    resources->resampler = create_resampler(config, resources, resample_ratio);
+    if (!resources->resampler && !resources->is_passthrough) {
+        goto cleanup;
+    }
+    resources->lifecycle_state = LIFECYCLE_STATE_RESAMPLER_CREATED;
+
     if (!create_filter(config, resources)) goto cleanup;
+    resources->lifecycle_state = LIFECYCLE_STATE_FILTER_CREATED;
     
     // Conditionally allocate FFT remainder buffers from the arena if needed.
     if (resources->user_fir_filter_object &&
@@ -518,7 +516,10 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     
     // STEP 5: Allocate all memory pools and threading components
     if (!allocate_processing_buffers(config, resources, resample_ratio)) goto cleanup;
+    resources->lifecycle_state = LIFECYCLE_STATE_BUFFERS_ALLOCATED;
+
     if (!create_threading_components(resources)) goto cleanup;
+    resources->lifecycle_state = LIFECYCLE_STATE_THREADS_CREATED;
 
     // STEP 6: Create large I/O ring buffers (if needed)
     if (resources->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
@@ -537,6 +538,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     } else {
         resources->file_write_buffer = NULL;
     }
+    resources->lifecycle_state = LIFECYCLE_STATE_IO_BUFFERS_CREATED;
 
     // STEP 7: Final checks, summary print, and output stream preparation
     if (!config->output_to_stdout) {
@@ -576,8 +578,10 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     }
 
     if (!prepare_output_stream(config, resources)) goto cleanup;
+    resources->lifecycle_state = LIFECYCLE_STATE_OUTPUT_STREAM_OPEN;
 
     success = true;
+    resources->lifecycle_state = LIFECYCLE_STATE_FULLY_INITIALIZED;
 
 cleanup:
     if (!success) {
@@ -597,46 +601,58 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
     if (!resources) return;
     InputSourceContext ctx = { .config = config, .resources = resources };
 
-    if (config->dc_block.enable) {
-        dc_block_destroy(resources);
+    switch (resources->lifecycle_state) {
+        case LIFECYCLE_STATE_FULLY_INITIALIZED:
+        case LIFECYCLE_STATE_OUTPUT_STREAM_OPEN:
+            if (resources->writer_ctx.ops.close) {
+                resources->writer_ctx.ops.close(&resources->writer_ctx);
+            }
+            if (resources->writer_ctx.ops.get_total_bytes_written) {
+                resources->final_output_size_bytes = resources->writer_ctx.ops.get_total_bytes_written(&resources->writer_ctx);
+            }
+            // fall-through
+        case LIFECYCLE_STATE_IO_BUFFERS_CREATED:
+            if (resources->sdr_input_buffer) {
+                file_write_buffer_destroy(resources->sdr_input_buffer);
+                resources->sdr_input_buffer = NULL;
+            }
+            if (resources->file_write_buffer) {
+                file_write_buffer_destroy(resources->file_write_buffer);
+                resources->file_write_buffer = NULL;
+            }
+            // fall-through
+        case LIFECYCLE_STATE_THREADS_CREATED:
+            destroy_threading_components(resources);
+            // fall-through
+        case LIFECYCLE_STATE_BUFFERS_ALLOCATED:
+            if (resources->pipeline_chunk_data_pool) {
+                free(resources->pipeline_chunk_data_pool);
+                resources->pipeline_chunk_data_pool = NULL;
+            }
+            // fall-through
+        case LIFECYCLE_STATE_FILTER_CREATED:
+            filter_destroy(resources);
+            // fall-through
+        case LIFECYCLE_STATE_RESAMPLER_CREATED:
+            destroy_resampler(resources->resampler);
+            resources->resampler = NULL;
+            // fall-through
+        case LIFECYCLE_STATE_FREQ_SHIFTER_CREATED:
+            freq_shift_destroy_ncos(resources);
+            // fall-through
+        case LIFECYCLE_STATE_IQ_CORRECTOR_CREATED:
+            iq_correct_destroy(resources);
+            // fall-through
+        case LIFECYCLE_STATE_DC_BLOCK_CREATED:
+            dc_block_destroy(resources);
+            // fall-through
+        case LIFECYCLE_STATE_INPUT_INITIALIZED:
+            if (resources->selected_input_ops && resources->selected_input_ops->cleanup) {
+                resources->selected_input_ops->cleanup(&ctx);
+            }
+            // fall-through
+        case LIFECYCLE_STATE_START:
+            // No resources to clean up at this stage
+            break;
     }
-    if (config->iq_correction.enable) {
-        iq_correct_destroy(resources);
-    }
-    filter_destroy(resources);
-    freq_shift_destroy_ncos(resources);
-    if (resources->resampler) {
-        msresamp_crcf_destroy(resources->resampler);
-        resources->resampler = NULL;
-    }
-
-    if (resources->selected_input_ops && resources->selected_input_ops->cleanup) {
-        resources->selected_input_ops->cleanup(&ctx);
-    }
-
-    if (resources->writer_ctx.ops.close) {
-        resources->writer_ctx.ops.close(&resources->writer_ctx);
-    }
-    if (resources->writer_ctx.ops.get_total_bytes_written) {
-        resources->final_output_size_bytes = resources->writer_ctx.ops.get_total_bytes_written(&resources->writer_ctx);
-    }
-
-    if (resources->sdr_input_buffer) {
-        file_write_buffer_destroy(resources->sdr_input_buffer);
-        resources->sdr_input_buffer = NULL;
-    }
-
-    if (resources->file_write_buffer) {
-        file_write_buffer_destroy(resources->file_write_buffer);
-        resources->file_write_buffer = NULL;
-    }
-
-    destroy_threading_components(resources);
-
-    if (resources->pipeline_chunk_data_pool) {
-        free(resources->pipeline_chunk_data_pool);
-        resources->pipeline_chunk_data_pool = NULL;
-    }
-
-    // The memory arena is destroyed in main(), not here.
 }

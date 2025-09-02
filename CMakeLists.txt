@@ -613,6 +613,7 @@ endif()
 
 # Define the list of DSP-specific source files
 set(DSP_SOURCES
+    src/resampler.c
     src/sample_convert.c
     src/iq_correct.c
     src/dc_block.c
