@@ -1,8 +1,8 @@
 #include "filter.h"
 #include "constants.h"
 #include "log.h"
-#include "app_context.h"  // Provides AppConfig, AppResources
-#include "memory_arena.h" // Provides MemoryArena
+#include "app_context.h"
+#include "memory_arena.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -16,6 +16,20 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+
+// Forward declaration for static helper function
+static unsigned int
+_execute_fft_filter_pass(
+    void* filter_object,
+    FilterImplementationType filter_type,
+    const complex_float_t* input_buffer,
+    unsigned int frames_in,
+    complex_float_t* output_buffer,
+    complex_float_t* remainder_buffer,
+    unsigned int* remainder_len_ptr,
+    unsigned int block_size,
+    complex_float_t* scratch_buffer
+);
 
 static liquid_float_complex* convolve_complex_taps(
     const liquid_float_complex* h1, int len1,
@@ -65,16 +79,25 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
     bool is_final_filter_complex = false;
     bool normalize_by_peak = false;
 
-    // --- MODIFIED: Unconditional warning message for consistency ---
     log_info("Designing filter coefficients (this may be slow for large filters)...");
 
     for (int i = 0; i < config->num_filter_requests; ++i) {
-        const FilterRequest* req = &config->filter_requests[i];
-        
+        // Create a local copy of the request that we can modify.
+        FilterRequest adjusted_req = config->filter_requests[i];
+
+        // If a pre-resample frequency shift is active, we must compensate the
+        // filter's center frequency to match the user's intent.
+        if (resources->pre_resample_nco) {
+            log_debug("Compensating filter design for active frequency shift of %.0f Hz.", resources->nco_shift_hz);
+            adjusted_req.freq1_hz -= resources->nco_shift_hz;
+        }
+
+        const FilterRequest* req = &adjusted_req;
+
         if (req->type != FILTER_TYPE_LOWPASS) {
             normalize_by_peak = true;
         }
-        
+
         unsigned int current_taps_len;
         float attenuation_db = (config->attenuation_db_arg > 0.0f) ? config->attenuation_db_arg : RESAMPLER_QUALITY_ATTENUATION_DB;
 
@@ -160,7 +183,6 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
 
     log_info("Final combined filter requires %d taps.", master_taps_len);
 
-    // Determine filter complexity BEFORE normalization
     for (int i = 0; i < config->num_filter_requests; ++i) {
         const FilterRequest* req = &config->filter_requests[i];
         if (req->type == FILTER_TYPE_PASSBAND && fabsf(req->freq1_hz) > 1e-9f) {
@@ -217,7 +239,7 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
 
     if (final_choice == FILTER_TYPE_FFT) {
         log_info("Preparing FFT-based filter object (this may take a moment)...");
-        
+
         unsigned int block_size;
         if (config->filter_fft_size_arg > 0) {
             block_size = (unsigned int)config->filter_fft_size_arg / 2;
@@ -319,4 +341,96 @@ void filter_reset(AppResources* resources) {
                 break;
         }
     }
+}
+
+unsigned int filter_apply(AppResources* resources, SampleChunk* item, bool is_post_resample) {
+    if (!resources->user_fir_filter_object) {
+        return is_post_resample ? item->frames_to_write : item->frames_read;
+    }
+
+    complex_float_t* data_ptr = is_post_resample ? item->complex_resampled_data : item->complex_pre_resample_data;
+    unsigned int frames = is_post_resample ? item->frames_to_write : item->frames_read;
+
+    // This state management for remainders is simplistic and not perfectly thread-safe
+    // if the same filter instance were ever used from multiple threads, but it is
+    // sufficient for this pipeline where pre- and post-filters are distinct.
+    static unsigned int pre_remainder_len = 0;
+    static unsigned int post_remainder_len = 0;
+
+    switch (resources->user_filter_type_actual) {
+        case FILTER_IMPL_FIR_SYMMETRIC:
+            firfilt_crcf_execute_block((firfilt_crcf)resources->user_fir_filter_object, (liquid_float_complex*)data_ptr, frames, (liquid_float_complex*)data_ptr);
+            return frames;
+
+        case FILTER_IMPL_FIR_ASYMMETRIC:
+            firfilt_cccf_execute_block((firfilt_cccf)resources->user_fir_filter_object, (liquid_float_complex*)data_ptr, frames, (liquid_float_complex*)data_ptr);
+            return frames;
+
+        case FILTER_IMPL_FFT_SYMMETRIC:
+        case FILTER_IMPL_FFT_ASYMMETRIC:
+        {
+            complex_float_t* remainder_buffer = is_post_resample ? resources->post_fft_remainder_buffer : resources->pre_fft_remainder_buffer;
+            unsigned int* remainder_len_ptr = is_post_resample ? &post_remainder_len : &pre_remainder_len;
+
+            unsigned int output_frames = _execute_fft_filter_pass(
+                resources->user_fir_filter_object,
+                resources->user_filter_type_actual,
+                data_ptr,
+                frames,
+                item->complex_scratch_data, // Use scratch as the destination
+                remainder_buffer,
+                remainder_len_ptr,
+                resources->user_filter_block_size,
+                item->complex_post_resample_data // Use another buffer as internal scratch
+            );
+            // The result is in the scratch buffer. Copy it back to the primary buffer for the next stage.
+            memcpy(data_ptr, item->complex_scratch_data, output_frames * sizeof(complex_float_t));
+            return output_frames;
+        }
+
+        default:
+             return frames;
+    }
+}
+
+// Actual definition of the helper function
+static unsigned int
+_execute_fft_filter_pass(
+    void* filter_object,
+    FilterImplementationType filter_type,
+    const complex_float_t* input_buffer,
+    unsigned int frames_in,
+    complex_float_t* output_buffer,
+    complex_float_t* remainder_buffer,
+    unsigned int* remainder_len_ptr,
+    unsigned int block_size,
+    complex_float_t* scratch_buffer
+) {
+    unsigned int old_remainder_len = *remainder_len_ptr;
+    unsigned int total_frames_to_process = old_remainder_len + frames_in;
+
+    // Stage 1: Assemble a single, contiguous stream in the scratch buffer.
+    memcpy(scratch_buffer, remainder_buffer, old_remainder_len * sizeof(complex_float_t));
+    memcpy(scratch_buffer + old_remainder_len, input_buffer, frames_in * sizeof(complex_float_t));
+
+    // Stage 2: Process full blocks from the assembled stream.
+    unsigned int processed_frames = 0;
+    unsigned int total_output_frames = 0;
+    while (total_frames_to_process - processed_frames >= block_size) {
+        if (filter_type == FILTER_IMPL_FFT_SYMMETRIC) {
+            fftfilt_crcf_execute((fftfilt_crcf)filter_object, (liquid_float_complex*)(scratch_buffer + processed_frames), (liquid_float_complex*)(output_buffer + total_output_frames));
+        } else {
+            fftfilt_cccf_execute((fftfilt_cccf)filter_object, (liquid_float_complex*)(scratch_buffer + processed_frames), (liquid_float_complex*)(output_buffer + total_output_frames));
+        }
+        processed_frames += block_size;
+        total_output_frames += block_size;
+    }
+
+    // Stage 3: Save the new remainder for the next call.
+    unsigned int new_remainder_len = total_frames_to_process - processed_frames;
+    // Use memmove for safety, in case buffers could ever overlap.
+    memmove(remainder_buffer, scratch_buffer + processed_frames, new_remainder_len * sizeof(complex_float_t));
+    *remainder_len_ptr = new_remainder_len;
+
+    return total_output_frames;
 }

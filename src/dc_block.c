@@ -1,7 +1,7 @@
 #include "dc_block.h"
 #include "constants.h"
 #include "log.h"
-#include "app_context.h" // Provides AppConfig, AppResources
+#include "app_context.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -70,7 +70,7 @@ void dc_block_reset(AppResources* resources) {
         return; // DC block is disabled or not initialized
     }
     log_debug("DC block filter reset due to stream discontinuity.");
-    iirfilt_crcf_reset(resources->dc_block.dc_block_filter);
+    iirfilt_crcf_reset((iirfilt_crcf)resources->dc_block.dc_block_filter);
 }
 
 void dc_block_apply(AppResources* resources, complex_float_t* samples, int num_samples) {
@@ -79,7 +79,7 @@ void dc_block_apply(AppResources* resources, complex_float_t* samples, int num_s
     }
 
     // Apply the filter in-place
-    iirfilt_crcf_execute_block(resources->dc_block.dc_block_filter,
+    iirfilt_crcf_execute_block((iirfilt_crcf)resources->dc_block.dc_block_filter,
                                (liquid_float_complex*)samples,
                                num_samples,
                                (liquid_float_complex*)samples);
@@ -87,7 +87,7 @@ void dc_block_apply(AppResources* resources, complex_float_t* samples, int num_s
 
 void dc_block_destroy(AppResources* resources) {
     if (resources->dc_block.dc_block_filter) {
-        iirfilt_crcf_destroy(resources->dc_block.dc_block_filter);
+        iirfilt_crcf_destroy((iirfilt_crcf)resources->dc_block.dc_block_filter);
         resources->dc_block.dc_block_filter = NULL;
     }
 }

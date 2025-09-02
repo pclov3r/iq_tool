@@ -12,7 +12,30 @@
 #ifndef SETUP_H_
 #define SETUP_H_
 
-#include "app_context.h" // Provides the full definitions for AppConfig and AppResources
+#include <stdbool.h>
+
+// --- Forward Declarations ---
+// We use forward declarations here to break the circular dependency
+// between this header and app_context.h. This header only needs to
+// know that these types exist for its function prototypes.
+struct AppConfig;
+struct AppResources;
+
+// --- Type Definitions for the Initialization State Machine ---
+typedef enum {
+    LIFECYCLE_STATE_START,
+    LIFECYCLE_STATE_INPUT_INITIALIZED,
+    LIFECYCLE_STATE_DC_BLOCK_CREATED,
+    LIFECYCLE_STATE_IQ_CORRECTOR_CREATED,
+    LIFECYCLE_STATE_FREQ_SHIFTER_CREATED,
+    LIFECYCLE_STATE_RESAMPLER_CREATED,
+    LIFECYCLE_STATE_FILTER_CREATED,
+    LIFECYCLE_STATE_BUFFERS_ALLOCATED,
+    LIFECYCLE_STATE_THREADS_CREATED,
+    LIFECYCLE_STATE_IO_BUFFERS_CREATED,
+    LIFECYCLE_STATE_OUTPUT_STREAM_OPEN,
+    LIFECYCLE_STATE_FULLY_INITIALIZED
+} AppLifecycleState;
 
 // --- Function Declarations for Setup Steps ---
 
@@ -26,7 +49,7 @@
  * @param resources The application resources struct to be populated.
  * @return true on successful initialization, false on any failure.
  */
-bool initialize_application(AppConfig *config, AppResources *resources);
+bool initialize_application(struct AppConfig *config, struct AppResources *resources);
 
 /**
  * @brief The main entry point for application cleanup.
@@ -37,7 +60,7 @@ bool initialize_application(AppConfig *config, AppResources *resources);
  * @param config The application configuration.
  * @param resources The application resources struct to be cleaned up.
  */
-void cleanup_application(AppConfig *config, AppResources *resources);
+void cleanup_application(struct AppConfig *config, struct AppResources *resources);
 
 /**
  * @brief Resolves relative input/output file paths to absolute paths.
@@ -48,7 +71,7 @@ void cleanup_application(AppConfig *config, AppResources *resources);
  * @param config The application configuration struct containing the path arguments.
  * @return true on success, false on failure.
  */
-bool resolve_file_paths(AppConfig *config);
+bool resolve_file_paths(struct AppConfig *config);
 
 /**
  * @brief Calculates the resampling ratio and validates it is within a sane range.
@@ -60,7 +83,7 @@ bool resolve_file_paths(AppConfig *config);
  * @param[out] out_ratio A pointer to a float to store the calculated ratio.
  * @return true on success, false if the ratio is invalid.
  */
-bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *resources, float *out_ratio);
+bool calculate_and_validate_resample_ratio(struct AppConfig *config, struct AppResources *resources, float *out_ratio);
 
 /**
  * @brief Determines if the user-defined filter should be applied before or after resampling.
@@ -73,7 +96,8 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *reso
  * @param resources The application resources.
  * @return true on success, false if the filter configuration is invalid for the output rate.
  */
-bool validate_and_configure_filter_stage(AppConfig *config, AppResources *resources);
+bool validate_and_configure_filter_stage(struct AppConfig *config, struct AppResources *resources);
+
 
 /**
  * @brief Allocates all the main memory pools for the processing pipeline.
@@ -86,27 +110,27 @@ bool validate_and_configure_filter_stage(AppConfig *config, AppResources *resour
  * @param resample_ratio The calculated resampling ratio, needed to size buffers correctly.
  * @return true on success, false on memory allocation failure.
  */
-bool allocate_processing_buffers(AppConfig *config, AppResources *resources, float resample_ratio);
+bool allocate_processing_buffers(struct AppConfig *config, struct AppResources *resources, float resample_ratio);
 
 /**
  * @brief Creates and initializes all threading components (queues, mutexes).
  * @param resources The application resources struct.
  * @return true on success, false on failure.
  */
-bool create_threading_components(AppResources *resources);
+bool create_threading_components(struct AppResources *resources);
 
 /**
  * @brief Destroys all threading components.
  * @param resources The application resources struct.
  */
-void destroy_threading_components(AppResources *resources);
+void destroy_threading_components(struct AppResources *resources);
 
 /**
  * @brief Prints the final, resolved configuration summary to stderr.
  * @param config The application configuration.
  * @param resources The application resources.
  */
-void print_configuration_summary(const AppConfig *config, const AppResources *resources);
+void print_configuration_summary(const struct AppConfig *config, const struct AppResources *resources);
 
 /**
  * @brief Prepares the final output stream by initializing the file writer and opening the file/stream.
@@ -114,6 +138,6 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
  * @param resources The application resources.
  * @return true on success, false on failure.
  */
-bool prepare_output_stream(AppConfig *config, AppResources *resources);
+bool prepare_output_stream(struct AppConfig *config, struct AppResources *resources);
 
 #endif // SETUP_H_

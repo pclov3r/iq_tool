@@ -23,12 +23,8 @@
 #include "memory_arena.h"
 #include "presets_loader.h"
 #include "constants.h"
-
-#ifdef _WIN32
-#include <liquid.h>
-#else
-#include <liquid/liquid.h>
-#endif
+#include "setup.h"
+#include "resampler.h" // For resampler_t
 
 // --- C99 Compatibility for C11 Atomics ---
 #if __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_ATOMICS__)
@@ -173,7 +169,7 @@ typedef struct {
     IqCorrectionFactors factors_buffer[2];
     _Atomic int         active_buffer_idx;
     pthread_mutex_t     iq_factors_mutex;
-    fftplan             fft_plan;
+    void*               fft_plan; // Opaque pointer
     complex_float_t*    fft_buffer;
     complex_float_t*    fft_shift_buffer;
     float*              spectrum_buffer;
@@ -190,7 +186,7 @@ typedef struct {
  * @brief Holds the filter object for the DC blocking module.
  */
 typedef struct {
-    iirfilt_crcf dc_block_filter;
+    void* dc_block_filter; // Opaque pointer
 } DcBlockResources;
 
 /**
@@ -201,15 +197,15 @@ typedef struct AppResources {
     const AppConfig* config;
 
     // --- DSP Objects ---
-    msresamp_crcf   resampler;
-    nco_crcf        pre_resample_nco;
-    nco_crcf        post_resample_nco;
+    resampler_t*    resampler;
+    void*           pre_resample_nco; // Opaque pointer
+    void*           post_resample_nco; // Opaque pointer
     double          nco_shift_hz;
     bool            is_passthrough;
     IqCorrectionResources iq_correction;
     DcBlockResources      dc_block;
     FilterImplementationType user_filter_type_actual;
-    void*           user_fir_filter_object;
+    void*           user_fir_filter_object; // Already opaque, which is good
     unsigned int    user_filter_block_size;
     complex_float_t* pre_fft_remainder_buffer;
     complex_float_t* post_fft_remainder_buffer;
@@ -251,6 +247,7 @@ typedef struct AppResources {
     struct FileWriteBuffer* file_write_buffer;
 
     // --- Progress & State Tracking ---
+    AppLifecycleState lifecycle_state;
     pthread_mutex_t progress_mutex;
     bool            error_occurred;
     bool            end_of_stream_reached;

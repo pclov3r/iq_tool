@@ -14,8 +14,9 @@
 #define FILTER_H_
 
 #include <stdbool.h>
-#include "app_context.h"  // Provides AppConfig and AppResources
-#include "memory_arena.h" // Provides MemoryArena
+#include "app_context.h"
+#include "memory_arena.h"
+#include "pipeline_types.h" // For SampleChunk
 
 // --- Function Declarations ---
 
@@ -51,5 +52,20 @@ void filter_reset(AppResources* resources);
  * @param resources The application resources struct containing the filter object to destroy.
  */
 void filter_destroy(AppResources* resources);
+
+/**
+ * @brief Applies the configured filter to a chunk of samples.
+ *
+ * This function encapsulates all implementation details, whether the filter
+ * is FIR or FFT, symmetric or asymmetric. It handles all buffer management
+ * and state (remainders) internally. The operation may be in-place or
+ * out-of-place depending on the filter type.
+ *
+ * @param resources The application resources, containing filter objects and state.
+ * @param item The SampleChunk containing the data to be processed.
+ * @param is_post_resample A flag indicating if this is being called from the post-processor.
+ * @return The number of valid output frames produced by the filter.
+ */
+unsigned int filter_apply(AppResources* resources, SampleChunk* item, bool is_post_resample);
 
 #endif // FILTER_H_

@@ -1,12 +1,18 @@
 #include "frequency_shift.h"
 #include "constants.h"
-#include "app_context.h" // Provides AppConfig, AppResources
+#include "app_context.h"
 #include "utils.h"
 #include "log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <ctype.h>
+
+#ifdef _WIN32
+#include <liquid.h>
+#else
+#include <liquid/liquid.h>
+#endif
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -39,7 +45,7 @@ bool freq_shift_create_ncos(AppConfig *config, AppResources *resources) {
             return false;
         }
         float nco_freq_rad_per_sample = (float)(2.0 * M_PI * fabs(resources->nco_shift_hz) / rate_for_nco);
-        nco_crcf_set_frequency(resources->pre_resample_nco, nco_freq_rad_per_sample);
+        nco_crcf_set_frequency((nco_crcf)resources->pre_resample_nco, nco_freq_rad_per_sample);
     }
 
     // --- Create Post-Resample NCO ---
@@ -56,7 +62,7 @@ bool freq_shift_create_ncos(AppConfig *config, AppResources *resources) {
             return false;
         }
         float nco_freq_rad_per_sample = (float)(2.0 * M_PI * fabs(resources->nco_shift_hz) / rate_for_nco);
-        nco_crcf_set_frequency(resources->post_resample_nco, nco_freq_rad_per_sample);
+        nco_crcf_set_frequency((nco_crcf)resources->post_resample_nco, nco_freq_rad_per_sample);
     }
 
     return true;
@@ -65,15 +71,15 @@ bool freq_shift_create_ncos(AppConfig *config, AppResources *resources) {
 /**
  * @brief Applies the frequency shift to a block of complex samples using a specific NCO.
  */
-void freq_shift_apply(nco_crcf nco, double shift_hz, complex_float_t* input_buffer, complex_float_t* output_buffer, unsigned int num_frames) {
+void freq_shift_apply(void* nco, double shift_hz, complex_float_t* input_buffer, complex_float_t* output_buffer, unsigned int num_frames) {
     if (!nco || num_frames == 0) {
         return;
     }
 
     if (shift_hz >= 0) {
-        nco_crcf_mix_block_up(nco, input_buffer, output_buffer, num_frames);
+        nco_crcf_mix_block_up((nco_crcf)nco, (liquid_float_complex*)input_buffer, (liquid_float_complex*)output_buffer, num_frames);
     } else {
-        nco_crcf_mix_block_down(nco, input_buffer, output_buffer, num_frames);
+        nco_crcf_mix_block_down((nco_crcf)nco, (liquid_float_complex*)input_buffer, (liquid_float_complex*)output_buffer, num_frames);
     }
 }
 
@@ -81,10 +87,10 @@ void freq_shift_apply(nco_crcf nco, double shift_hz, complex_float_t* input_buff
  * @brief Resets the NCO's phase accumulator without destroying its frequency.
  * This is the safe way to handle stream discontinuities from SDRs.
  */
-void freq_shift_reset_nco(nco_crcf nco) {
+void freq_shift_reset_nco(void* nco) {
     if (nco) {
         // This only resets the phase, leaving the frequency configuration intact.
-        nco_crcf_set_phase(nco, 0.0f);
+        nco_crcf_set_phase((nco_crcf)nco, 0.0f);
     }
 }
 
@@ -94,11 +100,11 @@ void freq_shift_reset_nco(nco_crcf nco) {
 void freq_shift_destroy_ncos(AppResources *resources) {
     if (resources) {
         if (resources->pre_resample_nco) {
-            nco_crcf_destroy(resources->pre_resample_nco);
+            nco_crcf_destroy((nco_crcf)resources->pre_resample_nco);
             resources->pre_resample_nco = NULL;
         }
         if (resources->post_resample_nco) {
-            nco_crcf_destroy(resources->post_resample_nco);
+            nco_crcf_destroy((nco_crcf)resources->post_resample_nco);
             resources->post_resample_nco = NULL;
         }
     }

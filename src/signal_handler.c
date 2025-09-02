@@ -6,6 +6,7 @@
 #include "file_write_buffer.h" // Provides file_write_buffer_signal_shutdown
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
