@@ -69,9 +69,10 @@ void cleanup_application(struct AppConfig *config, struct AppResources *resource
  * and ensure file operations are unambiguous.
  *
  * @param config The application configuration struct containing the path arguments.
+ * @param resources The application resources, needed for the memory arena on POSIX.
  * @return true on success, false on failure.
  */
-bool resolve_file_paths(struct AppConfig *config);
+bool resolve_file_paths(struct AppConfig *config, struct AppResources *resources);
 
 /**
  * @brief Calculates the resampling ratio and validates it is within a sane range.
@@ -97,7 +98,6 @@ bool calculate_and_validate_resample_ratio(struct AppConfig *config, struct AppR
  * @return true on success, false if the filter configuration is invalid for the output rate.
  */
 bool validate_and_configure_filter_stage(struct AppConfig *config, struct AppResources *resources);
-
 
 /**
  * @brief Allocates all the main memory pools for the processing pipeline.

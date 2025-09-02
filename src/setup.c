@@ -36,6 +36,7 @@
 #include <libgen.h>
 #include <strings.h>
 #include <limits.h>
+#include <stdlib.h>
 #endif
 
 // --- Forward declarations for static functions ---
