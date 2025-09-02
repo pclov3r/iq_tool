@@ -222,15 +222,13 @@ typedef struct AppResources {
     unsigned int    max_out_samples;
 
     // --- Threading & Pipeline ---
-    pthread_t       reader_thread_handle;
-    pthread_t       pre_processor_thread_handle;
-    pthread_t       resampler_thread_handle;
-    pthread_t       post_processor_thread_handle;
-    pthread_t       writer_thread_handle;
-    pthread_t       iq_optimization_thread_handle;
+    // This array will hold the handles of all successfully created threads.
+    pthread_t       thread_handles[8];
+    // This counts how many threads were successfully started.
+    int             num_threads_started;
+
     PipelineMode    pipeline_mode;
     struct FileWriteBuffer* sdr_input_buffer;
-    pthread_t       sdr_capture_thread_handle;
     Queue*          free_sample_chunk_queue;
     Queue*          raw_to_pre_process_queue;
     Queue*          pre_process_to_resampler_queue;
@@ -244,7 +242,6 @@ typedef struct AppResources {
     pthread_mutex_t progress_mutex;
     bool            error_occurred;
     bool            end_of_stream_reached;
-    bool            threads_started;
     unsigned long long total_frames_read;
     unsigned long long total_output_frames;
     long long       final_output_size_bytes;
