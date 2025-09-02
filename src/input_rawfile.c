@@ -12,7 +12,6 @@
 #include "file_write_buffer.h"
 #include "argparse.h"
 #include "iq_correct.h"
-#include "dc_block.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -279,63 +278,15 @@ static void rawfile_get_summary_info(const InputSourceContext* ctx, InputSummary
     add_summary_item(info, "Input File Size", "%s", format_file_size(file_size_bytes, size_buf, sizeof(size_buf)));
 }
 
-// This function performs a synchronous, one-shot I/Q correction calibration.
 static bool rawfile_pre_stream_iq_correction(InputSourceContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
-    AppResources* resources = ctx->resources;
-    RawfilePrivateData* private_data = (RawfilePrivateData*)resources->input_module_private_data;
+    RawfilePrivateData* private_data = (RawfilePrivateData*)ctx->resources->input_module_private_data;
 
     // This routine is only necessary if I/Q correction is enabled.
     if (!config->iq_correction.enable) {
         return true;
     }
-
-    log_info("Performing initial I/Q calibration for file...");
-
-    if (resources->source_info.frames < IQ_CORRECTION_FFT_SIZE) {
-        log_warn("Input file is too short for I/Q calibration. Skipping.");
-        return true;
-    }
-
-    // Allocate temporary buffers from the setup arena.
-    size_t raw_buffer_size = IQ_CORRECTION_FFT_SIZE * resources->input_bytes_per_sample_pair;
-    void* raw_buffer = mem_arena_alloc(&resources->setup_arena, raw_buffer_size, false);
-    complex_float_t* cf32_buffer = (complex_float_t*)mem_arena_alloc(&resources->setup_arena, IQ_CORRECTION_FFT_SIZE * sizeof(complex_float_t), false);
-
-    if (!raw_buffer || !cf32_buffer) {
-        log_fatal("Failed to allocate temporary buffers for I/Q calibration.");
-        return false;
-    }
-
-    // Read the first block of samples.
-    sf_count_t frames_read_bytes = sf_read_raw(private_data->infile, raw_buffer, raw_buffer_size);
-    if (frames_read_bytes < (sf_count_t)raw_buffer_size) {
-        log_warn("Failed to read enough samples for I/Q calibration. Skipping.");
-        sf_seek(private_data->infile, 0, SEEK_SET); // Rewind anyway to be safe.
-        return true;
-    }
-
-    // Convert and process this first block.
-    if (!convert_raw_to_cf32(raw_buffer, cf32_buffer, IQ_CORRECTION_FFT_SIZE, resources->input_format, config->gain)) {
-        log_fatal("Failed to convert samples during I/Q calibration.");
-        return false;
-    }
-    if (config->dc_block.enable) {
-        dc_block_apply(resources, cf32_buffer, IQ_CORRECTION_FFT_SIZE);
-    }
-
-    // Run the optimization algorithm once, synchronously.
-    iq_correct_run_optimization(resources, cf32_buffer);
-
-    // Update the last optimization time to prevent the thread from running immediately.
-    resources->iq_correction.last_optimization_time = get_monotonic_time_sec();
-
-    // Rewind the file so the main reader thread can process the file from the start.
-    if (sf_seek(private_data->infile, 0, SEEK_SET) < 0) {
-        log_fatal("Failed to rewind input file after I/Q calibration.");
-        return false;
-    }
-
-    log_info("Initial I/Q calibration complete.");
-    return true;
+    
+    // The module's only job is to call the calibration service with its private file handle.
+    return iq_correct_run_initial_calibration(ctx, private_data->infile);
 }

@@ -12,8 +12,9 @@
 #define IQ_CORRECT_H_
 
 #include <stdbool.h>
-#include "app_context.h"  // Provides AppConfig, AppResources, complex_float_t
-#include "memory_arena.h" // Provides MemoryArena
+#include "app_context.h"
+#include "memory_arena.h"
+#include <sndfile.h> // Needed for the SNDFILE* type in the function signature
 
 // --- Function Declarations ---
 
@@ -62,6 +63,17 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
  * @param resources Pointer to the application resources.
  */
 void iq_correct_destroy(AppResources* resources);
+
+/**
+ * @brief Performs a synchronous, one-shot I/Q calibration pass for file-based inputs.
+ * This should be called by file-based input modules during their pre-stream phase.
+ * It reads from the file, runs the optimization, and rewinds the file.
+ *
+ * @param ctx The application context.
+ * @param infile The handle to the open input file (e.g., from libsndfile).
+ * @return true on success, false on a critical failure.
+ */
+bool iq_correct_run_initial_calibration(InputSourceContext* ctx, SNDFILE* infile);
 
 
 #endif // IQ_CORRECT_H_

@@ -637,6 +637,7 @@ set(OTHER_SOURCES
     src/memory_arena.c
     src/platform.c
     src/presets_loader.c
+    src/pre_processor.c
     src/processing_threads.c
     src/queue.c
     src/sdr_packet_serializer.c

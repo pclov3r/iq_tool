@@ -7,7 +7,7 @@
 #include "signal_handler.h"
 #include "log.h"
 #include "sample_convert.h"
-#include "dc_block.h"
+#include "pre_processor.h"
 #include "iq_correct.h"
 #include "filter.h"
 #include "queue.h"
@@ -48,10 +48,9 @@ void* pre_processor_thread_func(void* arg) {
 
         if (item->stream_discontinuity_event) {
             freq_shift_reset_nco(resources->pre_resample_nco);
-            dc_block_reset(resources);
+            // Note: DC block and I/Q correction states are reset inside the pre_processor_apply_chain if needed.
             filter_reset(resources);
             if (!queue_enqueue(resources->pre_process_to_resampler_queue, item)) {
-                queue_enqueue(resources->free_sample_chunk_queue, item);
                 break;
             }
             continue;
@@ -63,10 +62,10 @@ void* pre_processor_thread_func(void* arg) {
             continue;
         }
 
-        if (config->dc_block.enable) {
-            dc_block_apply(resources, item->complex_pre_resample_data, item->frames_read);
-        }
+        // Apply the centralized pre-processing chain (DC block, I/Q correction, etc.)
+        pre_processor_apply_chain(resources, item->complex_pre_resample_data, item->frames_read);
 
+        // Separately, send a copy of the pre-processed data to the optimization thread for training.
         if (config->iq_correction.enable) {
             if (item->frames_read >= IQ_CORRECTION_FFT_SIZE && !item->stream_discontinuity_event) {
                 SampleChunk* opt_item = (SampleChunk*)queue_try_dequeue(resources->free_sample_chunk_queue);
@@ -75,7 +74,6 @@ void* pre_processor_thread_func(void* arg) {
                     queue_enqueue(resources->iq_optimization_data_queue, opt_item);
                 }
             }
-            iq_correct_apply(resources, item->complex_pre_resample_data, item->frames_read);
         }
 
         // Apply the filter if it's configured for the pre-resample stage.
@@ -89,7 +87,6 @@ void* pre_processor_thread_func(void* arg) {
 
         if (item->frames_read > 0) {
             if (!queue_enqueue(resources->pre_process_to_resampler_queue, item)) {
-                queue_enqueue(resources->free_sample_chunk_queue, item);
                 break;
             }
         } else {
@@ -115,7 +112,6 @@ void* resampler_thread_func(void* arg) {
         if (item->stream_discontinuity_event) {
             resampler_reset(resources->resampler);
             if (!queue_enqueue(resources->resampler_to_post_process_queue, item)) {
-                queue_enqueue(resources->free_sample_chunk_queue, item);
                 break;
             }
             continue;
@@ -131,7 +127,6 @@ void* resampler_thread_func(void* arg) {
         item->frames_to_write = output_frames_this_chunk;
 
         if (!queue_enqueue(resources->resampler_to_post_process_queue, item)) {
-            queue_enqueue(resources->free_sample_chunk_queue, item);
             break;
         }
     }
@@ -170,7 +165,6 @@ void* post_processor_thread_func(void* arg) {
             filter_reset(resources);
             if (config->output_to_stdout) {
                 if (!queue_enqueue(resources->stdout_queue, item)) {
-                    queue_enqueue(resources->free_sample_chunk_queue, item);
                     break;
                 }
             } else {
@@ -203,7 +197,6 @@ void* post_processor_thread_func(void* arg) {
 
             if (config->output_to_stdout) {
                 if (!queue_enqueue(resources->stdout_queue, item)) {
-                    queue_enqueue(resources->free_sample_chunk_queue, item);
                     break;
                 }
             } else {

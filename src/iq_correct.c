@@ -55,6 +55,8 @@
 #include "app_context.h"
 #include "memory_arena.h"
 #include "utils.h"
+#include "pre_processor.h"
+#include "sample_convert.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -230,6 +232,65 @@ void iq_correct_destroy(AppResources* resources) {
     resources->iq_correction.spectrum_buffer = NULL;
     resources->iq_correction.window_coeffs = NULL;
     resources->iq_correction.optimization_accum_buffer = NULL;
+}
+
+bool iq_correct_run_initial_calibration(InputSourceContext* ctx, SNDFILE* infile) {
+    AppConfig* config = (AppConfig*)ctx->config;
+    AppResources* resources = ctx->resources;
+
+    if (!infile) {
+        log_warn("Cannot perform initial I/Q correction without a valid file handle.");
+        return true;
+    }
+
+    log_info("Performing initial I/Q calibration for file input...");
+
+    if (resources->source_info.frames < IQ_CORRECTION_FFT_SIZE) {
+        log_warn("Input file is too short for I/Q calibration. Skipping.");
+        return true;
+    }
+
+    // Allocate temporary buffers from the setup arena.
+    size_t raw_buffer_size = IQ_CORRECTION_FFT_SIZE * resources->input_bytes_per_sample_pair;
+    void* raw_buffer = mem_arena_alloc(&resources->setup_arena, raw_buffer_size, false);
+    complex_float_t* cf32_buffer = (complex_float_t*)mem_arena_alloc(&resources->setup_arena, IQ_CORRECTION_FFT_SIZE * sizeof(complex_float_t), false);
+
+    if (!raw_buffer || !cf32_buffer) {
+        log_fatal("Failed to allocate temporary buffers for I/Q calibration.");
+        return false;
+    }
+
+    // Read the first block of samples.
+    sf_count_t frames_read_bytes = sf_read_raw(infile, raw_buffer, raw_buffer_size);
+    if (frames_read_bytes < (sf_count_t)raw_buffer_size) {
+        log_warn("Failed to read enough samples for I/Q calibration. Skipping.");
+        sf_seek(infile, 0, SEEK_SET); // Rewind anyway to be safe.
+        return true;
+    }
+
+    // Convert and process this first block.
+    if (!convert_raw_to_cf32(raw_buffer, cf32_buffer, IQ_CORRECTION_FFT_SIZE, resources->input_format, config->gain)) {
+        log_fatal("Failed to convert samples during I/Q calibration.");
+        return false;
+    }
+    
+    // The pre-processing logic is now a single, clean call.
+    pre_processor_apply_chain(resources, cf32_buffer, IQ_CORRECTION_FFT_SIZE);
+
+    // Run the optimization algorithm once, synchronously.
+    iq_correct_run_optimization(resources, cf32_buffer);
+
+    // Update the last optimization time to prevent the thread from running immediately.
+    resources->iq_correction.last_optimization_time = get_monotonic_time_sec();
+
+    // Rewind the file so the main reader thread can process the file from the start.
+    if (sf_seek(infile, 0, SEEK_SET) < 0) {
+        log_fatal("Failed to rewind input file after I/Q calibration.");
+        return false;
+    }
+
+    log_info("Initial I/Q calibration complete.");
+    return true;
 }
 
 
