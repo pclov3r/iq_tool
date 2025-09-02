@@ -551,7 +551,7 @@ static bool wav_initialize(InputSourceContext* ctx) {
 #endif
 
     if (!private_data->infile) {
-        log_fatal("Error opening input file: %s", sf_strerror(NULL));
+        log_fatal("Error opening input file: %s", sf_strerror(private_data->infile));
         return false;
     }
 
@@ -692,7 +692,7 @@ static bool wav_pre_stream_iq_correction(InputSourceContext* ctx) {
     if (!config->iq_correction.enable) {
         return true;
     }
- 
+    
     // The module's only job is to call the calibration service with its private file handle.
     return iq_correct_run_initial_calibration(ctx, private_data->infile);
 }
