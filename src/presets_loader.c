@@ -1,4 +1,4 @@
-#include "presets_loader.h"
+#include "presets_loader.hh"
 #include "constants.h"
 #include "log.h"
 #include "app_context.h"
@@ -148,21 +148,31 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         if (base_dir == NULL) continue;
         snprintf(full_path_buffer, sizeof(full_path_buffer), "%s/%s", base_dir, PRESETS_FILENAME);
         
-        bool file_found = false;
+        bool file_is_safe_and_exists = false;
         #ifdef _WIN32
         wchar_t full_path_w[MAX_PATH_BUFFER];
         if (MultiByteToWideChar(CP_UTF8, 0, full_path_buffer, -1, full_path_w, MAX_PATH_BUFFER) > 0) {
-            if (PathFileExistsW(full_path_w)) {
-                file_found = true;
+            DWORD attrs = GetFileAttributesW(full_path_w);
+            if (attrs != INVALID_FILE_ATTRIBUTES) {
+                if (!(attrs & FILE_ATTRIBUTE_DIRECTORY) && !(attrs & FILE_ATTRIBUTE_REPARSE_POINT)) {
+                    file_is_safe_and_exists = true;
+                } else {
+                    log_warn("Security: Presets file candidate '%s' is not a regular file (e.g., is a directory or symlink). Skipping.", full_path_buffer);
+                }
             }
         }
         #else
-        if (access(full_path_buffer, F_OK) == 0) {
-            file_found = true;
+        struct stat file_stat;
+        if (lstat(full_path_buffer, &file_stat) == 0) {
+            if (S_ISREG(file_stat.st_mode)) {
+                file_is_safe_and_exists = true;
+            } else {
+                log_warn("Security: Presets file candidate '%s' is not a regular file (e.g., is a directory or symlink). Skipping.", full_path_buffer);
+            }
         }
         #endif
 
-        if (file_found) {
+        if (file_is_safe_and_exists) {
             if (num_found_files < (int)(sizeof(found_preset_files) / sizeof(found_preset_files[0]))) {
                 found_preset_files[num_found_files] = arena_strdup(arena, full_path_buffer);
                 if (!found_preset_files[num_found_files]) {
@@ -204,7 +214,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
     BY_HANDLE_FILE_INFORMATION fileInfo;
     if (GetFileInformationByHandle(hFile, &fileInfo)) {
         if (fileInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-            log_fatal("Security risk!: Presets file '%s' is a directory. Aborting.", found_preset_files[0]);
+            log_fatal("Security: Presets file '%s' is a directory. Aborting.", found_preset_files[0]);
             fclose(fp);
             return false;
         }
@@ -221,7 +231,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         return false;
     }
     if (!S_ISREG(file_stat.st_mode)) {
-        log_fatal("Security risk!: Presets file '%s' is not a regular file. Aborting.", found_preset_files[0]);
+        log_fatal("Security: Presets file '%s' is not a regular file. Aborting.", found_preset_files[0]);
         fclose(fp);
         return false;
     }
