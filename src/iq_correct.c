@@ -60,7 +60,6 @@
 #include <math.h>
 #include <errno.h>
 #include <time.h>
-#include <stdatomic.h>
 
 #ifdef _WIN32
 #include <liquid.h>
@@ -126,7 +125,7 @@ bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* ar
     resources->iq_correction.factors_buffer[0].phase = 0.0f;
     resources->iq_correction.factors_buffer[1].mag = 0.0f;
     resources->iq_correction.factors_buffer[1].phase = 0.0f;
-    atomic_store(&resources->iq_correction.active_buffer_idx, 0);
+    resources->iq_correction.active_buffer_idx = 0;
 
     resources->iq_correction.average_power = 0.0f;
     resources->iq_correction.power_range = 0.0f;
@@ -143,7 +142,7 @@ void iq_correct_apply(AppResources* resources, complex_float_t* samples, int num
     IqCorrectionFactors local_factors;
 
     pthread_mutex_lock(&resources->iq_correction.iq_factors_mutex);
-    int active_idx = atomic_load(&resources->iq_correction.active_buffer_idx);
+    int active_idx = resources->iq_correction.active_buffer_idx;
     local_factors = resources->iq_correction.factors_buffer[active_idx];
     pthread_mutex_unlock(&resources->iq_correction.iq_factors_mutex);
 
@@ -174,11 +173,17 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
 
     log_debug("IQ_OPT_PROBE: Signal is strong enough, starting optimization...");
 
-    int active_idx = atomic_load(&resources->iq_correction.active_buffer_idx);
-    float current_gain = resources->iq_correction.factors_buffer[active_idx].mag;
-    float current_phase = resources->iq_correction.factors_buffer[active_idx].phase;
+    float current_gain;
+    float current_phase;
+    float best_metric;
 
-    float best_metric = _calculate_imbalance_metric(&resources->iq_correction, optimization_data, current_gain, current_phase);
+    pthread_mutex_lock(&resources->iq_correction.iq_factors_mutex);
+    int active_idx = resources->iq_correction.active_buffer_idx;
+    current_gain = resources->iq_correction.factors_buffer[active_idx].mag;
+    current_phase = resources->iq_correction.factors_buffer[active_idx].phase;
+    best_metric = _calculate_imbalance_metric(&resources->iq_correction, optimization_data, current_gain, current_phase);
+    pthread_mutex_unlock(&resources->iq_correction.iq_factors_mutex);
+
     log_debug("IQ_OPT_PROBE: Initial metric (utility score) is %.4e", best_metric);
 
     for (int i = 0; i < IQ_MAX_PASSES; i++) {
@@ -186,7 +191,6 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
         float candidate_phase = current_phase + IQ_BASE_INCREMENT * _get_random_direction();
         float candidate_metric = _calculate_imbalance_metric(&resources->iq_correction, optimization_data, candidate_gain, candidate_phase);
 
-        // CRITICAL FIX: We want to MAXIMIZE the metric, not minimize it.
         if (candidate_metric > best_metric) {
             best_metric = candidate_metric;
             current_gain = candidate_gain;
@@ -197,16 +201,16 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
     log_debug("IQ_OPT_PROBE: Optimization finished. Best metric found: %.4e", best_metric);
     log_debug("IQ_OPT_PROBE: Final raw params for this pass: mag=%.6f, phase=%.6f", current_gain, current_phase);
 
-    int current_active_idx = atomic_load(&resources->iq_correction.active_buffer_idx);
+    pthread_mutex_lock(&resources->iq_correction.iq_factors_mutex);
+    int current_active_idx = resources->iq_correction.active_buffer_idx;
     int inactive_idx = 1 - current_active_idx;
 
     float smoothed_gain = ((1.0f - IQ_CORRECTION_SMOOTHING_FACTOR) * resources->iq_correction.factors_buffer[current_active_idx].mag) + (IQ_CORRECTION_SMOOTHING_FACTOR * current_gain);
     float smoothed_phase = ((1.0f - IQ_CORRECTION_SMOOTHING_FACTOR) * resources->iq_correction.factors_buffer[current_active_idx].phase) + (IQ_CORRECTION_SMOOTHING_FACTOR * current_phase);
     
-    pthread_mutex_lock(&resources->iq_correction.iq_factors_mutex);
     resources->iq_correction.factors_buffer[inactive_idx].mag = smoothed_gain;
     resources->iq_correction.factors_buffer[inactive_idx].phase = smoothed_phase;
-    atomic_store(&resources->iq_correction.active_buffer_idx, inactive_idx);
+    resources->iq_correction.active_buffer_idx = inactive_idx;
     pthread_mutex_unlock(&resources->iq_correction.iq_factors_mutex);
 
     log_debug("IQ_OPT_PROBE: Smoothed global params updated to: mag=%.6f, phase=%.6f", smoothed_gain, smoothed_phase);

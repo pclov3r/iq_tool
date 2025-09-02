@@ -1,4 +1,5 @@
 #include "input_bladerf.h"
+#include "input_source.h"
 #include "constants.h"
 #include "log.h"
 #include "signal_handler.h"
@@ -212,7 +213,8 @@ static InputSourceOps bladerf_ops = {
     .get_summary_info = bladerf_get_summary_info,
     .validate_options = bladerf_validate_options,
     .validate_generic_options = bladerf_validate_generic_options,
-    .has_known_length = _input_source_has_known_length_false
+    .has_known_length = _input_source_has_known_length_false,
+    .pre_stream_iq_correction = NULL
 };
 
 InputSourceOps* get_bladerf_input_ops(void) {

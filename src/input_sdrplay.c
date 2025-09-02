@@ -1,4 +1,5 @@
 #include "input_sdrplay.h"
+#include "input_source.h"
 #include "constants.h"
 #include "log.h"
 #include "signal_handler.h"
@@ -236,7 +237,8 @@ static InputSourceOps sdrplay_ops = {
     .get_summary_info = sdrplay_get_summary_info,
     .validate_options = sdrplay_validate_options,
     .validate_generic_options = sdrplay_validate_generic_options,
-    .has_known_length = _input_source_has_known_length_false
+    .has_known_length = _input_source_has_known_length_false,
+    .pre_stream_iq_correction = NULL
 };
 
 InputSourceOps* get_sdrplay_input_ops(void) {
