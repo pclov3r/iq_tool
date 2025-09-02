@@ -93,7 +93,8 @@ const char* format_file_size(long long size_bytes, char* buffer, size_t buffer_s
 
 const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size_t buffer_size, MemoryArena* arena) {
 #ifdef _WIN32
-    if (config->effective_input_filename_w) {
+    (void)arena; // arena is unused on Windows, this silences the warning.
+    if (config->effective_input_filename_w[0] != L'\0') {
         const wchar_t* base_w = PathFindFileNameW(config->effective_input_filename_w);
         if (WideCharToMultiByte(CP_UTF8, 0, base_w, -1, buffer, buffer_size, NULL, NULL) > 0) {
             return buffer;
@@ -178,6 +179,30 @@ const char* utils_get_format_description_string(format_t format) {
         }
     }
     return "Unknown";
+}
+
+bool utils_is_format_valid(uint8_t format_id) {
+    switch ((format_t)format_id) {
+        case U8:
+        case S8:
+        case U16:
+        case S16:
+        case U32:
+        case S32:
+        case F32:
+        case CU8:
+        case CS8:
+        case CU16:
+        case CS16:
+        case CU32:
+        case CS32:
+        case CF32:
+        case SC16Q11:
+        case FORMAT_UNKNOWN: // FORMAT_UNKNOWN is valid for non-data events (e.g., reset)
+            return true;
+        default:
+            return false;
+    }
 }
 
 bool utils_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz, const char* context_str) {
