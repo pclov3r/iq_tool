@@ -181,30 +181,6 @@ const char* utils_get_format_description_string(format_t format) {
     return "Unknown";
 }
 
-bool utils_is_format_valid(uint8_t format_id) {
-    switch ((format_t)format_id) {
-        case U8:
-        case S8:
-        case U16:
-        case S16:
-        case U32:
-        case S32:
-        case F32:
-        case CU8:
-        case CS8:
-        case CU16:
-        case CS16:
-        case CU32:
-        case CS32:
-        case CF32:
-        case SC16Q11:
-        case FORMAT_UNKNOWN: // FORMAT_UNKNOWN is valid for non-data events (e.g., reset)
-            return true;
-        default:
-            return false;
-    }
-}
-
 bool utils_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz, const char* context_str) {
     if (!context_str || sample_rate_hz <= 0) {
         return true; // Cannot perform check, so allow continuation.
