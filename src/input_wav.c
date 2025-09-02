@@ -108,23 +108,6 @@ static const char* sdr_software_type_to_string(SdrSoftwareType type) {
     }
 }
 
-#ifndef HAVE_STRCASESTR
-static char *strcasestr(const char *haystack, const char *needle) {
-    if (!needle || !*needle) return (char *)haystack;
-    while (*haystack) {
-        const char *h = haystack;
-        const char *n = needle;
-        while (*h && *n && (tolower((unsigned char)*h) == tolower((unsigned char)*n))) {
-            h++;
-            n++;
-        }
-        if (!*n) return (char *)haystack;
-        haystack++;
-    }
-    return NULL;
-}
-#endif
-
 static void init_sdr_metadata(SdrMetadata *metadata) {
     if (!metadata) return;
     memset(metadata, 0, sizeof(SdrMetadata));
