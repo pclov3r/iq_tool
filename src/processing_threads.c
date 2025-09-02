@@ -1,7 +1,7 @@
 #include "processing_threads.h"
 #include "pipeline_context.h"
 #include "constants.h"
-#include "app_context.h"
+#include "app_context.hh"
 #include "utils.h"
 #include "frequency_shift.h"
 #include "signal_handler.h"
@@ -149,8 +149,6 @@ void* post_processor_thread_func(void* arg) {
     while ((item = (SampleChunk*)queue_dequeue(resources->resampler_to_post_process_queue)) != NULL) {
  
         if (item->is_last_chunk) {
-            // NOTE: Proper flushing of the filter needs to be handled within filter_apply.
-            // This simplified model just passes the marker.
             if (config->output_to_stdout) {
                 queue_enqueue(resources->stdout_queue, item);
             } else {
@@ -179,8 +177,6 @@ void* post_processor_thread_func(void* arg) {
             // Apply the filter if it's configured for the post-resample stage.
             if (resources->user_fir_filter_object && config->apply_user_filter_post_resample) {
                 item->frames_to_write = filter_apply(resources, item, true);
-                // Note: filter_apply result might be in the scratch buffer; its implementation
-                // copies it back to the primary buffer for the next stage.
             }
 
             if (resources->post_resample_nco) {
