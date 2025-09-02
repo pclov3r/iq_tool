@@ -587,6 +587,15 @@ if(WITH_BLADERF)
     endif()
 endif()
 
+#=======================================================================
+# Check for system function availability
+#=======================================================================
+include(CheckFunctionExists)
+
+check_function_exists(strcasestr HAVE_STRCASESTR)
+if(HAVE_STRCASESTR)
+    target_compile_definitions(iq_resample_tool PRIVATE HAVE_STRCASESTR)
+endif()
 
 #=======================================================================
 # Project Sources and Target Definition
