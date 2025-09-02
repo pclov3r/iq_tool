@@ -588,16 +588,6 @@ if(WITH_BLADERF)
 endif()
 
 #=======================================================================
-# Check for system function availability
-#=======================================================================
-include(CheckFunctionExists)
-
-check_function_exists(strcasestr HAVE_STRCASESTR)
-if(HAVE_STRCASESTR)
-    target_compile_definitions(iq_resample_tool PRIVATE HAVE_STRCASESTR)
-endif()
-
-#=======================================================================
 # Project Sources and Target Definition
 #=======================================================================
 include_directories(include)
@@ -670,6 +660,16 @@ endif()
 
 # Create the executable from ALL source files
 add_executable(iq_resample_tool ${DSP_SOURCES} ${OTHER_SOURCES})
+
+#=======================================================================
+# Check for system function availability
+#=======================================================================
+include(CheckFunctionExists)
+
+check_function_exists(strcasestr HAVE_STRCASESTR)
+if(HAVE_STRCASESTR)
+    target_compile_definitions(iq_resample_tool PRIVATE HAVE_STRCASESTR)
+endif()
 
 # Enable Link-Time Optimization (LTO) if the compiler supports it.
 # This should be placed after the target is defined.
