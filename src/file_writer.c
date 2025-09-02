@@ -137,6 +137,7 @@ static FILE* _secure_open_for_write(const char* out_path_utf8) {
             close(fd);
             return NULL;
         }
+        }
         // We can now use this fd.
     } else if (errno == ENOENT) {
         // --- FILE DOES NOT EXIST ---
