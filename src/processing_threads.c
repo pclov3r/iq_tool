@@ -39,8 +39,9 @@ void* pre_processor_thread_func(void* arg) {
     while ((item = (SampleChunk*)queue_dequeue(resources->raw_to_pre_process_queue)) != NULL) {
 
         if (item->is_last_chunk) {
-            // NOTE: Proper flushing of the filter needs to be handled within filter_apply.
-            // This simplified model just passes the marker.
+            if (resources->iq_optimization_data_queue) {
+                queue_signal_shutdown(resources->iq_optimization_data_queue);
+            }
             queue_enqueue(resources->pre_process_to_resampler_queue, item);
             break;
         }
@@ -67,7 +68,7 @@ void* pre_processor_thread_func(void* arg) {
         }
 
         if (config->iq_correction.enable) {
-            if (item->frames_read >= IQ_CORRECTION_FFT_SIZE) {
+            if (item->frames_read >= IQ_CORRECTION_FFT_SIZE && !item->stream_discontinuity_event) {
                 SampleChunk* opt_item = (SampleChunk*)queue_try_dequeue(resources->free_sample_chunk_queue);
                 if (opt_item) {
                     memcpy(opt_item->complex_pre_resample_data, item->complex_pre_resample_data, IQ_CORRECTION_FFT_SIZE * sizeof(complex_float_t));

@@ -26,13 +26,6 @@
 #include "setup.h"
 #include "resampler.h" // For resampler_t
 
-// --- C99 Compatibility for C11 Atomics ---
-#if __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_ATOMICS__)
-#include <stdatomic.h>
-#else
-#define _Atomic volatile
-#endif
-
 // --- Forward Declarations ---
 struct FileWriteBuffer;
 
@@ -167,7 +160,7 @@ typedef struct {
  */
 typedef struct {
     IqCorrectionFactors factors_buffer[2];
-    _Atomic int         active_buffer_idx;
+    int                 active_buffer_idx;
     pthread_mutex_t     iq_factors_mutex;
     void*               fft_plan; // Opaque pointer
     complex_float_t*    fft_buffer;

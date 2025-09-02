@@ -1,4 +1,5 @@
 #include "input_hackrf.h"
+#include "input_source.h"
 #include "constants.h"
 #include "app_context.h"
 #include "signal_handler.h"
@@ -88,7 +89,8 @@ static InputSourceOps hackrf_ops = {
     .get_summary_info = hackrf_get_summary_info,
     .validate_options = hackrf_validate_options,
     .validate_generic_options = hackrf_validate_generic_options,
-    .has_known_length = _input_source_has_known_length_false
+    .has_known_length = _input_source_has_known_length_false,
+    .pre_stream_iq_correction = NULL
 };
 
 InputSourceOps* get_hackrf_input_ops(void) {

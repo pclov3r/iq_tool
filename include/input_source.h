@@ -127,6 +127,9 @@ typedef struct InputSourceOps {
      */
     bool (*has_known_length)(void);
 
+    // Optional function for file-based sources to perform initial I/Q correction.
+    bool (*pre_stream_iq_correction)(struct InputSourceContext* ctx);
+
 } InputSourceOps;
 
 #endif // INPUT_SOURCE_H_

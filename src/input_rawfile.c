@@ -11,6 +11,8 @@
 #include "queue.h"
 #include "file_write_buffer.h"
 #include "argparse.h"
+#include "iq_correct.h"
+#include "dc_block.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -38,10 +40,10 @@ static struct {
     bool format_provided;
 } s_rawfile_config;
 
+// This is the private data structure for the Raw File input module.
 typedef struct {
     SNDFILE *infile;
 } RawfilePrivateData;
-
 
 static const struct argparse_option rawfile_cli_options[] = {
     OPT_GROUP("Raw File Input Options"),
@@ -60,6 +62,7 @@ static void rawfile_stop_stream(InputSourceContext* ctx);
 static void rawfile_cleanup(InputSourceContext* ctx);
 static void rawfile_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
 static bool rawfile_validate_options(AppConfig* config);
+static bool rawfile_pre_stream_iq_correction(InputSourceContext* ctx);
 
 static InputSourceOps raw_file_ops = {
     .initialize = rawfile_initialize,
@@ -68,7 +71,9 @@ static InputSourceOps raw_file_ops = {
     .cleanup = rawfile_cleanup,
     .get_summary_info = rawfile_get_summary_info,
     .validate_options = rawfile_validate_options,
-    .has_known_length = _input_source_has_known_length_true
+    .has_known_length = _input_source_has_known_length_true,
+    .validate_generic_options = NULL,
+    .pre_stream_iq_correction = rawfile_pre_stream_iq_correction,
 };
 
 InputSourceOps* get_raw_file_input_ops(void) {
@@ -101,10 +106,8 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
 
-    // MODIFIED: Allocate private data from the memory arena instead of malloc.
     RawfilePrivateData* private_data = (RawfilePrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(RawfilePrivateData), true);
     if (!private_data) {
-        // mem_arena_alloc logs the error
         return false;
     }
     resources->input_module_private_data = private_data;
@@ -252,7 +255,6 @@ static void rawfile_cleanup(InputSourceContext* ctx) {
             sf_close(private_data->infile);
             private_data->infile = NULL;
         }
-        // REMOVED: No longer need to free the private_data struct as it's in the arena.
         resources->input_module_private_data = NULL;
     }
 }
@@ -275,4 +277,65 @@ static void rawfile_get_summary_info(const InputSourceContext* ctx, InputSummary
     char size_buf[40];
     long long file_size_bytes = resources->source_info.frames * resources->input_bytes_per_sample_pair;
     add_summary_item(info, "Input File Size", "%s", format_file_size(file_size_bytes, size_buf, sizeof(size_buf)));
+}
+
+// This function performs a synchronous, one-shot I/Q correction calibration.
+static bool rawfile_pre_stream_iq_correction(InputSourceContext* ctx) {
+    AppConfig* config = (AppConfig*)ctx->config;
+    AppResources* resources = ctx->resources;
+    RawfilePrivateData* private_data = (RawfilePrivateData*)resources->input_module_private_data;
+
+    // This routine is only necessary if I/Q correction is enabled.
+    if (!config->iq_correction.enable) {
+        return true;
+    }
+
+    log_info("Performing initial I/Q calibration for file...");
+
+    if (resources->source_info.frames < IQ_CORRECTION_FFT_SIZE) {
+        log_warn("Input file is too short for I/Q calibration. Skipping.");
+        return true;
+    }
+
+    // Allocate temporary buffers from the setup arena.
+    size_t raw_buffer_size = IQ_CORRECTION_FFT_SIZE * resources->input_bytes_per_sample_pair;
+    void* raw_buffer = mem_arena_alloc(&resources->setup_arena, raw_buffer_size, false);
+    complex_float_t* cf32_buffer = (complex_float_t*)mem_arena_alloc(&resources->setup_arena, IQ_CORRECTION_FFT_SIZE * sizeof(complex_float_t), false);
+
+    if (!raw_buffer || !cf32_buffer) {
+        log_fatal("Failed to allocate temporary buffers for I/Q calibration.");
+        return false;
+    }
+
+    // Read the first block of samples.
+    sf_count_t frames_read_bytes = sf_read_raw(private_data->infile, raw_buffer, raw_buffer_size);
+    if (frames_read_bytes < (sf_count_t)raw_buffer_size) {
+        log_warn("Failed to read enough samples for I/Q calibration. Skipping.");
+        sf_seek(private_data->infile, 0, SEEK_SET); // Rewind anyway to be safe.
+        return true;
+    }
+
+    // Convert and process this first block.
+    if (!convert_raw_to_cf32(raw_buffer, cf32_buffer, IQ_CORRECTION_FFT_SIZE, resources->input_format, config->gain)) {
+        log_fatal("Failed to convert samples during I/Q calibration.");
+        return false;
+    }
+    if (config->dc_block.enable) {
+        dc_block_apply(resources, cf32_buffer, IQ_CORRECTION_FFT_SIZE);
+    }
+
+    // Run the optimization algorithm once, synchronously.
+    iq_correct_run_optimization(resources, cf32_buffer);
+
+    // Update the last optimization time to prevent the thread from running immediately.
+    resources->iq_correction.last_optimization_time = get_monotonic_time_sec();
+
+    // Rewind the file so the main reader thread can process the file from the start.
+    if (sf_seek(private_data->infile, 0, SEEK_SET) < 0) {
+        log_fatal("Failed to rewind input file after I/Q calibration.");
+        return false;
+    }
+
+    log_info("Initial I/Q calibration complete.");
+    return true;
 }

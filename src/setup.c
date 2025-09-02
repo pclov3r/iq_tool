@@ -489,6 +489,13 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
 
     if (!create_filter(config, resources)) goto cleanup;
     resources->lifecycle_state = LIFECYCLE_STATE_FILTER_CREATED;
+
+    // Call the optional pre-stream I/Q correction routine.
+    if (resources->selected_input_ops->pre_stream_iq_correction) {
+        if (!resources->selected_input_ops->pre_stream_iq_correction(&ctx)) {
+            goto cleanup;
+        }
+    }
     
     // Conditionally allocate FFT remainder buffers from the arena if needed.
     if (resources->user_fir_filter_object &&
