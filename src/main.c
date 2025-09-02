@@ -1,21 +1,29 @@
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#include "io_threads.h"
 #include "constants.h"
-#include "app_context.h"      // Provides AppConfig, AppResources
-#include "cli.h"              // Provides parse_arguments()
-#include "setup.h"            // Provides initialize_application()
-#include "utils.h"
-#include "signal_handler.h"   // Provides setup_signal_handlers()
+#include "app_context.h"
+#include "signal_handler.h"
 #include "log.h"
-#include "input_manager.h"    // Provides input_manager_apply_defaults()
+#include "input_source.h"
+#include "queue.h"
+#include "sdr_packet_serializer.h"
+#include "pipeline_context.h"
+#include "file_write_buffer.h"
+#include "cli.h"
+#include "setup.h"
+#include "utils.h"
+#include "input_manager.h"
 #include "sample_convert.h"
 #include "file_writer.h"
 #include "presets_loader.h"
 #include "platform.h"
-#include "memory_arena.h"     // Provides mem_arena_init()
+#include "memory_arena.h"
 #include "iq_correct.h"
 #include "dc_block.h"
-#include "io_threads.h"       // Provides the I/O thread functions
-#include "processing_threads.h" // Provides the DSP thread functions
-#include "pipeline_context.h" // Provides PipelineContext
+#include "processing_threads.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
@@ -57,12 +65,10 @@ int main(int argc, char *argv[]) {
     bool resources_initialized = false;
     bool arena_initialized = false;
 
-    // FIX: Add error checking for all pthread calls.
-    int ret; // Variable to hold return codes
+    int ret;
 
     pthread_mutexattr_t attr;
     if ((ret = pthread_mutexattr_init(&attr)) != 0) {
-        // Cannot use log_fatal yet as the mutex isn't set up.
         fprintf(stderr, "FATAL: Failed to initialize mutex attributes: %s\n", strerror(ret));
         return EXIT_FAILURE;
     }
@@ -76,7 +82,6 @@ int main(int argc, char *argv[]) {
         pthread_mutexattr_destroy(&attr);
         return EXIT_FAILURE;
     }
-    // The attribute object is no longer needed after the mutex is initialized.
     pthread_mutexattr_destroy(&attr);
 
     log_set_lock(console_lock_function, &g_console_mutex);
@@ -121,7 +126,6 @@ int main(int argc, char *argv[]) {
     }
 
     if (argc <= 1) {
-        // MODIFIED: Pass the config and arena to print_usage.
         print_usage(argv[0], &g_config, &resources.setup_arena);
         exit_status = EXIT_SUCCESS;
         goto cleanup;
@@ -159,47 +163,66 @@ int main(int argc, char *argv[]) {
 
     if (resources.pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
         if (pthread_create(&resources.sdr_capture_thread_handle, NULL, sdr_capture_thread_func, &thread_args) != 0) {
-            handle_fatal_thread_error("In Main: Failed to create SDR capture thread.", &resources);
+            log_fatal("Failed to create SDR capture thread: %s", strerror(errno));
+            goto thread_join;
+        }
+        resources.threads_started = true;
+    }
+    if (pthread_create(&resources.reader_thread_handle, NULL, reader_thread_func, &thread_args) != 0) {
+        log_fatal("Failed to create reader thread: %s", strerror(errno));
+        goto thread_join;
+    }
+    resources.threads_started = true;
+    if (pthread_create(&resources.pre_processor_thread_handle, NULL, pre_processor_thread_func, &thread_args) != 0) {
+        log_fatal("Failed to create pre-processor thread: %s", strerror(errno));
+        goto thread_join;
+    }
+    if (pthread_create(&resources.resampler_thread_handle, NULL, resampler_thread_func, &thread_args) != 0) {
+        log_fatal("Failed to create resampler thread: %s", strerror(errno));
+        goto thread_join;
+    }
+    if (pthread_create(&resources.post_processor_thread_handle, NULL, post_processor_thread_func, &thread_args) != 0) {
+        log_fatal("Failed to create post-processor thread: %s", strerror(errno));
+        goto thread_join;
+    }
+    if (pthread_create(&resources.writer_thread_handle, NULL, writer_thread_func, &thread_args) != 0) {
+        log_fatal("Failed to create writer thread: %s", strerror(errno));
+        goto thread_join;
+    }
+    if (g_config.iq_correction.enable) {
+        if (pthread_create(&resources.iq_optimization_thread_handle, NULL, iq_optimization_thread_func, &thread_args) != 0) {
+            log_fatal("Failed to create I/Q optimization thread: %s", strerror(errno));
+            goto thread_join;
         }
     }
 
-    if (pthread_create(&resources.reader_thread_handle, NULL, reader_thread_func, &thread_args) != 0 ||
-        pthread_create(&resources.pre_processor_thread_handle, NULL, pre_processor_thread_func, &thread_args) != 0 ||
-        pthread_create(&resources.resampler_thread_handle, NULL, resampler_thread_func, &thread_args) != 0 ||
-        pthread_create(&resources.post_processor_thread_handle, NULL, post_processor_thread_func, &thread_args) != 0 ||
-        pthread_create(&resources.writer_thread_handle, NULL, writer_thread_func, &thread_args) != 0 ||
-        (g_config.iq_correction.enable && pthread_create(&resources.iq_optimization_thread_handle, NULL, iq_optimization_thread_func, &thread_args) != 0))
-    {
-        handle_fatal_thread_error("In Main: Failed to create one or more processing threads.", &resources);
+thread_join:
+    if (resources.threads_started) {
+        log_debug("Waiting for processing threads to complete...");
+        if (pthread_join(resources.post_processor_thread_handle, NULL) != 0) log_warn("Error joining post-processor thread.");
+        if (pthread_join(resources.writer_thread_handle, NULL) != 0) log_warn("Error joining writer thread.");
+        if (pthread_join(resources.resampler_thread_handle, NULL) != 0) log_warn("Error joining resampler thread.");
+        if (pthread_join(resources.pre_processor_thread_handle, NULL) != 0) log_warn("Error joining pre-processor thread.");
+        if (g_config.iq_correction.enable) {
+            if (pthread_join(resources.iq_optimization_thread_handle, NULL) != 0) log_warn("Error joining I/Q optimization thread.");
+        }
+        if (pthread_join(resources.reader_thread_handle, NULL) != 0) log_warn("Error joining reader thread.");
+
+        if (resources.pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
+            if (pthread_join(resources.sdr_capture_thread_handle, NULL) != 0) log_warn("Error joining SDR capture thread.");
+        }
+        log_debug("All processing threads have joined.");
     }
-
-    pthread_join(resources.post_processor_thread_handle, NULL);
-    pthread_join(resources.writer_thread_handle, NULL);
-    pthread_join(resources.resampler_thread_handle, NULL);
-    pthread_join(resources.pre_processor_thread_handle, NULL);
-    if (g_config.iq_correction.enable) {
-        pthread_join(resources.iq_optimization_thread_handle, NULL);
-    }
-    pthread_join(resources.reader_thread_handle, NULL);
-
-    if (resources.pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
-        pthread_join(resources.sdr_capture_thread_handle, NULL);
-    }
-
-    log_debug("All processing threads have joined.");
-
+    
     bool processing_ok = !resources.error_occurred;
     exit_status = (processing_ok || is_shutdown_requested()) ? EXIT_SUCCESS : EXIT_FAILURE;
 
 cleanup:
     pthread_mutex_lock(&g_console_mutex);
     
-    // This is now called unconditionally, which is correct.
     bool final_ok = !resources.error_occurred;
     cleanup_application(&g_config, &resources);
 
-    // The summary, however, should only be printed if initialization
-    // was fully completed.
     if (resources_initialized) {
         print_final_summary(&g_config, &resources, final_ok);
     }
@@ -220,7 +243,6 @@ cleanup:
 
 static void initialize_resource_struct(AppResources *resources) {
     memset(resources, 0, sizeof(AppResources));
-
     g_config.iq_correction.enable = false;
     g_config.dc_block.enable = false;
 }
@@ -247,7 +269,7 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
     unsigned long long total_output_samples = resources->total_output_frames * 2;
 
     double avg_write_speed_mbps = 0.0;
-    if (duration_secs > 0.001) { // Avoid division by zero
+    if (duration_secs > 0.001) {
         avg_write_speed_mbps = (double)resources->final_output_size_bytes / (1024.0 * 1024.0) / duration_secs;
     }
 
