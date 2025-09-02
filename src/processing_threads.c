@@ -1,7 +1,7 @@
 #include "processing_threads.h"
 #include "pipeline_context.h"
 #include "constants.h"
-#include "app_context.hh"
+#include "app_context.h"
 #include "utils.h"
 #include "frequency_shift.h"
 #include "signal_handler.h"
