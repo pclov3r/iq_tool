@@ -644,6 +644,14 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
     if (!resources) return;
     InputSourceContext ctx = { .config = config, .resources = resources };
 
+    // Unconditionally attempt to clean up the input module first.
+    // The module's own cleanup function is responsible for checking if its
+    // resources (like a device handle) were actually allocated.
+    if (resources->selected_input_ops && resources->selected_input_ops->cleanup) {
+        resources->selected_input_ops->cleanup(&ctx);
+    }
+
+    // Now, run the rest of the state machine for other resources.
     switch (resources->lifecycle_state) {
         case LIFECYCLE_STATE_FULLY_INITIALIZED:
         case LIFECYCLE_STATE_OUTPUT_STREAM_OPEN:
@@ -689,13 +697,10 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
         case LIFECYCLE_STATE_DC_BLOCK_CREATED:
             dc_block_destroy(resources);
             // fall-through
+        // The input module cleanup is now handled unconditionally above,
+        // so this case is just a fall-through point.
         case LIFECYCLE_STATE_INPUT_INITIALIZED:
-            if (resources->selected_input_ops && resources->selected_input_ops->cleanup) {
-                resources->selected_input_ops->cleanup(&ctx);
-            }
-            // fall-through
         case LIFECYCLE_STATE_START:
-            // No resources to clean up at this stage
             break;
     }
 }
