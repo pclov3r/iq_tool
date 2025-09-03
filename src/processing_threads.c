@@ -3,17 +3,14 @@
 #include "constants.h"
 #include "app_context.h"
 #include "utils.h"
-#include "frequency_shift.h"
 #include "signal_handler.h"
 #include "log.h"
-#include "sample_convert.h"
 #include "pre_processor.h"
+#include "post_processor.h"
 #include "iq_correct.h"
-#include "filter.h"
-#include "queue.h"
-#include "memory_arena.h"
-#include "file_write_buffer.h"
 #include "resampler.h"
+#include "queue.h"
+#include "file_write_buffer.h"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -47,25 +44,16 @@ void* pre_processor_thread_func(void* arg) {
         }
 
         if (item->stream_discontinuity_event) {
-            freq_shift_reset_nco(resources->pre_resample_nco);
-            // Note: DC block and I/Q correction states are reset inside the pre_processor_apply_chain if needed.
-            filter_reset(resources);
+            pre_processor_reset(resources);
             if (!queue_enqueue(resources->pre_process_to_resampler_queue, item)) {
                 break;
             }
             continue;
         }
 
-        if (!convert_raw_to_cf32(item->raw_input_data, item->complex_pre_resample_data, item->frames_read, item->packet_sample_format, config->gain)) {
-            handle_fatal_thread_error("Pre-Processor: Failed to convert samples.", resources);
-            queue_enqueue(resources->free_sample_chunk_queue, item);
-            continue;
-        }
+        pre_processor_apply_chain(resources, item);
 
-        // Apply the centralized pre-processing chain (DC block, I/Q correction, etc.)
-        pre_processor_apply_chain(resources, item->complex_pre_resample_data, item->frames_read);
-
-        // Separately, send a copy of the pre-processed data to the optimization thread for training.
+        // Send a copy of the pre-processed data to the optimization thread for training.
         if (config->iq_correction.enable) {
             if (item->frames_read >= IQ_CORRECTION_FFT_SIZE && !item->stream_discontinuity_event) {
                 SampleChunk* opt_item = (SampleChunk*)queue_try_dequeue(resources->free_sample_chunk_queue);
@@ -74,15 +62,6 @@ void* pre_processor_thread_func(void* arg) {
                     queue_enqueue(resources->iq_optimization_data_queue, opt_item);
                 }
             }
-        }
-
-        // Apply the filter if it's configured for the pre-resample stage.
-        if (resources->user_fir_filter_object && !config->apply_user_filter_post_resample) {
-            item->frames_read = filter_apply(resources, item, false);
-        }
-
-        if (resources->pre_resample_nco) {
-            freq_shift_apply(resources->pre_resample_nco, resources->nco_shift_hz, item->complex_pre_resample_data, item->complex_pre_resample_data, item->frames_read);
         }
 
         if (item->frames_read > 0) {
@@ -159,8 +138,7 @@ void* post_processor_thread_func(void* arg) {
         }
 
         if (item->stream_discontinuity_event) {
-            freq_shift_reset_nco(resources->post_resample_nco);
-            filter_reset(resources);
+            post_processor_reset(resources);
             if (config->output_to_stdout) {
                 if (!queue_enqueue(resources->stdout_queue, item)) {
                     break;
@@ -171,35 +149,16 @@ void* post_processor_thread_func(void* arg) {
             continue;
         }
 
+        post_processor_apply_chain(resources, item);
+
         if (item->frames_to_write > 0) {
-            complex_float_t* current_data_ptr = item->complex_resampled_data;
-
-            // Apply the filter if it's configured for the post-resample stage.
-            if (resources->user_fir_filter_object && config->apply_user_filter_post_resample) {
-                item->frames_to_write = filter_apply(resources, item, true);
-            }
-
-            if (resources->post_resample_nco) {
-                // To be safe, use an out-of-place operation.
-                freq_shift_apply(resources->post_resample_nco, resources->nco_shift_hz, current_data_ptr, item->complex_scratch_data, item->frames_to_write);
-                current_data_ptr = item->complex_scratch_data;
-            }
-
-            if (!convert_cf32_to_block(current_data_ptr, item->final_output_data, item->frames_to_write, config->output_format)) {
-                handle_fatal_thread_error("Post-Processor: Failed to convert samples.", resources);
-                queue_enqueue(resources->free_sample_chunk_queue, item);
-                break;
-            }
-
             if (config->output_to_stdout) {
                 if (!queue_enqueue(resources->stdout_queue, item)) {
                     break;
                 }
             } else {
                 size_t bytes_to_write = item->frames_to_write * resources->output_bytes_per_sample_pair;
-                if (bytes_to_write > 0) {
-                    file_write_buffer_write(resources->file_write_buffer, item->final_output_data, bytes_to_write);
-                }
+                file_write_buffer_write(resources->file_write_buffer, item->final_output_data, bytes_to_write);
                 queue_enqueue(resources->free_sample_chunk_queue, item);
             }
         } else {

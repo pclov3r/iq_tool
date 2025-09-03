@@ -235,7 +235,6 @@ void iq_correct_destroy(AppResources* resources) {
 }
 
 bool iq_correct_run_initial_calibration(InputSourceContext* ctx, SNDFILE* infile) {
-    AppConfig* config = (AppConfig*)ctx->config;
     AppResources* resources = ctx->resources;
 
     if (!infile) {
@@ -268,17 +267,19 @@ bool iq_correct_run_initial_calibration(InputSourceContext* ctx, SNDFILE* infile
         return true;
     }
 
-    // Convert and process this first block.
-    if (!convert_raw_to_cf32(raw_buffer, cf32_buffer, IQ_CORRECTION_FFT_SIZE, resources->input_format, config->gain)) {
-        log_fatal("Failed to convert samples during I/Q calibration.");
-        return false;
-    }
-    
-    // The pre-processing logic is now a single, clean call.
-    pre_processor_apply_chain(resources, cf32_buffer, IQ_CORRECTION_FFT_SIZE);
+    // Create a temporary, stack-allocated SampleChunk to pass to the apply_chain.
+    SampleChunk temp_chunk;
+    memset(&temp_chunk, 0, sizeof(SampleChunk));
+    temp_chunk.raw_input_data = raw_buffer;
+    temp_chunk.complex_pre_resample_data = cf32_buffer;
+    temp_chunk.frames_read = IQ_CORRECTION_FFT_SIZE;
+    temp_chunk.packet_sample_format = resources->input_format; // Pass the correct format
 
-    // Run the optimization algorithm once, synchronously.
-    iq_correct_run_optimization(resources, cf32_buffer);
+    // The pre-processing logic is now a single, clean call.
+    pre_processor_apply_chain(resources, &temp_chunk);
+    
+    // Run the optimization algorithm once, synchronously, on the processed data.
+    iq_correct_run_optimization(resources, temp_chunk.complex_pre_resample_data);
 
     // Update the last optimization time to prevent the thread from running immediately.
     resources->iq_correction.last_optimization_time = get_monotonic_time_sec();
