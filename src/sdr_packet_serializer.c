@@ -7,9 +7,15 @@
 #include <string.h>
 #include <stdlib.h>
 
+// Magic number "IQPK" (I=0x49, Q=0x51, P=0x50, K=0x4B) as a little-endian 32-bit integer.
+// Used to synchronize the reader to the start of a valid packet.
+#define IQPK_MAGIC 0x4B505149
+
 // --- PRIVATE DEFINITIONS ---
 #pragma pack(push, 1)
 typedef struct {
+    // --- MODIFIED ---
+    uint32_t magic; // MUST be the first field
     uint32_t num_samples;
     uint8_t  flags;
     uint8_t  format_id;
@@ -59,6 +65,7 @@ static bool _is_packet_format_id_valid(uint8_t format_id) {
 
 bool sdr_packet_serializer_write_deinterleaved_chunk(FileWriteBuffer* buffer, uint32_t num_samples, const short* i_data, const short* q_data, format_t format) {
     SdrInputChunkHeader header;
+    header.magic = IQPK_MAGIC; // --- MODIFIED ---
     header.num_samples = num_samples;
     header.flags = 0; // De-interleaved (interleaved flag is NOT set)
     header.format_id = (uint8_t)format;
@@ -74,6 +81,7 @@ bool sdr_packet_serializer_write_deinterleaved_chunk(FileWriteBuffer* buffer, ui
 
 bool sdr_packet_serializer_write_interleaved_chunk(FileWriteBuffer* buffer, uint32_t num_samples, const void* sample_data, size_t bytes_per_sample_pair, format_t format) {
     SdrInputChunkHeader header;
+    header.magic = IQPK_MAGIC; // --- MODIFIED ---
     header.num_samples = num_samples;
     header.flags = SDR_CHUNK_FLAG_INTERLEAVED;
     header.format_id = (uint8_t)format;
@@ -88,6 +96,7 @@ bool sdr_packet_serializer_write_interleaved_chunk(FileWriteBuffer* buffer, uint
 
 bool sdr_packet_serializer_write_reset_event(FileWriteBuffer* buffer) {
     SdrInputChunkHeader header;
+    header.magic = IQPK_MAGIC; // --- MODIFIED ---
     header.num_samples = 0;
     header.flags = SDR_CHUNK_FLAG_STREAM_RESET;
     header.format_id = (uint8_t)FORMAT_UNKNOWN;
@@ -98,6 +107,7 @@ bool sdr_packet_serializer_write_reset_event(FileWriteBuffer* buffer) {
 
 // --- PUBLIC API: REFACTORED DESERIALIZATION FUNCTION ---
 
+// --- NEW: This function has been completely replaced with the robust, re-synchronizing version. ---
 int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
                                           SampleChunk* target_chunk,
                                           bool* is_reset_event,
@@ -105,42 +115,85 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
                                           size_t temp_buffer_size) {
     *is_reset_event = false;
     SdrInputChunkHeader header;
+    uint32_t current_word = 0;
+    bool resync_in_progress = false;
+    uint64_t discarded_bytes = 0;
+    unsigned char single_byte;
 
-    size_t header_bytes_read = file_write_buffer_read(buffer, &header, sizeof(header));
-    if (header_bytes_read == 0) {
-        return 0; // Normal end of stream
+    // This loop is the core of the re-synchronization logic.
+    while (true) {
+        // Step 1: Read exactly 4 bytes to check for the magic number.
+        size_t bytes_read = file_write_buffer_read(buffer, &current_word, sizeof(uint32_t));
+
+        // Handle end-of-stream conditions
+        if (bytes_read == 0) {
+            if (resync_in_progress) {
+                log_warn("Stream ended during re-sync after discarding %llu bytes.", discarded_bytes);
+            }
+            return 0; // Clean end of stream
+        }
+        if (bytes_read < sizeof(uint32_t)) {
+            log_error("SDR stream corrupted at the very end. Incomplete magic number read.");
+            return -1; // Fatal error
+        }
+
+        // Step 2: Check if we found the magic number.
+        if (current_word == IQPK_MAGIC) {
+            if (resync_in_progress) {
+                log_info("Stream re-synchronized successfully after discarding %llu bytes.", discarded_bytes);
+            }
+            break; // Success! Exit the re-sync loop and proceed.
+        }
+
+        // Step 3: If no match, start re-sync mode and discard one byte at a time.
+        if (!resync_in_progress) {
+            log_warn("SDR stream de-synchronized! Scanning for next valid packet...");
+            resync_in_progress = true;
+        }
+
+        // To discard a single byte, we shift our current word and read one new byte.
+        current_word = (current_word >> 8); // Discard the oldest byte (from the beginning of the 4-byte read)
+        if (file_write_buffer_read(buffer, &single_byte, 1) < 1) {
+             log_warn("Stream ended during re-sync after discarding %llu bytes.", discarded_bytes);
+             return 0; // End of stream
+        }
+        current_word |= ((uint32_t)single_byte << 24); // Add the new byte at the end (high bits)
+        discarded_bytes++;
     }
-    if (header_bytes_read < sizeof(header)) {
-        log_error("Incomplete header read from SDR buffer. Stream corrupted.");
+
+    // At this point, we have successfully read and validated the magic number.
+    header.magic = current_word;
+
+    // Now read the rest of the header (num_samples, flags, format_id).
+    size_t rest_of_header_size = sizeof(SdrInputChunkHeader) - sizeof(uint32_t);
+    size_t header_bytes_read = file_write_buffer_read(buffer, ((char*)&header) + sizeof(uint32_t), rest_of_header_size);
+    
+    if (header_bytes_read < rest_of_header_size) {
+        log_error("SDR stream corrupted: Found magic number but header was incomplete.");
         return -1; // Fatal error
     }
 
+    // --- The rest of the function is the original validation and payload reading logic ---
+    
     if (!_is_packet_format_id_valid(header.format_id)) {
         log_error("SDR stream corrupted: received invalid sample format ID (%u).", header.format_id);
         return -1;
     }
-
+    
     target_chunk->packet_sample_format = (format_t)header.format_id;
-
     if (header.flags & SDR_CHUNK_FLAG_STREAM_RESET) {
         *is_reset_event = true;
     }
-
-    // A data packet must not have an UNKNOWN format.
     if (header.num_samples > 0 && target_chunk->packet_sample_format == FORMAT_UNKNOWN) {
         log_error("SDR stream corrupted: received data packet with FORMAT_UNKNOWN.");
         return -1;
     }
-
-    // Sanity check the packet length to prevent deadlocks from corrupted headers.
-    // The limit is generous but prevents impossibly large values.
     if (header.num_samples > (PIPELINE_CHUNK_BASE_SAMPLES * 2)) {
         log_error("SDR stream corrupted: received impossibly large packet length (%u).", header.num_samples);
         return -1;
     }
-
     if (header.num_samples == 0) {
-        return 0; // Return 0 frames, but the caller will check is_reset_event.
+        return 0; // This is a non-data event packet (like a reset).
     }
 
     if (header.flags & SDR_CHUNK_FLAG_INTERLEAVED) {
