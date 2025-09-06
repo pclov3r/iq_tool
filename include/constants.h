@@ -209,4 +209,16 @@
 #define MAX_ALLOWED_FFT_BLOCK_SIZE (1024 * 1024)
 #define MAX_PATH_BUFFER           4096
 
+// =============================================================================
+// == Tier 6: Application Lifecycle Tuning
+// =============================================================================
+
+// The interval in milliseconds at which the watchdog thread wakes up to check the SDR heartbeat.
+#define WATCHDOG_INTERVAL_MS 2000
+
+// The maximum time in milliseconds that can elapse without an SDR heartbeat before the
+// watchdog triggers a shutdown. This must be longer than any SDR's internal timeouts.
+#define WATCHDOG_TIMEOUT_MS 5000
+
+
 #endif // CONSTANTS_H_

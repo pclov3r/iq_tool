@@ -139,6 +139,9 @@ static bool hackrf_validate_options(AppConfig* config) {
 static int hackrf_buffered_stream_callback(hackrf_transfer* transfer) {
     AppResources *resources = (AppResources*)transfer->rx_ctx;
 
+    // --- HEARTBEAT ---
+    sdr_input_update_heartbeat(resources);
+
     if (is_shutdown_requested() || resources->error_occurred) {
         return -1;
     }
@@ -158,6 +161,9 @@ static int hackrf_buffered_stream_callback(hackrf_transfer* transfer) {
 static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
     AppResources *resources = (AppResources*)transfer->rx_ctx;
     const AppConfig *config = resources->config;
+
+    // --- HEARTBEAT ---
+    sdr_input_update_heartbeat(resources);
 
     if (is_shutdown_requested() || resources->error_occurred) {
         return -1;
@@ -196,7 +202,7 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
         memcpy(item->raw_input_data, transfer->buffer + bytes_processed, chunk_size);
         item->frames_read = chunk_size / resources->input_bytes_per_sample_pair;
         item->is_last_chunk = false;
-	item->packet_sample_format = resources->input_format;
+	    item->packet_sample_format = resources->input_format;
 
         if (item->frames_read > 0) {
             pthread_mutex_lock(&resources->progress_mutex);

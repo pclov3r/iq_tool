@@ -141,6 +141,9 @@ static bool rtlsdr_validate_options(AppConfig* config) {
 static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ctx) {
     AppResources *resources = (AppResources*)cb_ctx;
 
+    // --- HEARTBEAT ---
+    sdr_input_update_heartbeat(resources);
+
     if (is_shutdown_requested() || resources->error_occurred) {
         return;
     }
@@ -279,6 +282,7 @@ static void* rtlsdr_start_stream(InputSourceContext* ctx) {
                 handle_fatal_thread_error(error_buf, resources);
                 return NULL;
             }
+            // In async mode, the main loop just waits for shutdown. The callback does the work.
             while (!is_shutdown_requested() && !resources->error_occurred) {
                 #ifdef _WIN32
                 Sleep(100);
@@ -296,6 +300,12 @@ static void* rtlsdr_start_stream(InputSourceContext* ctx) {
                 while (!is_shutdown_requested() && !resources->error_occurred) {
                     int n_read = 0;
                     result = rtlsdr_read_sync(private_data->dev, passthrough_buffer, sizeof(passthrough_buffer), &n_read);
+                    
+                    if (result >= 0) {
+                        // --- HEARTBEAT ---
+                        sdr_input_update_heartbeat(resources);
+                    }
+
                     if (result < 0) {
                         if (!is_shutdown_requested()) {
                             char error_buf[256];
@@ -322,6 +332,11 @@ static void* rtlsdr_start_stream(InputSourceContext* ctx) {
                     size_t bytes_to_read = PIPELINE_CHUNK_BASE_SAMPLES * resources->input_bytes_per_sample_pair;
                     result = rtlsdr_read_sync(private_data->dev, item->raw_input_data, bytes_to_read, &n_read);
 
+                    if (result >= 0) {
+                        // --- HEARTBEAT ---
+                        sdr_input_update_heartbeat(resources);
+                    }
+
                     if (result < 0) {
                         if (!is_shutdown_requested()) {
                             char error_buf[256];
@@ -335,8 +350,7 @@ static void* rtlsdr_start_stream(InputSourceContext* ctx) {
                     item->frames_read = n_read / resources->input_bytes_per_sample_pair;
                     item->is_last_chunk = false;
                     item->stream_discontinuity_event = false;
-
-		    item->packet_sample_format = resources->input_format;
+		            item->packet_sample_format = resources->input_format;
 
                     if (item->frames_read > 0) {
                         pthread_mutex_lock(&resources->progress_mutex);
