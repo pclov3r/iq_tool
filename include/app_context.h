@@ -200,8 +200,6 @@ typedef struct AppResources {
     FilterImplementationType user_filter_type_actual;
     void*           user_fir_filter_object; // Already opaque, which is good
     unsigned int    user_filter_block_size;
-
-    // --- MODIFIED: Explicit Filter State ---
     complex_float_t* pre_fft_remainder_buffer;
     unsigned int     pre_fft_remainder_len;
     complex_float_t* post_fft_remainder_buffer;
@@ -244,6 +242,7 @@ typedef struct AppResources {
     // --- Progress & State Tracking ---
     AppLifecycleState lifecycle_state;
     pthread_mutex_t progress_mutex;
+    double          last_sdr_heartbeat_time; // <-- NEW
     bool            error_occurred;
     bool            end_of_stream_reached;
     unsigned long long total_frames_read;

@@ -606,6 +606,12 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
                 memset(&meta, 0, sizeof(meta));
                 meta.flags = BLADERF_META_FLAG_RX_NOW;
                 status = bladerf_sync_rx(private_data->dev, temp_buffer, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
+                
+                if (status == 0) {
+                    // --- HEARTBEAT ---
+                    sdr_input_update_heartbeat(resources);
+                }
+                
                 if (status != 0) {
                     if (!is_shutdown_requested()) {
                         char error_buf[256];
@@ -620,9 +626,6 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
                         sdr_packet_serializer_write_reset_event(resources->sdr_input_buffer);
                     }
                     
-                    // --- FIX APPLIED HERE ---
-                    // The original code wrote one large packet. This version now calls the
-                    // reusable chunking function to correctly packetize the data.
                     sdr_write_interleaved_chunks(
                         resources,
                         (const unsigned char*)temp_buffer,
@@ -646,6 +649,12 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
                     memset(&meta, 0, sizeof(meta));
                     meta.flags = BLADERF_META_FLAG_RX_NOW;
                     status = bladerf_sync_rx(private_data->dev, passthrough_buffer, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
+                    
+                    if (status == 0) {
+                        // --- HEARTBEAT ---
+                        sdr_input_update_heartbeat(resources);
+                    }
+                    
                     if (status != 0) {
                         if (!is_shutdown_requested()) {
                             char error_buf[256];
@@ -675,6 +684,11 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
                     memset(&meta, 0, sizeof(meta));
                     meta.flags = BLADERF_META_FLAG_RX_NOW;
                     status = bladerf_sync_rx(private_data->dev, item->raw_input_data, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
+                    
+                    if (status == 0) {
+                        // --- HEARTBEAT ---
+                        sdr_input_update_heartbeat(resources);
+                    }
                     
                     if (status != 0) {
                         if (!is_shutdown_requested()) {

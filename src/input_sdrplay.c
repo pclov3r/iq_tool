@@ -377,6 +377,9 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
     AppResources *resources = (AppResources*)cbContext;
     const AppConfig *config = resources->config;
 
+    // --- HEARTBEAT ---
+    sdr_input_update_heartbeat(resources);
+
     if (is_shutdown_requested() || resources->error_occurred) return;
 
     if (reset) {
@@ -434,7 +437,7 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
         }
         item->frames_read = samples_to_copy;
         item->is_last_chunk = false;
-	item->packet_sample_format = resources->input_format;
+	    item->packet_sample_format = resources->input_format;
 
         if (samples_to_copy > 0) {
             pthread_mutex_lock(&resources->progress_mutex);
@@ -450,6 +453,9 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
 static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext) {
     (void)params;
     AppResources *resources = (AppResources*)cbContext;
+
+    // --- HEARTBEAT ---
+    sdr_input_update_heartbeat(resources);
 
     if (is_shutdown_requested() || resources->error_occurred) {
         return;
