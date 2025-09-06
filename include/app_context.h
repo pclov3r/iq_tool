@@ -200,8 +200,12 @@ typedef struct AppResources {
     FilterImplementationType user_filter_type_actual;
     void*           user_fir_filter_object; // Already opaque, which is good
     unsigned int    user_filter_block_size;
+
+    // --- MODIFIED: Explicit Filter State ---
     complex_float_t* pre_fft_remainder_buffer;
+    unsigned int     pre_fft_remainder_len;
     complex_float_t* post_fft_remainder_buffer;
+    unsigned int     post_fft_remainder_len;
 
     // --- Input/Output State ---
     struct InputSourceOps* selected_input_ops;

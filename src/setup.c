@@ -1,3 +1,5 @@
+// setup.c
+
 #include "setup.h"
 #include "constants.h"
 #include "platform.h"
@@ -545,6 +547,8 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
                 resources->user_filter_block_size * sizeof(complex_float_t),
                 false
             );
+            // --- MODIFIED: Initialize the new _len field ---
+            resources->post_fft_remainder_len = 0;
             if (!resources->post_fft_remainder_buffer) goto cleanup;
         } else {
             // FFT filter is in the pre-processor thread
@@ -553,6 +557,8 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
                 resources->user_filter_block_size * sizeof(complex_float_t),
                 false
             );
+            // --- MODIFIED: Initialize the new _len field ---
+            resources->pre_fft_remainder_len = 0;
             if (!resources->pre_fft_remainder_buffer) goto cleanup;
         }
     }
@@ -644,14 +650,6 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
     if (!resources) return;
     InputSourceContext ctx = { .config = config, .resources = resources };
 
-    // Unconditionally attempt to clean up the input module first.
-    // The module's own cleanup function is responsible for checking if its
-    // resources (like a device handle) were actually allocated.
-    if (resources->selected_input_ops && resources->selected_input_ops->cleanup) {
-        resources->selected_input_ops->cleanup(&ctx);
-    }
-
-    // Now, run the rest of the state machine for other resources.
     switch (resources->lifecycle_state) {
         case LIFECYCLE_STATE_FULLY_INITIALIZED:
         case LIFECYCLE_STATE_OUTPUT_STREAM_OPEN:
@@ -697,10 +695,13 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
         case LIFECYCLE_STATE_DC_BLOCK_CREATED:
             dc_block_destroy(resources);
             // fall-through
-        // The input module cleanup is now handled unconditionally above,
-        // so this case is just a fall-through point.
         case LIFECYCLE_STATE_INPUT_INITIALIZED:
+            if (resources->selected_input_ops && resources->selected_input_ops->cleanup) {
+                resources->selected_input_ops->cleanup(&ctx);
+            }
+            // fall-through
         case LIFECYCLE_STATE_START:
+            // No resources to clean up at this stage
             break;
     }
 }
