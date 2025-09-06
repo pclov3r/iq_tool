@@ -1,5 +1,3 @@
-// setup.c
-
 #include "setup.h"
 #include "constants.h"
 #include "platform.h"
