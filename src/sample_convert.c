@@ -36,7 +36,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#define CONVERT_LOOP_SIGNED(TYPE, TYPE_MAX_CONST, TYPE_MIN_CONST, SCALE) \
+#define CF32_TO_BLOCK_SIGNED(TYPE, TYPE_MAX_CONST, TYPE_MIN_CONST, SCALE) \
     do { \
         TYPE* out = (TYPE*)output_buffer; \
         const float max_val = (float)TYPE_MAX_CONST; \
@@ -55,7 +55,7 @@
         } \
     } while (0)
 
-#define CONVERT_LOOP_UNSIGNED(TYPE, TYPE_MAX_CONST, SCALE, OFFSET) \
+#define CF32_TO_BLOCK_UNSIGNED(TYPE, TYPE_MAX_CONST, SCALE, OFFSET) \
     do { \
         TYPE* out = (TYPE*)output_buffer; \
         const float max_val = (float)TYPE_MAX_CONST; \
@@ -68,6 +68,29 @@
             if (q_val < 0.0f)    q_val = 0.0f; \
             out[i * 2]     = (TYPE)(i_val + 0.5f); \
             out[i * 2 + 1] = (TYPE)(q_val + 0.5f); \
+        } \
+    } while (0)
+
+#define BLOCK_TO_CF32_SIGNED(TYPE, NORMALIZER) \
+    do { \
+        const TYPE* in = (const TYPE*)input_buffer; \
+        const float normalizer_val = (NORMALIZER); \
+        for (size_t i = 0; i < num_frames; ++i) { \
+            float i_norm = (float)in[i * 2] * normalizer_val; \
+            float q_norm = (float)in[i * 2 + 1] * normalizer_val; \
+            output_buffer[i] = (i_norm * gain) + I * (q_norm * gain); \
+        } \
+    } while (0)
+
+#define BLOCK_TO_CF32_UNSIGNED(TYPE, OFFSET, NORMALIZER) \
+    do { \
+        const TYPE* in = (const TYPE*)input_buffer; \
+        const float offset_val = (OFFSET); \
+        const float normalizer_val = (NORMALIZER); \
+        for (size_t i = 0; i < num_frames; ++i) { \
+            float i_norm = ((float)in[i * 2] - offset_val) * normalizer_val; \
+            float q_norm = ((float)in[i * 2 + 1] - offset_val) * normalizer_val; \
+            output_buffer[i] = (i_norm * gain) + I * (q_norm * gain); \
         } \
     } while (0)
 
@@ -97,9 +120,9 @@ size_t get_bytes_per_sample(format_t format) {
 }
 
 /**
- * @brief Converts a block of raw input samples into normalized, gain-adjusted complex floats.
+ * @brief Converts a block of samples from a source format to complex float (cf32).
  */
-bool convert_raw_to_cf32(const void* restrict input_buffer, complex_float_t* restrict output_buffer, size_t num_frames, format_t input_format, float gain) {
+bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* restrict output_buffer, size_t num_frames, format_t input_format, float gain) {
     // Add robustness checks for debug builds. These compile to nothing in release builds.
     assert(input_buffer != NULL && "Input buffer cannot be null.");
     assert(output_buffer != NULL && "Output buffer cannot be null.");
@@ -108,63 +131,27 @@ bool convert_raw_to_cf32(const void* restrict input_buffer, complex_float_t* res
     // It allows the compiler to select the correct, simple inner loop at the
     // start, enabling effective auto-vectorization.
     switch (input_format) {
-        case CS8: {
-            const int8_t* in = (const int8_t*)input_buffer;
+        case CS8:
             // Normalize by 128.0 to map [-128, 127] to [-1.0, ~0.992]
-            const float normalizer = 1.0f / 128.0f;
-            for (size_t i = 0; i < num_frames; ++i) {
-                float i_norm = (float)in[i * 2] * normalizer;
-                float q_norm = (float)in[i * 2 + 1] * normalizer;
-                output_buffer[i] = (i_norm * gain) + I * (q_norm * gain);
-            }
+            BLOCK_TO_CF32_SIGNED(int8_t, 1.0f / 128.0f);
             break;
-        }
-        case CU8: {
-            const uint8_t* in = (const uint8_t*)input_buffer;
+        case CU8:
             // Offset by 127.5 (midpoint of [0,255]) to center the range on zero.
-            const float offset = 127.5f;
-            const float normalizer = 1.0f / 128.0f;
-            for (size_t i = 0; i < num_frames; ++i) {
-                float i_norm = ((float)in[i * 2] - offset) * normalizer;
-                float q_norm = ((float)in[i * 2 + 1] - offset) * normalizer;
-                output_buffer[i] = (i_norm * gain) + I * (q_norm * gain);
-            }
+            BLOCK_TO_CF32_UNSIGNED(uint8_t, 127.5f, 1.0f / 128.0f);
             break;
-        }
-        case CS16: {
-            const int16_t* in = (const int16_t*)input_buffer;
-            const float normalizer = 1.0f / 32768.0f;
-            for (size_t i = 0; i < num_frames; ++i) {
-                float i_norm = (float)in[i * 2] * normalizer;
-                float q_norm = (float)in[i * 2 + 1] * normalizer;
-                output_buffer[i] = (i_norm * gain) + I * (q_norm * gain);
-            }
+        case CS16:
+            BLOCK_TO_CF32_SIGNED(int16_t, 1.0f / 32768.0f);
             break;
-        }
-        case SC16Q11: {
-            const int16_t* in = (const int16_t*)input_buffer;
+        case SC16Q11:
             // For Q4.11 format, the value is stored with 11 fractional bits.
             // To convert to float, we divide by 2^11.
-            const float normalizer = 1.0f / 2048.0f;
-            for (size_t i = 0; i < num_frames; ++i) {
-                float i_norm = (float)in[i * 2] * normalizer;
-                float q_norm = (float)in[i * 2 + 1] * normalizer;
-                output_buffer[i] = (i_norm * gain) + I * (q_norm * gain);
-            }
+            BLOCK_TO_CF32_SIGNED(int16_t, 1.0f / 2048.0f);
             break;
-        }
-        case CU16: {
-            const uint16_t* in = (const uint16_t*)input_buffer;
-            const float offset = 32767.5f;
-            const float normalizer = 1.0f / 32768.0f;
-            for (size_t i = 0; i < num_frames; ++i) {
-                float i_norm = ((float)in[i * 2] - offset) * normalizer;
-                float q_norm = ((float)in[i * 2 + 1] - offset) * normalizer;
-                output_buffer[i] = (i_norm * gain) + I * (q_norm * gain);
-            }
+        case CU16:
+            BLOCK_TO_CF32_UNSIGNED(uint16_t, 32767.5f, 1.0f / 32768.0f);
             break;
-        }
         case CS32: {
+            // This case is handled separately to maintain double precision during normalization.
             const int32_t* in = (const int32_t*)input_buffer;
             // Use double for intermediate precision to avoid losing info from the 32-bit int.
             const double normalizer = 1.0 / 2147483648.0;
@@ -176,6 +163,7 @@ bool convert_raw_to_cf32(const void* restrict input_buffer, complex_float_t* res
             break;
         }
         case CU32: {
+            // This case is handled separately to maintain double precision during normalization.
             const uint32_t* in = (const uint32_t*)input_buffer;
             const double offset = 2147483647.5; // (UINT_MAX + 1) / 2.0
             const double normalizer = 1.0 / 2147483648.0;
@@ -187,6 +175,7 @@ bool convert_raw_to_cf32(const void* restrict input_buffer, complex_float_t* res
             break;
         }
         case CF32: {
+            // This case is a direct copy and gain multiplication, no normalization needed.
             const complex_float_t* in = (const complex_float_t*)input_buffer;
             for (size_t i = 0; i < num_frames; ++i) {
                 output_buffer[i] = in[i] * gain;
@@ -194,14 +183,14 @@ bool convert_raw_to_cf32(const void* restrict input_buffer, complex_float_t* res
             break;
         }
         default:
-            log_error("Unhandled input format in convert_raw_to_cf32: %d", input_format);
+            log_error("Unhandled input format: %d", input_format);
             return false;
     }
     return true;
 }
 
 /**
- * @brief Converts a block of normalized complex floats into the specified output byte format.
+ * @brief Converts a block of complex float (cf32) samples to a target output format.
  */
 bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* restrict output_buffer, size_t num_frames, format_t output_format) {
     // Add robustness checks for debug builds.
@@ -210,19 +199,19 @@ bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* r
 
     switch (output_format) {
         case CS8:
-            CONVERT_LOOP_SIGNED(int8_t, SCHAR_MAX, SCHAR_MIN, (float)SCHAR_MAX);
+            CF32_TO_BLOCK_SIGNED(int8_t, SCHAR_MAX, SCHAR_MIN, (float)SCHAR_MAX);
             break;
         case CU8:
-            CONVERT_LOOP_UNSIGNED(uint8_t, UCHAR_MAX, 127.0f, 127.5f);
+            CF32_TO_BLOCK_UNSIGNED(uint8_t, UCHAR_MAX, 127.0f, 127.5f);
             break;
         case CS16:
-            CONVERT_LOOP_SIGNED(int16_t, SHRT_MAX, SHRT_MIN, (float)SHRT_MAX);
+            CF32_TO_BLOCK_SIGNED(int16_t, SHRT_MAX, SHRT_MIN, (float)SHRT_MAX);
             break;
         case SC16Q11:
-            CONVERT_LOOP_SIGNED(int16_t, SHRT_MAX, SHRT_MIN, 2048.0f);
+            CF32_TO_BLOCK_SIGNED(int16_t, SHRT_MAX, SHRT_MIN, 2048.0f);
             break;
         case CU16:
-            CONVERT_LOOP_UNSIGNED(uint16_t, USHRT_MAX, 32767.0f, 32767.5f);
+            CF32_TO_BLOCK_UNSIGNED(uint16_t, USHRT_MAX, 32767.0f, 32767.5f);
             break;
         case CS32:
             // This case is handled separately from the macro because it requires
@@ -266,7 +255,7 @@ bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* r
             memcpy(output_buffer, input_buffer, num_frames * sizeof(complex_float_t));
             break;
         default:
-            log_error("Unhandled output format in convert_cf32_to_block: %d", output_format);
+            log_error("Unhandled output format: %d", output_format);
             return false;
     }
     return true;

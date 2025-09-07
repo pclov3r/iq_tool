@@ -10,8 +10,8 @@
 void pre_processor_apply_chain(AppResources* resources, SampleChunk* item) {
     AppConfig* config = (AppConfig*)resources->config;
 
-    // Step 1: Raw to Complex Float Conversion
-    if (!convert_raw_to_cf32(item->raw_input_data, item->complex_pre_resample_data,
+    // Step 1: Convert sample block to complex float
+    if (!convert_block_to_cf32(item->raw_input_data, item->complex_pre_resample_data,
                                item->frames_read, item->packet_sample_format, config->gain)) {
         handle_fatal_thread_error("Pre-Processor: Failed to convert samples.", resources);
         item->frames_read = 0;
