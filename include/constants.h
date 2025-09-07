@@ -213,12 +213,21 @@
 // == Tier 6: Application Lifecycle Tuning
 // =============================================================================
 
+/**
+ * @def SDR_INITIALIZE_TIMEOUT_MS
+ * @brief The maximum time to wait for an SDR driver to respond during initial opening.
+ *
+ * Purpose: Prevents the application from deadlocking indefinitely if a driver
+ * hangs when the device is first opened. If this timeout is exceeded, the
+* application will log a fatal error and exit.
+ */
+#define SDR_INITIALIZE_TIMEOUT_MS 5000
+
 // The interval in milliseconds at which the watchdog thread wakes up to check the SDR heartbeat.
 #define WATCHDOG_INTERVAL_MS 2000
 
 // The maximum time in milliseconds that can elapse without an SDR heartbeat before the
 // watchdog triggers a shutdown. This must be longer than any SDR's internal timeouts.
 #define WATCHDOG_TIMEOUT_MS 5000
-
 
 #endif // CONSTANTS_H_

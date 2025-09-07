@@ -45,6 +45,34 @@ static bool create_iq_corrector(AppConfig *config, AppResources *resources);
 static bool create_frequency_shifter(AppConfig *config, AppResources *resources);
 static bool create_filter(AppConfig *config, AppResources *resources);
 
+// --- START: New helpers for timed initialization ---
+
+// Context to share state between the main thread and the initializer thread.
+typedef struct {
+    InputSourceContext* input_ctx;
+    pthread_mutex_t mutex;
+    bool is_complete;
+    bool success;
+} InitializerContext;
+
+// The initializer thread's only job is to run the blocking function and set a flag.
+static void* initializer_thread_func(void* arg) {
+    InitializerContext* ctx = (InitializerContext*)arg;
+    
+    // Run the potentially blocking function
+    bool result = ctx->input_ctx->resources->selected_input_ops->initialize(ctx->input_ctx);
+
+    // Lock, update state, and unlock
+    pthread_mutex_lock(&ctx->mutex);
+    ctx->success = result;
+    ctx->is_complete = true;
+    pthread_mutex_unlock(&ctx->mutex);
+    
+    return NULL;
+}
+
+// --- END: New helpers for timed initialization ---
+
 
 static bool create_dc_blocker(AppConfig *config, AppResources *resources) {
     if (!config->dc_block.enable) return true;
@@ -499,22 +527,106 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     }
 
     // STEP 2: Initialize hardware and file handles
-    if (!resolve_file_paths(config, resources)) goto cleanup;
-    if (!resources->selected_input_ops->initialize(&ctx)) goto cleanup;
+    if (!resolve_file_paths(config, resources)) {
+        goto cleanup;
+    }
+
+    if (is_sdr) {
+        log_info("Attempting to initialize the %s device...", config->input_type_str);
+
+        pthread_t initializer_thread;
+        InitializerContext init_thread_ctx;
+        init_thread_ctx.input_ctx = &ctx;
+        init_thread_ctx.is_complete = false;
+        init_thread_ctx.success = false;
+        pthread_mutex_init(&init_thread_ctx.mutex, NULL);
+        
+        if (pthread_create(&initializer_thread, NULL, initializer_thread_func, &init_thread_ctx) != 0) {
+            log_fatal("Fatal: Failed to create the device initializer thread.");
+            pthread_mutex_destroy(&init_thread_ctx.mutex);
+            goto cleanup;
+        }
+
+        double start_time = get_monotonic_time_sec();
+        double timeout_sec = (double)SDR_INITIALIZE_TIMEOUT_MS / 1000.0;
+        bool timed_out = false;
+        
+        while (true) {
+            pthread_mutex_lock(&init_thread_ctx.mutex);
+            bool is_done = init_thread_ctx.is_complete;
+            pthread_mutex_unlock(&init_thread_ctx.mutex);
+
+            if (is_done) {
+                break; // The initializer thread has finished.
+            }
+
+            if (get_monotonic_time_sec() - start_time >= timeout_sec) {
+                timed_out = true;
+                break; // Timeout has been reached.
+            }
+            
+            // Sleep for a short interval to avoid spinning the CPU.
+            #ifdef _WIN32
+                Sleep(50); // 50 ms
+            #else
+                struct timespec sleep_time = {0, 50000000L}; // 50 ms
+                nanosleep(&sleep_time, NULL);
+            #endif
+        }
+
+        if (timed_out) {
+            fprintf(stderr, "\nFATAL: SDR Initialization Timed Out.\n");
+            fprintf(stderr, "FATAL: No response from the %s device within %d seconds.\n",
+                    config->input_type_str, SDR_INITIALIZE_TIMEOUT_MS / 1000);
+            fprintf(stderr, "FATAL: The SDR driver has likely hung due to a crash or device removal.\n");
+            fprintf(stderr, "FATAL: Forcing application exit.\n");
+            fflush(stderr);
+            // Detach the hung thread so the OS can clean it up, then exit.
+            pthread_detach(initializer_thread);
+            exit(EXIT_FAILURE);
+        }
+        
+        // If we get here, the thread finished. We must join it to clean up resources.
+        pthread_join(initializer_thread, NULL);
+        pthread_mutex_destroy(&init_thread_ctx.mutex);
+
+        // Now, check if it was successful.
+        if (!init_thread_ctx.success) {
+            log_debug("Device initialization thread finished but reported failure.");
+            goto cleanup;
+        }
+
+    } else {
+        // For non-SDR sources (files), a timeout is unnecessary. Call directly.
+        if (!resources->selected_input_ops->initialize(&ctx)) {
+            goto cleanup;
+        }
+    }
+    
     resources->lifecycle_state = LIFECYCLE_STATE_INPUT_INITIALIZED;
 
     // STEP 3: Perform initial calculations and validations
-    if (!calculate_and_validate_resample_ratio(config, resources, &resample_ratio)) goto cleanup;
-    if (!validate_and_configure_filter_stage(config, resources)) goto cleanup;
+    if (!calculate_and_validate_resample_ratio(config, resources, &resample_ratio)) {
+        goto cleanup;
+    }
+    if (!validate_and_configure_filter_stage(config, resources)) {
+        goto cleanup;
+    }
     
     // STEP 4: Initialize all individual DSP components in a consistent, logical order
-    if (!create_dc_blocker(config, resources)) goto cleanup;
+    if (!create_dc_blocker(config, resources)) {
+        goto cleanup;
+    }
     resources->lifecycle_state = LIFECYCLE_STATE_DC_BLOCK_CREATED;
 
-    if (!create_iq_corrector(config, resources)) goto cleanup;
+    if (!create_iq_corrector(config, resources)) {
+        goto cleanup;
+    }
     resources->lifecycle_state = LIFECYCLE_STATE_IQ_CORRECTOR_CREATED;
 
-    if (!create_frequency_shifter(config, resources)) goto cleanup;
+    if (!create_frequency_shifter(config, resources)) {
+        goto cleanup;
+    }
     resources->lifecycle_state = LIFECYCLE_STATE_FREQ_SHIFTER_CREATED;
 
     resources->resampler = create_resampler(config, resources, resample_ratio);
@@ -523,7 +635,9 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     }
     resources->lifecycle_state = LIFECYCLE_STATE_RESAMPLER_CREATED;
 
-    if (!create_filter(config, resources)) goto cleanup;
+    if (!create_filter(config, resources)) {
+        goto cleanup;
+    }
     resources->lifecycle_state = LIFECYCLE_STATE_FILTER_CREATED;
 
     // Call the optional pre-stream I/Q correction routine.
@@ -547,7 +661,9 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
             );
             // --- MODIFIED: Initialize the new _len field ---
             resources->post_fft_remainder_len = 0;
-            if (!resources->post_fft_remainder_buffer) goto cleanup;
+            if (!resources->post_fft_remainder_buffer) {
+                goto cleanup;
+            }
         } else {
             // FFT filter is in the pre-processor thread
             resources->pre_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
@@ -557,15 +673,21 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
             );
             // --- MODIFIED: Initialize the new _len field ---
             resources->pre_fft_remainder_len = 0;
-            if (!resources->pre_fft_remainder_buffer) goto cleanup;
+            if (!resources->pre_fft_remainder_buffer) {
+                goto cleanup;
+            }
         }
     }
     
     // STEP 5: Allocate all memory pools and threading components
-    if (!allocate_processing_buffers(config, resources, resample_ratio)) goto cleanup;
+    if (!allocate_processing_buffers(config, resources, resample_ratio)) {
+        goto cleanup;
+    }
     resources->lifecycle_state = LIFECYCLE_STATE_BUFFERS_ALLOCATED;
 
-    if (!create_threading_components(resources)) goto cleanup;
+    if (!create_threading_components(resources)) {
+        goto cleanup;
+    }
     resources->lifecycle_state = LIFECYCLE_STATE_THREADS_CREATED;
 
     // STEP 6: Create large I/O ring buffers (if needed)
@@ -624,7 +746,9 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
         }
     }
 
-    if (!prepare_output_stream(config, resources)) goto cleanup;
+    if (!prepare_output_stream(config, resources)) {
+        goto cleanup;
+    }
     resources->lifecycle_state = LIFECYCLE_STATE_OUTPUT_STREAM_OPEN;
 
     success = true;
