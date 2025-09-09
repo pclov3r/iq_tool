@@ -9,6 +9,7 @@
 #include "input_common.h"
 #include "memory_arena.h"
 #include "queue.h"
+#include "file_write_buffer.h"
 #include "argparse.h"
 #include "iq_correct.h"
 #include <stdio.h>
@@ -26,6 +27,17 @@
 #include <expat.h>
 #include <stddef.h>
 #include <math.h>
+
+#ifndef _WIN32
+#include <strings.h>
+#include <unistd.h> // For usleep
+#else
+#include <windows.h> // For Sleep
+#endif
+
+#ifdef _WIN32
+#define strcasecmp _stricmp
+#endif
 
 #define SDRC_AUXI_CHUNK_ID_STR "auxi"
 #define MAX_METADATA_CHUNK_SIZE (1024 * 1024)
@@ -624,7 +636,24 @@ static void* wav_start_stream(InputSourceContext* ctx) {
     AppResources *resources = ctx->resources;
     WavPrivateData* private_data = (WavPrivateData*)resources->input_module_private_data;
 
+    // Pre-calculate the back-pressure threshold in bytes for efficiency.
+    // This check is only relevant for file-to-file operations.
+    const size_t writer_buffer_capacity = resources->config->output_to_stdout ? 0 : file_write_buffer_get_capacity(resources->file_write_buffer);
+    const size_t writer_buffer_threshold = (size_t)(writer_buffer_capacity * IO_WRITER_BUFFER_HIGH_WATER_MARK);
+
     while (!is_shutdown_requested() && !resources->error_occurred) {
+        // --- START: Back-pressure Pacing Logic ---
+        if (!resources->config->output_to_stdout && (file_write_buffer_get_size(resources->file_write_buffer) > writer_buffer_threshold)) {
+            // The writer is falling behind. Pause briefly to let it catch up.
+            #ifdef _WIN32
+                Sleep(10); // 10 ms
+            #else
+                usleep(10000); // 10 ms
+            #endif
+            continue; // Re-evaluate the buffer state in the next loop iteration.
+        }
+        // --- END: Back-pressure Pacing Logic ---
+
         SampleChunk *current_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
         if (!current_item) {
             break; // Shutdown or error signaled
