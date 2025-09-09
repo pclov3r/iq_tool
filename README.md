@@ -257,6 +257,7 @@ This tool is a work in progress.
     *   [ ] Add Airspy & HydaSDR support (including SpyServer).
     *   [ ] Improve I/Q correction algorithm stability.
     *   [ ] Refine and standardize log levels throughout the application.
+    *   [ ] Add unit tests. 
     *   [ ] General code cleanup and comment refactoring.
     *   [ ] Improve the README.
 
