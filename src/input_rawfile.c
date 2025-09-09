@@ -23,6 +23,9 @@
 
 #ifndef _WIN32
 #include <strings.h>
+#include <unistd.h> // For usleep
+#else
+#include <windows.h> // For Sleep
 #endif
 
 #ifdef _WIN32
@@ -178,7 +181,21 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
         return NULL;
     }
 
+    // Pre-calculate the back-pressure threshold in bytes for efficiency.
+    const size_t writer_buffer_capacity = file_write_buffer_get_capacity(resources->file_write_buffer);
+    const size_t writer_buffer_threshold = (size_t)(writer_buffer_capacity * IO_WRITER_BUFFER_HIGH_WATER_MARK);
+
     while (!is_shutdown_requested() && !resources->error_occurred) {
+        if (file_write_buffer_get_size(resources->file_write_buffer) > writer_buffer_threshold) {
+            // The writer is falling behind. Pause briefly to let it catch up.
+            #ifdef _WIN32
+                Sleep(10); // 10 ms
+            #else
+                usleep(10000); // 10 ms
+            #endif
+            continue; // Re-evaluate the buffer state in the next loop iteration.
+        }
+
         SampleChunk *current_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
         if (!current_item) {
             break; // Shutdown or error signaled
@@ -186,9 +203,19 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
 
         current_item->stream_discontinuity_event = false;
 
-        void* target_buffer = config->raw_passthrough ? current_item->final_output_data : current_item->raw_input_data;
-        size_t bytes_to_read = config->raw_passthrough ? current_item->final_output_capacity_bytes : current_item->raw_input_capacity_bytes;
-        
+        // In passthrough mode, the reader thread's job is to read directly into the
+        // *final* output buffer of the chunk. The processing threads will then just
+        // act as a simple relay to pass the chunk to the writer.
+        void* target_buffer;
+        size_t bytes_to_read;
+        if (config->raw_passthrough) {
+            target_buffer = current_item->final_output_data;
+            bytes_to_read = current_item->final_output_capacity_bytes;
+        } else {
+            target_buffer = current_item->raw_input_data;
+            bytes_to_read = current_item->raw_input_capacity_bytes;
+        }
+
         int64_t bytes_read = sf_read_raw(private_data->infile, target_buffer, bytes_to_read);
 
         if (bytes_read < 0) {
@@ -202,39 +229,31 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
         }
 
         if (bytes_read == 0) {
-            // End of file. Send a final chunk with the is_last_chunk flag set.
+            // End of file. ALWAYS send a final "last chunk" marker down the pipeline.
             current_item->is_last_chunk = true;
             current_item->frames_read = 0;
             current_item->packet_sample_format = resources->input_format;
-            if (config->raw_passthrough) {
-                // In passthrough, we also need to signal the writer thread directly.
-                file_write_buffer_signal_end_of_stream(resources->file_write_buffer);
-                queue_enqueue(resources->free_sample_chunk_queue, current_item);
-            } else {
-                queue_enqueue(resources->raw_to_pre_process_queue, current_item);
-            }
-            break; 
+
+            // The passthrough logic will happen in the processing threads now.
+            // We just need to start the shutdown sequence for all threads.
+            queue_enqueue(resources->raw_to_pre_process_queue, current_item);
+
+            break;
         }
 
         current_item->frames_read = bytes_read / resources->input_bytes_per_sample_pair;
         current_item->packet_sample_format = resources->input_format;
         current_item->is_last_chunk = false;
-        
+
         pthread_mutex_lock(&resources->progress_mutex);
         resources->total_frames_read += current_item->frames_read;
         pthread_mutex_unlock(&resources->progress_mutex);
 
-        if (config->raw_passthrough) {
-            size_t bytes_written = file_write_buffer_write(resources->file_write_buffer, target_buffer, bytes_read);
-            if (bytes_written < (size_t)bytes_read) {
-                log_warn("I/O buffer overrun! Dropped %zu bytes.", (size_t)bytes_read - bytes_written);
-            }
+        // In both modes, the chunk now goes to the pre-processor.
+        // In passthrough mode, the pre-processor will just forward it.
+        if (!queue_enqueue(resources->raw_to_pre_process_queue, current_item)) {
             queue_enqueue(resources->free_sample_chunk_queue, current_item);
-        } else {
-            if (!queue_enqueue(resources->raw_to_pre_process_queue, current_item)) {
-                queue_enqueue(resources->free_sample_chunk_queue, current_item);
-                break;
-            }
+            break;
         }
     }
 
@@ -286,7 +305,7 @@ static bool rawfile_pre_stream_iq_correction(InputSourceContext* ctx) {
     if (!config->iq_correction.enable) {
         return true;
     }
-    
+
     // The module's only job is to call the calibration service with its private file handle.
     return iq_correct_run_initial_calibration(ctx, private_data->infile);
 }

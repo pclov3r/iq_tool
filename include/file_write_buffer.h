@@ -83,4 +83,18 @@ void file_write_buffer_signal_end_of_stream(FileWriteBuffer* iob);
  */
 void file_write_buffer_signal_shutdown(FileWriteBuffer* iob);
 
+/**
+ * @brief Gets the current number of bytes waiting to be read in the buffer.
+ * @param iob The I/O buffer.
+ * @return The number of bytes currently in the buffer.
+ */
+size_t file_write_buffer_get_size(FileWriteBuffer* iob);
+
+/**
+ * @brief Gets the total capacity of the buffer.
+ * @param iob The I/O buffer.
+ * @return The total capacity in bytes.
+ */
+size_t file_write_buffer_get_capacity(FileWriteBuffer* iob);
+
 #endif // FILE_WRITE_BUFFER_H_

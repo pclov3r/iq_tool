@@ -88,6 +88,18 @@
 #define IO_FILE_WRITER_CHUNK_SIZE (1024 * 1024) // 1 MB
 
 /**
+ * @def IO_WRITER_BUFFER_HIGH_WATER_MARK
+ * @brief The fullness threshold (as a fraction, 0.0-1.0) for the writer buffer
+ *        that triggers back-pressure on the reader thread.
+ *
+ * Purpose: To prevent the reader thread from running too far ahead of the writer,
+ * which can cause the pipeline to stall and trigger latent bugs in I/O libraries
+ * under sustained high throughput. A value of 0.95 means the reader will pause
+ * when the writer's buffer is 95% full.
+ */
+#define IO_WRITER_BUFFER_HIGH_WATER_MARK 0.95f
+
+/**
  * @def PIPELINE_NUM_CHUNKS
  * @brief The number of "work trays" (SampleChunks) in the processing pipeline.
  *

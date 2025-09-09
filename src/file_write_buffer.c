@@ -156,3 +156,22 @@ void file_write_buffer_signal_shutdown(FileWriteBuffer* iob) {
     pthread_cond_signal(&iob->data_available_cond);
     pthread_mutex_unlock(&iob->mutex);
 }
+
+size_t file_write_buffer_get_size(FileWriteBuffer* iob) {
+    if (!iob) return 0;
+
+    pthread_mutex_lock(&iob->mutex);
+    size_t available_data = (iob->write_pos >= iob->read_pos) 
+                          ? (iob->write_pos - iob->read_pos) 
+                          : (iob->capacity - (iob->read_pos - iob->write_pos));
+    pthread_mutex_unlock(&iob->mutex);
+    
+    return available_data;
+}
+
+size_t file_write_buffer_get_capacity(FileWriteBuffer* iob) {
+    if (!iob) return 0;
+    // Capacity is immutable, so a mutex isn't strictly necessary,
+    // but it's good practice for consistency.
+    return iob->capacity;
+}
