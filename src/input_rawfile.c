@@ -49,8 +49,8 @@ typedef struct {
 
 static const struct argparse_option rawfile_cli_options[] = {
     OPT_GROUP("Raw File Input Options"),
-    OPT_FLOAT(0, "raw-file-input-rate", &s_rawfile_config.raw_file_sample_rate_hz_arg, "(Required) The sample rate of the raw input file.", NULL, 0, 0),
-    OPT_STRING(0, "raw-file-input-sample-format", &s_rawfile_config.format_str, "(Required) The sample format of the raw input file.", NULL, 0, 0),
+    OPT_FLOAT(0, "raw-file-input-rate", &s_rawfile_config.raw_file_sample_rate_hz_arg, "(Required) The sample rate of the RAW input file.", NULL, 0, 0),
+    OPT_STRING(0, "raw-file-input-sample-format", &s_rawfile_config.format_str, "(Required) The sample format of the RAW input file.", NULL, 0, 0),
 };
 
 const struct argparse_option* rawfile_get_cli_options(int* count) {
@@ -116,7 +116,7 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
 
     resources->input_format = utils_get_format_from_string(s_rawfile_config.format_str);
     if (resources->input_format == FORMAT_UNKNOWN) {
-        log_fatal("Invalid raw input format '%s'. See --help for valid formats.", s_rawfile_config.format_str);
+        log_fatal("Invalid RAW input format '%s'. See --help for valid formats.", s_rawfile_config.format_str);
         return false;
     }
 
@@ -147,22 +147,21 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
     sfinfo.format = format_code;
 
 #ifdef _WIN32
+    log_info("Opening RAW input file: %s", config->effective_input_filename_utf8);
     private_data->infile = sf_wchar_open(config->effective_input_filename_w, SFM_READ, &sfinfo);
 #else
+    log_info("Opening RAW input file: %s", config->effective_input_filename);
     private_data->infile = sf_open(config->effective_input_filename, SFM_READ, &sfinfo);
 #endif
 
     if (!private_data->infile) {
-        log_fatal("Error opening raw input file '%s': %s", config->input_filename_arg, sf_strerror(NULL));
+        log_fatal("Error opening RAW input file '%s': %s", config->input_filename_arg, sf_strerror(NULL));
         return false;
     }
 
     sf_command(private_data->infile, SFC_GET_CURRENT_SF_INFO, &sfinfo, sizeof(sfinfo));
     resources->source_info.samplerate = sfinfo.samplerate;
     resources->source_info.frames = sfinfo.frames;
-
-    log_info("Opened raw file with format %s, rate %.0f Hz, and %lld frames.",
-             s_rawfile_config.format_str, (double)resources->source_info.samplerate, (long long)resources->source_info.frames);
 
     return true;
 }
@@ -269,7 +268,7 @@ static void rawfile_cleanup(InputSourceContext* ctx) {
     if (resources->input_module_private_data) {
         RawfilePrivateData* private_data = (RawfilePrivateData*)resources->input_module_private_data;
         if (private_data->infile) {
-            log_info("Closing raw input file.");
+            log_info("Closing RAW input file.");
             sf_close(private_data->infile);
             private_data->infile = NULL;
         }
