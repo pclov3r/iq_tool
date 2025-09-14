@@ -2,7 +2,6 @@
 #include <windows.h>
 #endif
 
-#include "io_threads.h"
 #include "constants.h"
 #include "app_context.h"
 #include "signal_handler.h"
@@ -23,7 +22,7 @@
 #include "memory_arena.h"
 #include "iq_correct.h"
 #include "dc_block.h"
-#include "processing_threads.h"
+#include "thread_manager.h" // New, centralized thread management
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
@@ -54,68 +53,6 @@ static bool validate_configuration(AppConfig *config, const AppResources *resour
 static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success);
 static void console_lock_function(bool lock, void *udata);
 static void application_progress_callback(unsigned long long current_output_frames, long long total_output_frames, unsigned long long current_bytes_written, void* udata);
-
-/**
- * @brief A watchdog thread that monitors the SDR reader thread for deadlocks.
- *
- * This thread periodically checks a 'heartbeat' timestamp that the SDR reader
- * thread is expected to update. If the timestamp becomes too old, this
- * watchdog assumes the SDR thread is hung and forces the application to exit.
- *
- * @param arg A void pointer to the PipelineContext struct.
- * @return NULL.
- */
-static void* watchdog_thread_func(void* arg) {
-    PipelineContext* args = (PipelineContext*)arg;
-    AppResources* resources = args->resources;
-    AppConfig* config = args->config;
-
-    // Give the SDR a moment to start up before we start checking
-#ifdef _WIN32
-    Sleep(WATCHDOG_TIMEOUT_MS);
-#else
-    // POSIX sleep takes seconds, so we convert from our MS standard.
-    sleep(WATCHDOG_TIMEOUT_MS / 1000);
-#endif
-
-    while (!is_shutdown_requested()) {
-#ifdef _WIN32
-        Sleep(WATCHDOG_INTERVAL_MS);
-#else
-        // POSIX sleep takes seconds, so we convert from our MS standard.
-        sleep(WATCHDOG_INTERVAL_MS / 1000);
-#endif
-
-        double current_time = get_monotonic_time_sec();
-        bool timed_out = false;
-
-        pthread_mutex_lock(&resources->progress_mutex);
-        double last_heartbeat = resources->last_sdr_heartbeat_time;
-        if (last_heartbeat > 0 && (current_time - last_heartbeat) > (WATCHDOG_TIMEOUT_MS / 1000.0)) {
-            timed_out = true;
-        }
-        pthread_mutex_unlock(&resources->progress_mutex);
-
-        if (timed_out) {
-            const char* input_device_name = config->input_type_str ? config->input_type_str : "SDR";
-
-            // We use raw fprintf to stderr because the logger might be deadlocked if
-            // another thread is holding the console mutex. This is a last-gasp message.
-            fprintf(stderr, "\nFATAL: SDR Watchdog triggered.\n");
-            fprintf(stderr, "FATAL: No data received from the %s device in over %d seconds.\n",
-                      input_device_name, (WATCHDOG_TIMEOUT_MS / 1000));
-            fprintf(stderr, "FATAL: The SDR driver has likely hung due to a crash or device removal.\n");
-            fprintf(stderr, "FATAL: Forcing application exit.\n");
-
-            // Terminate the entire process immediately. This is the only correct action
-            // for an unrecoverable deadlock.
-            exit(EXIT_FAILURE);
-        }
-    }
-
-    log_debug("SDR watchdog thread is exiting.");
-    return NULL;
-}
 
 
 // --- Main Application Entry Point ---
@@ -219,61 +156,24 @@ int main(int argc, char *argv[]) {
 
     resources.start_time = time(NULL);
 
-    static PipelineContext thread_args;
-    thread_args.config = &g_config;
-    thread_args.resources = &resources;
+    // --- Start of Refactored Thread Management ---
+    static PipelineContext pipeline_context;
+    pipeline_context.config = &g_config;
+    pipeline_context.resources = &resources;
 
-    // Define the list of threads to be started.
-    typedef struct {
-        const char* name;
-        void* (*func)(void*);
-        bool required;
-    } ThreadStarter;
-
-    ThreadStarter threads_to_start[] = {
-        { "SDR Capture",   sdr_capture_thread_func,     (resources.pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) },
-        { "Reader",        reader_thread_func,          true },
-        { "Pre-Processor", pre_processor_thread_func,   true },
-        { "Resampler",     resampler_thread_func,       true },
-        { "Post-Processor",post_processor_thread_func,  true },
-        { "Writer",        writer_thread_func,          true },
-        { "I/Q Optimizer", iq_optimization_thread_func, g_config.iq_correction.enable },
-        { "SDR Watchdog",  watchdog_thread_func,        is_sdr_input(g_config.input_type_str, &resources.setup_arena) },
-    };
-    int num_thread_starters = sizeof(threads_to_start) / sizeof(threads_to_start[0]);
-
-    log_debug("Starting processing threads...");
-
-    // Initialize the heartbeat time before starting threads.
-    pthread_mutex_lock(&resources.progress_mutex);
-    resources.last_sdr_heartbeat_time = get_monotonic_time_sec();
-    pthread_mutex_unlock(&resources.progress_mutex);
-
-    for (int i = 0; i < num_thread_starters; ++i) {
-        if (threads_to_start[i].required) {
-            if (pthread_create(&resources.thread_handles[resources.num_threads_started], NULL, threads_to_start[i].func, &thread_args) != 0) {
-                log_fatal("Failed to create %s thread: %s", threads_to_start[i].name, strerror(errno));
-                // A thread failed to create. Signal all already-running threads to shut down.
-                request_shutdown();
-                goto thread_join;
-            }
-            // Only increment the counter on success.
-            resources.num_threads_started++;
-        }
+    ThreadManager thread_manager;
+    if (!threads_init(&thread_manager, &g_config, &resources, &pipeline_context)) {
+        log_fatal("Failed to initialize thread manager and pipeline queues.");
+        goto cleanup;
     }
 
-thread_join:
-    // This block is now safe to enter even on a partial startup failure.
-    if (resources.num_threads_started > 0) {
-        log_debug("Waiting for processing threads to complete...");
-        for (int i = 0; i < resources.num_threads_started; i++) {
-            // Use a standard blocking join. The watchdog is the safety net against hangs.
-            if (pthread_join(resources.thread_handles[i], NULL) != 0) {
-                log_warn("Error joining thread %d.", i);
-            }
-        }
-        log_debug("All processing threads have joined successfully.");
+    if (!threads_start_all(&thread_manager)) {
+        // Error is logged inside start_all. A shutdown is already requested.
+        // We still need to join the threads that *did* manage to start.
     }
+ 
+    threads_join_all(&thread_manager);
+    // --- End of Refactored Thread Management ---
 
     bool processing_ok = !resources.error_occurred;
     exit_status = (processing_ok || is_shutdown_requested()) ? EXIT_SUCCESS : EXIT_FAILURE;

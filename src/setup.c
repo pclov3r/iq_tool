@@ -16,6 +16,7 @@
 #include "queue.h"
 #include "file_write_buffer.h"
 #include "app_context.h"
+#include "thread_manager.h" // For threads_destroy_queues
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -291,7 +292,7 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     size_t final_output_bytes_per_chunk = resources->max_out_samples * resources->output_bytes_per_sample_pair;
 
     size_t total_bytes_per_chunk = raw_input_bytes_per_chunk +
-                                   (complex_bytes_per_chunk * 4) + // pre, resampled, post, scratch
+                                   (complex_bytes_per_chunk * 2) + // ping-pong complex buffers
                                    final_output_bytes_per_chunk;
 
     resources->pipeline_chunk_data_pool = malloc(PIPELINE_NUM_CHUNKS * total_bytes_per_chunk);
@@ -317,11 +318,9 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
         char* chunk_base = (char*)resources->pipeline_chunk_data_pool + i * total_bytes_per_chunk;
 
         item->raw_input_data = chunk_base;
-        item->complex_pre_resample_data = (complex_float_t*)(chunk_base + raw_input_bytes_per_chunk);
-        item->complex_resampled_data = (complex_float_t*)(chunk_base + raw_input_bytes_per_chunk + complex_bytes_per_chunk);
-        item->complex_post_resample_data = (complex_float_t*)(chunk_base + raw_input_bytes_per_chunk + (complex_bytes_per_chunk * 2));
-        item->complex_scratch_data = (complex_float_t*)(chunk_base + raw_input_bytes_per_chunk + (complex_bytes_per_chunk * 3));
-        item->final_output_data = (unsigned char*)(chunk_base + raw_input_bytes_per_chunk + (complex_bytes_per_chunk * 4));
+        item->complex_sample_buffer_a = (complex_float_t*)(chunk_base + raw_input_bytes_per_chunk);
+        item->complex_sample_buffer_b = (complex_float_t*)(chunk_base + raw_input_bytes_per_chunk + complex_bytes_per_chunk);
+        item->final_output_data = (unsigned char*)(chunk_base + raw_input_bytes_per_chunk + (complex_bytes_per_chunk * 2));
 
         item->raw_input_capacity_bytes = raw_input_bytes_per_chunk;
         item->complex_buffer_capacity_samples = resources->max_out_samples;
@@ -332,23 +331,15 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     return true;
 }
 
-bool create_threading_components(AppResources *resources) {
+bool create_threading_components(AppConfig *config, AppResources *resources) {
     MemoryArena* arena = &resources->setup_arena;
     resources->free_sample_chunk_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
-    resources->raw_to_pre_process_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
-    resources->pre_process_to_resampler_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
-    resources->resampler_to_post_process_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
-    resources->stdout_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
 
-    if (!queue_init(resources->free_sample_chunk_queue, PIPELINE_NUM_CHUNKS, arena) ||
-        !queue_init(resources->raw_to_pre_process_queue, PIPELINE_NUM_CHUNKS, arena) ||
-        !queue_init(resources->pre_process_to_resampler_queue, PIPELINE_NUM_CHUNKS, arena) ||
-        !queue_init(resources->resampler_to_post_process_queue, PIPELINE_NUM_CHUNKS, arena) ||
-        !queue_init(resources->stdout_queue, PIPELINE_NUM_CHUNKS, arena)) {
+    if (!queue_init(resources->free_sample_chunk_queue, PIPELINE_NUM_CHUNKS, arena)) {
         return false;
     }
 
-    if (resources->config->iq_correction.enable) {
+    if (config->iq_correction.enable) {
         resources->iq_optimization_data_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
         if (!queue_init(resources->iq_optimization_data_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
     } else {
@@ -368,16 +359,6 @@ bool create_threading_components(AppResources *resources) {
     }
 
     return true;
-}
-
-void destroy_threading_components(AppResources *resources) {
-    if(resources->free_sample_chunk_queue) queue_destroy(resources->free_sample_chunk_queue);
-    if(resources->raw_to_pre_process_queue) queue_destroy(resources->raw_to_pre_process_queue);
-    if(resources->pre_process_to_resampler_queue) queue_destroy(resources->pre_process_to_resampler_queue);
-    if(resources->resampler_to_post_process_queue) queue_destroy(resources->resampler_to_post_process_queue);
-    if(resources->stdout_queue) queue_destroy(resources->stdout_queue);
-    if(resources->iq_optimization_data_queue) queue_destroy(resources->iq_optimization_data_queue);
-    pthread_mutex_destroy(&resources->progress_mutex);
 }
 
 void print_configuration_summary(const AppConfig *config, const AppResources *resources) {
@@ -659,7 +640,6 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
                 resources->user_filter_block_size * sizeof(complex_float_t),
                 false
             );
-            // --- MODIFIED: Initialize the new _len field ---
             resources->post_fft_remainder_len = 0;
             if (!resources->post_fft_remainder_buffer) {
                 goto cleanup;
@@ -671,7 +651,6 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
                 resources->user_filter_block_size * sizeof(complex_float_t),
                 false
             );
-            // --- MODIFIED: Initialize the new _len field ---
             resources->pre_fft_remainder_len = 0;
             if (!resources->pre_fft_remainder_buffer) {
                 goto cleanup;
@@ -679,13 +658,15 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
         }
     }
     
-    // STEP 5: Allocate all memory pools and threading components
+    // STEP 5: Allocate memory pools and threading components
     if (!allocate_processing_buffers(config, resources, resample_ratio)) {
         goto cleanup;
     }
     resources->lifecycle_state = LIFECYCLE_STATE_BUFFERS_ALLOCATED;
 
-    if (!create_threading_components(resources)) {
+    // The main thread manager init now handles queue creation.
+    // We only create the non-pipeline queues here.
+    if (!create_threading_components(config, resources)) {
         goto cleanup;
     }
     resources->lifecycle_state = LIFECYCLE_STATE_THREADS_CREATED;
@@ -793,7 +774,9 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
             }
             // fall-through
         case LIFECYCLE_STATE_THREADS_CREATED:
-            destroy_threading_components(resources);
+            // Queue destruction is now handled by the thread manager
+            threads_destroy_queues(resources);
+            pthread_mutex_destroy(&resources->progress_mutex);
             // fall-through
         case LIFECYCLE_STATE_BUFFERS_ALLOCATED:
             if (resources->pipeline_chunk_data_pool) {

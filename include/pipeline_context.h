@@ -24,7 +24,7 @@ struct AppResources;
  * @struct PipelineContext
  * @brief A container for passing the application's primary state objects to threads.
  */
-typedef struct {
+typedef struct PipelineContext {
     struct AppConfig*   config;     ///< Pointer to the application's configuration settings.
     struct AppResources* resources;   ///< Pointer to the application's allocated resources.
 } PipelineContext;

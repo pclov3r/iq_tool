@@ -684,7 +684,7 @@ static void* wav_start_stream(InputSourceContext* ctx) {
             pthread_mutex_unlock(&resources->progress_mutex);
         }
 
-        if (!queue_enqueue(resources->raw_to_pre_process_queue, current_item)) {
+        if (!queue_enqueue(resources->reader_output_queue, current_item)) {
             queue_enqueue(resources->free_sample_chunk_queue, current_item);
             break;
         }

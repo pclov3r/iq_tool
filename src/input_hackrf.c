@@ -210,7 +210,7 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
             pthread_mutex_unlock(&resources->progress_mutex);
         }
 
-        if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
+        if (!queue_enqueue(resources->reader_output_queue, item)) {
             queue_enqueue(resources->free_sample_chunk_queue, item);
             return -1;
         }

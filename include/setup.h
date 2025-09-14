@@ -113,17 +113,12 @@ bool validate_and_configure_filter_stage(struct AppConfig *config, struct AppRes
 bool allocate_processing_buffers(struct AppConfig *config, struct AppResources *resources, float resample_ratio);
 
 /**
- * @brief Creates and initializes all threading components (queues, mutexes).
+ * @brief Creates and initializes all non-pipeline threading components.
+ * @param config The application configuration.
  * @param resources The application resources struct.
  * @return true on success, false on failure.
  */
-bool create_threading_components(struct AppResources *resources);
-
-/**
- * @brief Destroys all threading components.
- * @param resources The application resources struct.
- */
-void destroy_threading_components(struct AppResources *resources);
+bool create_threading_components(struct AppConfig *config, struct AppResources *resources);
 
 /**
  * @brief Prints the final, resolved configuration summary to stderr.
