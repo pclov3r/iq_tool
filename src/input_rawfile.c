@@ -235,7 +235,7 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
 
             // The passthrough logic will happen in the processing threads now.
             // We just need to start the shutdown sequence for all threads.
-            queue_enqueue(resources->raw_to_pre_process_queue, current_item);
+            queue_enqueue(resources->reader_output_queue, current_item);
 
             break;
         }
@@ -250,7 +250,7 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
 
         // In both modes, the chunk now goes to the pre-processor.
         // In passthrough mode, the pre-processor will just forward it.
-        if (!queue_enqueue(resources->raw_to_pre_process_queue, current_item)) {
+        if (!queue_enqueue(resources->reader_output_queue, current_item)) {
             queue_enqueue(resources->free_sample_chunk_queue, current_item);
             break;
         }

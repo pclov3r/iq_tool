@@ -271,15 +271,22 @@ bool iq_correct_run_initial_calibration(InputSourceContext* ctx, SNDFILE* infile
     SampleChunk temp_chunk;
     memset(&temp_chunk, 0, sizeof(SampleChunk));
     temp_chunk.raw_input_data = raw_buffer;
-    temp_chunk.complex_pre_resample_data = cf32_buffer;
     temp_chunk.frames_read = IQ_CORRECTION_FFT_SIZE;
     temp_chunk.packet_sample_format = resources->input_format; // Pass the correct format
+
+    // --- START: CORRECTED CODE ---
+    // Set up the state pointers for the ping-pong buffers, just like the real thread would.
+    // We tell the pre-processor chain to write its output into our temporary cf32_buffer.
+    temp_chunk.complex_sample_buffer_a = cf32_buffer;
+    temp_chunk.current_output_buffer = temp_chunk.complex_sample_buffer_a;
+    // --- END: CORRECTED CODE ---
 
     // The pre-processing logic is now a single, clean call.
     pre_processor_apply_chain(resources, &temp_chunk);
     
     // Run the optimization algorithm once, synchronously, on the processed data.
-    iq_correct_run_optimization(resources, temp_chunk.complex_pre_resample_data);
+    // The result from the pre-processor is in the buffer pointed to by current_output_buffer.
+    iq_correct_run_optimization(resources, temp_chunk.current_output_buffer);
 
     // Update the last optimization time to prevent the thread from running immediately.
     resources->iq_correction.last_optimization_time = get_monotonic_time_sec();

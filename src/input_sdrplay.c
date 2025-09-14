@@ -389,7 +389,7 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
             reset_item->stream_discontinuity_event = true;
             reset_item->is_last_chunk = false;
             reset_item->frames_read = 0;
-            if (!queue_enqueue(resources->raw_to_pre_process_queue, reset_item)) {
+            if (!queue_enqueue(resources->reader_output_queue, reset_item)) {
                 queue_enqueue(resources->free_sample_chunk_queue, reset_item);
             }
         }
@@ -444,7 +444,7 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
             resources->total_frames_read += samples_to_copy;
             pthread_mutex_unlock(&resources->progress_mutex);
         }
-        if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
+        if (!queue_enqueue(resources->reader_output_queue, item)) {
             queue_enqueue(resources->free_sample_chunk_queue, item);
         }
     }

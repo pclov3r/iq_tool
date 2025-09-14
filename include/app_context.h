@@ -183,6 +183,21 @@ typedef struct {
 } DcBlockResources;
 
 /**
+ * @typedef ThreadFlags
+ * @brief Flags to determine which pipeline threads should be created at startup.
+ */
+typedef struct {
+    bool reader;
+    bool pre_processor;
+    bool resampler;
+    bool post_processor;
+    bool writer;
+    bool iq_optimizer;
+    bool sdr_capture;
+    bool sdr_watchdog;
+} ThreadFlags;
+
+/**
  * @struct AppResources
  * @brief The master struct holding all runtime state and allocated resources for the application.
  */
@@ -224,25 +239,27 @@ typedef struct AppResources {
     unsigned int    max_out_samples;
 
     // --- Threading & Pipeline ---
-    // This array will hold the handles of all successfully created threads.
-    pthread_t       thread_handles[8];
-    // This counts how many threads were successfully started.
-    int             num_threads_started;
-
     PipelineMode    pipeline_mode;
+    ThreadFlags     threads_to_create;
+
+    // --- Dynamic Pipeline Queues ---
     struct FileWriteBuffer* sdr_input_buffer;
-    Queue*          free_sample_chunk_queue;
-    Queue*          raw_to_pre_process_queue;
-    Queue*          pre_process_to_resampler_queue;
-    Queue*          resampler_to_post_process_queue;
+    Queue*          reader_output_queue;
+    Queue*          pre_processor_input_queue;
+    Queue*          pre_processor_output_queue;
+    Queue*          resampler_input_queue;
+    Queue*          resampler_output_queue;
+    Queue*          post_processor_input_queue;
+    Queue*          post_processor_output_queue;
+    Queue*          writer_input_queue;
     Queue*          iq_optimization_data_queue;
-    Queue*          stdout_queue;
+    Queue*          free_sample_chunk_queue;
     struct FileWriteBuffer* file_write_buffer;
 
     // --- Progress & State Tracking ---
     AppLifecycleState lifecycle_state;
     pthread_mutex_t progress_mutex;
-    double          last_sdr_heartbeat_time; // <-- NEW
+    double          last_sdr_heartbeat_time;
     bool            error_occurred;
     bool            end_of_stream_reached;
     unsigned long long total_frames_read;

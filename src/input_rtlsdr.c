@@ -356,7 +356,7 @@ static void* rtlsdr_start_stream(InputSourceContext* ctx) {
                         pthread_mutex_lock(&resources->progress_mutex);
                         resources->total_frames_read += item->frames_read;
                         pthread_mutex_unlock(&resources->progress_mutex);
-                        if (!queue_enqueue(resources->raw_to_pre_process_queue, item)) {
+                        if (!queue_enqueue(resources->reader_output_queue, item)) {
                             queue_enqueue(resources->free_sample_chunk_queue, item);
                             break;
                         }
@@ -368,7 +368,7 @@ static void* rtlsdr_start_stream(InputSourceContext* ctx) {
                 if (last_item) {
                     last_item->is_last_chunk = true;
                     last_item->frames_read = 0;
-                    queue_enqueue(resources->raw_to_pre_process_queue, last_item);
+                    queue_enqueue(resources->reader_output_queue, last_item);
                 }
             }
             break;

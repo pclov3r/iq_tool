@@ -1,5 +1,3 @@
-// constants.h
-
 #ifndef CONSTANTS_H_
 #define CONSTANTS_H_
 

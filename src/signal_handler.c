@@ -119,17 +119,20 @@ void request_shutdown(void) {
             }
         }
 
-        // Signal all queues to wake up any waiting threads
+        // --- CORRECTED SHUTDOWN LOGIC ---
+        // Signal all queues to wake up any waiting threads. Check each pointer
+        // as they are created dynamically.
         if (r->free_sample_chunk_queue)
             queue_signal_shutdown(r->free_sample_chunk_queue);
-        if (r->raw_to_pre_process_queue)
-            queue_signal_shutdown(r->raw_to_pre_process_queue);
-        if (r->pre_process_to_resampler_queue)
-            queue_signal_shutdown(r->pre_process_to_resampler_queue);
-        if (r->resampler_to_post_process_queue)
-            queue_signal_shutdown(r->resampler_to_post_process_queue);
-        if (r->stdout_queue)
-            queue_signal_shutdown(r->stdout_queue);
+        if (r->reader_output_queue)
+            queue_signal_shutdown(r->reader_output_queue);
+        if (r->pre_processor_output_queue)
+            queue_signal_shutdown(r->pre_processor_output_queue);
+        if (r->resampler_output_queue)
+            queue_signal_shutdown(r->resampler_output_queue);
+        if (r->post_processor_output_queue)
+            queue_signal_shutdown(r->post_processor_output_queue);
+        // Note: writer_input_queue is just a pointer to one of the above, so no need to signal it separately.
         if (r->iq_optimization_data_queue)
             queue_signal_shutdown(r->iq_optimization_data_queue);
         

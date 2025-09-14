@@ -32,11 +32,13 @@
 typedef struct SampleChunk {
     // --- Buffers ---
     void*            raw_input_data;              ///< Buffer for raw data from the source.
-    complex_float_t* complex_pre_resample_data;   ///< Buffer for cf32 data before resampling.
-    complex_float_t* complex_resampled_data;      ///< Buffer for cf32 data after resampling.
-    complex_float_t* complex_post_resample_data;  ///< Buffer for cf32 data after post-processing.
-    complex_float_t* complex_scratch_data;        ///< A general-purpose workspace buffer.
+    complex_float_t* complex_sample_buffer_a;     ///< Generic complex float sample buffer #1 for ping-pong.
+    complex_float_t* complex_sample_buffer_b;     ///< Generic complex float sample buffer #2 for ping-pong.
     unsigned char*   final_output_data;           ///< Buffer for the final, converted output data.
+
+    // --- State Pointers for Data Flow ---
+    complex_float_t* current_input_buffer;        ///< Points to the buffer containing valid data for the current stage.
+    complex_float_t* current_output_buffer;       ///< Points to the buffer where the current stage should write its output.
 
     // --- Capacities ---
     size_t raw_input_capacity_bytes;        ///< The max size of the raw_input_data buffer.

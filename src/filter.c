@@ -87,8 +87,8 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
 
         // If a pre-resample frequency shift is active, we must compensate the
         // filter's center frequency to match the user's intent.
-        if (resources->pre_resample_nco) {
-            log_debug("Compensating filter design for active frequency shift of %.0f Hz.", resources->nco_shift_hz);
+        if (!config->apply_user_filter_post_resample && resources->pre_resample_nco) {
+            log_debug("Compensating filter design for active pre-resample frequency shift of %.0f Hz.", resources->nco_shift_hz);
             adjusted_req.freq1_hz -= resources->nco_shift_hz;
         }
 
@@ -348,48 +348,61 @@ unsigned int filter_apply(AppResources* resources, SampleChunk* item, bool is_po
         return is_post_resample ? item->frames_to_write : item->frames_read;
     }
 
-    complex_float_t* data_ptr = is_post_resample ? item->complex_resampled_data : item->complex_pre_resample_data;
-    unsigned int frames = is_post_resample ? item->frames_to_write : item->frames_read;
-
-    // This state management for remainders is simplistic and not perfectly thread-safe
-    // if the same filter instance were ever used from multiple threads, but it is
-    // sufficient for this pipeline where pre- and post-filters are distinct.
-    static unsigned int pre_remainder_len = 0;
-    static unsigned int post_remainder_len = 0;
+    // Determine the number of valid input frames for this stage.
+    unsigned int frames_in = is_post_resample ? item->frames_to_write : item->frames_read;
+    if (frames_in == 0) {
+        return 0;
+    }
 
     switch (resources->user_filter_type_actual) {
         case FILTER_IMPL_FIR_SYMMETRIC:
-            firfilt_crcf_execute_block((firfilt_crcf)resources->user_fir_filter_object, (liquid_float_complex*)data_ptr, frames, (liquid_float_complex*)data_ptr);
-            return frames;
-
         case FILTER_IMPL_FIR_ASYMMETRIC:
-            firfilt_cccf_execute_block((firfilt_cccf)resources->user_fir_filter_object, (liquid_float_complex*)data_ptr, frames, (liquid_float_complex*)data_ptr);
-            return frames;
+            // FIR filters are processed in-place. The output overwrites the input.
+            // No need to change any state pointers.
+            if (resources->user_filter_type_actual == FILTER_IMPL_FIR_SYMMETRIC) {
+                firfilt_crcf_execute_block((firfilt_crcf)resources->user_fir_filter_object,
+                                           (liquid_float_complex*)item->current_input_buffer,
+                                           frames_in,
+                                           (liquid_float_complex*)item->current_input_buffer);
+            } else {
+                firfilt_cccf_execute_block((firfilt_cccf)resources->user_fir_filter_object,
+                                           (liquid_float_complex*)item->current_input_buffer,
+                                           frames_in,
+                                           (liquid_float_complex*)item->current_input_buffer);
+            }
+            return frames_in;
 
         case FILTER_IMPL_FFT_SYMMETRIC:
         case FILTER_IMPL_FFT_ASYMMETRIC:
         {
+            // FFT filters are out-of-place. They read from current_input_buffer
+            // and write to current_output_buffer.
             complex_float_t* remainder_buffer = is_post_resample ? resources->post_fft_remainder_buffer : resources->pre_fft_remainder_buffer;
-            unsigned int* remainder_len_ptr = is_post_resample ? &post_remainder_len : &pre_remainder_len;
+            unsigned int* remainder_len_ptr = is_post_resample ? &resources->post_fft_remainder_len : &resources->pre_fft_remainder_len;
 
+            // The helper function needs a temporary scratch space for its internal assembly.
+            // We can safely use the *destination* buffer for this, as it will be overwritten
+            // by the FFT output anyway.
             unsigned int output_frames = _execute_fft_filter_pass(
                 resources->user_fir_filter_object,
                 resources->user_filter_type_actual,
-                data_ptr,
-                frames,
-                item->complex_scratch_data, // Use scratch as the destination
+                item->current_input_buffer,   // Source
+                frames_in,
+                item->current_output_buffer,  // Destination
                 remainder_buffer,
                 remainder_len_ptr,
                 resources->user_filter_block_size,
-                item->complex_post_resample_data // Use another buffer as internal scratch
+                item->current_output_buffer // Use the destination buffer as scratch space
             );
-            // The result is in the scratch buffer. Copy it back to the primary buffer for the next stage.
-            memcpy(data_ptr, item->complex_scratch_data, output_frames * sizeof(complex_float_t));
+
+            // This function is now a "dumb primitive". It does NOT manage the state pointers.
+            // The calling function (e.g., post_processor_apply_chain) is responsible for
+            // swapping the pointers to reflect that the valid data is now in current_output_buffer.
             return output_frames;
         }
 
         default:
-             return frames;
+             return frames_in;
     }
 }
 
