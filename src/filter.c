@@ -147,13 +147,10 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
         return true;
     }
 
-    // --- Start of Refactored Logic ---
     // First, determine the optimal stage for the filter (pre/post resample).
-    // This must be done before we calculate the design sample rate.
     if (!_configure_filter_stage(config, resources)) {
         goto cleanup;
     }
-    // --- End of Refactored Logic ---
 
     int master_taps_len = 1;
     master_taps = (liquid_float_complex*)mem_arena_alloc(arena, sizeof(liquid_float_complex), false);
@@ -367,6 +364,34 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
         goto cleanup;
     }
 
+    // Now that the filter object is created, allocate its dependent resources (e.g., remainder buffer)
+    if (resources->user_filter_object &&
+       (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
+        resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC))
+    {
+        if (config->apply_user_filter_post_resample) {
+            resources->post_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
+                arena,
+                resources->user_filter_block_size * sizeof(complex_float_t),
+                true
+            );
+            resources->post_fft_remainder_len = 0;
+            if (!resources->post_fft_remainder_buffer) {
+                goto cleanup;
+            }
+        } else {
+            resources->pre_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
+                arena,
+                resources->user_filter_block_size * sizeof(complex_float_t),
+                true
+            );
+            resources->pre_fft_remainder_len = 0;
+            if (!resources->pre_fft_remainder_buffer) {
+                goto cleanup;
+            }
+        }
+    }
+
     success = true;
 
 cleanup:
@@ -447,7 +472,7 @@ unsigned int filter_apply(AppResources* resources, SampleChunk* item, bool is_po
         {
             complex_float_t* remainder_buffer = is_post_resample ? resources->post_fft_remainder_buffer : resources->pre_fft_remainder_buffer;
             unsigned int* remainder_len_ptr = is_post_resample ? &resources->post_fft_remainder_len : &resources->pre_fft_remainder_len;
-
+            
             unsigned int output_frames = _execute_fft_filter_pass(
                 resources->user_filter_object,
                 resources->user_filter_type_actual,
