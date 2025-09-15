@@ -13,12 +13,12 @@ void post_processor_apply_chain(AppResources* resources, SampleChunk* item) {
         // The resampler thread has already set up the pointers for us:
         // - item->current_input_buffer points to the resampled data.
         // - item->current_output_buffer points to the free buffer, to be used as scratch space.
- 
+
         // We use a local pointer to track the location of the valid data as it moves.
         complex_float_t* current_data_ptr = item->current_input_buffer;
 
         // Step 1: Post-Resample Filtering (if enabled)
-        if (resources->user_fir_filter_object && config->apply_user_filter_post_resample) {
+        if (resources->user_filter_object && config->apply_user_filter_post_resample) {
             // Determine if the filter that will run is an out-of-place FFT filter.
             bool is_fft_filter = (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
                                   resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC);
@@ -46,7 +46,7 @@ void post_processor_apply_chain(AppResources* resources, SampleChunk* item) {
                              current_data_ptr,       // Input is the current valid data
                              destination_buffer,     // Output is the other buffer
                              item->frames_to_write);
-
+ 
             // The result is now in the destination buffer, so we update our local pointer.
             current_data_ptr = destination_buffer;
         }
