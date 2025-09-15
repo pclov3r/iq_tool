@@ -59,10 +59,8 @@ typedef struct {
 static void* initializer_thread_func(void* arg) {
     InitializerContext* ctx = (InitializerContext*)arg;
     
-    // Run the potentially blocking function
     bool result = ctx->input_ctx->resources->selected_input_ops->initialize(ctx->input_ctx);
 
-    // Lock, update state, and unlock
     pthread_mutex_lock(&ctx->mutex);
     ctx->success = result;
     ctx->is_complete = true;
@@ -93,7 +91,6 @@ bool resolve_file_paths(AppConfig *config, AppResources *resources) {
     if (!config || !resources) return false;
 
 #ifdef _WIN32
-    // Writes directly into the fixed-size buffers in AppConfig
     if (config->input_filename_arg) {
         if (!get_absolute_path_windows(config->input_filename_arg,
                                        config->effective_input_filename_w, MAX_PATH_BUFFER,
@@ -121,7 +118,6 @@ bool resolve_file_paths(AppConfig *config, AppResources *resources) {
     }
 
     if (config->output_filename_arg) {
-        // Since dirname() and basename() can modify the input string, we must work on copies.
         char* path_copy_for_dirname = mem_arena_alloc(&resources->setup_arena, strlen(config->output_filename_arg) + 1, false);
         char* path_copy_for_basename = mem_arena_alloc(&resources->setup_arena, strlen(config->output_filename_arg) + 1, false);
         if (!path_copy_for_dirname || !path_copy_for_basename) return false;
@@ -138,12 +134,10 @@ bool resolve_file_paths(AppConfig *config, AppResources *resources) {
             return false;
         }
 
-        // Allocate space for the final, combined path.
         size_t final_len = strlen(resolved_dir_path) + 1 + strlen(base) + 1;
         config->effective_output_filename = mem_arena_alloc(&resources->setup_arena, final_len, false);
         if (!config->effective_output_filename) return false;
 
-        // Safely combine the resolved directory and the original basename.
         snprintf(config->effective_output_filename, final_len, "%s/%s", resolved_dir_path, base);
     }
 #endif
@@ -547,33 +541,6 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     if (resources->selected_input_ops->pre_stream_iq_correction) {
         if (!resources->selected_input_ops->pre_stream_iq_correction(&ctx)) {
             goto cleanup;
-        }
-    }
-    
-    if (resources->user_filter_object &&
-       (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
-        resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC))
-    {
-        if (config->apply_user_filter_post_resample) {
-            resources->post_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
-                &resources->setup_arena,
-                resources->user_filter_block_size * sizeof(complex_float_t),
-                false
-            );
-            resources->post_fft_remainder_len = 0;
-            if (!resources->post_fft_remainder_buffer) {
-                goto cleanup;
-            }
-        } else {
-            resources->pre_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
-                &resources->setup_arena,
-                resources->user_filter_block_size * sizeof(complex_float_t),
-                false
-            );
-            resources->pre_fft_remainder_len = 0;
-            if (!resources->pre_fft_remainder_buffer) {
-                goto cleanup;
-            }
         }
     }
     
