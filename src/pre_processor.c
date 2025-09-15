@@ -46,7 +46,7 @@ void pre_processor_apply_chain(AppResources* resources, SampleChunk* item) {
     }
 
     // Step 5: Pre-Resample Filtering (if enabled)
-    if (resources->user_fir_filter_object && !config->apply_user_filter_post_resample) {
+    if (resources->user_filter_object && !config->apply_user_filter_post_resample) {
         // filter_apply will now correctly handle its internal state, whether
         // it's an in-place FIR or an out-of-place FFT. The thread function
         // is responsible for the final ping-pong swap if needed.

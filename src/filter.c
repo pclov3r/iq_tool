@@ -17,7 +17,87 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// Forward declaration for static helper function
+// --- MACRO to create a real-coefficient (_crcf) filter from the complex master taps ---
+#define PREPARE_AND_CREATE_CRCF_FILTER(prefix, ...) \
+    do { \
+        float* final_real_taps = (float*)mem_arena_alloc(arena, master_taps_len * sizeof(float), false); \
+        if (!final_real_taps) goto cleanup; \
+        for (int i = 0; i < master_taps_len; i++) { \
+            final_real_taps[i] = crealf(master_taps[i]); \
+        } \
+        resources->user_filter_object = (void*)prefix##_crcf_create(final_real_taps, master_taps_len, ##__VA_ARGS__); \
+    } while (0)
+
+
+// --- Static Helper Functions ---
+
+/**
+ * @brief Determines if the filter should be applied before or after resampling for efficiency.
+ * This is an important optimization. If downsampling, it checks if the filter's
+ * passband is within the Nyquist frequency of the *output* rate. If so, it's
+ * more efficient to filter after resampling. This function modifies the config.
+ * @param config The application configuration.
+ * @param resources The application resources.
+ * @return true on success, false if the filter configuration is invalid for the output rate.
+ */
+static bool _configure_filter_stage(AppConfig *config, AppResources *resources) {
+    config->apply_user_filter_post_resample = false;
+
+    if (config->num_filter_requests == 0 || config->no_resample || config->raw_passthrough) {
+        return true;
+    }
+
+    double input_rate = (double)resources->source_info.samplerate;
+    double output_rate = config->target_rate;
+
+    // This optimization is only relevant if we are downsampling.
+    if (output_rate < input_rate) {
+        float max_filter_freq_hz = 0.0f;
+
+        // Find the highest frequency required by any filter in the chain.
+        for (int i = 0; i < config->num_filter_requests; i++) {
+            const FilterRequest* req = &config->filter_requests[i];
+            float current_max = 0.0f;
+            switch (req->type) {
+                case FILTER_TYPE_LOWPASS:
+                case FILTER_TYPE_HIGHPASS:
+                    current_max = fabsf(req->freq1_hz);
+                    break;
+                case FILTER_TYPE_PASSBAND:
+                case FILTER_TYPE_STOPBAND:
+                    current_max = fabsf(req->freq1_hz) + (req->freq2_hz / 2.0f);
+                    break;
+                default:
+                    break;
+            }
+            if (current_max > max_filter_freq_hz) {
+                max_filter_freq_hz = current_max;
+            }
+        }
+
+        double output_nyquist = output_rate / 2.0;
+
+        if (max_filter_freq_hz > output_nyquist) {
+            log_fatal("Filter configuration is incompatible with the output sample rate.");
+            log_error("The specified filter chain extends to %.0f Hz, but the output rate of %.0f Hz can only support frequencies up to %.0f Hz.",
+                      max_filter_freq_hz, output_rate, output_nyquist);
+            return false;
+        } else {
+            // It's safe and more efficient to filter after resampling.
+            log_debug("Filter will be applied efficiently after resampling to avoid excessive CPU usage.");
+            config->apply_user_filter_post_resample = true;
+        }
+    }
+    return true;
+}
+
+static inline void _invert_filter_spectrum(float* taps, unsigned int len) {
+    for (unsigned int k = 0; k < len; k++) {
+        taps[k] = -taps[k];
+    }
+    taps[(len - 1) / 2] += 1.0f;
+}
+
 static unsigned int
 _execute_fft_filter_pass(
     void* filter_object,
@@ -59,13 +139,21 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
     bool success = false;
     liquid_float_complex* master_taps = NULL;
 
-    resources->user_fir_filter_object = NULL;
+    resources->user_filter_object = NULL;
     resources->user_filter_type_actual = FILTER_IMPL_NONE;
     resources->user_filter_block_size = 0;
 
     if (config->num_filter_requests == 0) {
         return true;
     }
+
+    // --- Start of Refactored Logic ---
+    // First, determine the optimal stage for the filter (pre/post resample).
+    // This must be done before we calculate the design sample rate.
+    if (!_configure_filter_stage(config, resources)) {
+        goto cleanup;
+    }
+    // --- End of Refactored Logic ---
 
     int master_taps_len = 1;
     master_taps = (liquid_float_complex*)mem_arena_alloc(arena, sizeof(liquid_float_complex), false);
@@ -82,12 +170,9 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
     log_info("Designing filter coefficients (this may be slow for large filters)...");
 
     for (int i = 0; i < config->num_filter_requests; ++i) {
-        // Create a local copy of the request that we can modify.
         FilterRequest adjusted_req = config->filter_requests[i];
 
-        // If a pre-resample frequency shift is active, we must compensate the
-        // filter's center frequency to match the user's intent.
-        if (!config->apply_user_filter_post_resample && resources->pre_resample_nco) {
+        if (!config->apply_user_filter_post_resample && fabs(resources->nco_shift_hz) > 1e-9) {
             log_debug("Compensating filter design for active pre-resample frequency shift of %.0f Hz.", resources->nco_shift_hz);
             adjusted_req.freq1_hz -= resources->nco_shift_hz;
         }
@@ -152,8 +237,7 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
                 case FILTER_TYPE_HIGHPASS:
                     fc = req->freq1_hz / (float)sample_rate_for_design;
                     liquid_firdes_kaiser(current_taps_len, fc, attenuation_db, 0.0f, real_taps);
-                    for (unsigned int k = 0; k < current_taps_len; k++) real_taps[k] = -real_taps[k];
-                    real_taps[(current_taps_len - 1) / 2] += 1.0f;
+                    _invert_filter_spectrum(real_taps, current_taps_len);
                     break;
                 case FILTER_TYPE_PASSBAND:
                     bw = req->freq2_hz / (float)sample_rate_for_design;
@@ -162,8 +246,7 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
                 case FILTER_TYPE_STOPBAND:
                     bw = req->freq2_hz / (float)sample_rate_for_design;
                     liquid_firdes_kaiser(current_taps_len, bw / 2.0f, attenuation_db, 0.0f, real_taps);
-                    for (unsigned int k = 0; k < current_taps_len; k++) real_taps[k] = -real_taps[k];
-                    real_taps[(current_taps_len - 1) / 2] += 1.0f;
+                    _invert_filter_spectrum(real_taps, current_taps_len);
                     break;
                 default: break;
             }
@@ -262,34 +345,24 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
         resources->user_filter_block_size = block_size;
 
         if (is_final_filter_complex) {
-            resources->user_fir_filter_object = (void*)fftfilt_cccf_create(master_taps, master_taps_len, resources->user_filter_block_size);
+            resources->user_filter_object = (void*)fftfilt_cccf_create(master_taps, master_taps_len, resources->user_filter_block_size);
             resources->user_filter_type_actual = FILTER_IMPL_FFT_ASYMMETRIC;
         } else {
-            float* final_real_taps = (float*)mem_arena_alloc(arena, master_taps_len * sizeof(float), false);
-            if (!final_real_taps) goto cleanup;
-            for(int i=0; i<master_taps_len; i++) {
-                final_real_taps[i] = crealf(master_taps[i]);
-            }
-            resources->user_fir_filter_object = (void*)fftfilt_crcf_create(final_real_taps, master_taps_len, resources->user_filter_block_size);
+            PREPARE_AND_CREATE_CRCF_FILTER(fftfilt, resources->user_filter_block_size);
             resources->user_filter_type_actual = FILTER_IMPL_FFT_SYMMETRIC;
         }
     } else { 
         log_info("Preparing FIR (time-domain) filter object...");
         if (is_final_filter_complex) {
-            resources->user_fir_filter_object = (void*)firfilt_cccf_create(master_taps, master_taps_len);
+            resources->user_filter_object = (void*)firfilt_cccf_create(master_taps, master_taps_len);
             resources->user_filter_type_actual = FILTER_IMPL_FIR_ASYMMETRIC;
         } else {
-            float* final_real_taps = (float*)mem_arena_alloc(arena, master_taps_len * sizeof(float), false);
-            if (!final_real_taps) goto cleanup;
-            for(int i=0; i<master_taps_len; i++) {
-                final_real_taps[i] = crealf(master_taps[i]);
-            }
-            resources->user_fir_filter_object = (void*)firfilt_crcf_create(final_real_taps, master_taps_len);
+            PREPARE_AND_CREATE_CRCF_FILTER(firfilt);
             resources->user_filter_type_actual = FILTER_IMPL_FIR_SYMMETRIC;
         }
     }
 
-    if (!resources->user_fir_filter_object) {
+    if (!resources->user_filter_object) {
         log_fatal("Failed to create final combined filter object.");
         goto cleanup;
     }
@@ -301,41 +374,41 @@ cleanup:
 }
 
 void filter_destroy(AppResources* resources) {
-    if (resources->user_fir_filter_object) {
+    if (resources->user_filter_object) {
         switch (resources->user_filter_type_actual) {
             case FILTER_IMPL_FIR_SYMMETRIC:
-                firfilt_crcf_destroy((firfilt_crcf)resources->user_fir_filter_object);
+                firfilt_crcf_destroy((firfilt_crcf)resources->user_filter_object);
                 break;
             case FILTER_IMPL_FIR_ASYMMETRIC:
-                firfilt_cccf_destroy((firfilt_cccf)resources->user_fir_filter_object);
+                firfilt_cccf_destroy((firfilt_cccf)resources->user_filter_object);
                 break;
             case FILTER_IMPL_FFT_SYMMETRIC:
-                fftfilt_crcf_destroy((fftfilt_crcf)resources->user_fir_filter_object);
+                fftfilt_crcf_destroy((fftfilt_crcf)resources->user_filter_object);
                 break;
             case FILTER_IMPL_FFT_ASYMMETRIC:
-                fftfilt_cccf_destroy((fftfilt_cccf)resources->user_fir_filter_object);
+                fftfilt_cccf_destroy((fftfilt_cccf)resources->user_filter_object);
                 break;
             default:
                 break;
         }
-        resources->user_fir_filter_object = NULL;
+        resources->user_filter_object = NULL;
     }
 }
 
 void filter_reset(AppResources* resources) {
-    if (resources->user_fir_filter_object) {
+    if (resources->user_filter_object) {
         switch (resources->user_filter_type_actual) {
             case FILTER_IMPL_FIR_SYMMETRIC:
-                firfilt_crcf_reset((firfilt_crcf)resources->user_fir_filter_object);
+                firfilt_crcf_reset((firfilt_crcf)resources->user_filter_object);
                 break;
             case FILTER_IMPL_FIR_ASYMMETRIC:
-                firfilt_cccf_reset((firfilt_cccf)resources->user_fir_filter_object);
+                firfilt_cccf_reset((firfilt_cccf)resources->user_filter_object);
                 break;
             case FILTER_IMPL_FFT_SYMMETRIC:
-                fftfilt_crcf_reset((fftfilt_crcf)resources->user_fir_filter_object);
+                fftfilt_crcf_reset((fftfilt_crcf)resources->user_filter_object);
                 break;
             case FILTER_IMPL_FFT_ASYMMETRIC:
-                fftfilt_cccf_reset((fftfilt_cccf)resources->user_fir_filter_object);
+                fftfilt_cccf_reset((fftfilt_cccf)resources->user_filter_object);
                 break;
             default:
                 break;
@@ -344,11 +417,10 @@ void filter_reset(AppResources* resources) {
 }
 
 unsigned int filter_apply(AppResources* resources, SampleChunk* item, bool is_post_resample) {
-    if (!resources->user_fir_filter_object) {
+    if (!resources->user_filter_object) {
         return is_post_resample ? item->frames_to_write : item->frames_read;
     }
 
-    // Determine the number of valid input frames for this stage.
     unsigned int frames_in = is_post_resample ? item->frames_to_write : item->frames_read;
     if (frames_in == 0) {
         return 0;
@@ -357,15 +429,13 @@ unsigned int filter_apply(AppResources* resources, SampleChunk* item, bool is_po
     switch (resources->user_filter_type_actual) {
         case FILTER_IMPL_FIR_SYMMETRIC:
         case FILTER_IMPL_FIR_ASYMMETRIC:
-            // FIR filters are processed in-place. The output overwrites the input.
-            // No need to change any state pointers.
             if (resources->user_filter_type_actual == FILTER_IMPL_FIR_SYMMETRIC) {
-                firfilt_crcf_execute_block((firfilt_crcf)resources->user_fir_filter_object,
+                firfilt_crcf_execute_block((firfilt_crcf)resources->user_filter_object,
                                            (liquid_float_complex*)item->current_input_buffer,
                                            frames_in,
                                            (liquid_float_complex*)item->current_input_buffer);
             } else {
-                firfilt_cccf_execute_block((firfilt_cccf)resources->user_fir_filter_object,
+                firfilt_cccf_execute_block((firfilt_cccf)resources->user_filter_object,
                                            (liquid_float_complex*)item->current_input_buffer,
                                            frames_in,
                                            (liquid_float_complex*)item->current_input_buffer);
@@ -375,29 +445,21 @@ unsigned int filter_apply(AppResources* resources, SampleChunk* item, bool is_po
         case FILTER_IMPL_FFT_SYMMETRIC:
         case FILTER_IMPL_FFT_ASYMMETRIC:
         {
-            // FFT filters are out-of-place. They read from current_input_buffer
-            // and write to current_output_buffer.
             complex_float_t* remainder_buffer = is_post_resample ? resources->post_fft_remainder_buffer : resources->pre_fft_remainder_buffer;
             unsigned int* remainder_len_ptr = is_post_resample ? &resources->post_fft_remainder_len : &resources->pre_fft_remainder_len;
 
-            // The helper function needs a temporary scratch space for its internal assembly.
-            // We can safely use the *destination* buffer for this, as it will be overwritten
-            // by the FFT output anyway.
             unsigned int output_frames = _execute_fft_filter_pass(
-                resources->user_fir_filter_object,
+                resources->user_filter_object,
                 resources->user_filter_type_actual,
-                item->current_input_buffer,   // Source
+                item->current_input_buffer,
                 frames_in,
-                item->current_output_buffer,  // Destination
+                item->current_output_buffer,
                 remainder_buffer,
                 remainder_len_ptr,
                 resources->user_filter_block_size,
-                item->current_output_buffer // Use the destination buffer as scratch space
+                item->current_output_buffer
             );
 
-            // This function is now a "dumb primitive". It does NOT manage the state pointers.
-            // The calling function (e.g., post_processor_apply_chain) is responsible for
-            // swapping the pointers to reflect that the valid data is now in current_output_buffer.
             return output_frames;
         }
 
@@ -422,11 +484,9 @@ _execute_fft_filter_pass(
     unsigned int old_remainder_len = *remainder_len_ptr;
     unsigned int total_frames_to_process = old_remainder_len + frames_in;
 
-    // Stage 1: Assemble a single, contiguous stream in the scratch buffer.
     memcpy(scratch_buffer, remainder_buffer, old_remainder_len * sizeof(complex_float_t));
     memcpy(scratch_buffer + old_remainder_len, input_buffer, frames_in * sizeof(complex_float_t));
 
-    // Stage 2: Process full blocks from the assembled stream.
     unsigned int processed_frames = 0;
     unsigned int total_output_frames = 0;
     while (total_frames_to_process - processed_frames >= block_size) {
@@ -439,9 +499,7 @@ _execute_fft_filter_pass(
         total_output_frames += block_size;
     }
 
-    // Stage 3: Save the new remainder for the next call.
     unsigned int new_remainder_len = total_frames_to_process - processed_frames;
-    // Use memmove for safety, in case buffers could ever overlap.
     memmove(remainder_buffer, scratch_buffer + processed_frames, new_remainder_len * sizeof(complex_float_t));
     *remainder_len_ptr = new_remainder_len;
 

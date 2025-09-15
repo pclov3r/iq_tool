@@ -213,7 +213,7 @@ typedef struct AppResources {
     IqCorrectionResources iq_correction;
     DcBlockResources      dc_block;
     FilterImplementationType user_filter_type_actual;
-    void*           user_fir_filter_object; // Already opaque, which is good
+    void*           user_filter_object; // Opaque pointer to the final filter (FIR or FFT)
     unsigned int    user_filter_block_size;
     complex_float_t* pre_fft_remainder_buffer;
     unsigned int     pre_fft_remainder_len;

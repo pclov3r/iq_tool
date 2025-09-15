@@ -59,7 +59,7 @@ typedef struct {
 // The initializer thread's only job is to run the blocking function and set a flag.
 static void* initializer_thread_func(void* arg) {
     InitializerContext* ctx = (InitializerContext*)arg;
-    
+
     // Run the potentially blocking function
     bool result = ctx->input_ctx->resources->selected_input_ops->initialize(ctx->input_ctx);
 
@@ -68,7 +68,7 @@ static void* initializer_thread_func(void* arg) {
     ctx->success = result;
     ctx->is_complete = true;
     pthread_mutex_unlock(&ctx->mutex);
-    
+
     return NULL;
 }
 
@@ -201,60 +201,11 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *reso
     return true;
 }
 
-bool validate_and_configure_filter_stage(AppConfig *config, AppResources *resources) {
-    config->apply_user_filter_post_resample = false;
-
-    if (config->num_filter_requests == 0 || config->no_resample || config->raw_passthrough) {
-        return true;
-    }
-
-    double input_rate = (double)resources->source_info.samplerate;
-    double output_rate = config->target_rate;
-
-    if (output_rate < input_rate) {
-        float max_filter_freq_hz = 0.0f;
-
-        for (int i = 0; i < config->num_filter_requests; i++) {
-            const FilterRequest* req = &config->filter_requests[i];
-            float current_max = 0.0f;
-            switch (req->type) {
-                case FILTER_TYPE_LOWPASS:
-                case FILTER_TYPE_HIGHPASS:
-                    current_max = fabsf(req->freq1_hz);
-                    break;
-                case FILTER_TYPE_PASSBAND:
-                case FILTER_TYPE_STOPBAND:
-                    current_max = fabsf(req->freq1_hz) + (req->freq2_hz / 2.0f);
-                    break;
-                default:
-                    break;
-            }
-            if (current_max > max_filter_freq_hz) {
-                max_filter_freq_hz = current_max;
-            }
-        }
-
-        double output_nyquist = output_rate / 2.0;
-
-        if (max_filter_freq_hz > output_nyquist) {
-            log_fatal("Filter configuration is incompatible with the output sample rate.");
-            log_error("The specified filter chain extends to %.0f Hz, but the output rate of %.0f Hz can only support frequencies up to %.0f Hz.",
-                      max_filter_freq_hz, output_rate, output_nyquist);
-            return false;
-        } else {
-            log_debug("Filter will be applied efficiently after resampling to avoid excessive CPU usage.");
-            config->apply_user_filter_post_resample = true;
-        }
-    }
-    return true;
-}
-
-
 bool allocate_processing_buffers(AppConfig *config, AppResources *resources, float resample_ratio) {
     if (!config || !resources) return false;
 
     size_t max_pre_resample_chunk_size = PIPELINE_CHUNK_BASE_SAMPLES;
-    bool is_pre_fft_filter = (resources->user_fir_filter_object && !config->apply_user_filter_post_resample &&
+    bool is_pre_fft_filter = (resources->user_filter_object && !config->apply_user_filter_post_resample &&
                              (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
                               resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC));
 
@@ -267,7 +218,7 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     size_t resampler_output_capacity = (size_t)ceil((double)max_pre_resample_chunk_size * fmax(1.0, (double)resample_ratio)) + RESAMPLER_OUTPUT_SAFETY_MARGIN;
     size_t required_capacity = (max_pre_resample_chunk_size > resampler_output_capacity) ? max_pre_resample_chunk_size : resampler_output_capacity;
 
-    bool is_post_fft_filter = (resources->user_fir_filter_object && config->apply_user_filter_post_resample &&
+    bool is_post_fft_filter = (resources->user_filter_object && config->apply_user_filter_post_resample &&
                               (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
                                resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC));
 
@@ -546,7 +497,6 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
                 break; // Timeout has been reached.
             }
             
-            // Sleep for a short interval to avoid spinning the CPU.
             #ifdef _WIN32
                 Sleep(50); // 50 ms
             #else
@@ -562,23 +512,19 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
             fprintf(stderr, "FATAL: The SDR driver has likely hung due to a crash or device removal.\n");
             fprintf(stderr, "FATAL: Forcing application exit.\n");
             fflush(stderr);
-            // Detach the hung thread so the OS can clean it up, then exit.
             pthread_detach(initializer_thread);
             exit(EXIT_FAILURE);
         }
         
-        // If we get here, the thread finished. We must join it to clean up resources.
         pthread_join(initializer_thread, NULL);
         pthread_mutex_destroy(&init_thread_ctx.mutex);
 
-        // Now, check if it was successful.
         if (!init_thread_ctx.success) {
             log_debug("Device initialization thread finished but reported failure.");
             goto cleanup;
         }
 
     } else {
-        // For non-SDR sources (files), a timeout is unnecessary. Call directly.
         if (!resources->selected_input_ops->initialize(&ctx)) {
             goto cleanup;
         }
@@ -590,10 +536,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     if (!calculate_and_validate_resample_ratio(config, resources, &resample_ratio)) {
         goto cleanup;
     }
-    if (!validate_and_configure_filter_stage(config, resources)) {
-        goto cleanup;
-    }
-    
+ 
     // STEP 4: Initialize all individual DSP components in a consistent, logical order
     if (!create_dc_blocker(config, resources)) {
         goto cleanup;
@@ -621,20 +564,18 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     }
     resources->lifecycle_state = LIFECYCLE_STATE_FILTER_CREATED;
 
-    // Call the optional pre-stream I/Q correction routine.
     if (resources->selected_input_ops->pre_stream_iq_correction) {
         if (!resources->selected_input_ops->pre_stream_iq_correction(&ctx)) {
             goto cleanup;
         }
     }
-    
+
     // Conditionally allocate FFT remainder buffers from the arena if needed.
-    if (resources->user_fir_filter_object &&
+    if (resources->user_filter_object &&
        (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
         resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC))
     {
         if (config->apply_user_filter_post_resample) {
-            // FFT filter is in the post-processor thread
             resources->post_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
                 &resources->setup_arena,
                 resources->user_filter_block_size * sizeof(complex_float_t),
@@ -645,7 +586,6 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
                 goto cleanup;
             }
         } else {
-            // FFT filter is in the pre-processor thread
             resources->pre_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
                 &resources->setup_arena,
                 resources->user_filter_block_size * sizeof(complex_float_t),
@@ -657,15 +597,13 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
             }
         }
     }
-    
+ 
     // STEP 5: Allocate memory pools and threading components
     if (!allocate_processing_buffers(config, resources, resample_ratio)) {
         goto cleanup;
     }
     resources->lifecycle_state = LIFECYCLE_STATE_BUFFERS_ALLOCATED;
 
-    // The main thread manager init now handles queue creation.
-    // We only create the non-pipeline queues here.
     if (!create_threading_components(config, resources)) {
         goto cleanup;
     }
