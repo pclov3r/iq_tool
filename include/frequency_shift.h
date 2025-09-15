@@ -28,7 +28,7 @@
  * @param resources Pointer to the application resources where the NCOs will be stored.
  * @return true on success or if no shift is needed, false on failure.
  */
-bool freq_shift_create_ncos(AppConfig *config, AppResources *resources);
+bool freq_shift_create(AppConfig *config, AppResources *resources);
 
 /**
  * @brief Applies the frequency shift to a block of complex samples using a specific NCO.
