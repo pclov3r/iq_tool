@@ -43,7 +43,6 @@
 // --- Forward declarations for static functions ---
 static bool create_dc_blocker(AppConfig *config, AppResources *resources);
 static bool create_iq_corrector(AppConfig *config, AppResources *resources);
-static bool create_frequency_shifter(AppConfig *config, AppResources *resources);
 static bool create_filter(AppConfig *config, AppResources *resources);
 
 // --- START: New helpers for timed initialization ---
@@ -59,7 +58,7 @@ typedef struct {
 // The initializer thread's only job is to run the blocking function and set a flag.
 static void* initializer_thread_func(void* arg) {
     InitializerContext* ctx = (InitializerContext*)arg;
-
+    
     // Run the potentially blocking function
     bool result = ctx->input_ctx->resources->selected_input_ops->initialize(ctx->input_ctx);
 
@@ -68,7 +67,7 @@ static void* initializer_thread_func(void* arg) {
     ctx->success = result;
     ctx->is_complete = true;
     pthread_mutex_unlock(&ctx->mutex);
-
+    
     return NULL;
 }
 
@@ -83,23 +82,6 @@ static bool create_dc_blocker(AppConfig *config, AppResources *resources) {
 static bool create_iq_corrector(AppConfig *config, AppResources *resources) {
     if (!config->iq_correction.enable) return true;
     return iq_correct_init(config, resources, &resources->setup_arena);
-}
-
-static bool create_frequency_shifter(AppConfig *config, AppResources *resources) {
-    // If a shift hasn't already been calculated by a module (like WAV),
-    // then check for the generic manual shift option.
-    if (resources->nco_shift_hz == 0.0 && config->freq_shift_hz_arg != 0.0f) {
-        resources->nco_shift_hz = (double)config->freq_shift_hz_arg;
-    }
-
-    // Now that the final shift value is resolved, validate dependent options.
-    if (config->shift_after_resample && fabs(resources->nco_shift_hz) < 1e-9) {
-        log_fatal("Option --shift-after-resample was used, but no effective frequency shift was requested or calculated.");
-        return false;
-    }
-
-    // Now, create the NCOs with the final, resolved value.
-    return freq_shift_create_ncos(config, resources);
 }
 
 static bool create_filter(AppConfig *config, AppResources *resources) {
@@ -255,8 +237,6 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     resources->sample_chunk_pool = (SampleChunk*)mem_arena_alloc(&resources->setup_arena, PIPELINE_NUM_CHUNKS * sizeof(SampleChunk), true);
     if (!resources->sample_chunk_pool) return false;
 
-    // Allocate the de-interleaving buffer. It must be large enough to hold
-    // both planes (I and Q) of a full sample chunk.
     resources->sdr_deserializer_buffer_size = PIPELINE_CHUNK_BASE_SAMPLES * sizeof(short) * COMPLEX_SAMPLE_COMPONENTS;
     resources->sdr_deserializer_temp_buffer = mem_arena_alloc(&resources->setup_arena, resources->sdr_deserializer_buffer_size, false);
     if (!resources->sdr_deserializer_temp_buffer) return false;
@@ -489,18 +469,18 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
             pthread_mutex_unlock(&init_thread_ctx.mutex);
 
             if (is_done) {
-                break; // The initializer thread has finished.
+                break; 
             }
 
             if (get_monotonic_time_sec() - start_time >= timeout_sec) {
                 timed_out = true;
-                break; // Timeout has been reached.
+                break;
             }
             
             #ifdef _WIN32
-                Sleep(50); // 50 ms
+                Sleep(50);
             #else
-                struct timespec sleep_time = {0, 50000000L}; // 50 ms
+                struct timespec sleep_time = {0, 50000000L};
                 nanosleep(&sleep_time, NULL);
             #endif
         }
@@ -532,11 +512,11 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     
     resources->lifecycle_state = LIFECYCLE_STATE_INPUT_INITIALIZED;
 
-    // STEP 3: Perform initial calculations and validations
+    // STEP 3: Perform initial calculations
     if (!calculate_and_validate_resample_ratio(config, resources, &resample_ratio)) {
         goto cleanup;
     }
- 
+    
     // STEP 4: Initialize all individual DSP components in a consistent, logical order
     if (!create_dc_blocker(config, resources)) {
         goto cleanup;
@@ -548,7 +528,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     }
     resources->lifecycle_state = LIFECYCLE_STATE_IQ_CORRECTOR_CREATED;
 
-    if (!create_frequency_shifter(config, resources)) {
+    if (!freq_shift_create(config, resources)) {
         goto cleanup;
     }
     resources->lifecycle_state = LIFECYCLE_STATE_FREQ_SHIFTER_CREATED;
@@ -569,8 +549,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
             goto cleanup;
         }
     }
-
-    // Conditionally allocate FFT remainder buffers from the arena if needed.
+    
     if (resources->user_filter_object &&
        (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
         resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC))
@@ -597,7 +576,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
             }
         }
     }
- 
+    
     // STEP 5: Allocate memory pools and threading components
     if (!allocate_processing_buffers(config, resources, resample_ratio)) {
         goto cleanup;
@@ -712,7 +691,6 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
             }
             // fall-through
         case LIFECYCLE_STATE_THREADS_CREATED:
-            // Queue destruction is now handled by the thread manager
             threads_destroy_queues(resources);
             pthread_mutex_destroy(&resources->progress_mutex);
             // fall-through

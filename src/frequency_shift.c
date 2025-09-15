@@ -21,11 +21,23 @@
 /**
  * @brief Creates and configures the NCOs (frequency shifters) based on user arguments.
  */
-bool freq_shift_create_ncos(AppConfig *config, AppResources *resources) {
+bool freq_shift_create(AppConfig *config, AppResources *resources) {
     if (!config || !resources) return false;
 
     resources->pre_resample_nco = NULL;
     resources->post_resample_nco = NULL;
+
+    // First, resolve the final shift value. If a module (like WAV) hasn't already
+    // calculated a shift, check for the generic manual shift option from the CLI.
+    if (resources->nco_shift_hz == 0.0 && config->freq_shift_hz_arg != 0.0f) {
+        resources->nco_shift_hz = (double)config->freq_shift_hz_arg;
+    }
+
+    // Now that the final shift value is resolved, validate dependent options.
+    if (config->shift_after_resample && fabs(resources->nco_shift_hz) < 1e-9) {
+        log_fatal("Option --shift-after-resample was used, but no effective frequency shift was requested or calculated.");
+        return false;
+    }
 
     // If no shift is needed, we're done.
     if (fabs(resources->nco_shift_hz) < 1e-9) {
@@ -44,7 +56,7 @@ bool freq_shift_create_ncos(AppConfig *config, AppResources *resources) {
             log_error("Failed to create pre-resample NCO (frequency shifter).");
             return false;
         }
-        float nco_freq_rad_per_sample = (float)(2.0 * M_PI * fabs(resources->nco_shift_hz) / rate_for_nco);
+        float nco_freq_rad_per_sample = (float)(2.0 * M_PI * resources->nco_shift_hz / rate_for_nco);
         nco_crcf_set_frequency((nco_crcf)resources->pre_resample_nco, nco_freq_rad_per_sample);
     }
 
@@ -61,7 +73,7 @@ bool freq_shift_create_ncos(AppConfig *config, AppResources *resources) {
             freq_shift_destroy_ncos(resources); // Clean up pre-resample NCO if it was created
             return false;
         }
-        float nco_freq_rad_per_sample = (float)(2.0 * M_PI * fabs(resources->nco_shift_hz) / rate_for_nco);
+        float nco_freq_rad_per_sample = (float)(2.0 * M_PI * resources->nco_shift_hz / rate_for_nco);
         nco_crcf_set_frequency((nco_crcf)resources->post_resample_nco, nco_freq_rad_per_sample);
     }
 
