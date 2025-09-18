@@ -38,6 +38,7 @@ static const SampleFormatInfo format_table[] = {
     { CS8,     "cs8",     "cs8 (Signed 8-bit Complex)" },
     { CU16,    "cu16",    "cu16 (Unsigned 16-bit Complex)" },
     { CS16,    "cs16",    "cs16 (Signed 16-bit Complex)" },
+    { CS24,    "cs24",    "cs24 (Signed 24-bit Complex)" },
     { CU32,    "cu32",    "cu32 (Unsigned 32-bit Complex)" },
     { CS32,    "cs32",    "cs32 (Signed 32-bit Complex)" },
     { CF32,    "cf32",    "cf32 (32-bit Float Complex)" },

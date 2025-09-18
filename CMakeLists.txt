@@ -628,6 +628,7 @@ set(OTHER_SOURCES
     src/file_writer.c
     src/input_manager.c
     src/input_rawfile.c
+    src/input_spyserver_client.c # ADD THIS LINE
     src/input_wav.c
     src/log.c
     src/main.c

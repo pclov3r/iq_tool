@@ -44,6 +44,7 @@ typedef enum {
     CS8,
     CU16,
     CS16,
+    CS24,
     CU32,
     CS32,
     CF32,
