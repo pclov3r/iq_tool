@@ -7,6 +7,7 @@
 // --- Include the headers for ALL concrete input source implementations ---
 #include "input_wav.h"
 #include "input_rawfile.h"
+#include "input_spyserver_client.h"
 #if defined(WITH_RTLSDR)
 #include "input_rtlsdr.h"
 #endif
@@ -43,14 +44,14 @@ static void initialize_modules_list(MemoryArena* arena) {
             .name = "wav",
             .ops = get_wav_input_ops(),
             .is_sdr = false,
-            .set_default_config = NULL, // WAV module has no defaults to set
+            .set_default_config = NULL,
             .get_cli_options = wav_get_cli_options
         },
         {
             .name = "raw-file",
             .ops = get_raw_file_input_ops(),
             .is_sdr = false,
-            .set_default_config = NULL, // Raw File module has no defaults to set
+            .set_default_config = NULL,
             .get_cli_options = rawfile_get_cli_options
         },
     #if defined(WITH_RTLSDR)
@@ -89,6 +90,14 @@ static void initialize_modules_list(MemoryArena* arena) {
             .get_cli_options = bladerf_get_cli_options
         },
     #endif
+        // ADDED: Register the new SpyServer client module
+        {
+            .name = "spyserver-client",
+            .ops = get_spyserver_client_input_ops(),
+            .is_sdr = true,
+            .set_default_config = spyserver_client_set_default_config,
+            .get_cli_options = spyserver_client_get_cli_options
+        },
     };
 
     num_all_modules = sizeof(temp_modules) / sizeof(temp_modules[0]);

@@ -12,6 +12,7 @@
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
+
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
@@ -111,6 +112,7 @@ size_t get_bytes_per_sample(format_t format) {
         case CU8:  return sizeof(uint8_t) * 2;
         case CS16: return sizeof(int16_t) * 2;
         case CU16: return sizeof(uint16_t) * 2;
+        case CS24: return 3 * 2;
         case CS32: return sizeof(int32_t) * 2;
         case CU32: return sizeof(uint32_t) * 2;
         case CF32: return sizeof(complex_float_t);
@@ -147,6 +149,22 @@ bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* r
             // To convert to float, we divide by 2^11.
             BLOCK_TO_CF32_SIGNED(int16_t, 1.0f / 2048.0f);
             break;
+        case CS24: {
+            const unsigned char* in = (const unsigned char*)input_buffer;
+            const float normalizer = 1.0f / 8388608.0f; // 1.0f / 2^23
+            for (size_t i = 0; i < num_frames; ++i) {
+                // Read 3 bytes for I and sign-extend to 32-bit
+                int32_t i_val = (in[0] << 8) | (in[1] << 16) | (in[2] << 24);
+                i_val >>= 8;
+                // Read 3 bytes for Q and sign-extend to 32-bit
+                int32_t q_val = (in[3] << 8) | (in[4] << 16) | (in[5] << 24);
+                q_val >>= 8;
+
+                output_buffer[i] = ((float)i_val * normalizer * gain) + I * ((float)q_val * normalizer * gain);
+                in += 6;
+            }
+            break;
+        }
         case CU16:
             BLOCK_TO_CF32_UNSIGNED(uint16_t, 32767.5f, 1.0f / 32768.0f);
             break;
@@ -213,6 +231,35 @@ bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* r
         case CU16:
             CF32_TO_BLOCK_UNSIGNED(uint16_t, USHRT_MAX, 32767.0f, 32767.5f);
             break;
+        case CS24: {
+            unsigned char* out = (unsigned char*)output_buffer;
+            const float scale = 8388607.0f; // 2^23 - 1
+            const int32_t max_val = 8388607;
+            const int32_t min_val = -8388608;
+            for (size_t i = 0; i < num_frames; ++i) {
+                float i_f = crealf(input_buffer[i]) * scale;
+                float q_f = cimagf(input_buffer[i]) * scale;
+
+                int32_t i_val = (int32_t)((i_f > 0.0f) ? i_f + 0.5f : i_f - 0.5f);
+                int32_t q_val = (int32_t)((q_f > 0.0f) ? q_f + 0.5f : q_f - 0.5f);
+
+                if (i_val > max_val) i_val = max_val;
+                if (i_val < min_val) i_val = min_val;
+                if (q_val > max_val) q_val = max_val;
+                if (q_val < min_val) q_val = min_val;
+
+                out[0] = (unsigned char)(i_val & 0xFF);
+                out[1] = (unsigned char)((i_val >> 8) & 0xFF);
+                out[2] = (unsigned char)((i_val >> 16) & 0xFF);
+
+                out[3] = (unsigned char)(q_val & 0xFF);
+                out[4] = (unsigned char)((q_val >> 8) & 0xFF);
+                out[5] = (unsigned char)((q_val >> 16) & 0xFF);
+
+                out += 6;
+            }
+            break;
+        }
         case CS32:
             // This case is handled separately from the macro because it requires
             // double precision for intermediate calculations to avoid data loss.

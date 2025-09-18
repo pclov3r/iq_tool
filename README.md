@@ -32,6 +32,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
     *   **WAV Files:** Reads standard 8-bit and 16-bit complex (I/Q) WAV files.
     *   **Raw I/Q Files:** Just point it at a headerless file, but you have to tell it the sample rate and format.
     *   **SDR Hardware:** Streams directly from **RTL-SDR**, **SDRplay**, **HackRF**, and **BladeRF** devices.
+    *   **Partial SpyServer Support:** Connect to SpyServer instances.
 *   **WAV Metadata Parsing:** Automatically reads metadata from SDR I/Q captures to make your life easier, especially for frequency correction.
     *   `auxi` chunks from **SDR Console, SDRconnect,** and **SDRuno**.
     *   SDR# style filenames (e.g., `..._20240520_181030Z_97300000Hz_...`).
@@ -162,8 +163,8 @@ WAV Input Specific Options
     --wav-center-target-freq=<flt>        Shift signal to a new target center frequency (e.g., 97.3e6)
 
 Raw File Input Options
-    --raw-file-input-rate=<flt>           (Required) The sample rate of the raw input file.
-    --raw-file-input-sample-format=<str>  (Required) The sample format of the raw input file.
+    --raw-file-input-rate=<flt>           (Required) The sample rate of the RAW input file.
+    --raw-file-input-sample-format=<str>  (Required) The sample format of the RAW input file.
 
 RTL-SDR-Specific Options
     --rtlsdr-device-idx=<int>             Select specific RTL-SDR device by index (0-indexed). (Default: 0)
@@ -192,6 +193,12 @@ BladeRF-Specific Options
     --bladerf-gain=<int>                  Set overall manual gain in dB. Disables AGC.
     --bladerf-channel=<int>               For BladeRF 2.0: Select RX channel 0 (RXA) or 1 (RXB). (Default: 0)
     --bladerf-bit-depth=<int>             Set capture bit depth {8|12}. 8-bit mode is for BladeRF 2.0 only. (Default: 12, auto-switches to 8 for rates > 61.44 MHz on BladeRF 2.0)
+
+SpyServer Client Options
+    --spyserver-client-host=<str>         Hostname or IP of the spyserver instance (Required).
+    --spyserver-client-port=<int>         Port number of the spyserver instance (Required).
+    --spyserver-client-gain=<int>         Set manual gain index (0-max). Disables AGC.
+    --spyserver-client-format=<str>       Select sample format {cu8|cs16|cs24|cf32}. Default is cu8.
 
 Available Presets
     cu8-nrsc5                             Sets sample type to cu8, rate to 1488375.0 Hz for FM/AM NRSC5 decoding (produces headerless raw output).
@@ -245,6 +252,7 @@ This tool is a work in progress.
 
 *   **Known Issues:**
     *   It's experimental. Expect bugs.
+    *   Only supports CU8,CS16,CS24 and CF32 formats for SpyServer. No support for compressed DINT4. 
     *   Windows builds are 64-bit only. I see no reason to post 32-bit ones given Windows 10 is end of life soon and Windows 11 is 64-bit only. If I'm wrong and it's required open an issue.
     *   As mentioned, IQ correction may not be functioning correctly.
     *   Log verbosity levels are not yet refined. The output is noisy, and many messages are not be at the appropriate level (e.g., ERROR vs. FATAL).
@@ -254,7 +262,8 @@ This tool is a work in progress.
     *   [x] Add BladeRF support.
     *   [x] Refactor configuration system for full modularity.
     *   [x] Implement FFT-based filtering option.
-    *   [ ] Add Airspy & HydaSDR support (including SpyServer).
+    *   [X] Partial SpyServer Support
+    *   [ ] Add Airspy & HydaSDR support
     *   [ ] Improve I/Q correction algorithm stability.
     *   [ ] Refine and standardize log levels throughout the application.
     *   [ ] Add unit tests. 
