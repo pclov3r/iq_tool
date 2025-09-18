@@ -765,6 +765,7 @@ if(WIN32)
         shlwapi
         pathcch
         shell32
+	ws2_32
     )
 else()
     target_link_libraries(iq_resample_tool PRIVATE m)
