@@ -24,7 +24,7 @@
 
 // --- Forward Declarations ---
 // We only use pointers to these structs, so we don't need their full definitions.
-struct FileWriteBuffer;
+struct RingBuffer;
 struct SampleChunk;
 struct AppResources;
 
@@ -41,7 +41,7 @@ struct AppResources;
  * @param format The sample format of the provided data (e.g., CS16).
  * @return true on success, false if the buffer did not have enough space.
  */
-bool sdr_packet_serializer_write_deinterleaved_chunk(struct FileWriteBuffer* buffer, uint32_t num_samples, const short* i_data, const short* q_data, format_t format);
+bool sdr_packet_serializer_write_deinterleaved_chunk(struct RingBuffer* buffer, uint32_t num_samples, const short* i_data, const short* q_data, format_t format);
 
 /**
  * @brief Writes a packet of INTERLEAVED samples (e.g., from RTL-SDR) to the buffer.
@@ -54,7 +54,7 @@ bool sdr_packet_serializer_write_deinterleaved_chunk(struct FileWriteBuffer* buf
  * @param format The sample format of the provided data (e.g., CU8).
  * @return true on success, false if the buffer did not have enough space.
  */
-bool sdr_packet_serializer_write_interleaved_chunk(struct FileWriteBuffer* buffer, uint32_t num_samples, const void* sample_data, size_t bytes_per_sample_pair, format_t format);
+bool sdr_packet_serializer_write_interleaved_chunk(struct RingBuffer* buffer, uint32_t num_samples, const void* sample_data, size_t bytes_per_sample_pair, format_t format);
 
 /**
  * @brief Writes a special "stream reset" event packet to the buffer.
@@ -63,7 +63,7 @@ bool sdr_packet_serializer_write_interleaved_chunk(struct FileWriteBuffer* buffe
  * @param buffer The target ring buffer.
  * @return true on success, false on failure.
  */
-bool sdr_packet_serializer_write_reset_event(struct FileWriteBuffer* buffer);
+bool sdr_packet_serializer_write_reset_event(struct RingBuffer* buffer);
 
 
 // --- Deserialization Function (Reading from the Stream) ---
@@ -84,7 +84,7 @@ bool sdr_packet_serializer_write_reset_event(struct FileWriteBuffer* buffer);
  * @return The number of frames read and placed in the target_chunk. Returns 0 for
  *         a normal end-of-stream or a non-data event, and a negative value for a fatal parsing error.
  */
-int64_t sdr_packet_serializer_read_packet(struct FileWriteBuffer* buffer,
+int64_t sdr_packet_serializer_read_packet(struct RingBuffer* buffer,
                                           struct SampleChunk* target_chunk,
                                           bool* is_reset_event,
                                           void* temp_buffer,

@@ -1,5 +1,5 @@
-#ifndef FILE_WRITE_BUFFER_H_
-#define FILE_WRITE_BUFFER_H_
+#ifndef RING_BUFFER_H_
+#define RING_BUFFER_H_
 
 #include <stddef.h>
 #include <stdbool.h>
@@ -7,7 +7,7 @@
 // --- Opaque Structure Definition ---
 // By defining the struct in the .c file, we hide its implementation details
 // from the rest of the application, which is a good encapsulation practice.
-typedef struct FileWriteBuffer FileWriteBuffer;
+typedef struct RingBuffer RingBuffer;
 
 
 // --- Function Declarations ---
@@ -21,15 +21,15 @@ typedef struct FileWriteBuffer FileWriteBuffer;
  *
  * @param capacity The total size of the buffer in bytes. A large size (e.g., 1GB)
  *                 is recommended to absorb significant I/O latency spikes.
- * @return A pointer to the new FileWriteBuffer, or NULL on memory allocation failure.
+ * @return A pointer to the new RingBuffer, or NULL on memory allocation failure.
  */
-FileWriteBuffer* file_write_buffer_create(size_t capacity);
+RingBuffer* ring_buffer_create(size_t capacity);
 
 /**
  * @brief Destroys an I/O buffer and frees all associated memory.
  * @param iob The I/O buffer to destroy.
  */
-void file_write_buffer_destroy(FileWriteBuffer* iob);
+void ring_buffer_destroy(RingBuffer* iob);
 
 /**
  * @brief Writes data to the I/O buffer. (Producer-side Function)
@@ -44,7 +44,7 @@ void file_write_buffer_destroy(FileWriteBuffer* iob);
  * @return The number of bytes actually written to the buffer. If this value is
  *         less than 'bytes', it indicates a buffer overrun has occurred.
  */
-size_t file_write_buffer_write(FileWriteBuffer* iob, const void* data, size_t bytes);
+size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes);
 
 /**
  * @brief Reads data from the I/O buffer. (Consumer-side Function)
@@ -59,7 +59,7 @@ size_t file_write_buffer_write(FileWriteBuffer* iob, const void* data, size_t by
  * @return The number of bytes actually read. Returns 0 if the end of the stream
  *         is reached and the buffer is empty, or if a shutdown is signaled.
  */
-size_t file_write_buffer_read(FileWriteBuffer* iob, void* buffer, size_t max_bytes);
+size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes);
 
 /**
  * @brief Signals that no more data will be written to the buffer.
@@ -70,7 +70,7 @@ size_t file_write_buffer_read(FileWriteBuffer* iob, void* buffer, size_t max_byt
  *
  * @param iob The I/O buffer.
  */
-void file_write_buffer_signal_end_of_stream(FileWriteBuffer* iob);
+void ring_buffer_signal_end_of_stream(RingBuffer* iob);
 
 /**
  * @brief Signals an immediate shutdown of the buffer.
@@ -81,20 +81,20 @@ void file_write_buffer_signal_end_of_stream(FileWriteBuffer* iob);
  *
  * @param iob The I/O buffer.
  */
-void file_write_buffer_signal_shutdown(FileWriteBuffer* iob);
+void ring_buffer_signal_shutdown(RingBuffer* iob);
 
 /**
  * @brief Gets the current number of bytes waiting to be read in the buffer.
  * @param iob The I/O buffer.
  * @return The number of bytes currently in the buffer.
  */
-size_t file_write_buffer_get_size(FileWriteBuffer* iob);
+size_t ring_buffer_get_size(RingBuffer* iob);
 
 /**
  * @brief Gets the total capacity of the buffer.
  * @param iob The I/O buffer.
  * @return The total capacity in bytes.
  */
-size_t file_write_buffer_get_capacity(FileWriteBuffer* iob);
+size_t ring_buffer_get_capacity(RingBuffer* iob);
 
-#endif // FILE_WRITE_BUFFER_H_
+#endif // RING_BUFFER_H_

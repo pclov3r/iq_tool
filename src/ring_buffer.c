@@ -1,12 +1,12 @@
-#include "file_write_buffer.h"
+#include "ring_buffer.h"
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include "log.h"
 
-// The full definition of the opaque FileWriteBuffer struct from the header file.
-struct FileWriteBuffer {
+// The full definition of the opaque RingBuffer struct from the header file.
+struct RingBuffer {
     unsigned char* buffer;
     size_t capacity;
     
@@ -21,16 +21,16 @@ struct FileWriteBuffer {
     bool shutting_down;
 };
 
-FileWriteBuffer* file_write_buffer_create(size_t capacity) {
-    FileWriteBuffer* iob = (FileWriteBuffer*)malloc(sizeof(FileWriteBuffer));
+RingBuffer* ring_buffer_create(size_t capacity) {
+    RingBuffer* iob = (RingBuffer*)malloc(sizeof(RingBuffer));
     if (!iob) {
-        log_fatal("Failed to allocate memory for FileWriteBuffer struct.");
+        log_fatal("Failed to allocate memory for RingBuffer struct.");
         return NULL;
     }
 
     iob->buffer = (unsigned char*)malloc(capacity);
     if (!iob->buffer) {
-        log_fatal("Failed to allocate memory for FileWriteBuffer data buffer of size %zu bytes.", capacity);
+        log_fatal("Failed to allocate memory for RingBuffer data buffer of size %zu bytes.", capacity);
         free(iob);
         return NULL;
     }
@@ -51,7 +51,7 @@ FileWriteBuffer* file_write_buffer_create(size_t capacity) {
     return iob;
 }
 
-void file_write_buffer_destroy(FileWriteBuffer* iob) {
+void ring_buffer_destroy(RingBuffer* iob) {
     if (!iob) return;
     
     pthread_mutex_destroy(&iob->mutex);
@@ -60,7 +60,7 @@ void file_write_buffer_destroy(FileWriteBuffer* iob) {
     free(iob);
 }
 
-size_t file_write_buffer_write(FileWriteBuffer* iob, const void* data, size_t bytes) {
+size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes) {
     if (!iob || !data || bytes == 0) return 0;
 
     // The entire write operation is now protected by a single lock.
@@ -94,7 +94,7 @@ size_t file_write_buffer_write(FileWriteBuffer* iob, const void* data, size_t by
     return bytes_to_write;
 }
 
-size_t file_write_buffer_read(FileWriteBuffer* iob, void* buffer, size_t max_bytes) {
+size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes) {
     if (!iob || !buffer || max_bytes == 0) return 0;
 
     // The entire read operation is now protected by a single lock.
@@ -141,7 +141,7 @@ size_t file_write_buffer_read(FileWriteBuffer* iob, void* buffer, size_t max_byt
     return bytes_to_read;
 }
 
-void file_write_buffer_signal_end_of_stream(FileWriteBuffer* iob) {
+void ring_buffer_signal_end_of_stream(RingBuffer* iob) {
     if (!iob) return;
     pthread_mutex_lock(&iob->mutex);
     iob->end_of_stream = true;
@@ -149,7 +149,7 @@ void file_write_buffer_signal_end_of_stream(FileWriteBuffer* iob) {
     pthread_mutex_unlock(&iob->mutex);
 }
 
-void file_write_buffer_signal_shutdown(FileWriteBuffer* iob) {
+void ring_buffer_signal_shutdown(RingBuffer* iob) {
     if (!iob) return;
     pthread_mutex_lock(&iob->mutex);
     iob->shutting_down = true;
@@ -157,7 +157,7 @@ void file_write_buffer_signal_shutdown(FileWriteBuffer* iob) {
     pthread_mutex_unlock(&iob->mutex);
 }
 
-size_t file_write_buffer_get_size(FileWriteBuffer* iob) {
+size_t ring_buffer_get_size(RingBuffer* iob) {
     if (!iob) return 0;
 
     pthread_mutex_lock(&iob->mutex);
@@ -169,7 +169,7 @@ size_t file_write_buffer_get_size(FileWriteBuffer* iob) {
     return available_data;
 }
 
-size_t file_write_buffer_get_capacity(FileWriteBuffer* iob) {
+size_t ring_buffer_get_capacity(RingBuffer* iob) {
     if (!iob) return 0;
     // Capacity is immutable, so a mutex isn't strictly necessary,
     // but it's good practice for consistency.

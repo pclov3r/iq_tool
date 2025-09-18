@@ -27,7 +27,7 @@
 #include "resampler.h" // For resampler_t
 
 // --- Forward Declarations ---
-struct FileWriteBuffer;
+struct RingBuffer;
 
 // --- Type Definitions ---
 
@@ -243,7 +243,7 @@ typedef struct AppResources {
     ThreadFlags     threads_to_create;
 
     // --- Dynamic Pipeline Queues ---
-    struct FileWriteBuffer* sdr_input_buffer;
+    struct RingBuffer* sdr_input_buffer;
     Queue*          reader_output_queue;
     Queue*          pre_processor_input_queue;
     Queue*          pre_processor_output_queue;
@@ -254,7 +254,7 @@ typedef struct AppResources {
     Queue*          writer_input_queue;
     Queue*          iq_optimization_data_queue;
     Queue*          free_sample_chunk_queue;
-    struct FileWriteBuffer* file_write_buffer;
+    struct RingBuffer* writer_input_buffer;
 
     // --- Progress & State Tracking ---
     AppLifecycleState lifecycle_state;

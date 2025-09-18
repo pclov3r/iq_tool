@@ -3,7 +3,7 @@
 #include "app_context.h"       // Provides AppResources
 #include "input_source.h"      // Provides InputSourceContext
 #include "queue.h"             // Provides queue_signal_shutdown
-#include "file_write_buffer.h" // Provides file_write_buffer_signal_shutdown
+#include "ring_buffer.h" // Provides ring_buffer_signal_shutdown
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -137,12 +137,12 @@ void request_shutdown(void) {
             queue_signal_shutdown(r->iq_optimization_data_queue);
         
         // Signal all ring buffers to wake up any waiting threads
-        if (r->file_write_buffer)
-            file_write_buffer_signal_shutdown(r->file_write_buffer);
+        if (r->writer_input_buffer)
+            ring_buffer_signal_shutdown(r->writer_input_buffer);
         
         // Also signal the SDR input buffer to unblock the reader thread in buffered mode.
         if (r->sdr_input_buffer)
-            file_write_buffer_signal_shutdown(r->sdr_input_buffer);
+            ring_buffer_signal_shutdown(r->sdr_input_buffer);
     }
 }
 
