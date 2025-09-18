@@ -58,7 +58,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#pragma comment(lib, "ws2_32.lib")
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -376,7 +375,11 @@ static bool spyserver_client_initialize(InputSourceContext* ctx) {
     }
 
     p->socket_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+#ifdef _WIN32
+    if (p->socket_fd == INVALID_SOCKET) {
+#else
     if (p->socket_fd < 0) {
+#endif
         log_fatal("Failed to create socket.");
         freeaddrinfo(res);
         return false;
@@ -457,7 +460,7 @@ static bool spyserver_client_initialize(InputSourceContext* ctx) {
     log_info("Client has control of the device. Negotiating stream parameters...");
     
     format_t final_format = utils_get_format_from_string(s_spyserver_client_config.format_str);
-    log_info("Requesting sample format: '%s'.", s_spyserver_client_config.format_str);
+    log_info("Requesting sample format: %s", utils_get_format_description_string(final_format));
 
     uint32_t forced_format_enum = p->device_info.ForcedIQFormat;
     if (forced_format_enum != 0) {
@@ -466,7 +469,7 @@ static bool spyserver_client_initialize(InputSourceContext* ctx) {
             return false;
         }
         format_t forced_internal_format = get_internal_format_from_spyserver_enum(forced_format_enum);
-        log_warn("Server is forcing the use of format '%s', overriding user selection.", utils_get_format_description_string(forced_internal_format));
+        log_warn("Server is forcing the use of format: %s, overriding user selection.", utils_get_format_description_string(forced_internal_format));
         final_format = forced_internal_format;
     }
     
@@ -680,13 +683,15 @@ static void spyserver_client_stop_stream(InputSourceContext* ctx) {
     AppResources* resources = ctx->resources;
     if (resources->input_module_private_data) {
         SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)resources->input_module_private_data;
-        if (p->socket_fd >= 0) {
-            #ifdef _WIN32
-                shutdown(p->socket_fd, SD_BOTH);
-            #else
-                shutdown(p->socket_fd, SHUT_RDWR);
-            #endif
+#ifdef _WIN32
+        if (p->socket_fd != INVALID_SOCKET) {
+            shutdown(p->socket_fd, SD_BOTH);
         }
+#else
+        if (p->socket_fd >= 0) {
+            shutdown(p->socket_fd, SHUT_RDWR);
+        }
+#endif
         if (p->stream_buffer) {
             ring_buffer_signal_shutdown(p->stream_buffer);
         }
@@ -741,3 +746,4 @@ static void spyserver_client_get_summary_info(const InputSourceContext* ctx, Inp
         add_summary_item(info, "Remote Device", "(Not connected)");
     }
 }
+
