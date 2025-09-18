@@ -10,7 +10,7 @@
 #include "input_common.h"
 #include "memory_arena.h"
 #include "queue.h"
-#include "file_write_buffer.h"
+#include "ring_buffer.h"
 #include "sdr_packet_serializer.h"
 #include "argparse.h"
 #include <stdio.h>

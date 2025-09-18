@@ -10,7 +10,7 @@
 #include "queue.h"
 #include "sdr_packet_serializer.h"
 #include "pipeline_context.h"
-#include "file_write_buffer.h"
+#include "ring_buffer.h"
 #include "cli.h"
 #include "setup.h"
 #include "utils.h"

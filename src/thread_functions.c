@@ -19,7 +19,7 @@
 #include "iq_correct.h"
 #include "resampler.h"
 #include "queue.h"
-#include "file_write_buffer.h"
+#include "ring_buffer.h"
 #include "sdr_packet_serializer.h"
 #include <stdio.h>
 #include <string.h>
@@ -43,7 +43,7 @@ void* sdr_capture_thread_func(void* arg) {
     resources->selected_input_ops->start_stream(&ctx);
 
     if (resources->sdr_input_buffer) {
-        file_write_buffer_signal_end_of_stream(resources->sdr_input_buffer);
+        ring_buffer_signal_end_of_stream(resources->sdr_input_buffer);
     }
 
     log_debug("SDR capture thread is exiting.");
@@ -186,7 +186,7 @@ void* writer_thread_func(void* arg) {
         }
 
         while (true) {
-            size_t bytes_read = file_write_buffer_read(resources->file_write_buffer, local_write_buffer, IO_FILE_WRITER_CHUNK_SIZE);
+            size_t bytes_read = ring_buffer_read(resources->writer_input_buffer, local_write_buffer, IO_FILE_WRITER_CHUNK_SIZE);
 
             if (bytes_read == 0) {
                 break;
@@ -342,7 +342,7 @@ void* post_processor_thread_func(void* arg) {
             if (config->output_to_stdout) {
                 queue_enqueue(resources->writer_input_queue, item);
             } else {
-                file_write_buffer_signal_end_of_stream(resources->file_write_buffer);
+                ring_buffer_signal_end_of_stream(resources->writer_input_buffer);
                 queue_enqueue(resources->free_sample_chunk_queue, item);
             }
             break;
@@ -365,7 +365,7 @@ void* post_processor_thread_func(void* arg) {
                 }
             } else {
                 size_t bytes_to_write = item->frames_to_write * resources->output_bytes_per_sample_pair;
-                file_write_buffer_write(resources->file_write_buffer, item->final_output_data, bytes_to_write);
+                ring_buffer_write(resources->writer_input_buffer, item->final_output_data, bytes_to_write);
                 queue_enqueue(resources->free_sample_chunk_queue, item);
             }
         } else {

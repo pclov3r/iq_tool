@@ -9,7 +9,7 @@
 #include "input_common.h"
 #include "memory_arena.h"
 #include "queue.h"
-#include "file_write_buffer.h"
+#include "ring_buffer.h"
 #include "argparse.h"
 #include "iq_correct.h"
 #include <stdio.h>
@@ -638,12 +638,12 @@ static void* wav_start_stream(InputSourceContext* ctx) {
 
     // Pre-calculate the back-pressure threshold in bytes for efficiency.
     // This check is only relevant for file-to-file operations.
-    const size_t writer_buffer_capacity = resources->config->output_to_stdout ? 0 : file_write_buffer_get_capacity(resources->file_write_buffer);
+    const size_t writer_buffer_capacity = resources->config->output_to_stdout ? 0 : ring_buffer_get_capacity(resources->writer_input_buffer);
     const size_t writer_buffer_threshold = (size_t)(writer_buffer_capacity * IO_WRITER_BUFFER_HIGH_WATER_MARK);
 
     while (!is_shutdown_requested() && !resources->error_occurred) {
         // --- START: Back-pressure Pacing Logic ---
-        if (!resources->config->output_to_stdout && (file_write_buffer_get_size(resources->file_write_buffer) > writer_buffer_threshold)) {
+        if (!resources->config->output_to_stdout && (ring_buffer_get_size(resources->writer_input_buffer) > writer_buffer_threshold)) {
             // The writer is falling behind. Pause briefly to let it catch up.
             #ifdef _WIN32
                 Sleep(10); // 10 ms

@@ -14,7 +14,7 @@
 #include "resampler.h"
 #include "memory_arena.h"
 #include "queue.h"
-#include "file_write_buffer.h"
+#include "ring_buffer.h"
 #include "app_context.h"
 #include "thread_manager.h" // For threads_destroy_queues
 #include <stdio.h>
@@ -557,20 +557,20 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
 
     // STEP 6: Create large I/O ring buffers (if needed)
     if (resources->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
-        resources->sdr_input_buffer = file_write_buffer_create(IO_SDR_INPUT_BUFFER_BYTES);
+        resources->sdr_input_buffer = ring_buffer_create(IO_SDR_INPUT_BUFFER_BYTES);
         if (!resources->sdr_input_buffer) {
             log_fatal("Failed to create SDR input buffer for buffered mode.");
             goto cleanup;
         }
     }
     if (!config->output_to_stdout) {
-        resources->file_write_buffer = file_write_buffer_create(IO_FILE_WRITER_BUFFER_BYTES);
-        if (!resources->file_write_buffer) {
+        resources->writer_input_buffer = ring_buffer_create(IO_FILE_WRITER_BUFFER_BYTES);
+        if (!resources->writer_input_buffer) {
             log_fatal("Failed to create I/O output buffer.");
             goto cleanup;
         }
     } else {
-        resources->file_write_buffer = NULL;
+        resources->writer_input_buffer = NULL;
     }
     resources->lifecycle_state = LIFECYCLE_STATE_IO_BUFFERS_CREATED;
 
@@ -649,12 +649,12 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
             // fall-through
         case LIFECYCLE_STATE_IO_BUFFERS_CREATED:
             if (resources->sdr_input_buffer) {
-                file_write_buffer_destroy(resources->sdr_input_buffer);
+                ring_buffer_destroy(resources->sdr_input_buffer);
                 resources->sdr_input_buffer = NULL;
             }
-            if (resources->file_write_buffer) {
-                file_write_buffer_destroy(resources->file_write_buffer);
-                resources->file_write_buffer = NULL;
+            if (resources->writer_input_buffer) {
+                ring_buffer_destroy(resources->writer_input_buffer);
+                resources->writer_input_buffer = NULL;
             }
             // fall-through
         case LIFECYCLE_STATE_THREADS_CREATED:

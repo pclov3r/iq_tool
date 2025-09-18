@@ -629,7 +629,6 @@ set(OTHER_SOURCES
     src/input_manager.c
     src/input_rawfile.c
     src/input_wav.c
-    src/file_write_buffer.c
     src/log.c
     src/main.c
     src/memory_arena.c
@@ -638,6 +637,7 @@ set(OTHER_SOURCES
     src/pre_processor.c
     src/post_processor.c
     src/queue.c
+    src/ring_buffer.c
     src/sdr_packet_serializer.c
     src/setup.c
     src/signal_handler.c

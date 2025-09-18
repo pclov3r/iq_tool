@@ -3,7 +3,7 @@
 #include "log.h"
 #include "app_context.h"
 #include "pipeline_types.h"
-#include "file_write_buffer.h"
+#include "ring_buffer.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -28,8 +28,8 @@ typedef struct {
 
 
 // --- PRIVATE HELPER FUNCTION DECLARATIONS (PROTOTYPES) ---
-static int64_t _read_interleaved_payload(FileWriteBuffer* buffer, SampleChunk* target_chunk, uint32_t num_samples);
-static int64_t _read_and_reinterleave_payload(FileWriteBuffer* buffer, SampleChunk* target_chunk, uint32_t num_samples, void* temp_buffer, size_t temp_buffer_size);
+static int64_t _read_interleaved_payload(RingBuffer* buffer, SampleChunk* target_chunk, uint32_t num_samples);
+static int64_t _read_and_reinterleave_payload(RingBuffer* buffer, SampleChunk* target_chunk, uint32_t num_samples, void* temp_buffer, size_t temp_buffer_size);
 
 /**
  * @brief Checks if a raw format ID from a packet header is a valid, defined member of the format_t enum.
@@ -63,7 +63,7 @@ static bool _is_packet_format_id_valid(uint8_t format_id) {
 
 // --- PUBLIC API: SERIALIZATION FUNCTIONS ---
 
-bool sdr_packet_serializer_write_deinterleaved_chunk(FileWriteBuffer* buffer, uint32_t num_samples, const short* i_data, const short* q_data, format_t format) {
+bool sdr_packet_serializer_write_deinterleaved_chunk(RingBuffer* buffer, uint32_t num_samples, const short* i_data, const short* q_data, format_t format) {
     SdrInputChunkHeader header;
     header.magic = IQPK_MAGIC; // --- MODIFIED ---
     header.num_samples = num_samples;
@@ -72,14 +72,14 @@ bool sdr_packet_serializer_write_deinterleaved_chunk(FileWriteBuffer* buffer, ui
 
     size_t bytes_per_plane = num_samples * sizeof(short);
     
-    if (file_write_buffer_write(buffer, &header, sizeof(header)) < sizeof(header)) return false;
-    if (file_write_buffer_write(buffer, i_data, bytes_per_plane) < bytes_per_plane) return false;
-    if (file_write_buffer_write(buffer, q_data, bytes_per_plane) < bytes_per_plane) return false;
+    if (ring_buffer_write(buffer, &header, sizeof(header)) < sizeof(header)) return false;
+    if (ring_buffer_write(buffer, i_data, bytes_per_plane) < bytes_per_plane) return false;
+    if (ring_buffer_write(buffer, q_data, bytes_per_plane) < bytes_per_plane) return false;
 
     return true;
 }
 
-bool sdr_packet_serializer_write_interleaved_chunk(FileWriteBuffer* buffer, uint32_t num_samples, const void* sample_data, size_t bytes_per_sample_pair, format_t format) {
+bool sdr_packet_serializer_write_interleaved_chunk(RingBuffer* buffer, uint32_t num_samples, const void* sample_data, size_t bytes_per_sample_pair, format_t format) {
     SdrInputChunkHeader header;
     header.magic = IQPK_MAGIC; // --- MODIFIED ---
     header.num_samples = num_samples;
@@ -88,27 +88,27 @@ bool sdr_packet_serializer_write_interleaved_chunk(FileWriteBuffer* buffer, uint
 
     size_t data_bytes = num_samples * bytes_per_sample_pair;
 
-    if (file_write_buffer_write(buffer, &header, sizeof(header)) < sizeof(header)) return false;
-    if (file_write_buffer_write(buffer, sample_data, data_bytes) < data_bytes) return false;
+    if (ring_buffer_write(buffer, &header, sizeof(header)) < sizeof(header)) return false;
+    if (ring_buffer_write(buffer, sample_data, data_bytes) < data_bytes) return false;
 
     return true;
 }
 
-bool sdr_packet_serializer_write_reset_event(FileWriteBuffer* buffer) {
+bool sdr_packet_serializer_write_reset_event(RingBuffer* buffer) {
     SdrInputChunkHeader header;
     header.magic = IQPK_MAGIC; // --- MODIFIED ---
     header.num_samples = 0;
     header.flags = SDR_CHUNK_FLAG_STREAM_RESET;
     header.format_id = (uint8_t)FORMAT_UNKNOWN;
 
-    return (file_write_buffer_write(buffer, &header, sizeof(header)) == sizeof(header));
+    return (ring_buffer_write(buffer, &header, sizeof(header)) == sizeof(header));
 }
 
 
 // --- PUBLIC API: REFACTORED DESERIALIZATION FUNCTION ---
 
 // --- NEW: This function has been completely replaced with the robust, re-synchronizing version. ---
-int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
+int64_t sdr_packet_serializer_read_packet(RingBuffer* buffer,
                                           SampleChunk* target_chunk,
                                           bool* is_reset_event,
                                           void* temp_buffer,
@@ -123,7 +123,7 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
     // This loop is the core of the re-synchronization logic.
     while (true) {
         // Step 1: Read exactly 4 bytes to check for the magic number.
-        size_t bytes_read = file_write_buffer_read(buffer, &current_word, sizeof(uint32_t));
+        size_t bytes_read = ring_buffer_read(buffer, &current_word, sizeof(uint32_t));
 
         // Handle end-of-stream conditions
         if (bytes_read == 0) {
@@ -153,7 +153,7 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
 
         // To discard a single byte, we shift our current word and read one new byte.
         current_word = (current_word >> 8); // Discard the oldest byte (from the beginning of the 4-byte read)
-        if (file_write_buffer_read(buffer, &single_byte, 1) < 1) {
+        if (ring_buffer_read(buffer, &single_byte, 1) < 1) {
              log_warn("Stream ended during re-sync after discarding %llu bytes.", discarded_bytes);
              return 0; // End of stream
         }
@@ -166,7 +166,7 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
 
     // Now read the rest of the header (num_samples, flags, format_id).
     size_t rest_of_header_size = sizeof(SdrInputChunkHeader) - sizeof(uint32_t);
-    size_t header_bytes_read = file_write_buffer_read(buffer, ((char*)&header) + sizeof(uint32_t), rest_of_header_size);
+    size_t header_bytes_read = ring_buffer_read(buffer, ((char*)&header) + sizeof(uint32_t), rest_of_header_size);
     
     if (header_bytes_read < rest_of_header_size) {
         log_error("SDR stream corrupted: Found magic number but header was incomplete.");
@@ -206,7 +206,7 @@ int64_t sdr_packet_serializer_read_packet(FileWriteBuffer* buffer,
 
 // --- PRIVATE HELPER FUNCTION IMPLEMENTATIONS ---
 
-static int64_t _read_interleaved_payload(FileWriteBuffer* buffer, SampleChunk* target_chunk, uint32_t num_samples) {
+static int64_t _read_interleaved_payload(RingBuffer* buffer, SampleChunk* target_chunk, uint32_t num_samples) {
     uint32_t samples_to_read = num_samples;
     if (samples_to_read > PIPELINE_CHUNK_BASE_SAMPLES) {
         log_warn("SDR chunk (%u samples) exceeds buffer capacity (%d). Truncating.",
@@ -215,7 +215,7 @@ static int64_t _read_interleaved_payload(FileWriteBuffer* buffer, SampleChunk* t
     }
 
     size_t bytes_to_read = samples_to_read * target_chunk->input_bytes_per_sample_pair;
-    size_t data_bytes_read = file_write_buffer_read(buffer, target_chunk->raw_input_data, bytes_to_read);
+    size_t data_bytes_read = ring_buffer_read(buffer, target_chunk->raw_input_data, bytes_to_read);
 
     if (data_bytes_read < bytes_to_read) {
         log_error("Incomplete data read for interleaved chunk. Stream corrupted.");
@@ -225,7 +225,7 @@ static int64_t _read_interleaved_payload(FileWriteBuffer* buffer, SampleChunk* t
     return samples_to_read;
 }
 
-static int64_t _read_and_reinterleave_payload(FileWriteBuffer* buffer, SampleChunk* target_chunk, uint32_t num_samples, void* temp_buffer, size_t temp_buffer_size) {
+static int64_t _read_and_reinterleave_payload(RingBuffer* buffer, SampleChunk* target_chunk, uint32_t num_samples, void* temp_buffer, size_t temp_buffer_size) {
     uint32_t samples_to_read = num_samples;
     if (samples_to_read > PIPELINE_CHUNK_BASE_SAMPLES) {
         log_warn("SDR chunk (%u samples) exceeds buffer capacity (%d). Truncating.",
@@ -244,11 +244,11 @@ static int64_t _read_and_reinterleave_payload(FileWriteBuffer* buffer, SampleChu
     short* temp_i = (short*)temp_buffer;
     short* temp_q = (short*)((char*)temp_buffer + bytes_per_plane);
 
-    if (file_write_buffer_read(buffer, temp_i, bytes_per_plane) < bytes_per_plane) {
+    if (ring_buffer_read(buffer, temp_i, bytes_per_plane) < bytes_per_plane) {
         log_error("Incomplete I-plane read for de-interleaved chunk. Stream corrupted.");
         return -1;
     }
-    if (file_write_buffer_read(buffer, temp_q, bytes_per_plane) < bytes_per_plane) {
+    if (ring_buffer_read(buffer, temp_q, bytes_per_plane) < bytes_per_plane) {
         log_error("Incomplete Q-plane read for de-interleaved chunk. Stream corrupted.");
         return -1;
     }
