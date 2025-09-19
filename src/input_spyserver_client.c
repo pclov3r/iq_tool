@@ -291,7 +291,7 @@ static bool recv_all(SpyServerClientPrivateData* p, void* data, size_t len) {
     while (total_recv < len) {
         int recvd = recv(p->socket_fd, (char*)data + total_recv, (int)(len - total_recv), 0);
         if (recvd <= 0) {
-            log_error("Failed to receive data from spyserver (connection closed or error).");
+            log_error("Failed to receive data from SpyServer (connection closed or error).");
             return false;
         }
         total_recv += recvd;
@@ -309,7 +309,7 @@ static bool send_setting(SpyServerClientPrivateData* p, uint32_t setting, uint32
     SpyServerSettingTarget* payload = (SpyServerSettingTarget*)(command_buffer + sizeof(SpyServerCommandHeader));
     payload->Setting = setting;
     payload->Value = value;
-    
+
     return send_all(p, command_buffer, sizeof(command_buffer));
 }
 
@@ -345,7 +345,7 @@ static bool spyserver_client_validate_options(AppConfig* config) {
 static bool spyserver_client_initialize(InputSourceContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
     AppResources* resources = ctx->resources;
-    
+
     SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(SpyServerClientPrivateData), true);
     if (!p) return false;
     resources->input_module_private_data = p;
@@ -386,33 +386,44 @@ static bool spyserver_client_initialize(InputSourceContext* ctx) {
     }
 
     if (connect(p->socket_fd, res->ai_addr, res->ai_addrlen) < 0) {
-        log_fatal("Failed to connect to spyserver.");
+        log_fatal("Failed to connect to SpyServer.");
         freeaddrinfo(res);
         return false;
     }
     freeaddrinfo(res);
 
     log_info("Connected. Performing handshake...");
-    
-    const char* client_name = APP_NAME;
-    size_t client_name_len = strlen(client_name);
-    if (client_name_len > 15) client_name_len = 15; // Protocol limit
-    
+
+    char user_agent[128];
+    snprintf(user_agent, sizeof(user_agent), "%s version %s", APP_NAME, GIT_HASH);
+
+    size_t user_agent_len = strlen(user_agent);
+    size_t payload_size = sizeof(uint32_t) + user_agent_len;
+
+    unsigned char* payload_buffer = (unsigned char*)mem_arena_alloc(&resources->setup_arena, payload_size, false);
+    if (!payload_buffer) {
+        return false;
+    }
+
+    // Build the payload: [Protocol Version][User Agent String]
+    uint32_t protocol_version = SPYSERVER_PROTOCOL_VERSION;
+    memcpy(payload_buffer, &protocol_version, sizeof(uint32_t));
+    memcpy(payload_buffer + sizeof(uint32_t), user_agent, user_agent_len);
+
+    // Build the command header with the correct dynamic size.
     SpyServerCommandHeader hello_header;
     hello_header.CommandType = SPYSERVER_CMD_HELLO;
-    hello_header.BodySize = sizeof(SpyServerClientHandshake);
-    
-    SpyServerClientHandshake handshake_payload;
-    handshake_payload.ProtocolVersion = SPYSERVER_PROTOCOL_VERSION;
-    memset(handshake_payload.ClientName, 0, sizeof(handshake_payload.ClientName));
-    memcpy(handshake_payload.ClientName, client_name, client_name_len);
-    
-    if (!send_all(p, &hello_header, sizeof(hello_header))) return false;
-    if (!send_all(p, &handshake_payload, sizeof(handshake_payload))) return false;
+    hello_header.BodySize = payload_size;
+
+    // Send the command and payload, then clean up.
+    bool send_ok = send_all(p, &hello_header, sizeof(hello_header)) &&
+                   send_all(p, payload_buffer, payload_size);
+
+    if (!send_ok) return false;
 
     SpyServerMessageHeader response_header;
     if (!recv_all(p, &response_header, sizeof(response_header))) return false;
-    
+
     if (response_header.MessageType != SPYSERVER_MSG_TYPE_DEVICE_INFO) {
         log_fatal("Did not receive DeviceInfo after handshake. Server may have rejected the connection (MessageType=%u).", response_header.MessageType);
         return false;
@@ -423,10 +434,10 @@ static bool spyserver_client_initialize(InputSourceContext* ctx) {
     }
     if (!recv_all(p, &p->device_info, sizeof(SpyServerDeviceInfo))) return false;
     p->device_info_ok = true;
-    
+
     log_info("Handshake complete. Waiting for client sync message...");
     if (!recv_all(p, &response_header, sizeof(response_header))) return false;
-    
+
     if (response_header.MessageType != SPYSERVER_MSG_TYPE_CLIENT_SYNC) {
         log_fatal("Did not receive ClientSync message after handshake. Protocol error.");
         return false;
@@ -442,7 +453,6 @@ static bool spyserver_client_initialize(InputSourceContext* ctx) {
 
     size_t extra_bytes_to_discard = response_header.BodySize - sizeof(SpyServerClientSync);
     if (extra_bytes_to_discard > 0) {
-        log_debug("ClientSync message is %zu bytes larger than expected. Discarding extra bytes for forward compatibility.", extra_bytes_to_discard);
         char discard_buffer[256];
         while (extra_bytes_to_discard > 0) {
             size_t to_read = (extra_bytes_to_discard > sizeof(discard_buffer)) ? sizeof(discard_buffer) : extra_bytes_to_discard;
@@ -452,31 +462,29 @@ static bool spyserver_client_initialize(InputSourceContext* ctx) {
     }
 
     if (sync_info.CanControl == 0) {
-        log_error("Cannot control the remote device. The server is busy or is in shared mode by another client.");
+        log_error("Cannot control the remote device. Another client has control.");
         spyserver_client_cleanup(ctx);
         return false;
     }
 
     log_info("Client has control of the device. Negotiating stream parameters...");
-    
+
     format_t final_format = utils_get_format_from_string(s_spyserver_client_config.format_str);
     log_info("Requesting sample format: %s", utils_get_format_description_string(final_format));
 
     uint32_t forced_format_enum = p->device_info.ForcedIQFormat;
+
     if (forced_format_enum != 0) {
-        if (forced_format_enum == 5 /* DINT4, which is unsupported */) {
-            log_fatal("Server is forcing the use of unsupported 'dint4' format. Aborting.");
-            return false;
-        }
-        format_t forced_internal_format = get_internal_format_from_spyserver_enum(forced_format_enum);
-        log_warn("Server is forcing the use of format: %s, overriding user selection.", utils_get_format_description_string(forced_internal_format));
-        final_format = forced_internal_format;
+    	format_t forced_internal_format = get_internal_format_from_spyserver_enum(forced_format_enum);
+    log_warn("Server is forcing the use of format: %s, Overriding...",
+             utils_get_format_description_string(forced_internal_format));
+    final_format = forced_internal_format;
     }
-    
+
     p->active_format = final_format;
     resources->input_format = final_format;
     resources->input_bytes_per_sample_pair = get_bytes_per_sample(final_format);
-    
+
     uint32_t max_sr = p->device_info.MaximumSampleRate;
     uint32_t min_dec = p->device_info.MinimumIQDecimation;
     uint32_t dec_count = p->device_info.DecimationStageCount;
@@ -496,9 +504,15 @@ static bool spyserver_client_initialize(InputSourceContext* ctx) {
             best_rate_idx = i;
         }
     }
+
     double actual_rate = supported_rates[best_rate_idx];
     uint32_t dec_index_to_send = min_dec + best_rate_idx;
-    log_info("Requested sample rate %.0f Hz. Using closest available rate: %.0f Hz.", user_rate, actual_rate);
+    if (min_diff < 1.0) {
+        log_info("Using requested sample rate: %.0f Hz.", actual_rate);
+    } else {
+        log_info("Requested sample rate %.0f Hz. Using closest available rate: %.0f Hz.", user_rate, actual_rate);
+    }
+
     resources->source_info.samplerate = (int)actual_rate;
 
     int format_to_request_int = get_spyserver_enum_from_internal_format(final_format);
@@ -517,7 +531,7 @@ static bool spyserver_client_initialize(InputSourceContext* ctx) {
     if (device_type == SPYSERVER_DEV_AIRSPY_ONE) {
         uint32_t gain_index = s_spyserver_client_config.gain_provided ? s_spyserver_client_config.gain : 0;
         digital_gain_float = (float)(p->device_info.MaximumGainIndex - gain_index) + ((float)dec_index_to_send * 3.01f);
-    } else { 
+    } else {
         digital_gain_float = (float)dec_index_to_send * 3.01f;
     }
     if (!send_setting(p, SPYSERVER_SETTING_IQ_DIGITAL_GAIN, (uint32_t)digital_gain_float)) return false;
@@ -537,7 +551,7 @@ static void* spyserver_client_producer_thread(void* arg) {
     InputSourceContext* ctx = (InputSourceContext*)arg;
     AppResources* resources = ctx->resources;
     SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)resources->input_module_private_data;
-    
+
     unsigned char network_read_buffer[65536];
 
     while (!is_shutdown_requested()) {
@@ -548,7 +562,7 @@ static void* spyserver_client_producer_thread(void* arg) {
             }
             break;
         }
-        
+
         uint32_t body_size = header.BodySize;
         if (body_size == 0) continue;
 
@@ -571,7 +585,7 @@ static void* spyserver_client_producer_thread(void* arg) {
             }
             bytes_remaining -= to_read;
         }
-        
+
         sdr_input_update_heartbeat(resources);
     }
 
@@ -608,7 +622,7 @@ static void* spyserver_client_start_stream(InputSourceContext* ctx) {
             usleep(100000);
         #endif
     }
-    
+
     if (is_shutdown_requested() || resources->error_occurred) {
         log_warn("Shutdown requested during pre-buffering phase.");
     } else {
@@ -650,12 +664,12 @@ static void* spyserver_client_start_stream(InputSourceContext* ctx) {
             }
             continue;
         }
-        
+
         if (ring_buffer_read(p->stream_buffer, item->raw_input_data, body_size) < body_size) {
             queue_enqueue(resources->free_sample_chunk_queue, item);
             break; // End of stream
         }
-        
+
         item->packet_sample_format = p->active_format;
         item->input_bytes_per_sample_pair = get_bytes_per_sample(p->active_format);
         item->frames_read = body_size / item->input_bytes_per_sample_pair;
@@ -663,13 +677,19 @@ static void* spyserver_client_start_stream(InputSourceContext* ctx) {
         item->is_last_chunk = false;
         item->stream_discontinuity_event = false;
 
+        if (item->frames_read > 0) {
+            pthread_mutex_lock(&resources->progress_mutex);
+            resources->total_frames_read += item->frames_read;
+            pthread_mutex_unlock(&resources->progress_mutex);
+        }
+
         if (!queue_enqueue(resources->reader_output_queue, item)) {
             queue_enqueue(resources->free_sample_chunk_queue, item);
             break;
         }
     }
 end_loop:;
-    
+
     if (!is_shutdown_requested()) {
         request_shutdown();
     }
@@ -721,8 +741,9 @@ static void spyserver_client_cleanup(InputSourceContext* ctx) {
 }
 
 static void spyserver_client_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
-    SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)ctx->resources->input_module_private_data;
-    AppResources* resources = ctx->resources;
+    const SpyServerClientPrivateData* p = (const SpyServerClientPrivateData*)ctx->resources->input_module_private_data;
+    const AppResources* resources = ctx->resources;
+    const AppConfig* config = ctx->config;
     char server_addr[256];
     snprintf(server_addr, sizeof(server_addr), "%s:%d", s_spyserver_client_config.hostname, s_spyserver_client_config.port);
     add_summary_item(info, "Input Source", "SpyServer Client");
@@ -739,11 +760,13 @@ static void spyserver_client_get_summary_info(const InputSourceContext* ctx, Inp
         snprintf(dev_info_str, sizeof(dev_info_str), "%s (S/N: %08X)", dev_type_str, p->device_info.DeviceSerial);
         add_summary_item(info, "Remote Device", dev_info_str);
         add_summary_item(info, "Input Format", utils_get_format_description_string(resources->input_format));
-        char gain_range_str[64];
-        snprintf(gain_range_str, sizeof(gain_range_str), "0 to %u", p->device_info.MaximumGainIndex);
-        add_summary_item(info, "Valid Gain Range", gain_range_str);
-    } else {
-        add_summary_item(info, "Remote Device", "(Not connected)");
+        add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
+        add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr.rf_freq_hz);
+
+        if (s_spyserver_client_config.gain_provided) {
+            add_summary_item(info, "Gain", "%d (Manual)", s_spyserver_client_config.gain);
+        } else {
+            add_summary_item(info, "Gain", "Automatic (AGC)");
+        }
     }
 }
-
