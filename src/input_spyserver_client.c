@@ -638,7 +638,8 @@ static void* spyserver_client_start_stream(InputSourceContext* ctx) {
         uint32_t msg_type = header.MessageType & 0xFFFF;
         uint32_t body_size = header.BodySize;
 
-        if (msg_type < SPYSERVER_MSG_TYPE_UINT8_IQ || msg_type > SPYSERVER_MSG_TYPE_FLOAT_IQ) {
+        // If it's not an I/Q data packet, or it's empty, just discard the body and continue.
+        if (body_size == 0 || msg_type < SPYSERVER_MSG_TYPE_UINT8_IQ || msg_type > SPYSERVER_MSG_TYPE_FLOAT_IQ) {
             if (body_size > 0) {
                 char discard_buf[1024];
                 while(body_size > 0) {
@@ -650,42 +651,40 @@ static void* spyserver_client_start_stream(InputSourceContext* ctx) {
             continue;
         }
 
-        SampleChunk* item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
-        if (!item) break;
+        // It's a valid I/Q data packet. Process its body in pipeline-sized chunks.
+        size_t bytes_remaining_in_packet = body_size;
+        while (bytes_remaining_in_packet > 0) {
+            SampleChunk* item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+            if (!item) goto end_loop; // Shutdown signaled
 
-        if (body_size > item->raw_input_capacity_bytes) {
-            log_warn("Spyserver packet (%u bytes) too large for buffer (%zu). Discarding.", body_size, item->raw_input_capacity_bytes);
-            queue_enqueue(resources->free_sample_chunk_queue, item);
-            char discard_buf[1024];
-            while(body_size > 0) {
-                size_t to_read = body_size > sizeof(discard_buf) ? sizeof(discard_buf) : body_size;
-                if (ring_buffer_read(p->stream_buffer, discard_buf, to_read) < to_read) goto end_loop;
-                body_size -= to_read;
+            size_t bytes_this_chunk = (bytes_remaining_in_packet > item->raw_input_capacity_bytes)
+                                    ? item->raw_input_capacity_bytes
+                                    : bytes_remaining_in_packet;
+
+            if (ring_buffer_read(p->stream_buffer, item->raw_input_data, bytes_this_chunk) < bytes_this_chunk) {
+                queue_enqueue(resources->free_sample_chunk_queue, item);
+                goto end_loop; // End of stream or error
             }
-            continue;
-        }
 
-        if (ring_buffer_read(p->stream_buffer, item->raw_input_data, body_size) < body_size) {
-            queue_enqueue(resources->free_sample_chunk_queue, item);
-            break; // End of stream
-        }
+            item->packet_sample_format = p->active_format;
+            item->input_bytes_per_sample_pair = get_bytes_per_sample(p->active_format);
+            item->frames_read = bytes_this_chunk / item->input_bytes_per_sample_pair;
 
-        item->packet_sample_format = p->active_format;
-        item->input_bytes_per_sample_pair = get_bytes_per_sample(p->active_format);
-        item->frames_read = body_size / item->input_bytes_per_sample_pair;
+            item->is_last_chunk = false;
+            item->stream_discontinuity_event = false;
 
-        item->is_last_chunk = false;
-        item->stream_discontinuity_event = false;
+            if (item->frames_read > 0) {
+                pthread_mutex_lock(&resources->progress_mutex);
+                resources->total_frames_read += item->frames_read;
+                pthread_mutex_unlock(&resources->progress_mutex);
+            }
 
-        if (item->frames_read > 0) {
-            pthread_mutex_lock(&resources->progress_mutex);
-            resources->total_frames_read += item->frames_read;
-            pthread_mutex_unlock(&resources->progress_mutex);
-        }
+            if (!queue_enqueue(resources->reader_output_queue, item)) {
+                queue_enqueue(resources->free_sample_chunk_queue, item);
+                goto end_loop; // Shutdown signaled
+            }
 
-        if (!queue_enqueue(resources->reader_output_queue, item)) {
-            queue_enqueue(resources->free_sample_chunk_queue, item);
-            break;
+            bytes_remaining_in_packet -= bytes_this_chunk;
         }
     }
 end_loop:;
