@@ -91,10 +91,6 @@ if(WITH_BLADERF)
     add_compile_definitions(WITH_BLADERF)
 endif()
 
-if(WITH_RTLSDR OR WITH_SDRPLAY OR WITH_HACKRF OR WITH_BLADERF)
-    add_compile_definitions(ANY_SDR_SUPPORT_ENABLED)
-endif()
-
 #=======================================================================
 # Options for Manual Dependency Paths (Optional Overrides)
 #=======================================================================
