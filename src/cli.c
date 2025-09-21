@@ -114,14 +114,12 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_INTEGER(0, "filter-fft-size", &g_config.filter_fft_size_arg, "Set FFT size for 'fft' filter type. Must be a power of 2.", NULL, 0, 0),
     };
 
-    #if defined(ANY_SDR_SUPPORT_ENABLED)
     static const struct argparse_option sdr_general_options[] = {
         OPT_GROUP("SDR General Options"),
         OPT_FLOAT(0, "sdr-rf-freq", &g_config.sdr.rf_freq_hz_arg, "(Required for SDR) Tuner center frequency in Hz", NULL, 0, 0),
         OPT_FLOAT(0, "sdr-sample-rate", &g_config.sdr.sample_rate_hz_arg, "Set sample rate in Hz. (Device-specific default)", NULL, 0, 0),
         OPT_BOOLEAN(0, "sdr-bias-t", &g_config.sdr.bias_t_enable, "(Optional) Enable Bias-T power.", NULL, 0, 0),
     };
-    #endif
 
     static struct argparse_option final_options[] = {
         OPT_GROUP("Help & Version"),
@@ -142,9 +140,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
 
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], generic_options, sizeof(generic_options) / sizeof(generic_options[0]));
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], filter_options, sizeof(filter_options) / sizeof(filter_options[0]));
-    #if defined(ANY_SDR_SUPPORT_ENABLED)
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], sdr_general_options, sizeof(sdr_general_options) / sizeof(sdr_general_options[0]));
-    #endif
 
     int num_modules = 0;
     const InputModule* modules = get_all_input_modules(&num_modules, arena);
@@ -236,7 +232,6 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
     }
 
     // 3. Post-process SDR arguments
-    #if defined(ANY_SDR_SUPPORT_ENABLED)
     if (config->sdr.rf_freq_hz_arg > 0.0f) {
         config->sdr.rf_freq_hz = (double)config->sdr.rf_freq_hz_arg;
         config->sdr.rf_freq_provided = true;
@@ -245,7 +240,6 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
         config->sdr.sample_rate_hz = (double)config->sdr.sample_rate_hz_arg;
         config->sdr.sample_rate_provided = true;
     }
-    #endif
 
     // 4. Call all validation functions from the config module in the correct order
     if (selected_ops->validate_options && !selected_ops->validate_options(config)) return false;

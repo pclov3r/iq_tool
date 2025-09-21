@@ -102,7 +102,6 @@ typedef struct AppConfig {
     int         filter_fft_size_arg;
 
     // --- SDR-Specific Arguments ---
-#if defined(ANY_SDR_SUPPORT_ENABLED)
     struct {
         double rf_freq_hz;
         float  rf_freq_hz_arg;
@@ -112,7 +111,6 @@ typedef struct AppConfig {
         bool   sample_rate_provided;
         bool   bias_t_enable;
     } sdr;
-#endif
 
     // --- Resolved Final Configuration ---
     OutputType  output_type;
