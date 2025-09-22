@@ -204,6 +204,7 @@
 #define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS  32
 #endif // defined(WITH_BLADERF)
 
+#define SPYSERVER_DEFAULT_SAMPLE_RATE_HZ 600000.0
 #define SPYSERVER_STREAM_BUFFER_BYTES (16 * 1024 * 1024) // 16 MB buffer for network jitter
 #define SPYSERVER_PREBUFFER_HIGH_WATER_MARK 0.5f // Start processing when buffer is 50% full
 
