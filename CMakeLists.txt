@@ -624,11 +624,12 @@ set(OTHER_SOURCES
     src/file_writer.c
     src/input_manager.c
     src/input_rawfile.c
-    src/input_spyserver_client.c # ADD THIS LINE
+    src/input_spyserver_client.c
     src/input_wav.c
     src/log.c
     src/main.c
     src/memory_arena.c
+    src/networking.c
     src/platform.c
     src/presets_loader.c
     src/pre_processor.c
@@ -734,7 +735,7 @@ if(NOT MSVC)
     if(NOT CPU_TARGET_ARCHITECTURE STREQUAL "")
         list(APPEND RELEASE_COMPILE_OPTIONS "-march=${CPU_TARGET_ARCHITECTURE}")
     endif()
-    
+
     # Apply the standard options to the ENTIRE executable target.
     # The DSP files will get these flags PLUS the -ffast-math flag from above.
     target_compile_options(iq_resample_tool PRIVATE

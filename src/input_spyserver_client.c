@@ -46,6 +46,7 @@
 #include "memory_arena.h"
 #include "ring_buffer.h"
 #include "utils.h"
+#include "networking.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -53,20 +54,13 @@
 #include <pthread.h>
 #include <stdint.h>
 
-// --- Platform-Specific Networking Includes ---
+// --- Platform-Specific Includes ---
 #ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <winsock2.h>
-#include <ws2tcpip.h>
+#include <windows.h>
 #else
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
 #include <unistd.h>
-#include <errno.h>
-#include <poll.h>
 #endif
+
 
 // =============================================================================
 // == START: Encapsulated SpyServer Protocol Definitions
@@ -187,12 +181,7 @@ static struct {
 
 // --- Private Module State ---
 typedef struct {
-#ifdef _WIN32
-    SOCKET socket_fd;
-    WSADATA wsa_data;
-#else
-    int socket_fd;
-#endif
+    NetworkingContext* net_ctx;
     SpyServerDeviceInfo device_info;
     bool device_info_ok;
     format_t active_format;
@@ -205,7 +194,7 @@ static const struct argparse_option spyserver_client_cli_options[] = {
     OPT_GROUP("SpyServer Client Options"),
     OPT_STRING(0, "spyserver-client-host", &s_spyserver_client_config.hostname, "Hostname or IP of the spyserver instance (Required).", NULL, 0, 0),
     OPT_INTEGER(0, "spyserver-client-port", &s_spyserver_client_config.port, "Port number of the spyserver instance (Required).", NULL, 0, 0),
-    OPT_INTEGER(0, "spyserver-client-gain", &s_spyserver_client_config.gain, "Set manual gain index (0-max). Disables AGC.", NULL, 0, 0),
+    OPT_INTEGER(0, "spyserver-client-gain", &s_spyserver_client_config.gain, "Set manual gain. Disables AGC. (Ignored on servers without gain control)", NULL, 0, 0),
     OPT_STRING(0, "spyserver-client-format", &s_spyserver_client_config.format_str, "Select sample format {cu8|cs16|cs24|cf32}. Default is cu8.", NULL, 0, 0),
 };
 
@@ -216,14 +205,13 @@ const struct argparse_option* spyserver_client_get_cli_options(int* count) {
 
 // --- Default Configuration ---
 void spyserver_client_set_default_config(struct AppConfig* config) {
-    (void)config;
+    config->sdr.sample_rate_hz = SPYSERVER_DEFAULT_SAMPLE_RATE_HZ;
     s_spyserver_client_config.hostname = NULL;
     s_spyserver_client_config.port = 0;
     s_spyserver_client_config.gain = -1;
     s_spyserver_client_config.gain_provided = false;
     s_spyserver_client_config.format_str = "cu8";
 }
-
 
 // --- Function Prototypes ---
 static void* spyserver_client_producer_thread(void* arg);
@@ -273,32 +261,6 @@ static format_t get_internal_format_from_spyserver_enum(int spyserver_format) {
     }
 }
 
-static bool send_all(SpyServerClientPrivateData* p, const void* data, size_t len) {
-    size_t total_sent = 0;
-    while (total_sent < len) {
-        int sent = send(p->socket_fd, (const char*)data + total_sent, (int)(len - total_sent), 0);
-        if (sent <= 0) {
-            log_error("Failed to send data to spyserver.");
-            return false;
-        }
-        total_sent += sent;
-    }
-    return true;
-}
-
-static bool recv_all(SpyServerClientPrivateData* p, void* data, size_t len) {
-    size_t total_recv = 0;
-    while (total_recv < len) {
-        int recvd = recv(p->socket_fd, (char*)data + total_recv, (int)(len - total_recv), 0);
-        if (recvd <= 0) {
-            log_error("Failed to receive data from SpyServer (connection closed or error).");
-            return false;
-        }
-        total_recv += recvd;
-    }
-    return true;
-}
-
 static bool send_setting(SpyServerClientPrivateData* p, uint32_t setting, uint32_t value) {
     unsigned char command_buffer[sizeof(SpyServerCommandHeader) + sizeof(SpyServerSettingTarget)];
 
@@ -310,7 +272,7 @@ static bool send_setting(SpyServerClientPrivateData* p, uint32_t setting, uint32
     payload->Setting = setting;
     payload->Value = value;
 
-    return send_all(p, command_buffer, sizeof(command_buffer));
+    return networking_send_all(p->net_ctx, command_buffer, sizeof(command_buffer));
 }
 
 // --- Validation Function ---
@@ -349,48 +311,21 @@ static bool spyserver_client_initialize(InputSourceContext* ctx) {
     SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(SpyServerClientPrivateData), true);
     if (!p) return false;
     resources->input_module_private_data = p;
+    p->net_ctx = NULL; // Initialize handle
 
-    p->stream_buffer = NULL;
-
-#ifdef _WIN32
-    int result = WSAStartup(MAKEWORD(2, 2), &p->wsa_data);
-    if (result != 0) {
-        log_fatal("WSAStartup failed with error: %d", result);
+    // This module now takes responsibility for initializing its dependency.
+    if (!networking_initialize_module()) {
+        log_error("SpyServer client failed because the networking module could not be initialized.");
         return false;
     }
-#endif
 
     log_info("Connecting to SpyServer at %s:%d...", s_spyserver_client_config.hostname, s_spyserver_client_config.port);
 
-    struct addrinfo hints, *res;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    char port_str[6];
-    snprintf(port_str, sizeof(port_str), "%d", s_spyserver_client_config.port);
-
-    if (getaddrinfo(s_spyserver_client_config.hostname, port_str, &hints, &res) != 0) {
-        log_fatal("Failed to resolve hostname %s", s_spyserver_client_config.hostname);
+    p->net_ctx = networking_connect(s_spyserver_client_config.hostname, s_spyserver_client_config.port, &resources->setup_arena);
+    if (!p->net_ctx) {
+        networking_cleanup_module(); // Release our reference on failure.
         return false;
     }
-
-    p->socket_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-#ifdef _WIN32
-    if (p->socket_fd == INVALID_SOCKET) {
-#else
-    if (p->socket_fd < 0) {
-#endif
-        log_fatal("Failed to create socket.");
-        freeaddrinfo(res);
-        return false;
-    }
-
-    if (connect(p->socket_fd, res->ai_addr, res->ai_addrlen) < 0) {
-        log_fatal("Failed to connect to SpyServer.");
-        freeaddrinfo(res);
-        return false;
-    }
-    freeaddrinfo(res);
 
     log_info("Connected. Performing handshake...");
 
@@ -402,85 +337,128 @@ static bool spyserver_client_initialize(InputSourceContext* ctx) {
 
     unsigned char* payload_buffer = (unsigned char*)mem_arena_alloc(&resources->setup_arena, payload_size, false);
     if (!payload_buffer) {
+        networking_disconnect(p->net_ctx);
+        networking_cleanup_module();
         return false;
     }
 
-    // Build the payload: [Protocol Version][User Agent String]
     uint32_t protocol_version = SPYSERVER_PROTOCOL_VERSION;
     memcpy(payload_buffer, &protocol_version, sizeof(uint32_t));
     memcpy(payload_buffer + sizeof(uint32_t), user_agent, user_agent_len);
 
-    // Build the command header with the correct dynamic size.
     SpyServerCommandHeader hello_header;
     hello_header.CommandType = SPYSERVER_CMD_HELLO;
     hello_header.BodySize = payload_size;
 
-    // Send the command and payload, then clean up.
-    bool send_ok = send_all(p, &hello_header, sizeof(hello_header)) &&
-                   send_all(p, payload_buffer, payload_size);
+    bool send_ok = networking_send_all(p->net_ctx, &hello_header, sizeof(hello_header)) &&
+                   networking_send_all(p->net_ctx, payload_buffer, payload_size);
 
-    if (!send_ok) return false;
+    if (!send_ok) {
+        networking_disconnect(p->net_ctx);
+        networking_cleanup_module();
+        return false;
+    }
 
     SpyServerMessageHeader response_header;
-    if (!recv_all(p, &response_header, sizeof(response_header))) return false;
+    if (!networking_recv_all(p->net_ctx, &response_header, sizeof(response_header))) {
+        networking_disconnect(p->net_ctx);
+        networking_cleanup_module();
+        return false;
+    }
 
     if (response_header.MessageType != SPYSERVER_MSG_TYPE_DEVICE_INFO) {
         log_fatal("Did not receive DeviceInfo after handshake. Server may have rejected the connection (MessageType=%u).", response_header.MessageType);
+        networking_disconnect(p->net_ctx);
+        networking_cleanup_module();
         return false;
     }
     if (response_header.BodySize != sizeof(SpyServerDeviceInfo)) {
         log_fatal("Received DeviceInfo with unexpected size (%u vs %zu).", response_header.BodySize, sizeof(SpyServerDeviceInfo));
+        networking_disconnect(p->net_ctx);
+        networking_cleanup_module();
         return false;
     }
-    if (!recv_all(p, &p->device_info, sizeof(SpyServerDeviceInfo))) return false;
+    if (!networking_recv_all(p->net_ctx, &p->device_info, sizeof(SpyServerDeviceInfo))) {
+        networking_disconnect(p->net_ctx);
+        networking_cleanup_module();
+        return false;
+    }
     p->device_info_ok = true;
 
     log_info("Handshake complete. Waiting for client sync message...");
-    if (!recv_all(p, &response_header, sizeof(response_header))) return false;
+    if (!networking_recv_all(p->net_ctx, &response_header, sizeof(response_header))) {
+        networking_disconnect(p->net_ctx);
+        networking_cleanup_module();
+        return false;
+    }
 
     if (response_header.MessageType != SPYSERVER_MSG_TYPE_CLIENT_SYNC) {
         log_fatal("Did not receive ClientSync message after handshake. Protocol error.");
+        networking_disconnect(p->net_ctx);
+        networking_cleanup_module();
         return false;
     }
 
     SpyServerClientSync sync_info;
     if (response_header.BodySize < sizeof(SpyServerClientSync)) {
         log_fatal("Received ClientSync with unexpected size (%u vs %zu). Protocol mismatch.", response_header.BodySize, sizeof(SpyServerClientSync));
+        networking_disconnect(p->net_ctx);
+        networking_cleanup_module();
         return false;
     }
 
-    if (!recv_all(p, &sync_info, sizeof(SpyServerClientSync))) return false;
+    if (!networking_recv_all(p->net_ctx, &sync_info, sizeof(SpyServerClientSync))) {
+        networking_disconnect(p->net_ctx);
+        networking_cleanup_module();
+        return false;
+    }
 
     size_t extra_bytes_to_discard = response_header.BodySize - sizeof(SpyServerClientSync);
     if (extra_bytes_to_discard > 0) {
         char discard_buffer[256];
         while (extra_bytes_to_discard > 0) {
             size_t to_read = (extra_bytes_to_discard > sizeof(discard_buffer)) ? sizeof(discard_buffer) : extra_bytes_to_discard;
-            if (!recv_all(p, discard_buffer, to_read)) return false;
+            if (!networking_recv_all(p->net_ctx, discard_buffer, to_read)) {
+                networking_disconnect(p->net_ctx);
+                networking_cleanup_module();
+                return false;
+            }
             extra_bytes_to_discard -= to_read;
         }
     }
 
     if (sync_info.CanControl == 0) {
         log_error("Cannot control the remote device. Another client has control.");
-        spyserver_client_cleanup(ctx);
+        networking_disconnect(p->net_ctx);
+        networking_cleanup_module();
         return false;
     }
 
     log_info("Client has control of the device. Negotiating stream parameters...");
 
-    format_t final_format = utils_get_format_from_string(s_spyserver_client_config.format_str);
-    log_info("Requesting sample format: %s", utils_get_format_description_string(final_format));
+    // Determine the format our client wants to request based on user args or defaults.
+    format_t requested_format = utils_get_format_from_string(s_spyserver_client_config.format_str);
+    log_info("Client requesting sample format: %s", utils_get_format_description_string(requested_format));
 
+    // Assume our request will be honored unless the server says otherwise.
+    format_t final_format = requested_format;
+
+    // Check if the server is forcing a specific format.
     uint32_t forced_format_enum = p->device_info.ForcedIQFormat;
-
     if (forced_format_enum != 0) {
-    	format_t forced_internal_format = get_internal_format_from_spyserver_enum(forced_format_enum);
-    log_warn("Server is forcing the use of format: %s, Overriding...",
-             utils_get_format_description_string(forced_internal_format));
-    final_format = forced_internal_format;
+        format_t server_forced_format = get_internal_format_from_spyserver_enum(forced_format_enum);
+
+        // Only warn and switch if the server's required format is valid and
+        // DIFFERENT from what we were going to request.
+        if (server_forced_format != FORMAT_UNKNOWN && server_forced_format != requested_format) {
+            log_warn("Server requires the %s sample format. Switching...",
+                     utils_get_format_description_string(server_forced_format));
+            // Override our choice with the server's required format.
+            final_format = server_forced_format;
+        }
     }
 
+    // Set the final, negotiated format for use by the rest of the application.
     p->active_format = final_format;
     resources->input_format = final_format;
     resources->input_bytes_per_sample_pair = get_bytes_per_sample(final_format);
@@ -540,6 +518,8 @@ static bool spyserver_client_initialize(InputSourceContext* ctx) {
 
     p->stream_buffer = ring_buffer_create(SPYSERVER_STREAM_BUFFER_BYTES);
     if (!p->stream_buffer) {
+        networking_disconnect(p->net_ctx);
+        networking_cleanup_module();
         return false;
     }
 
@@ -556,7 +536,7 @@ static void* spyserver_client_producer_thread(void* arg) {
 
     while (!is_shutdown_requested()) {
         SpyServerMessageHeader header;
-        if (!recv_all(p, &header, sizeof(header))) {
+        if (!networking_recv_all(p->net_ctx, &header, sizeof(header))) {
             if (!is_shutdown_requested()) {
                  handle_fatal_thread_error("Connection to spyserver lost.", resources);
             }
@@ -574,7 +554,7 @@ static void* spyserver_client_producer_thread(void* arg) {
         size_t bytes_remaining = body_size;
         while(bytes_remaining > 0) {
             size_t to_read = (bytes_remaining > sizeof(network_read_buffer)) ? sizeof(network_read_buffer) : bytes_remaining;
-            if (!recv_all(p, network_read_buffer, to_read)) {
+            if (!networking_recv_all(p->net_ctx, network_read_buffer, to_read)) {
                 if (!is_shutdown_requested()) handle_fatal_thread_error("Connection to spyserver lost.", resources);
                 goto end_loop;
             }
@@ -638,7 +618,6 @@ static void* spyserver_client_start_stream(InputSourceContext* ctx) {
         uint32_t msg_type = header.MessageType & 0xFFFF;
         uint32_t body_size = header.BodySize;
 
-        // If it's not an I/Q data packet, or it's empty, just discard the body and continue.
         if (body_size == 0 || msg_type < SPYSERVER_MSG_TYPE_UINT8_IQ || msg_type > SPYSERVER_MSG_TYPE_FLOAT_IQ) {
             if (body_size > 0) {
                 char discard_buf[1024];
@@ -651,7 +630,6 @@ static void* spyserver_client_start_stream(InputSourceContext* ctx) {
             continue;
         }
 
-        // It's a valid I/Q data packet. Process its body in pipeline-sized chunks.
         size_t bytes_remaining_in_packet = body_size;
         while (bytes_remaining_in_packet > 0) {
             SampleChunk* item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
@@ -702,15 +680,6 @@ static void spyserver_client_stop_stream(InputSourceContext* ctx) {
     AppResources* resources = ctx->resources;
     if (resources->input_module_private_data) {
         SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)resources->input_module_private_data;
-#ifdef _WIN32
-        if (p->socket_fd != INVALID_SOCKET) {
-            shutdown(p->socket_fd, SD_BOTH);
-        }
-#else
-        if (p->socket_fd >= 0) {
-            shutdown(p->socket_fd, SHUT_RDWR);
-        }
-#endif
         if (p->stream_buffer) {
             ring_buffer_signal_shutdown(p->stream_buffer);
         }
@@ -725,16 +694,11 @@ static void spyserver_client_cleanup(InputSourceContext* ctx) {
             ring_buffer_destroy(p->stream_buffer);
             p->stream_buffer = NULL;
         }
-#ifdef _WIN32
-        if (p->socket_fd != INVALID_SOCKET) {
-            closesocket(p->socket_fd);
+        if (p->net_ctx) {
+            networking_disconnect(p->net_ctx);
+            p->net_ctx = NULL;
         }
-        WSACleanup();
-#else
-        if (p->socket_fd >= 0) {
-            close(p->socket_fd);
-        }
-#endif
+        networking_cleanup_module();
     }
     log_info("Exiting SpyServer client...");
 }
