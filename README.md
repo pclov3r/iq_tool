@@ -1,4 +1,4 @@
-# iq_resample_tool
+# iq_tool
 
 A multi-threaded command-line tool for resampling, filtering, shifting, and correcting I/Q data streams.
 
@@ -76,8 +76,8 @@ You'll need a pretty standard C development environment.
 
 2.  **Build the tool:**
     ```bash
-    git clone https://github.com/pclov3r/iq_resample_tool.git
-    cd iq_resample_tool
+    git clone https://github.com/pclov3r/iq_tool.git
+    cd iq_tool
     mkdir build
     cd build
 
@@ -89,13 +89,13 @@ You'll need a pretty standard C development environment.
 
     make
     ```
-You'll find the `iq_resample_tool` executable in the `build` directory.
+You'll find the `iq_tool` executable in the `build` directory.
 
 ### On Windows
 
 #### Using Pre-compiled Binaries
 
-Pre-compiled binaries for Windows are available on the project's **[releases page](https://github.com/pclov3r/iq_resample_tool/releases)**.
+Pre-compiled binaries for Windows are available on the project's **[releases page](https://github.com/pclov3r/iq_tool/releases)**.
 
 > **Note:** Not every commit will result in a new release and Windows binary. Releases are typically made after significant changes.
 
@@ -112,7 +112,7 @@ Pre-compiled binaries for Windows are available on the project's **[releases pag
 
 ### How to Use It
 
-The best way to see all options is to run `iq_resample_tool --help`.
+The best way to see all options is to run `iq_tool --help`.
 
 **Note on Command-Line Options:** The help message is dynamic. It intelligently shows only the options relevant to the features you enabled during compilation. For example, if you build the tool without SDRplay support, you won't see the `--sdrplay-*` options. The example below shows the output with all SDR modules enabled.
 
@@ -215,36 +215,36 @@ Help & Version
 **Example 1: Basic File Resampling**
 Resample a WAV file to a 16-bit RF64 (large WAV) file with a custom output rate.
 ```bash
-iq_resample_tool --input wav my_capture.wav -f my_capture_resampled.wav --output-container wav-rf64 --output-sample-format cs16 --output-rate 240000
+iq_tool --input wav my_capture.wav -f my_capture_resampled.wav --output-container wav-rf64 --output-sample-format cs16 --output-rate 240000
 ```
 
 **Example 2: Channel Selection (FFT Filter)**
 Isolate a specific range of frequencies from a live SDR stream. The tool will automatically select the `fft` filter because this is an asymmetric (offset) filter.
 ```bash
-iq_resample_tool --input rtlsdr --sdr-rf-freq 98.5e6 --pass-range 50e3:250e3 --output-rate 240000 --stdout | ...
+iq_tool --input rtlsdr --sdr-rf-freq 98.5e6 --pass-range 50e3:250e3 --output-rate 240000 --stdout | ...
 ```
 
 **Example 3: Piping to a Decoder with a Preset (WAV Input)**
 Use the `cu8-nrsc5` preset to resample and automatically correct the frequency, then pipe it to `nrsc5`. (Assumes the WAV has frequency metadata).
 ```bash
-iq_resample_tool --input wav my_capture.wav --wav-center-target-freq 97.3e6 --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
+iq_tool --input wav my_capture.wav --wav-center-target-freq 97.3e6 --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
 ```
 
 **Example 4: Streaming from an SDRplay Device with Preset**
 Tune an SDRplay RSPdx to 102.5 MHz, set a manual gain level and select an antenna port before piping to nrsc5.
 ```bash
-iq_resample_tool --input sdrplay --sdr-rf-freq 102.5e6 --sdrplay-gain-level 20 --sdrplay-antenna B --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
+iq_tool --input sdrplay --sdr-rf-freq 102.5e6 --sdrplay-gain-level 20 --sdrplay-antenna B --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
 ```
 
 ### Configuration via Presets
 
-`iq_resample_tool` supports presets to save you from repeatedly typing the same output formatting options. A default `iq_resample_tool_presets.conf` is included in the repository, which you can use as a starting point for your own configurations. A preset bundles common settings like `target_rate`, `sample_format_name`, and `output_type` into a single flag (`--preset <name>`), which is perfect for common piping scenarios.
+`iq_tool` supports presets to save you from repeatedly typing the same output formatting options. A default `iq_tool_presets.conf` is included in the repository, which you can use as a starting point for your own configurations. A preset bundles common settings like `target_rate`, `sample_format_name`, and `output_type` into a single flag (`--preset <name>`), which is perfect for common piping scenarios.
 
 **Pro Tip:** If the tool finds config files in multiple locations, it will print a warning and load **none** of them to avoid confusion. Just delete the duplicates to fix it.
 
 **Search Locations:**
-*   **Windows:** The executable's directory, `%APPDATA%\\iq_resample_tool\\`, `%PROGRAMDATA%\\iq_resample_tool\\`
-*   **Linux:** The current directory, `$XDG_CONFIG_HOME/iq_resample_tool/`, `/etc/iq_resample_tool/` , `/usr/local/etc/iq_resample_tool`
+*   **Windows:** The executable's directory, `%APPDATA%\\iq_tool\\`, `%PROGRAMDATA%\\iq_tool\\`
+*   **Linux:** The current directory, `$XDG_CONFIG_HOME/iq_tool/`, `/etc/iq_tool/` , `/usr/local/etc/iq_tool`
 
 ### Current State & Future Plans
 
