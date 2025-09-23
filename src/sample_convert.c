@@ -1,14 +1,14 @@
 /*
  * sample_convert.c: Functions for converting between various I/Q sample formats.
  *
- * This file is part of iq_resample_tool.
+ * This file is part of iq_tool.
  *
  * The conversion logic in this file is derived from the 'convert-samples'
  * project by Guillaume LE VAILLANT. The original source can be found at:
  * https://codeberg.org/glv/convert-samples
  *
  * Copyright (C) 2021-2022 Guillaume LE VAILLANT
- * Copyright (C) 2025 iq_resample_tool
+ * Copyright (C) 2025 iq_tool
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

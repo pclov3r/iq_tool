@@ -3,7 +3,7 @@
  * @brief Defines the interface for loading and parsing user-defined presets.
  *
  * This module is responsible for finding and parsing the presets configuration
- * file (e.g., 'iq_resample_tool_presets.conf'). It defines the data structures
+ * file (e.g., 'iq_tool_presets.conf'). It defines the data structures
  * that hold a single preset's configuration and the internal types used by the
  * parser's dispatch table.
  */

@@ -8,16 +8,16 @@
  * found in the SDR++ project.
  */
 
-/*  input_spyserver_client - SpyServer network client for iq_resample_tool
+/*  input_spyserver_client - SpyServer network client for iq_tool
  *
- *  This file is part of iq_resample_tool.
+ *  This file is part of iq_tool.
  *
  *  The network protocol and data handling logic in this file is heavily based
  *  on the SpyServer source module from the SDR++ project.
  *  SDR++ is Copyright (C) 2020-2023 Alexandre Rouma <alexandre.rouma@gmail.com>
  *  and is licensed under the GPLv2.0-or-later.
  *
- *  Copyright (C) 2025 iq_resample_tool
+ *  Copyright (C) 2025 iq_tool
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by

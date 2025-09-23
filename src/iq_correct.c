@@ -1,8 +1,8 @@
 /*  iq_correct.c - I/Q imbalance correction and estimation utilities.
  *
- *  This file is part of iq_resample_tool.
+ *  This file is part of iq_tool.
  *
- *  Copyright (C) 2025 iq_resample_tool
+ *  Copyright (C) 2025 iq_tool
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
