@@ -4,7 +4,7 @@
  * Original Work Copyright (C) 2012-2015 Yecheng Fu <cofyc.jackson at gmail dot com>
  * This original work is licensed under the MIT license.
  *
- * Modifications Copyright (C) 2025 iq_resample_tool
+ * Modifications Copyright (C) 2025 iq_tool
  * The modifications to this file are licensed under the GPLv3.
  *
  * To comply with the original MIT license, its full text is included in the

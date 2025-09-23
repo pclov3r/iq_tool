@@ -6,7 +6,7 @@
  * @brief Central configuration for application resource usage and performance tuning.
  *
  * This file defines the key parameters that govern the memory footprint, latency,
- * and processing quality of the iq_resample_tool. Values here represent a balance
+ * and processing quality of the iq_tool. Values here represent a balance
  * between performance, memory usage, and stability. Adjust these values to tune
  * the application for specific hardware or use cases.
  */
@@ -15,8 +15,8 @@
 // == Tier 1: High-Level Application Behavior
 // =============================================================================
 
-#define APP_NAME "iq_resample_tool"
-#define PRESETS_FILENAME "iq_resample_tool_presets.conf"
+#define APP_NAME "iq_tool"
+#define PRESETS_FILENAME "iq_tool_presets.conf"
 
 // Defines the interval in seconds for printing progress updates to the console.
 // Set to 0 to disable progress updates entirely.

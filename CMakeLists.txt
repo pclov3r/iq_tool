@@ -10,7 +10,7 @@
 
 cmake_minimum_required(VERSION 3.10)
 
-project(iq_resample_tool C)
+project(iq_tool C)
 
 if(NOT CMAKE_BUILD_TYPE)
    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the build type: Debug Release RelWithDebInfo MinSizeRel" FORCE)
@@ -658,7 +658,7 @@ if(WITH_BLADERF)
 endif()
 
 # Create the executable from ALL source files
-add_executable(iq_resample_tool ${DSP_SOURCES} ${OTHER_SOURCES})
+add_executable(iq_tool ${DSP_SOURCES} ${OTHER_SOURCES})
 
 #=======================================================================
 # Check for system function availability
@@ -667,7 +667,7 @@ include(CheckFunctionExists)
 
 check_function_exists(strcasestr HAVE_STRCASESTR)
 if(HAVE_STRCASESTR)
-    target_compile_definitions(iq_resample_tool PRIVATE HAVE_STRCASESTR)
+    target_compile_definitions(iq_tool PRIVATE HAVE_STRCASESTR)
 endif()
 
 # Enable Link-Time Optimization (LTO) if the compiler supports it.
@@ -675,7 +675,7 @@ endif()
 include(CheckIPOSupported)
 check_ipo_supported(RESULT LTO_SUPPORTED)
 if(LTO_SUPPORTED)
-    set_property(TARGET iq_resample_tool PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+    set_property(TARGET iq_tool PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
     message(STATUS "Link-Time Optimization (LTO) enabled for target.")
 else()
     message(STATUS "Link-Time Optimization (LTO) not supported by this compiler.")
@@ -707,7 +707,7 @@ else()
 endif()
 
 # Pass the hash to the C code as a preprocessor macro: #define GIT_HASH "..."
-target_compile_definitions(iq_resample_tool PRIVATE GIT_HASH="${VERSION_INFO}")
+target_compile_definitions(iq_tool PRIVATE GIT_HASH="${VERSION_INFO}")
 #=======================================================================
 
 # Apply special compile options ONLY to the DSP source files for Release builds
@@ -717,9 +717,9 @@ if(NOT MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
     )
 endif()
 
-target_compile_definitions(iq_resample_tool PRIVATE APP_NAME="${PROJECT_NAME}")
+target_compile_definitions(iq_tool PRIVATE APP_NAME="${PROJECT_NAME}")
 
-configure_file(iq_resample_tool_presets.conf ${CMAKE_CURRENT_BINARY_DIR}/iq_resample_tool_presets.conf COPYONLY)
+configure_file(iq_tool_presets.conf ${CMAKE_CURRENT_BINARY_DIR}/iq_tool_presets.conf COPYONLY)
 
 if(NOT MSVC)
     set(DEBUG_COMPILE_OPTIONS
@@ -738,7 +738,7 @@ if(NOT MSVC)
 
     # Apply the standard options to the ENTIRE executable target.
     # The DSP files will get these flags PLUS the -ffast-math flag from above.
-    target_compile_options(iq_resample_tool PRIVATE
+    target_compile_options(iq_tool PRIVATE
         $<IF:$<CONFIG:Debug>,${DEBUG_COMPILE_OPTIONS},>
         $<IF:$<CONFIG:Release>,${RELEASE_COMPILE_OPTIONS},>
     )
@@ -750,7 +750,7 @@ endif()
 #=======================================================================
 message(STATUS "Linking libraries...")
 
-target_link_libraries(iq_resample_tool PRIVATE
+target_link_libraries(iq_tool PRIVATE
     ${FINAL_SNDFILE_LIBRARIES}
     ${FINAL_LIQUIDDSP_LIBRARIES}
     ${FINAL_EXPAT_LIBRARIES}
@@ -758,35 +758,35 @@ target_link_libraries(iq_resample_tool PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(iq_resample_tool PRIVATE
+    target_link_libraries(iq_tool PRIVATE
         shlwapi
         pathcch
         shell32
 	ws2_32
     )
 else()
-    target_link_libraries(iq_resample_tool PRIVATE m)
+    target_link_libraries(iq_tool PRIVATE m)
 endif()
 
 if(WITH_RTLSDR)
-    target_link_libraries(iq_resample_tool PRIVATE
+    target_link_libraries(iq_tool PRIVATE
         ${FINAL_RTLSDR_LIBRARIES}
         ${FINAL_LIBUSB_LIBRARIES}
     )
 endif()
 if(WITH_SDRPLAY)
     if(NOT WIN32)
-        target_link_libraries(iq_resample_tool PRIVATE ${FINAL_SDRPLAY_LIBRARIES})
+        target_link_libraries(iq_tool PRIVATE ${FINAL_SDRPLAY_LIBRARIES})
     endif()
 endif()
 if(WITH_HACKRF)
-    target_link_libraries(iq_resample_tool PRIVATE
+    target_link_libraries(iq_tool PRIVATE
         ${FINAL_HACKRF_LIBRARIES}
         ${FINAL_LIBUSB_LIBRARIES}
     )
 endif()
 if(WITH_BLADERF)
-    target_link_libraries(iq_resample_tool PRIVATE
+    target_link_libraries(iq_tool PRIVATE
         ${FINAL_BLADERF_LIBRARIES}
         ${FINAL_LIBUSB_LIBRARIES}
     )
@@ -820,15 +820,15 @@ endif()
 #=======================================================================
 # Installation / Uninstall / Summary
 #=======================================================================
-install(TARGETS iq_resample_tool
+install(TARGETS iq_tool
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 if(UNIX)
-    install(FILES iq_resample_tool_presets.conf DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/${PROJECT_NAME})
+    install(FILES iq_tool_presets.conf DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/${PROJECT_NAME})
     message(STATUS "Installing presets to: ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_SYSCONFDIR}/${PROJECT_NAME}")
 else()
-    install(FILES iq_resample_tool_presets.conf DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES iq_tool_presets.conf DESTINATION ${CMAKE_INSTALL_BINDIR})
     message(STATUS "Installing presets to: ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}")
 endif()
 

@@ -39,7 +39,7 @@ void print_usage(const char *prog_name, AppConfig *config, MemoryArena* arena) {
     struct argparse argparse;
     struct argparse_option all_options[MAX_TOTAL_OPTIONS];
     const char *const usages[] = {
-        "iq_resample_tool -i <type> [input_file] [options]",
+        "iq_tool -i <type> [input_file] [options]",
         NULL,
     };
 
@@ -185,7 +185,7 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config, MemoryArena* are
     }
 
     struct argparse argparse;
-    const char *const usages[] = { "iq_resample_tool -i <type> [input_file] [options]", NULL, };
+    const char *const usages[] = { "iq_tool -i <type> [input_file] [options]", NULL, };
     argparse_init(&argparse, all_options, usages, 0);
     argparse_describe(&argparse, "\nResamples an I/Q file or a stream from an SDR device to a specified format and sample rate.", NULL);
     int non_opt_argc = argparse_parse(&argparse, argc, (const char **)argv);
