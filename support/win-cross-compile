@@ -166,22 +166,22 @@ make "${MAKE_ARGS[@]}"
 if [ "$DO_PACKAGE" = "YES" ]; then
     echo "--- Packaging distributable ZIP file ---"
 
-    dist_dir="${prefix}/iq_resample_tool_win64"
-    zip_file_name="iq_resample_tool_${build_suffix}_win64.zip"
+    dist_dir="${prefix}/iq_tool_win64"
+    zip_file_name="iq_tool_${build_suffix}_win64.zip"
 
     rm -rf "${dist_dir}"
     mkdir -p "${dist_dir}"
 
     echo "Copying executable..."
-    cp "${prefix}/iq_resample_tool.exe" "${dist_dir}/"
+    cp "${prefix}/iq_tool.exe" "${dist_dir}/"
 
     echo "Copying license, documentation, and presets..."
     cp "${root}/LICENSE" "${dist_dir}/"
     cp "${root}/README.md" "${dist_dir}/"
-    if [ -f "${root}/iq_resample_tool_presets.conf" ]; then
-        cp "${root}/iq_resample_tool_presets.conf" "${dist_dir}/"
+    if [ -f "${root}/iq_tool_presets.conf" ]; then
+        cp "${root}/iq_tool_presets.conf" "${dist_dir}/"
     else
-        touch "${dist_dir}/iq_resample_tool_presets.conf"
+        touch "${dist_dir}/iq_tool_presets.conf"
     fi
 
     echo "Copying required DLLs..."
