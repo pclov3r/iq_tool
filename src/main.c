@@ -53,7 +53,6 @@ static bool validate_configuration(AppConfig *config, const AppResources *resour
 static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success);
 static void console_lock_function(bool lock, void *udata);
 static void application_progress_callback(unsigned long long current_output_frames, long long total_output_frames, unsigned long long current_bytes_written, void* udata);
-static const char* find_input_type_arg(int argc, char *argv[]);
 
 
 // --- Main Application Entry Point ---
@@ -100,29 +99,6 @@ int main(int argc, char *argv[]) {
     }
     arena_initialized = true;
 
-    // TODO: The entire configuration and argument parsing logic should be refactored.
-    // The current use of global state (g_config) and module-specific static globals
-    // creates a fragile order of operations. This workaround fixes the immediate bugs
-    // by pre-scanning for the input type, but a proper fix would involve giving each
-    // module ownership of its own configuration struct.
-    //
-    // Pre-scan arguments to find the input type BEFORE parsing everything else.
-    const char* input_type = find_input_type_arg(argc, argv);
-    if (input_type) {
-        int num_modules = 0;
-        const InputModule* modules = get_all_input_modules(&num_modules, &resources.setup_arena);
-        for (int i = 0; i < num_modules; ++i) {
-            if (strcasecmp(input_type, modules[i].name) == 0) {
-                if (modules[i].set_default_config) {
-                    // Apply defaults for ONLY the selected module. This ensures the correct
-                    // default sample rate is set, which can then be overridden by argparse.
-                    modules[i].set_default_config(&g_config);
-                }
-                break;
-            }
-        }
-    }
-
     g_config.gain = 1.0f;
 
 #ifndef _WIN32
@@ -155,14 +131,42 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
+    // STEP 1: PARSE FIRST
     if (!parse_arguments(argc, argv, &g_config, &resources.setup_arena)) {
         goto cleanup;
     }
 
+    // At this point, g_config is fully populated with user arguments, preset values,
+    // and all "_provided" flags for command-line args are correctly set.
+
+    // STEP 2: GET THE SPECIFIC MODULE
     resources.selected_input_ops = get_input_ops_by_name(g_config.input_type_str, &resources.setup_arena);
     if (!resources.selected_input_ops) {
         log_fatal("Input type '%s' is not supported or not enabled in this build.", g_config.input_type_str);
         goto cleanup;
+    }
+
+    // STEP 3: APPLY MODULE DEFAULTS & VALIDATE
+    // Find the module definition so we can get its default config and validation functions.
+    int num_modules = 0;
+    const InputModule* modules = get_all_input_modules(&num_modules, &resources.setup_arena);
+    for (int i = 0; i < num_modules; ++i) {
+        if (strcasecmp(g_config.input_type_str, modules[i].name) == 0) {
+            // We found the matching module.
+            // First, apply its defaults.
+            if (modules[i].set_default_config) {
+                modules[i].set_default_config(&g_config);
+            }
+
+            // Now that defaults are set, run the module's own validation function.
+            // This is the step we deferred from cli.c.
+            if (modules[i].ops->validate_options) {
+                if (!modules[i].ops->validate_options(&g_config)) {
+                    goto cleanup;
+                }
+            }
+            break; // Module found and handled, no need to keep searching.
+        }
     }
 
     if (!validate_configuration(&g_config, &resources)) {
@@ -224,24 +228,6 @@ cleanup:
 
 
 // --- Static Helper Function Definitions ---
-
-// TODO: This function is part of a temporary workaround. See the main() function
-// for a full explanation.
-//
-// This function manually scans the command-line arguments to find the value
-// of the `--input` or `-i` option *before* the main argparse library is invoked.
-// This is necessary to determine which input module's defaults should be loaded.
-// A proper architectural fix would eliminate the need for this pre-scan.
-static const char* find_input_type_arg(int argc, char *argv[]) {
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-i") == 0 || strcmp(argv[i], "--input") == 0) {
-            if (i + 1 < argc) {
-                return argv[i + 1];
-            }
-        }
-    }
-    return NULL;
-}
 
 static void initialize_resource_struct(AppResources *resources) {
     memset(resources, 0, sizeof(AppResources));

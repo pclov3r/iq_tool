@@ -242,7 +242,6 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
     }
 
     // 4. Call all validation functions from the config module in the correct order
-    if (selected_ops->validate_options && !selected_ops->validate_options(config)) return false;
     if (!validate_output_destination(config)) return false;
     if (!validate_output_type_and_sample_format(config)) return false;
     if (selected_ops->validate_generic_options && !selected_ops->validate_generic_options(config)) return false;
