@@ -22,7 +22,7 @@
 #include "memory_arena.h"
 #include "iq_correct.h"
 #include "dc_block.h"
-#include "thread_manager.h"
+#include "thread_manager.h" // New, centralized thread management
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
@@ -136,6 +136,9 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
+    // At this point, g_config is fully populated with user arguments, preset values,
+    // and all "_provided" flags for command-line args are correctly set.
+
     // STEP 2: GET THE SPECIFIC MODULE
     resources.selected_input_ops = get_input_ops_by_name(g_config.input_type_str, &resources.setup_arena);
     if (!resources.selected_input_ops) {
@@ -143,43 +146,29 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    // STEP 3: APPLY DEFAULTS CONDITIONALLY, RESPECTING USER OVERRIDES
+    // STEP 3: APPLY MODULE DEFAULTS & VALIDATE
+    // Find the module definition so we can get its default config and validation functions.
     int num_modules = 0;
     const InputModule* modules = get_all_input_modules(&num_modules, &resources.setup_arena);
     for (int i = 0; i < num_modules; ++i) {
         if (strcasecmp(g_config.input_type_str, modules[i].name) == 0) {
             // We found the matching module.
+            // First, apply its defaults.
             if (modules[i].set_default_config) {
-                
-                // Create a temporary "sandbox" config to hold the defaults.
-                AppConfig default_module_config;
-                memset(&default_module_config, 0, sizeof(AppConfig));
-                
-                // Populate the sandbox with this module's defaults.
-                modules[i].set_default_config(&default_module_config);
-
-                // Now, conditionally copy defaults from the sandbox to the real g_config.
-                if (!g_config.sdr.sample_rate_provided) {
-                    g_config.sdr.sample_rate_hz = default_module_config.sdr.sample_rate_hz;
-                }
-                
-                // NOTE: This is where you would add conditional logic for any *other*
-                // settings that live in the main AppConfig struct.
+                modules[i].set_default_config(&g_config);
             }
-            break;
+
+            // Now that defaults are set, run the module's own validation function.
+            // This is the step we deferred from cli.c.
+            if (modules[i].ops->validate_options) {
+                if (!modules[i].ops->validate_options(&g_config)) {
+                    goto cleanup;
+                }
+            }
+            break; // Module found and handled, no need to keep searching.
         }
     }
 
-    // STEP 4: VALIDATE THE FINAL CONFIGURATION
-    // First, run the module's own validation. This is now safe because all defaults
-    // and user values are correctly in place.
-    if (resources.selected_input_ops->validate_options) {
-        if (!resources.selected_input_ops->validate_options(&g_config)) {
-            goto cleanup;
-        }
-    }
-
-    // Then, run the generic validation.
     if (!validate_configuration(&g_config, &resources)) {
         goto cleanup;
     }
@@ -209,7 +198,7 @@ int main(int argc, char *argv[]) {
         // Error is logged inside start_all. A shutdown is already requested.
         // We still need to join the threads that *did* manage to start.
     }
-
+ 
     threads_join_all(&thread_manager);
     // --- End of Refactored Thread Management ---
 
