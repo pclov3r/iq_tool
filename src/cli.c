@@ -31,7 +31,7 @@ extern AppConfig g_config;
 // --- Forward Declarations ---
 static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const char** non_opt_argv, MemoryArena* arena);
 static int version_cb(struct argparse *self, const struct argparse_option *option);
-static int build_cli_options(struct argparse_option* options_buffer, int max_options, AppConfig* config, MemoryArena* arena);
+static int build_cli_options(struct argparse_option* options_buffer, int max_options, AppConfig* config, MemoryArena* arena, const char* active_input_type);
 
 
 void print_usage(const char *prog_name, AppConfig *config, MemoryArena* arena) {
@@ -44,7 +44,8 @@ void print_usage(const char *prog_name, AppConfig *config, MemoryArena* arena) {
     };
 
     // Build the full options list to generate complete help text.
-    build_cli_options(all_options, MAX_TOTAL_OPTIONS, config, arena);
+    // Pass NULL for active_input_type to ensure all module options are included in the help text.
+    build_cli_options(all_options, MAX_TOTAL_OPTIONS, config, arena, NULL);
 
     argparse_init(&argparse, all_options, usages, 0);
     argparse_describe(&argparse, "\nResamples an I/Q file or a stream from an SDR device to a specified format and sample rate.", NULL);
@@ -64,12 +65,12 @@ static int version_cb(struct argparse *self, const struct argparse_option *optio
     exit(EXIT_SUCCESS);
 }
 
-static int build_cli_options(struct argparse_option* options_buffer, int max_options, AppConfig* config, MemoryArena* arena) {
+static int build_cli_options(struct argparse_option* options_buffer, int max_options, AppConfig* config, MemoryArena* arena, const char* active_input_type) {
     int total_opts = 0;
 
     static const struct argparse_option generic_options[] = {
         OPT_GROUP("Required Input & Output"),
-        OPT_STRING('i', "input", &g_config.input_type_str, "Specifies the input type {wav|raw-file|rtlsdr|sdrplay|hackrf|bladerf}", NULL, 0, 0),
+        OPT_STRING('i', "input", &g_config.input_type_str, "Specifies the input type {wav|raw-file|rtlsdr|sdrplay|hackrf|bladerf|spyserver-client}", NULL, 0, 0),
         OPT_STRING('f', "file", &g_config.output_filename_arg, "Output to a file.", NULL, 0, 0),
         OPT_BOOLEAN('o', "stdout", &g_config.output_to_stdout, "Output binary data for piping to another program.", NULL, 0, 0),
         OPT_GROUP("Output Options"),
@@ -142,17 +143,16 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], filter_options, sizeof(filter_options) / sizeof(filter_options[0]));
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], sdr_general_options, sizeof(sdr_general_options) / sizeof(sdr_general_options[0]));
 
-    int num_modules = 0;
-    const InputModule* modules = get_all_input_modules(&num_modules, arena);
-    for (int i = 0; i < num_modules; ++i) {
-        if (modules[i].get_cli_options) {
-            int count = 0;
-            const struct argparse_option* opts = modules[i].get_cli_options(&count);
-            if (opts && count > 0) {
-                APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], opts, count);
-            }
-        }
-    }
+    // Call the Input Manager service to add all module-specific options.
+    // The complex logic of discovering and filtering options is now encapsulated there.
+    // --- BUGFIX: Pass the base pointer 'options_buffer', not the offset pointer. ---
+    input_manager_populate_cli_options(
+        options_buffer,
+        &total_opts,
+        max_options,
+        active_input_type,
+        arena
+    );
 
     if (config->num_presets > 0) {
         struct argparse_option preset_header[] = { OPT_GROUP("Available Presets") };
@@ -180,7 +180,11 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
 bool parse_arguments(int argc, char *argv[], AppConfig *config, MemoryArena* arena) {
     struct argparse_option all_options[MAX_TOTAL_OPTIONS];
     
-    if (build_cli_options(all_options, MAX_TOTAL_OPTIONS, config, arena) < 0) {
+    // The active input type is now passed down from main() to here.
+    // We need it to build the context-sensitive list of options.
+    const char* active_input_type = config->input_type_str;
+
+    if (build_cli_options(all_options, MAX_TOTAL_OPTIONS, config, arena, active_input_type) < 0) {
         return false;
     }
 
@@ -189,6 +193,13 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config, MemoryArena* are
     argparse_init(&argparse, all_options, usages, 0);
     argparse_describe(&argparse, "\nResamples an I/Q file or a stream from an SDR device to a specified format and sample rate.", NULL);
     int non_opt_argc = argparse_parse(&argparse, argc, (const char **)argv);
+
+    // After a successful parse, the input type string in g_config is now definitive.
+    // We must re-check it in case the user provided a different one than our pre-scan found
+    // (e.g. `-i wav -i rtlsdr`, argparse will take the last one).
+    if (g_config.input_type_str && active_input_type && strcasecmp(g_config.input_type_str, active_input_type) != 0) {
+        log_warn("Multiple --input arguments detected. Using the last one provided: '%s'", g_config.input_type_str);
+    }
 
     if (!validate_and_process_args(config, non_opt_argc, argparse.out, arena)) {
         return false;
