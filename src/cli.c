@@ -24,6 +24,10 @@
 
 extern AppConfig g_config;
 
+// MODIFIED: Store original command-line arguments for improved error reporting.
+static int g_original_argc = 0;
+static const char** g_original_argv = NULL;
+
 // MODIFIED: Moved these definitions to file scope to be accessible by all functions.
 #define MAX_STATIC_OPTIONS 128
 #define MAX_TOTAL_OPTIONS (MAX_STATIC_OPTIONS + MAX_PRESETS)
@@ -178,6 +182,10 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
 
 
 bool parse_arguments(int argc, char *argv[], AppConfig *config, MemoryArena* arena) {
+    // MODIFIED: Save original arguments for better error messages in validation.
+    g_original_argc = argc;
+    g_original_argv = (const char**)argv;
+
     struct argparse_option all_options[MAX_TOTAL_OPTIONS];
     
     // The active input type is now passed down from main() to here.
@@ -198,7 +206,8 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config, MemoryArena* are
     // We must re-check it in case the user provided a different one than our pre-scan found
     // (e.g. `-i wav -i rtlsdr`, argparse will take the last one).
     if (g_config.input_type_str && active_input_type && strcasecmp(g_config.input_type_str, active_input_type) != 0) {
-        log_warn("Multiple --input arguments detected. Using the last one provided: '%s'", g_config.input_type_str);
+        log_error("Multiple active modules provided.");
+	return false;
     }
 
     if (!validate_and_process_args(config, non_opt_argc, argparse.out, arena)) {
@@ -211,13 +220,13 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config, MemoryArena* are
 static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const char** non_opt_argv, MemoryArena* arena) {
     // 1. Basic parsing result checks
     if (!config->input_type_str) {
-        fprintf(stderr, "error: missing required argument --input <type>\n");
+        log_error("Missing required argument: --input <type>");
         return false;
     }
 
     InputSourceOps* selected_ops = get_input_ops_by_name(config->input_type_str, arena);
     if (!selected_ops) {
-        log_fatal("Invalid input type '%s'.", config->input_type_str);
+        log_error("Invalid input type '%s'.", config->input_type_str);
         return false;
     }
 
@@ -227,17 +236,38 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
 
     if (is_file_input) {
         if (non_opt_argc == 0) {
-            log_fatal("Missing <file_path> argument for '--input %s'.", config->input_type_str);
+            log_error("Missing <file_path> argument for '%s'.", config->input_type_str);
             return false;
         }
         if (non_opt_argc > 1) {
-            log_fatal("Unexpected non-option arguments found. Only one input file path is allowed.");
+            log_error("Only one input file path is allowed.");
             return false;
         }
         config->input_filename_arg = (char*)non_opt_argv[0];
     } else {
+        // MODIFIED: This entire block is replaced with the new, more intelligent error handling.
         if (non_opt_argc > 0) {
-            log_fatal("Unexpected non-option argument '%s' found for non-file input.", non_opt_argv[0]);
+            const char* unexpected_arg = non_opt_argv[0];
+            const char* preceding_arg = NULL;
+
+            // Search for the unexpected argument in the original command line to find what came before it.
+            for (int i = 1; i < g_original_argc; i++) {
+                // Use pointer comparison for efficiency, as argparse gives us the original pointers.
+                if (g_original_argv[i] == unexpected_arg) {
+                    preceding_arg = g_original_argv[i - 1];
+                    break;
+                }
+            }
+
+            // If the preceding argument looks like an option, we have found the likely culprit.
+            if (preceding_arg && preceding_arg[0] == '-') {
+                log_error("Argument '%s' provided is not valid for the active module '%s'.",
+                          preceding_arg, config->input_type_str);
+            } else {
+                // Fallback for a simple typo or a value without a preceding option.
+                log_error("Unexpected argument '%s' provided for active module '%s'.",
+                          unexpected_arg, config->input_type_str);
+            }
             return false;
         }
     }
