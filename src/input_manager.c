@@ -1,6 +1,7 @@
 #include "input_manager.h"
 #include "app_context.h"
 #include "memory_arena.h"
+#include "log.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -162,4 +163,49 @@ bool is_sdr_input(const char* name, MemoryArena* arena) {
     }
 
     return false; // Name not found
+}
+
+void input_manager_populate_cli_options(
+    struct argparse_option* dest_buffer,
+    int* total_opts_ptr,
+    int max_opts,
+    const char* active_input_type,
+    struct MemoryArena* arena)
+{
+    // Ensure the master list of modules is initialized.
+    initialize_modules_list(arena);
+    if (!all_modules) return;
+
+    for (int i = 0; i < num_all_modules; ++i) {
+        if (all_modules[i].get_cli_options) {
+            int count = 0;
+            const struct argparse_option* opts = all_modules[i].get_cli_options(&count);
+            if (opts && count > 0) {
+                // Check for buffer overflow before copying.
+                if (*total_opts_ptr + count > max_opts) {
+                    log_fatal("Internal error: Exceeded maximum number of CLI options.");
+                    return; // Stop processing to prevent buffer overflow.
+                }
+
+                // 1. Copy the block of options from the module.
+                memcpy(&dest_buffer[*total_opts_ptr], opts, count * sizeof(struct argparse_option));
+
+                // 2. Check if this module is INACTIVE.
+                //    The active_input_type might be NULL when generating help text,
+                //    in which case we don't disable anything.
+                if (active_input_type && strcasecmp(all_modules[i].name, active_input_type) != 0) {
+                    // 3. If so, loop through the options we just copied and
+                    //    "disable" them by nullifying their value pointers.
+                    for (int j = 0; j < count; j++) {
+                        struct argparse_option* opt = &dest_buffer[*total_opts_ptr + j];
+                        // Don't nullify group headers, as their 'value' field holds the help text.
+                        if (opt->type != ARGPARSE_OPT_GROUP) {
+                            opt->value = NULL;
+                        }
+                    }
+                }
+                *total_opts_ptr += count;
+            }
+        }
+    }
 }

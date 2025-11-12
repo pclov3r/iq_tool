@@ -100,22 +100,21 @@ int main(int argc, char *argv[]) {
     }
     arena_initialized = true;
 
-    // TODO: The entire configuration and argument parsing logic should be refactored.
-    // The current use of global state (g_config) and module-specific static globals
-    // creates a fragile order of operations. This workaround fixes the immediate bugs
-    // by pre-scanning for the input type, but a proper fix would involve giving each
-    // module ownership of its own configuration struct.
-    //
-    // Pre-scan arguments to find the input type BEFORE parsing everything else.
+    // Phase 1: Pre-scan arguments to find the input type. This provides the
+    // necessary context for the main parser to build a safe, filtered list of options.
     const char* input_type = find_input_type_arg(argc, argv);
     if (input_type) {
+        // Store the found type in the global config so it's available to the CLI module.
+        // The string is not duplicated here because it points to argv, which has a valid lifetime.
+        g_config.input_type_str = (char*)input_type;
+
+        // Apply defaults for ONLY the selected module. This ensures the correct
+        // default sample rate is set, which can then be overridden by argparse.
         int num_modules = 0;
         const InputModule* modules = get_all_input_modules(&num_modules, &resources.setup_arena);
         for (int i = 0; i < num_modules; ++i) {
             if (strcasecmp(input_type, modules[i].name) == 0) {
                 if (modules[i].set_default_config) {
-                    // Apply defaults for ONLY the selected module. This ensures the correct
-                    // default sample rate is set, which can then be overridden by argparse.
                     modules[i].set_default_config(&g_config);
                 }
                 break;
@@ -155,6 +154,8 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
+    // Phase 2: Call the main parser. It will now use the pre-set input_type_str
+    // to build a context-aware and safe list of options to parse.
     if (!parse_arguments(argc, argv, &g_config, &resources.setup_arena)) {
         goto cleanup;
     }
@@ -225,13 +226,12 @@ cleanup:
 
 // --- Static Helper Function Definitions ---
 
-// TODO: This function is part of a temporary workaround. See the main() function
-// for a full explanation.
-//
-// This function manually scans the command-line arguments to find the value
-// of the `--input` or `-i` option *before* the main argparse library is invoked.
-// This is necessary to determine which input module's defaults should be loaded.
-// A proper architectural fix would eliminate the need for this pre-scan.
+/**
+ * This function manually scans the command-line arguments to find the value
+ * of the `--input` or `-i` option *before* the main argparse library is invoked.
+ * This is the "Phase 1" of the parsing strategy, providing the necessary context
+ * for the main parser to build a safe, filtered list of options.
+ */
 static const char* find_input_type_arg(int argc, char *argv[]) {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-i") == 0 || strcmp(argv[i], "--input") == 0) {
