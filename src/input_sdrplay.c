@@ -792,6 +792,43 @@ static void* sdrplay_start_stream(InputSourceContext* ctx) {
     }
 
     sdrplay_api_ErrT err = sdrplay_api_Init(private_data->sdr_device->dev, &cbFns, resources);
+
+    // After a successful Init, explicitly apply the Bias-T setting if requested.
+    if (err == sdrplay_api_Success && resources->config->sdr.bias_t_enable) {
+        log_info("Enabling Bias-T");
+        sdrplay_api_ReasonForUpdateT reasonForUpdate = sdrplay_api_Update_None;
+        sdrplay_api_ReasonForUpdateExtension1T reasonForUpdateExt1 = sdrplay_api_Update_Ext1_None;
+        bool biast_request_handled = false; // Re-check if the device supports it
+
+        switch (private_data->sdr_device->hwVer) {
+            case SDRPLAY_RSP1A_ID:
+            case SDRPLAY_RSP1B_ID:
+                reasonForUpdate = sdrplay_api_Update_Rsp1a_BiasTControl;
+                biast_request_handled = true;
+                break;
+            case SDRPLAY_RSP2_ID:
+                reasonForUpdate = sdrplay_api_Update_Rsp2_BiasTControl;
+                biast_request_handled = true;
+                break;
+            case SDRPLAY_RSPduo_ID:
+                reasonForUpdate = sdrplay_api_Update_RspDuo_BiasTControl;
+                biast_request_handled = true;
+                break;
+            case SDRPLAY_RSPdx_ID:
+            case SDRPLAY_RSPdxR2_ID:
+                reasonForUpdateExt1 = sdrplay_api_Update_RspDx_BiasTControl;
+                biast_request_handled = true;
+                break;
+        }
+
+        if (biast_request_handled) {
+            err = sdrplay_api_Update(private_data->sdr_device->dev, private_data->sdr_device->tuner, reasonForUpdate, reasonForUpdateExt1);
+            if (err != sdrplay_api_Success) {
+                log_error("Failed to enable Bias-T: %s", sdrplay_api_GetErrorString(err));
+            }
+        }
+    }
+
     if (err != sdrplay_api_Success && err != sdrplay_api_StopPending) {
         sdrplay_api_ErrorInfoT *errorInfo = sdrplay_api_GetLastError(private_data->sdr_device);
         char error_buf[1536];
