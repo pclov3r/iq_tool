@@ -7,10 +7,10 @@
 #include "argparse.h"
 
 /**
- * @brief Returns a pointer to the InputSourceOps struct that implements
+ * @brief Returns a pointer to the ModuleApi struct that implements
  *        the input source interface for raw file input.
  */
-InputSourceOps* get_raw_file_input_ops(void);
+ModuleApi* get_raw_file_input_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the Raw File module.

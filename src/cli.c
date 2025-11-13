@@ -224,8 +224,8 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
         return false;
     }
 
-    InputSourceOps* selected_ops = get_input_ops_by_name(config->input_type_str, arena);
-    if (!selected_ops) {
+    ModuleApi* selected_module_api = get_input_module_api_by_name(config->input_type_str, arena);
+    if (!selected_module_api) {
         log_error("Invalid input type '%s'.", config->input_type_str);
         return false;
     }
@@ -283,10 +283,10 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
     }
 
     // 4. Call all validation functions from the config module in the correct order
-    if (selected_ops->validate_options && !selected_ops->validate_options(config)) return false;
+    if (selected_module_api->validate_options && !selected_module_api->validate_options(config)) return false;
     if (!validate_output_destination(config)) return false;
     if (!validate_output_type_and_sample_format(config)) return false;
-    if (selected_ops->validate_generic_options && !selected_ops->validate_generic_options(config)) return false;
+    if (selected_module_api->validate_generic_options && !selected_module_api->validate_generic_options(config)) return false;
     if (!validate_filter_options(config)) return false;
     if (!validate_iq_correction_options(config)) return false;
     if (!validate_option_combinations(config)) return false;

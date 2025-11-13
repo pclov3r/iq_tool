@@ -40,7 +40,7 @@ void* sdr_capture_thread_func(void* arg) {
     AppResources* resources = args->resources;
     InputSourceContext ctx = { .config = args->config, .resources = resources };
 
-    resources->selected_input_ops->start_stream(&ctx);
+    resources->selected_input_module_api->start_stream(&ctx);
 
     if (resources->sdr_input_buffer) {
         ring_buffer_signal_end_of_stream(resources->sdr_input_buffer);
@@ -114,7 +114,7 @@ void* reader_thread_func(void* arg) {
         case PIPELINE_MODE_REALTIME_SDR:
         case PIPELINE_MODE_FILE_PROCESSING: {
             InputSourceContext ctx = { .config = config, .resources = resources };
-            resources->selected_input_ops->start_stream(&ctx);
+            resources->selected_input_module_api->start_stream(&ctx);
             break;
         }
     }
@@ -163,7 +163,7 @@ void* writer_thread_func(void* arg) {
 
             size_t output_bytes_this_chunk = item->frames_to_write * resources->output_bytes_per_sample_pair;
             if (output_bytes_this_chunk > 0) {
-                size_t written_bytes = resources->writer_ctx.ops.write(&resources->writer_ctx, item->final_output_data, output_bytes_this_chunk);
+                size_t written_bytes = resources->writer_ctx.api.write(&resources->writer_ctx, item->final_output_data, output_bytes_this_chunk);
                 if (written_bytes != output_bytes_this_chunk) {
                     if (!is_shutdown_requested()) {
                         log_debug("Writer: stdout write error: %s", strerror(errno));
@@ -192,7 +192,7 @@ void* writer_thread_func(void* arg) {
                 break;
             }
 
-            size_t written_bytes = resources->writer_ctx.ops.write(&resources->writer_ctx, local_write_buffer, bytes_read);
+            size_t written_bytes = resources->writer_ctx.api.write(&resources->writer_ctx, local_write_buffer, bytes_read);
             
             if (written_bytes != bytes_read) {
                 char error_buf[256];
@@ -202,7 +202,7 @@ void* writer_thread_func(void* arg) {
             }
 
             if (resources->progress_callback) {
-                long long current_bytes = resources->writer_ctx.ops.get_total_bytes_written(&resources->writer_ctx);
+                long long current_bytes = resources->writer_ctx.api.get_total_bytes_written(&resources->writer_ctx);
                 unsigned long long current_frames = current_bytes / resources->output_bytes_per_sample_pair;
                 
                 pthread_mutex_lock(&resources->progress_mutex);

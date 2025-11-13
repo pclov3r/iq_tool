@@ -229,7 +229,7 @@ static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_S
 static void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext);
 
 
-static InputSourceOps sdrplay_ops = {
+static ModuleApi sdrplay_module_api = {
     .initialize = sdrplay_initialize,
     .start_stream = sdrplay_start_stream,
     .stop_stream = sdrplay_stop_stream,
@@ -241,8 +241,8 @@ static InputSourceOps sdrplay_ops = {
     .pre_stream_iq_correction = NULL
 };
 
-InputSourceOps* get_sdrplay_input_ops(void) {
-    return &sdrplay_ops;
+ModuleApi* get_sdrplay_input_module_api(void) {
+    return &sdrplay_module_api;
 }
 
 static bool sdrplay_validate_generic_options(const AppConfig* config) {
@@ -410,7 +410,7 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
                 temp_buffer[i * 2 + 1] = xq[samples_processed + i];
             }
             size_t bytes_to_write = samples_this_chunk * resources->input_bytes_per_sample_pair;
-            size_t written = resources->writer_ctx.ops.write(&resources->writer_ctx, temp_buffer, bytes_to_write);
+            size_t written = resources->writer_ctx.api.write(&resources->writer_ctx, temp_buffer, bytes_to_write);
             if (written < bytes_to_write) {
                 log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
                 request_shutdown();

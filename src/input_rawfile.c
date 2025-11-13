@@ -66,7 +66,7 @@ static void rawfile_get_summary_info(const InputSourceContext* ctx, InputSummary
 static bool rawfile_validate_options(AppConfig* config);
 static bool rawfile_pre_stream_iq_correction(InputSourceContext* ctx);
 
-static InputSourceOps raw_file_ops = {
+static ModuleApi raw_file_module_api = {
     .initialize = rawfile_initialize,
     .start_stream = rawfile_start_stream,
     .stop_stream = rawfile_stop_stream,
@@ -78,8 +78,8 @@ static InputSourceOps raw_file_ops = {
     .pre_stream_iq_correction = rawfile_pre_stream_iq_correction,
 };
 
-InputSourceOps* get_raw_file_input_ops(void) {
-    return &raw_file_ops;
+ModuleApi* get_raw_file_input_module_api(void) {
+    return &raw_file_module_api;
 }
 
 static bool rawfile_validate_options(AppConfig* config) {

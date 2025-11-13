@@ -74,7 +74,7 @@ typedef struct FileWriterOps {
  */
 typedef struct FileWriterContext {
     void*         private_data;         ///< Pointer to implementation-specific data (e.g., FILE* or SNDFILE*).
-    FileWriterOps ops;                  ///< The set of function pointers for the selected writer implementation.
+    FileWriterOps api;                  ///< The set of function pointers for the selected writer implementation.
     long long     total_bytes_written;  ///< A running total of bytes written through this context.
 } FileWriterContext;
 

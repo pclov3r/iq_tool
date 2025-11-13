@@ -43,14 +43,14 @@ static void initialize_modules_list(MemoryArena* arena) {
     InputModule temp_modules[] = {
         {
             .name = "wav",
-            .ops = get_wav_input_ops(),
+            .api = get_wav_input_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = wav_get_cli_options
         },
         {
             .name = "raw-file",
-            .ops = get_raw_file_input_ops(),
+            .api = get_raw_file_input_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = rawfile_get_cli_options
@@ -58,7 +58,7 @@ static void initialize_modules_list(MemoryArena* arena) {
     #if defined(WITH_RTLSDR)
         {
             .name = "rtlsdr",
-            .ops = get_rtlsdr_input_ops(),
+            .api = get_rtlsdr_input_module_api(),
             .is_sdr = true,
             .set_default_config = rtlsdr_set_default_config,
             .get_cli_options = rtlsdr_get_cli_options
@@ -67,7 +67,7 @@ static void initialize_modules_list(MemoryArena* arena) {
     #if defined(WITH_SDRPLAY)
         {
             .name = "sdrplay",
-            .ops = get_sdrplay_input_ops(),
+            .api = get_sdrplay_input_module_api(),
             .is_sdr = true,
             .set_default_config = sdrplay_set_default_config,
             .get_cli_options = sdrplay_get_cli_options
@@ -76,7 +76,7 @@ static void initialize_modules_list(MemoryArena* arena) {
     #if defined(WITH_HACKRF)
         {
             .name = "hackrf",
-            .ops = get_hackrf_input_ops(),
+            .api = get_hackrf_input_module_api(),
             .is_sdr = true,
             .set_default_config = hackrf_set_default_config,
             .get_cli_options = hackrf_get_cli_options
@@ -85,7 +85,7 @@ static void initialize_modules_list(MemoryArena* arena) {
     #if defined(WITH_BLADERF)
         {
             .name = "bladerf",
-            .ops = get_bladerf_input_ops(),
+            .api = get_bladerf_input_module_api(),
             .is_sdr = true,
             .set_default_config = bladerf_set_default_config,
             .get_cli_options = bladerf_get_cli_options
@@ -94,7 +94,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         // ADDED: Register the new SpyServer client module
         {
             .name = "spyserver-client",
-            .ops = get_spyserver_client_input_ops(),
+            .api = get_spyserver_client_input_module_api(),
             .is_sdr = true,
             .set_default_config = spyserver_client_set_default_config,
             .get_cli_options = spyserver_client_get_cli_options
@@ -131,14 +131,14 @@ void input_manager_apply_defaults(AppConfig* config, MemoryArena* arena) {
 }
 
 // MODIFIED: Signature updated.
-InputSourceOps* get_input_ops_by_name(const char* name, MemoryArena* arena) {
+ModuleApi* get_input_module_api_by_name(const char* name, MemoryArena* arena) {
     initialize_modules_list(arena); // Ensure the list is ready
     if (!name || !all_modules) {
         return NULL;
     }
     for (int i = 0; i < num_all_modules; ++i) {
         if (strcasecmp(name, all_modules[i].name) == 0) {
-            return all_modules[i].ops;
+            return all_modules[i].api;
         }
     }
     return NULL; // Name not recognized

@@ -86,7 +86,7 @@ static const char* get_tuner_name_from_enum(enum rtlsdr_tuner tuner_type) {
     }
 }
 
-static InputSourceOps rtlsdr_ops = {
+static ModuleApi rtlsdr_module_api = {
     .initialize = rtlsdr_initialize,
     .start_stream = rtlsdr_start_stream,
     .stop_stream = rtlsdr_stop_stream,
@@ -98,8 +98,8 @@ static InputSourceOps rtlsdr_ops = {
     .pre_stream_iq_correction = NULL
 };
 
-InputSourceOps* get_rtlsdr_input_ops(void) {
-    return &rtlsdr_ops;
+ModuleApi* get_rtlsdr_input_module_api(void) {
+    return &rtlsdr_module_api;
 }
 
 static bool rtlsdr_validate_generic_options(const AppConfig* config) {
@@ -315,7 +315,7 @@ static void* rtlsdr_start_stream(InputSourceContext* ctx) {
                         break;
                     }
                     if (n_read > 0) {
-                        size_t written = resources->writer_ctx.ops.write(&resources->writer_ctx, passthrough_buffer, n_read);
+                        size_t written = resources->writer_ctx.api.write(&resources->writer_ctx, passthrough_buffer, n_read);
                         if (written < (size_t)n_read) {
                             log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
                             request_shutdown();

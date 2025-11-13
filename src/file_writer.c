@@ -346,17 +346,17 @@ bool file_writer_init(FileWriterContext* ctx, const AppConfig* config) {
 
     switch (config->output_type) {
         case OUTPUT_TYPE_RAW:
-            ctx->ops.open = raw_open;
-            ctx->ops.write = raw_write;
-            ctx->ops.close = raw_close;
-            ctx->ops.get_total_bytes_written = generic_get_total_bytes_written;
+            ctx->api.open = raw_open;
+            ctx->api.write = raw_write;
+            ctx->api.close = raw_close;
+            ctx->api.get_total_bytes_written = generic_get_total_bytes_written;
             break;
         case OUTPUT_TYPE_WAV:
         case OUTPUT_TYPE_WAV_RF64:
-            ctx->ops.open = wav_open;
-            ctx->ops.write = wav_write;
-            ctx->ops.close = wav_close;
-            ctx->ops.get_total_bytes_written = generic_get_total_bytes_written;
+            ctx->api.open = wav_open;
+            ctx->api.write = wav_write;
+            ctx->api.close = wav_close;
+            ctx->api.get_total_bytes_written = generic_get_total_bytes_written;
             break;
         default:
             log_fatal("Internal Error: Unknown output type specified.");

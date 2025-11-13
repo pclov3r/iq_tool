@@ -11,10 +11,10 @@ struct AppConfig;
 // --- Function Declarations ---
 
 /**
- * @brief Returns a pointer to the InputSourceOps struct that implements
+ * @brief Returns a pointer to the ModuleApi struct that implements
  *        the input source interface for SDRplay device input.
  */
-InputSourceOps* get_sdrplay_input_ops(void);
+ModuleApi* get_sdrplay_input_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the SDRplay module.

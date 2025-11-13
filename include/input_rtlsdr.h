@@ -10,10 +10,10 @@ struct AppConfig;
 // --- Function Declarations ---
 
 /**
- * @brief Returns a pointer to the InputSourceOps struct that implements
+ * @brief Returns a pointer to the ModuleApi struct that implements
  *        the input source interface for RTL-SDR device input.
  */
-InputSourceOps* get_rtlsdr_input_ops(void);
+ModuleApi* get_rtlsdr_input_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the RTL-SDR module.

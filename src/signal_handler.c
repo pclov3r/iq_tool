@@ -112,10 +112,10 @@ void request_shutdown(void) {
 
         // Special case for RTL-SDR to unblock its synchronous read loop
         if (r->config && r->config->input_type_str && strcasecmp(r->config->input_type_str, "rtlsdr") == 0) {
-            if (r->selected_input_ops && r->selected_input_ops->stop_stream) {
+            if (r->selected_input_module_api && r->selected_input_module_api->stop_stream) {
                 log_debug("Signal handler is calling stop_stream for RTL-SDR to unblock reader thread.");
                 InputSourceContext ctx = { .config = r->config, .resources = r };
-                r->selected_input_ops->stop_stream(&ctx);
+                r->selected_input_module_api->stop_stream(&ctx);
             }
         }
 
