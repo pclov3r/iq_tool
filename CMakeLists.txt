@@ -622,13 +622,13 @@ set(OTHER_SOURCES
     src/cli.c
     src/config.c
     src/file_writer.c
-    src/input_manager.c
     src/input_rawfile.c
     src/input_spyserver_client.c
     src/input_wav.c
     src/log.c
     src/main.c
     src/memory_arena.c
+    src/module_manager.c
     src/networking.c
     src/platform.c
     src/presets_loader.c
