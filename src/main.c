@@ -14,7 +14,7 @@
 #include "cli.h"
 #include "setup.h"
 #include "utils.h"
-#include "input_manager.h"
+#include "module_manager.h"
 #include "sample_convert.h"
 #include "file_writer.h"
 #include "presets_loader.h"

@@ -5,7 +5,7 @@
 #include "frequency_shift.h"
 #include "log.h"
 #include "input_source.h"
-#include "input_manager.h"
+#include "module_manager.h"
 #include "file_writer.h"
 #include "sample_convert.h"
 #include "iq_correct.h"

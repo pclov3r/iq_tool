@@ -7,7 +7,7 @@
 #include "log.h"
 #include "utils.h"
 #include "argparse.h"
-#include "input_manager.h"
+#include "module_manager.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -147,10 +147,10 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], filter_options, sizeof(filter_options) / sizeof(filter_options[0]));
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], sdr_general_options, sizeof(sdr_general_options) / sizeof(sdr_general_options[0]));
 
-    // Call the Input Manager service to add all module-specific options.
+    // Call the Module Manager service to add all module-specific options.
     // The complex logic of discovering and filtering options is now encapsulated there.
     // --- BUGFIX: Pass the base pointer 'options_buffer', not the offset pointer. ---
-    input_manager_populate_cli_options(
+    module_manager_populate_cli_options(
         options_buffer,
         &total_opts,
         max_options,

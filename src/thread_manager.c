@@ -9,7 +9,7 @@
 #include "log.h"
 #include "utils.h"
 #include "signal_handler.h"
-#include "input_manager.h"    // Needed for is_sdr_input()
+#include "module_manager.h"    // Needed for is_sdr_input()
 #include "queue.h"            // Needed for queue_init() and queue_destroy()
 #include <string.h>
 #include <errno.h>

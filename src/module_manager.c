@@ -1,4 +1,4 @@
-#include "input_manager.h"
+#include "module_manager.h"
 #include "app_context.h"
 #include "memory_arena.h"
 #include "log.h"
@@ -119,7 +119,7 @@ static void initialize_modules_list(MemoryArena* arena) {
  * @brief Iterates through all registered modules and applies their default settings.
  */
 // MODIFIED: Signature updated.
-void input_manager_apply_defaults(AppConfig* config, MemoryArena* arena) {
+void module_manager_apply_defaults(AppConfig* config, MemoryArena* arena) {
     initialize_modules_list(arena); // Ensure the list is ready
     if (!all_modules) return;
 
@@ -165,7 +165,7 @@ bool is_sdr_input(const char* name, MemoryArena* arena) {
     return false; // Name not found
 }
 
-void input_manager_populate_cli_options(
+void module_manager_populate_cli_options(
     struct argparse_option* dest_buffer,
     int* total_opts_ptr,
     int max_opts,

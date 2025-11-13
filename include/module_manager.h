@@ -9,8 +9,8 @@
  * for generating help text.
  */
 
-#ifndef INPUT_MANAGER_H_
-#define INPUT_MANAGER_H_
+#ifndef MODULE_MANAGER_H_
+#define MODULE_MANAGER_H_
 
 #include "input_source.h" // Provides the core ModuleApi interface definition
 #include "argparse.h"     // Provides the argparse_option struct for CLI options
@@ -58,7 +58,7 @@ const InputModule* get_all_input_modules(int* count, struct MemoryArena* arena);
  * @param config The application configuration struct to be modified.
  * @param arena The memory arena, needed to initialize the module list on first call.
  */
-void input_manager_apply_defaults(struct AppConfig* config, struct MemoryArena* arena);
+void module_manager_apply_defaults(struct AppConfig* config, struct MemoryArena* arena);
 
 /**
  * @brief Checks if a given input type name corresponds to an SDR device.
@@ -81,7 +81,7 @@ bool is_sdr_input(const char* name, struct MemoryArena* arena);
  * @param active_input_type The name of the currently active input module.
  * @param arena The memory arena, needed to initialize the module list.
  */
-void input_manager_populate_cli_options(
+void module_manager_populate_cli_options(
     struct argparse_option* dest_buffer,
     int* total_opts_ptr,
     int max_opts,
@@ -89,4 +89,4 @@ void input_manager_populate_cli_options(
     struct MemoryArena* arena
 );
 
-#endif // INPUT_MANAGER_H_
+#endif // MODULE_MANAGER_H_
