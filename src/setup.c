@@ -59,7 +59,7 @@ typedef struct {
 static void* initializer_thread_func(void* arg) {
     InitializerContext* ctx = (InitializerContext*)arg;
     
-    bool result = ctx->input_ctx->resources->selected_input_ops->initialize(ctx->input_ctx);
+    bool result = ctx->input_ctx->resources->selected_input_module_api->initialize(ctx->input_ctx);
 
     pthread_mutex_lock(&ctx->mutex);
     ctx->success = result;
@@ -287,12 +287,12 @@ bool create_threading_components(AppConfig *config, AppResources *resources) {
 }
 
 void print_configuration_summary(const AppConfig *config, const AppResources *resources) {
-    if (!config || !resources || !resources->selected_input_ops) return;
+    if (!config || !resources || !resources->selected_input_module_api) return;
 
     InputSummaryInfo summary_info;
     memset(&summary_info, 0, sizeof(InputSummaryInfo));
     const InputSourceContext ctx = { .config = config, .resources = (AppResources*)resources };
-    resources->selected_input_ops->get_summary_info(&ctx, &summary_info);
+    resources->selected_input_module_api->get_summary_info(&ctx, &summary_info);
 
     int max_label_len = 0;
     if (summary_info.count > 0) {
@@ -404,7 +404,7 @@ bool prepare_output_stream(AppConfig *config, AppResources *resources) {
         return false;
     }
 
-    if (!resources->writer_ctx.ops.open(&resources->writer_ctx, config, resources, &resources->setup_arena)) {
+    if (!resources->writer_ctx.api.open(&resources->writer_ctx, config, resources, &resources->setup_arena)) {
         return false;
     }
     return true;
@@ -499,7 +499,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
         }
 
     } else {
-        if (!resources->selected_input_ops->initialize(&ctx)) {
+        if (!resources->selected_input_module_api->initialize(&ctx)) {
             goto cleanup;
         }
     }
@@ -538,8 +538,8 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     }
     resources->lifecycle_state = LIFECYCLE_STATE_FILTER_CREATED;
 
-    if (resources->selected_input_ops->pre_stream_iq_correction) {
-        if (!resources->selected_input_ops->pre_stream_iq_correction(&ctx)) {
+    if (resources->selected_input_module_api->pre_stream_iq_correction) {
+        if (!resources->selected_input_module_api->pre_stream_iq_correction(&ctx)) {
             goto cleanup;
         }
     }
@@ -623,7 +623,7 @@ cleanup:
     if (!success) {
         // Let main() handle the destruction of the arena.
     } else if (!config->output_to_stdout) {
-        bool source_has_known_length = resources->selected_input_ops->has_known_length();
+        bool source_has_known_length = resources->selected_input_module_api->has_known_length();
         if (!source_has_known_length) {
             log_info("Starting SDR capture...");
         } else {
@@ -640,11 +640,11 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
     switch (resources->lifecycle_state) {
         case LIFECYCLE_STATE_FULLY_INITIALIZED:
         case LIFECYCLE_STATE_OUTPUT_STREAM_OPEN:
-            if (resources->writer_ctx.ops.close) {
-                resources->writer_ctx.ops.close(&resources->writer_ctx);
+            if (resources->writer_ctx.api.close) {
+                resources->writer_ctx.api.close(&resources->writer_ctx);
             }
-            if (resources->writer_ctx.ops.get_total_bytes_written) {
-                resources->final_output_size_bytes = resources->writer_ctx.ops.get_total_bytes_written(&resources->writer_ctx);
+            if (resources->writer_ctx.api.get_total_bytes_written) {
+                resources->final_output_size_bytes = resources->writer_ctx.api.get_total_bytes_written(&resources->writer_ctx);
             }
             // fall-through
         case LIFECYCLE_STATE_IO_BUFFERS_CREATED:
@@ -684,8 +684,8 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
             dc_block_destroy(resources);
             // fall-through
         case LIFECYCLE_STATE_INPUT_INITIALIZED:
-            if (resources->selected_input_ops && resources->selected_input_ops->cleanup) {
-                resources->selected_input_ops->cleanup(&ctx);
+            if (resources->selected_input_module_api && resources->selected_input_module_api->cleanup) {
+                resources->selected_input_module_api->cleanup(&ctx);
             }
             // fall-through
         case LIFECYCLE_STATE_START:

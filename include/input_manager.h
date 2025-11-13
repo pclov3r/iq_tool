@@ -12,7 +12,7 @@
 #ifndef INPUT_MANAGER_H_
 #define INPUT_MANAGER_H_
 
-#include "input_source.h" // Provides the core InputSourceOps interface definition
+#include "input_source.h" // Provides the core ModuleApi interface definition
 #include "argparse.h"     // Provides the argparse_option struct for CLI options
 
 // --- Forward Declarations ---
@@ -28,7 +28,7 @@ struct MemoryArena;
  */
 typedef struct {
     const char* name; ///< The name used in the --input argument (e.g., "wav", "rtlsdr").
-    InputSourceOps* ops; ///< Pointer to the core operational functions for this module.
+    ModuleApi* api; ///< Pointer to the core operational functions for this module.
     bool is_sdr; ///< Flag to indicate if this is an SDR source.
     void (*set_default_config)(struct AppConfig* config); ///< Pointer to the default config function.
     const struct argparse_option* (*get_cli_options)(int* count); ///< Pointer to the CLI option function.
@@ -38,12 +38,12 @@ typedef struct {
 // --- Function Declarations ---
 
 /**
- * @brief Gets the appropriate InputSourceOps implementation based on a name.
+ * @brief Gets the appropriate ModuleApi implementation based on a name.
  * @param name The name of the input source to find (e.g., "wav").
  * @param arena The memory arena, needed to initialize the module list on first call.
- * @return A pointer to the corresponding InputSourceOps struct, or NULL if not found.
+ * @return A pointer to the corresponding ModuleApi struct, or NULL if not found.
  */
-InputSourceOps* get_input_ops_by_name(const char* name, struct MemoryArena* arena);
+ModuleApi* get_input_module_api_by_name(const char* name, struct MemoryArena* arena);
 
 /**
  * @brief Gets a list of all registered and compiled-in input modules.

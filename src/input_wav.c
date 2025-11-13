@@ -454,7 +454,7 @@ static void wav_cleanup(InputSourceContext* ctx);
 static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
 static bool wav_pre_stream_iq_correction(InputSourceContext* ctx);
 
-static InputSourceOps wav_ops = {
+static ModuleApi wav_module_api = {
     .initialize = wav_initialize,
     .start_stream = wav_start_stream,
     .stop_stream = wav_stop_stream,
@@ -466,8 +466,8 @@ static InputSourceOps wav_ops = {
     .pre_stream_iq_correction = wav_pre_stream_iq_correction,
 };
 
-InputSourceOps* get_wav_input_ops(void) {
-    return &wav_ops;
+ModuleApi* get_wav_input_module_api(void) {
+    return &wav_module_api;
 }
 
 static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {

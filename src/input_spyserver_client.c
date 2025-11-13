@@ -222,8 +222,8 @@ static void spyserver_client_cleanup(InputSourceContext* ctx);
 static void spyserver_client_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
 static bool spyserver_client_validate_options(AppConfig* config);
 
-// --- The InputSourceOps V-Table ---
-static InputSourceOps spyserver_client_ops = {
+// --- The ModuleApi V-Table ---
+static ModuleApi spyserver_client_module_api = {
     .initialize = spyserver_client_initialize,
     .start_stream = spyserver_client_start_stream,
     .stop_stream = spyserver_client_stop_stream,
@@ -235,8 +235,8 @@ static InputSourceOps spyserver_client_ops = {
     .pre_stream_iq_correction = NULL
 };
 
-InputSourceOps* get_spyserver_client_input_ops(void) {
-    return &spyserver_client_ops;
+ModuleApi* get_spyserver_client_input_module_api(void) {
+    return &spyserver_client_module_api;
 }
 
 // --- Helper Functions for Protocol and Logic ---

@@ -3,7 +3,7 @@
  * @brief Defines the abstract interface for all I/Q data input sources.
  *
  * This file is the cornerstone of the modular input system. It defines a generic
- * interface (`InputSourceOps`) using a structure of function pointers. Any
+ * interface (`ModuleApi`) using a structure of function pointers. Any
  * concrete input source, whether a file reader (WAV, raw) or a live SDR device
  * (RTL-SDR, SDRplay), must provide an implementation of this interface.
  *
@@ -70,10 +70,10 @@ typedef struct InputSourceContext {
 // --- The Core Interface Definition ---
 
 /**
- * @struct InputSourceOps
+ * @struct ModuleApi
  * @brief The "vtable" of function pointers that defines the input source interface.
  */
-typedef struct InputSourceOps {
+typedef struct ModuleApi {
     /**
      * @brief Performs initial setup (e.g., open file, select SDR device, set SDR parameters).
      * @param ctx The application context.
@@ -130,6 +130,6 @@ typedef struct InputSourceOps {
     // Optional function for file-based sources to perform initial I/Q correction.
     bool (*pre_stream_iq_correction)(struct InputSourceContext* ctx);
 
-} InputSourceOps;
+} ModuleApi;
 
 #endif // INPUT_SOURCE_H_

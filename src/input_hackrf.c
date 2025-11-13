@@ -81,7 +81,7 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer);
 static int hackrf_buffered_stream_callback(hackrf_transfer* transfer);
 
 
-static InputSourceOps hackrf_ops = {
+static ModuleApi hackrf_module_api = {
     .initialize = hackrf_initialize,
     .start_stream = hackrf_start_stream,
     .stop_stream = hackrf_stop_stream,
@@ -93,8 +93,8 @@ static InputSourceOps hackrf_ops = {
     .pre_stream_iq_correction = NULL
 };
 
-InputSourceOps* get_hackrf_input_ops(void) {
-    return &hackrf_ops;
+ModuleApi* get_hackrf_input_module_api(void) {
+    return &hackrf_module_api;
 }
 
 static bool hackrf_validate_generic_options(const AppConfig* config) {
@@ -174,7 +174,7 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
     }
 
     if (config->raw_passthrough) {
-        size_t written = resources->writer_ctx.ops.write(&resources->writer_ctx, transfer->buffer, transfer->valid_length);
+        size_t written = resources->writer_ctx.api.write(&resources->writer_ctx, transfer->buffer, transfer->valid_length);
         if (written < (size_t)transfer->valid_length) {
             log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
             request_shutdown();

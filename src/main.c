@@ -160,8 +160,8 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    resources.selected_input_ops = get_input_ops_by_name(g_config.input_type_str, &resources.setup_arena);
-    if (!resources.selected_input_ops) {
+    resources.selected_input_module_api = get_input_module_api_by_name(g_config.input_type_str, &resources.setup_arena);
+    if (!resources.selected_input_module_api) {
         log_fatal("Input type '%s' is not supported or not enabled in this build.", g_config.input_type_str);
         goto cleanup;
     }
@@ -292,7 +292,7 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
         fprintf(stderr, "%-*s %.2f MB/s\n", label_width, "Average Write Speed:", avg_write_speed_mbps);
     } else if (is_shutdown_requested()) {
-        bool source_has_known_length = resources->selected_input_ops->has_known_length();
+        bool source_has_known_length = resources->selected_input_module_api->has_known_length();
         if (!source_has_known_length) {
             fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Capture Stopped by User");
         } else {

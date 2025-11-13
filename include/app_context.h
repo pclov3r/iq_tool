@@ -219,7 +219,7 @@ typedef struct AppResources {
     unsigned int     post_fft_remainder_len;
 
     // --- Input/Output State ---
-    struct InputSourceOps* selected_input_ops;
+    struct ModuleApi* selected_input_module_api;
     InputSourceInfo source_info;
     format_t        input_format;
     size_t          input_bytes_per_sample_pair;
