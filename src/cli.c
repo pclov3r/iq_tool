@@ -224,7 +224,7 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
         return false;
     }
 
-    ModuleApi* selected_module_api = get_input_module_api_by_name(config->input_type_str, arena);
+    ModuleInterface* selected_module_api = module_manager_get_input_interface_by_name(config->input_type_str, arena);
     if (!selected_module_api) {
         log_error("Invalid input type '%s'.", config->input_type_str);
         return false;

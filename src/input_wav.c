@@ -454,7 +454,7 @@ static void wav_cleanup(ModuleContext* ctx);
 static void wav_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool wav_pre_stream_iq_correction(ModuleContext* ctx);
 
-static ModuleApi wav_module_api = {
+static ModuleInterface wav_module_api = {
     .initialize = wav_initialize,
     .start_stream = wav_start_stream,
     .stop_stream = wav_stop_stream,
@@ -466,7 +466,7 @@ static ModuleApi wav_module_api = {
     .pre_stream_iq_correction = wav_pre_stream_iq_correction,
 };
 
-ModuleApi* get_wav_input_module_api(void) {
+ModuleInterface* get_wav_input_module_api(void) {
     return &wav_module_api;
 }
 

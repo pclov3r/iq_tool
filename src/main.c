@@ -111,7 +111,7 @@ int main(int argc, char *argv[]) {
         // Apply defaults for ONLY the selected module. This ensures the correct
         // default sample rate is set, which can then be overridden by argparse.
         int num_modules = 0;
-        const Module* modules = get_all_input_modules(&num_modules, &resources.setup_arena);
+        const Module* modules = module_manager_get_all_modules(&num_modules, &resources.setup_arena);
         for (int i = 0; i < num_modules; ++i) {
             if (strcasecmp(input_type, modules[i].name) == 0) {
                 if (modules[i].set_default_config) {
@@ -160,7 +160,7 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    resources.selected_input_module_api = get_input_module_api_by_name(g_config.input_type_str, &resources.setup_arena);
+    resources.selected_input_module_api = module_manager_get_input_interface_by_name(g_config.input_type_str, &resources.setup_arena);
     if (!resources.selected_input_module_api) {
         log_fatal("Input type '%s' is not supported or not enabled in this build.", g_config.input_type_str);
         goto cleanup;

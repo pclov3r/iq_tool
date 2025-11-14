@@ -81,7 +81,7 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer);
 static int hackrf_buffered_stream_callback(hackrf_transfer* transfer);
 
 
-static ModuleApi hackrf_module_api = {
+static ModuleInterface hackrf_module_api = {
     .initialize = hackrf_initialize,
     .start_stream = hackrf_start_stream,
     .stop_stream = hackrf_stop_stream,
@@ -93,7 +93,7 @@ static ModuleApi hackrf_module_api = {
     .pre_stream_iq_correction = NULL
 };
 
-ModuleApi* get_hackrf_input_module_api(void) {
+ModuleInterface* get_hackrf_input_module_api(void) {
     return &hackrf_module_api;
 }
 

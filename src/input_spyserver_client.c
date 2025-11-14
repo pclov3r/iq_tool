@@ -222,8 +222,8 @@ static void spyserver_client_cleanup(ModuleContext* ctx);
 static void spyserver_client_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool spyserver_client_validate_options(AppConfig* config);
 
-// --- The ModuleApi V-Table ---
-static ModuleApi spyserver_client_module_api = {
+// --- The ModuleInterface V-Table ---
+static ModuleInterface spyserver_client_module_api = {
     .initialize = spyserver_client_initialize,
     .start_stream = spyserver_client_start_stream,
     .stop_stream = spyserver_client_stop_stream,
@@ -235,7 +235,7 @@ static ModuleApi spyserver_client_module_api = {
     .pre_stream_iq_correction = NULL
 };
 
-ModuleApi* get_spyserver_client_input_module_api(void) {
+ModuleInterface* get_spyserver_client_input_module_api(void) {
     return &spyserver_client_module_api;
 }
 

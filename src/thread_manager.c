@@ -9,7 +9,7 @@
 #include "log.h"
 #include "utils.h"
 #include "signal_handler.h"
-#include "module_manager.h"    // Needed for is_sdr_input()
+#include "module_manager.h"    // Needed for module_manager_is_sdr_module()
 #include "queue.h"            // Needed for queue_init() and queue_destroy()
 #include <string.h>
 #include <errno.h>
@@ -117,7 +117,7 @@ bool threads_init(ThreadManager* manager, struct AppConfig* config, struct AppRe
     flags->reader = true;
     flags->writer = true;
     flags->sdr_capture = (resources->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR);
-    flags->sdr_watchdog = is_sdr_input(config->input_type_str, &resources->setup_arena);
+    flags->sdr_watchdog = module_manager_is_sdr_module(config->input_type_str, &resources->setup_arena);
     flags->iq_optimizer = config->iq_correction.enable;
 
     if (config->raw_passthrough) {
