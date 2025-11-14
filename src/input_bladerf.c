@@ -193,16 +193,16 @@ const struct argparse_option* bladerf_get_cli_options(int* count) {
 }
 
 // Forward declarations for static functions
-static bool bladerf_initialize(InputSourceContext* ctx);
-static void* bladerf_start_stream(InputSourceContext* ctx);
-static void bladerf_stop_stream(InputSourceContext* ctx);
-static void bladerf_cleanup(InputSourceContext* ctx);
-static void bladerf_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
+static bool bladerf_initialize(ModuleContext* ctx);
+static void* bladerf_start_stream(ModuleContext* ctx);
+static void bladerf_stop_stream(ModuleContext* ctx);
+static void bladerf_cleanup(ModuleContext* ctx);
+static void bladerf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool bladerf_validate_options(AppConfig* config);
 static bool bladerf_validate_generic_options(const AppConfig* config);
 static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev);
-static bool bladerf_configure_standard_rate_and_rf(InputSourceContext* ctx, bladerf_channel rx_channel);
-static bool bladerf_configure_high_speed_rate_and_rf(InputSourceContext* ctx, bladerf_channel rx_channel);
+static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel);
+static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel);
 
 
 static ModuleApi bladerf_module_api = {
@@ -284,7 +284,7 @@ static bool bladerf_validate_options(AppConfig* config) {
     return true;
 }
 
-static bool bladerf_initialize(InputSourceContext* ctx) {
+static bool bladerf_initialize(ModuleContext* ctx) {
     AppConfig *config = (AppConfig*)ctx->config;
     AppResources *resources = ctx->resources;
     int status;
@@ -443,7 +443,7 @@ cleanup:
     return success;
 }
 
-static bool bladerf_configure_high_speed_rate_and_rf(InputSourceContext* ctx, bladerf_channel rx_channel) {
+static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel) {
     AppConfig *config = (AppConfig*)ctx->config;
     AppResources *resources = ctx->resources;
     BladerfPrivateData* private_data = (BladerfPrivateData*)resources->input_module_private_data;
@@ -484,7 +484,7 @@ static bool bladerf_configure_high_speed_rate_and_rf(InputSourceContext* ctx, bl
     return true;
 }
 
-static bool bladerf_configure_standard_rate_and_rf(InputSourceContext* ctx, bladerf_channel rx_channel) {
+static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel) {
     AppConfig *config = (AppConfig*)ctx->config;
     AppResources *resources = ctx->resources;
     BladerfPrivateData* private_data = (BladerfPrivateData*)resources->input_module_private_data;
@@ -523,7 +523,7 @@ static bool bladerf_configure_standard_rate_and_rf(InputSourceContext* ctx, blad
 }
 
 
-static void* bladerf_start_stream(InputSourceContext* ctx) {
+static void* bladerf_start_stream(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     const AppConfig *config = ctx->config;
     BladerfPrivateData* private_data = (BladerfPrivateData*)resources->input_module_private_data;
@@ -737,7 +737,7 @@ static void* bladerf_start_stream(InputSourceContext* ctx) {
     return NULL;
 }
 
-static void bladerf_stop_stream(InputSourceContext* ctx) {
+static void bladerf_stop_stream(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     BladerfPrivateData* private_data = (BladerfPrivateData*)resources->input_module_private_data;
     if (private_data && private_data->dev) {
@@ -755,7 +755,7 @@ static void bladerf_stop_stream(InputSourceContext* ctx) {
     }
 }
 
-static void bladerf_cleanup(InputSourceContext* ctx) {
+static void bladerf_cleanup(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     if (resources->input_module_private_data) {
         BladerfPrivateData* private_data = (BladerfPrivateData*)resources->input_module_private_data;
@@ -770,7 +770,7 @@ static void bladerf_cleanup(InputSourceContext* ctx) {
 #endif
 }
 
-static void bladerf_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
+static void bladerf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
     BladerfPrivateData* private_data = (BladerfPrivateData*)resources->input_module_private_data;

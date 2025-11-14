@@ -70,11 +70,11 @@ const struct argparse_option* hackrf_get_cli_options(int* count) {
     return hackrf_cli_options;
 }
 
-static bool hackrf_initialize(InputSourceContext* ctx);
-static void* hackrf_start_stream(InputSourceContext* ctx);
-static void hackrf_stop_stream(InputSourceContext* ctx);
-static void hackrf_cleanup(InputSourceContext* ctx);
-static void hackrf_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
+static bool hackrf_initialize(ModuleContext* ctx);
+static void* hackrf_start_stream(ModuleContext* ctx);
+static void hackrf_stop_stream(ModuleContext* ctx);
+static void hackrf_cleanup(ModuleContext* ctx);
+static void hackrf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool hackrf_validate_options(AppConfig* config);
 static bool hackrf_validate_generic_options(const AppConfig* config);
 static int hackrf_realtime_stream_callback(hackrf_transfer* transfer);
@@ -220,7 +220,7 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
 }
 
 
-static void hackrf_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
+static void hackrf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppResources *resources = ctx->resources;
     add_summary_item(info, "Input Source", "HackRF One");
@@ -235,7 +235,7 @@ static void hackrf_get_summary_info(const InputSourceContext* ctx, InputSummaryI
     add_summary_item(info, "Bias-T", "%s", config->sdr.bias_t_enable ? "Enabled" : "Disabled");
 }
 
-static bool hackrf_initialize(InputSourceContext* ctx) {
+static bool hackrf_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
     int result;
@@ -319,7 +319,7 @@ cleanup:
     return success;
 }
 
-static void* hackrf_start_stream(InputSourceContext* ctx) {
+static void* hackrf_start_stream(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     HackrfPrivateData* private_data = (HackrfPrivateData*)resources->input_module_private_data;
     int result;
@@ -355,7 +355,7 @@ static void* hackrf_start_stream(InputSourceContext* ctx) {
     return NULL;
 }
 
-static void hackrf_stop_stream(InputSourceContext* ctx) {
+static void hackrf_stop_stream(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     HackrfPrivateData* private_data = (HackrfPrivateData*)resources->input_module_private_data;
     if (private_data && private_data->dev && hackrf_is_streaming(private_data->dev) == HACKRF_TRUE) {
@@ -367,7 +367,7 @@ static void hackrf_stop_stream(InputSourceContext* ctx) {
     }
 }
 
-static void hackrf_cleanup(InputSourceContext* ctx) {
+static void hackrf_cleanup(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     if (resources->input_module_private_data) {
         HackrfPrivateData* private_data = (HackrfPrivateData*)resources->input_module_private_data;

@@ -447,12 +447,12 @@ const struct argparse_option* wav_get_cli_options(int* count) {
     return wav_cli_options;
 }
 
-static bool wav_initialize(InputSourceContext* ctx);
-static void* wav_start_stream(InputSourceContext* ctx);
-static void wav_stop_stream(InputSourceContext* ctx);
-static void wav_cleanup(InputSourceContext* ctx);
-static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
-static bool wav_pre_stream_iq_correction(InputSourceContext* ctx);
+static bool wav_initialize(ModuleContext* ctx);
+static void* wav_start_stream(ModuleContext* ctx);
+static void wav_stop_stream(ModuleContext* ctx);
+static void wav_cleanup(ModuleContext* ctx);
+static void wav_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
+static bool wav_pre_stream_iq_correction(ModuleContext* ctx);
 
 static ModuleApi wav_module_api = {
     .initialize = wav_initialize,
@@ -470,7 +470,7 @@ ModuleApi* get_wav_input_module_api(void) {
     return &wav_module_api;
 }
 
-static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
+static void wav_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppResources *resources = ctx->resources;
     WavPrivateData* private_data = (WavPrivateData*)resources->input_module_private_data;
@@ -540,7 +540,7 @@ static void wav_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo
     }
 }
 
-static bool wav_initialize(InputSourceContext* ctx) {
+static bool wav_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
 
@@ -632,7 +632,7 @@ static bool wav_initialize(InputSourceContext* ctx) {
     return true;
 }
 
-static void* wav_start_stream(InputSourceContext* ctx) {
+static void* wav_start_stream(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     WavPrivateData* private_data = (WavPrivateData*)resources->input_module_private_data;
 
@@ -696,11 +696,11 @@ static void* wav_start_stream(InputSourceContext* ctx) {
     return NULL;
 }
 
-static void wav_stop_stream(InputSourceContext* ctx) {
+static void wav_stop_stream(ModuleContext* ctx) {
     (void)ctx;
 }
 
-static void wav_cleanup(InputSourceContext* ctx) {
+static void wav_cleanup(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     if (resources->input_module_private_data) {
         WavPrivateData* private_data = (WavPrivateData*)resources->input_module_private_data;
@@ -713,7 +713,7 @@ static void wav_cleanup(InputSourceContext* ctx) {
     }
 }
 
-static bool wav_pre_stream_iq_correction(InputSourceContext* ctx) {
+static bool wav_pre_stream_iq_correction(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
     WavPrivateData* private_data = (WavPrivateData*)ctx->resources->input_module_private_data;
 

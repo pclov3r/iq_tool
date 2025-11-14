@@ -38,7 +38,7 @@ void* sdr_capture_thread_func(void* arg) {
 #endif
     PipelineContext* args = (PipelineContext*)arg;
     AppResources* resources = args->resources;
-    InputSourceContext ctx = { .config = args->config, .resources = resources };
+    ModuleContext ctx = { .config = args->config, .resources = resources };
 
     resources->selected_input_module_api->start_stream(&ctx);
 
@@ -113,7 +113,7 @@ void* reader_thread_func(void* arg) {
 
         case PIPELINE_MODE_REALTIME_SDR:
         case PIPELINE_MODE_FILE_PROCESSING: {
-            InputSourceContext ctx = { .config = config, .resources = resources };
+            ModuleContext ctx = { .config = config, .resources = resources };
             resources->selected_input_module_api->start_stream(&ctx);
             break;
         }

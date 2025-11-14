@@ -216,11 +216,11 @@ const struct argparse_option* sdrplay_get_cli_options(int* count) {
     return sdrplay_cli_options;
 }
 
-static bool sdrplay_initialize(InputSourceContext* ctx);
-static void* sdrplay_start_stream(InputSourceContext* ctx);
-static void sdrplay_stop_stream(InputSourceContext* ctx);
-static void sdrplay_cleanup(InputSourceContext* ctx);
-static void sdrplay_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
+static bool sdrplay_initialize(ModuleContext* ctx);
+static void* sdrplay_start_stream(ModuleContext* ctx);
+static void sdrplay_stop_stream(ModuleContext* ctx);
+static void sdrplay_cleanup(ModuleContext* ctx);
+static void sdrplay_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool sdrplay_validate_options(AppConfig* config);
 static bool sdrplay_validate_generic_options(const AppConfig* config);
 static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz);
@@ -516,7 +516,7 @@ static void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_Tuner
     }
 }
 
-static void sdrplay_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
+static void sdrplay_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
     SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
@@ -559,7 +559,7 @@ static void sdrplay_get_summary_info(const InputSourceContext* ctx, InputSummary
     add_summary_item(info, "Bias-T", "%s", config->sdr.bias_t_enable ? "Enabled" : "Disabled");
 }
 
-static bool sdrplay_initialize(InputSourceContext* ctx) {
+static bool sdrplay_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
     sdrplay_api_ErrT err;
@@ -776,7 +776,7 @@ cleanup:
     return success;
 }
 
-static void* sdrplay_start_stream(InputSourceContext* ctx) {
+static void* sdrplay_start_stream(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
     sdrplay_api_CallbackFnsT cbFns;
@@ -853,7 +853,7 @@ static void* sdrplay_start_stream(InputSourceContext* ctx) {
     return NULL;
 }
 
-static void sdrplay_stop_stream(InputSourceContext* ctx) {
+static void sdrplay_stop_stream(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
     if (private_data && private_data->sdr_device) {
@@ -865,7 +865,7 @@ static void sdrplay_stop_stream(InputSourceContext* ctx) {
     }
 }
 
-static void sdrplay_cleanup(InputSourceContext* ctx) {
+static void sdrplay_cleanup(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     if (resources->input_module_private_data) {
         SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
