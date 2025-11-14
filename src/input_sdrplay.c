@@ -229,7 +229,7 @@ static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_S
 static void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext);
 
 
-static ModuleApi sdrplay_module_api = {
+static ModuleInterface sdrplay_module_api = {
     .initialize = sdrplay_initialize,
     .start_stream = sdrplay_start_stream,
     .stop_stream = sdrplay_stop_stream,
@@ -241,7 +241,7 @@ static ModuleApi sdrplay_module_api = {
     .pre_stream_iq_correction = NULL
 };
 
-ModuleApi* get_sdrplay_input_module_api(void) {
+ModuleInterface* get_sdrplay_input_module_api(void) {
     return &sdrplay_module_api;
 }
 

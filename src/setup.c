@@ -418,7 +418,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     float resample_ratio = 0.0f;
 
     // STEP 1: Determine pipeline mode
-    bool is_sdr = is_sdr_input(config->input_type_str, &resources->setup_arena);
+    bool is_sdr = module_manager_is_sdr_module(config->input_type_str, &resources->setup_arena);
     if (is_sdr) {
         if (config->output_to_stdout) {
             resources->pipeline_mode = PIPELINE_MODE_REALTIME_SDR;

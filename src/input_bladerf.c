@@ -205,7 +205,7 @@ static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_c
 static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel);
 
 
-static ModuleApi bladerf_module_api = {
+static ModuleInterface bladerf_module_api = {
     .initialize = bladerf_initialize,
     .start_stream = bladerf_start_stream,
     .stop_stream = bladerf_stop_stream,
@@ -217,7 +217,7 @@ static ModuleApi bladerf_module_api = {
     .pre_stream_iq_correction = NULL
 };
 
-ModuleApi* get_bladerf_input_module_api(void) {
+ModuleInterface* get_bladerf_input_module_api(void) {
     return &bladerf_module_api;
 }
 

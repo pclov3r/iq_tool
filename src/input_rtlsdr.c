@@ -86,7 +86,7 @@ static const char* get_tuner_name_from_enum(enum rtlsdr_tuner tuner_type) {
     }
 }
 
-static ModuleApi rtlsdr_module_api = {
+static ModuleInterface rtlsdr_module_api = {
     .initialize = rtlsdr_initialize,
     .start_stream = rtlsdr_start_stream,
     .stop_stream = rtlsdr_stop_stream,
@@ -98,7 +98,7 @@ static ModuleApi rtlsdr_module_api = {
     .pre_stream_iq_correction = NULL
 };
 
-ModuleApi* get_rtlsdr_input_module_api(void) {
+ModuleInterface* get_rtlsdr_input_module_api(void) {
     return &rtlsdr_module_api;
 }
 

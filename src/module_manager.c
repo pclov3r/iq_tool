@@ -122,10 +122,23 @@ static void initialize_modules_list(MemoryArena* arena) {
     modules_initialized = true;
 }
 
+static const Module* _find_module_by_name_and_type(const char* name, ModuleType type, MemoryArena* arena) {
+    initialize_modules_list(arena); // Ensure the list is ready
+    if (!name || !all_modules) {
+        return NULL;
+    }
+    for (int i = 0; i < num_all_modules; ++i) {
+        // THE CRITICAL CHECK: We now check both the name AND the type!
+        if (all_modules[i].type == type && strcasecmp(name, all_modules[i].name) == 0) {
+            return &all_modules[i];
+        }
+    }
+    return NULL; // Not found
+}
+
 /**
  * @brief Iterates through all registered modules and applies their default settings.
  */
-// MODIFIED: Signature updated.
 void module_manager_apply_defaults(AppConfig* config, MemoryArena* arena) {
     initialize_modules_list(arena); // Ensure the list is ready
     if (!all_modules) return;
@@ -137,39 +150,42 @@ void module_manager_apply_defaults(AppConfig* config, MemoryArena* arena) {
     }
 }
 
-// MODIFIED: Signature updated.
-ModuleApi* get_input_module_api_by_name(const char* name, MemoryArena* arena) {
-    initialize_modules_list(arena); // Ensure the list is ready
+ModuleInterface* module_manager_get_input_interface_by_name(const char* name, MemoryArena* arena) {
+    // This function now delegates the search to our new, type-aware helper.
+    // It explicitly requests a module of type INPUT.
+    const Module* found_module = _find_module_by_name_and_type(name, MODULE_TYPE_INPUT, arena);
+
+    // If a module matching both name and type was found, return its API.
+    // Otherwise, return NULL.
+    if (found_module) {
+        return found_module->api;
+    }
+
+    return NULL;
+}
+
+const Module* module_manager_get_module_by_name(const char* name, MemoryArena* arena) {
+    initialize_modules_list(arena);
     if (!name || !all_modules) {
         return NULL;
     }
     for (int i = 0; i < num_all_modules; ++i) {
         if (strcasecmp(name, all_modules[i].name) == 0) {
-            return all_modules[i].api;
+            return &all_modules[i];
         }
     }
-    return NULL; // Name not recognized
+    return NULL;
 }
 
-// MODIFIED: Signature updated.
-const Module* get_all_input_modules(int* count, MemoryArena* arena) {
+const Module* module_manager_get_all_modules(int* count, MemoryArena* arena) {
     initialize_modules_list(arena); // Ensure the list is ready
     *count = num_all_modules;
     return all_modules;
 }
 
-// MODIFIED: Signature updated.
-bool is_sdr_input(const char* name, MemoryArena* arena) {
-    if (!name) return false;
-    initialize_modules_list(arena); // Ensure the list is ready
-
-    for (int i = 0; i < num_all_modules; ++i) {
-        if (strcasecmp(name, all_modules[i].name) == 0) {
-            return all_modules[i].is_sdr;
-        }
-    }
-
-    return false; // Name not found
+bool module_manager_is_sdr_module(const char* name, MemoryArena* arena) {
+    const Module* mod = module_manager_get_module_by_name(name, arena);
+    return (mod != NULL && mod->is_sdr);
 }
 
 void module_manager_populate_cli_options(

@@ -10,10 +10,10 @@ struct AppConfig;
 // --- Function Declarations ---
 
 /**
- * @brief Returns a pointer to the ModuleApi struct that implements
+ * @brief Returns a pointer to the ModuleInterface struct that implements
  *        the input source interface for HackRF device input.
  */
-ModuleApi* get_hackrf_input_module_api(void);
+ModuleInterface* get_hackrf_input_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the HackRF module.
