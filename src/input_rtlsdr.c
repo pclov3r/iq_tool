@@ -64,11 +64,11 @@ const struct argparse_option* rtlsdr_get_cli_options(int* count) {
     return rtlsdr_cli_options;
 }
 
-static bool rtlsdr_initialize(InputSourceContext* ctx);
-static void* rtlsdr_start_stream(InputSourceContext* ctx);
-static void rtlsdr_stop_stream(InputSourceContext* ctx);
-static void rtlsdr_cleanup(InputSourceContext* ctx);
-static void rtlsdr_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
+static bool rtlsdr_initialize(ModuleContext* ctx);
+static void* rtlsdr_start_stream(ModuleContext* ctx);
+static void rtlsdr_stop_stream(ModuleContext* ctx);
+static void rtlsdr_cleanup(ModuleContext* ctx);
+static void rtlsdr_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool rtlsdr_validate_options(AppConfig* config);
 static bool rtlsdr_validate_generic_options(const AppConfig* config);
 static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ctx);
@@ -158,7 +158,7 @@ static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ct
     );
 }
 
-static bool rtlsdr_initialize(InputSourceContext* ctx) {
+static bool rtlsdr_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
     int result;
@@ -266,7 +266,7 @@ cleanup:
     return success;
 }
 
-static void* rtlsdr_start_stream(InputSourceContext* ctx) {
+static void* rtlsdr_start_stream(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     const AppConfig *config = ctx->config;
     RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)resources->input_module_private_data;
@@ -380,7 +380,7 @@ static void* rtlsdr_start_stream(InputSourceContext* ctx) {
     return NULL;
 }
 
-static void rtlsdr_stop_stream(InputSourceContext* ctx) {
+static void rtlsdr_stop_stream(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)resources->input_module_private_data;
     if (private_data && private_data->dev) {
@@ -389,7 +389,7 @@ static void rtlsdr_stop_stream(InputSourceContext* ctx) {
     }
 }
 
-static void rtlsdr_cleanup(InputSourceContext* ctx) {
+static void rtlsdr_cleanup(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     if (resources->input_module_private_data) {
         RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)resources->input_module_private_data;
@@ -402,7 +402,7 @@ static void rtlsdr_cleanup(InputSourceContext* ctx) {
     }
 }
 
-static void rtlsdr_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
+static void rtlsdr_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
     RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)resources->input_module_private_data;

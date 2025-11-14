@@ -58,13 +58,13 @@ const struct argparse_option* rawfile_get_cli_options(int* count) {
     return rawfile_cli_options;
 }
 
-static bool rawfile_initialize(InputSourceContext* ctx);
-static void* rawfile_start_stream(InputSourceContext* ctx);
-static void rawfile_stop_stream(InputSourceContext* ctx);
-static void rawfile_cleanup(InputSourceContext* ctx);
-static void rawfile_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
+static bool rawfile_initialize(ModuleContext* ctx);
+static void* rawfile_start_stream(ModuleContext* ctx);
+static void rawfile_stop_stream(ModuleContext* ctx);
+static void rawfile_cleanup(ModuleContext* ctx);
+static void rawfile_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool rawfile_validate_options(AppConfig* config);
-static bool rawfile_pre_stream_iq_correction(InputSourceContext* ctx);
+static bool rawfile_pre_stream_iq_correction(ModuleContext* ctx);
 
 static ModuleApi raw_file_module_api = {
     .initialize = rawfile_initialize,
@@ -104,7 +104,7 @@ static bool rawfile_validate_options(AppConfig* config) {
     return true;
 }
 
-static bool rawfile_initialize(InputSourceContext* ctx) {
+static bool rawfile_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
 
@@ -166,7 +166,7 @@ static bool rawfile_initialize(InputSourceContext* ctx) {
     return true;
 }
 
-static void* rawfile_start_stream(InputSourceContext* ctx) {
+static void* rawfile_start_stream(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     const AppConfig *config = ctx->config;
     RawfilePrivateData* private_data = (RawfilePrivateData*)resources->input_module_private_data;
@@ -259,11 +259,11 @@ static void* rawfile_start_stream(InputSourceContext* ctx) {
     return NULL;
 }
 
-static void rawfile_stop_stream(InputSourceContext* ctx) {
+static void rawfile_stop_stream(ModuleContext* ctx) {
     (void)ctx;
 }
 
-static void rawfile_cleanup(InputSourceContext* ctx) {
+static void rawfile_cleanup(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     if (resources->input_module_private_data) {
         RawfilePrivateData* private_data = (RawfilePrivateData*)resources->input_module_private_data;
@@ -276,7 +276,7 @@ static void rawfile_cleanup(InputSourceContext* ctx) {
     }
 }
 
-static void rawfile_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
+static void rawfile_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppResources *resources = ctx->resources;
     const char* display_path = config->input_filename_arg;
@@ -296,7 +296,7 @@ static void rawfile_get_summary_info(const InputSourceContext* ctx, InputSummary
     add_summary_item(info, "Input File Size", "%s", format_file_size(file_size_bytes, size_buf, sizeof(size_buf)));
 }
 
-static bool rawfile_pre_stream_iq_correction(InputSourceContext* ctx) {
+static bool rawfile_pre_stream_iq_correction(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
     RawfilePrivateData* private_data = (RawfilePrivateData*)ctx->resources->input_module_private_data;
 

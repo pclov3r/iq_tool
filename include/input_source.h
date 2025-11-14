@@ -25,7 +25,7 @@
 struct AppConfig;
 struct AppResources;
 struct InputSummaryInfo;
-struct InputSourceContext;
+struct ModuleContext;
 
 
 // --- Data Structures ---
@@ -58,13 +58,13 @@ typedef struct InputSummaryInfo {
 } InputSummaryInfo;
 
 /**
- * @struct InputSourceContext
+ * @struct ModuleContext
  * @brief A container passing the main application state to input source functions.
  */
-typedef struct InputSourceContext {
+typedef struct ModuleContext {
     const struct AppConfig* config;
     struct AppResources*    resources;
-} InputSourceContext;
+} ModuleContext;
 
 
 // --- The Core Interface Definition ---
@@ -79,33 +79,33 @@ typedef struct ModuleApi {
      * @param ctx The application context.
      * @return true on success, false on failure.
      */
-    bool (*initialize)(struct InputSourceContext* ctx);
+    bool (*initialize)(struct ModuleContext* ctx);
 
     /**
      * @brief Starts the data stream. This is a blocking call that runs in the reader thread.
      * @param ctx The application context.
      * @return NULL on normal exit.
      */
-    void* (*start_stream)(struct InputSourceContext* ctx);
+    void* (*start_stream)(struct ModuleContext* ctx);
 
     /**
      * @brief Gracefully stops the data stream (e.g., cancels an async SDR read).
      * @param ctx The application context.
      */
-    void (*stop_stream)(struct InputSourceContext* ctx);
+    void (*stop_stream)(struct ModuleContext* ctx);
 
     /**
      * @brief Releases all resources allocated by the input source.
      * @param ctx The application context.
      */
-    void (*cleanup)(struct InputSourceContext* ctx);
+    void (*cleanup)(struct ModuleContext* ctx);
 
     /**
      * @brief Populates a summary struct with details specific to this input source.
      * @param ctx A read-only pointer to the application context.
      * @param info A pointer to the summary struct to be populated.
      */
-    void (*get_summary_info)(const struct InputSourceContext* ctx, struct InputSummaryInfo* info);
+    void (*get_summary_info)(const struct ModuleContext* ctx, struct InputSummaryInfo* info);
 
     /**
      * @brief Validates and post-processes command-line options specific to this module.
@@ -128,7 +128,7 @@ typedef struct ModuleApi {
     bool (*has_known_length)(void);
 
     // Optional function for file-based sources to perform initial I/Q correction.
-    bool (*pre_stream_iq_correction)(struct InputSourceContext* ctx);
+    bool (*pre_stream_iq_correction)(struct ModuleContext* ctx);
 
 } ModuleApi;
 

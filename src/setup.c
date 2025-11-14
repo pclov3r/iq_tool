@@ -49,7 +49,7 @@ static bool create_filter(AppConfig *config, AppResources *resources);
 
 // Context to share state between the main thread and the initializer thread.
 typedef struct {
-    InputSourceContext* input_ctx;
+    ModuleContext* input_ctx;
     pthread_mutex_t mutex;
     bool is_complete;
     bool success;
@@ -291,7 +291,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 
     InputSummaryInfo summary_info;
     memset(&summary_info, 0, sizeof(InputSummaryInfo));
-    const InputSourceContext ctx = { .config = config, .resources = (AppResources*)resources };
+    const ModuleContext ctx = { .config = config, .resources = (AppResources*)resources };
     resources->selected_input_module_api->get_summary_info(&ctx, &summary_info);
 
     int max_label_len = 0;
@@ -414,7 +414,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     bool success = false;
     resources->config = config;
     resources->lifecycle_state = LIFECYCLE_STATE_START;
-    InputSourceContext ctx = { .config = config, .resources = resources };
+    ModuleContext ctx = { .config = config, .resources = resources };
     float resample_ratio = 0.0f;
 
     // STEP 1: Determine pipeline mode
@@ -635,7 +635,7 @@ cleanup:
 
 void cleanup_application(AppConfig *config, AppResources *resources) {
     if (!resources) return;
-    InputSourceContext ctx = { .config = config, .resources = resources };
+    ModuleContext ctx = { .config = config, .resources = resources };
 
     switch (resources->lifecycle_state) {
         case LIFECYCLE_STATE_FULLY_INITIALIZED:

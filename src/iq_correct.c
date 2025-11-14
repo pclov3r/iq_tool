@@ -234,7 +234,7 @@ void iq_correct_destroy(AppResources* resources) {
     resources->iq_correction.optimization_accum_buffer = NULL;
 }
 
-bool iq_correct_run_initial_calibration(InputSourceContext* ctx, SNDFILE* infile) {
+bool iq_correct_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile) {
     AppResources* resources = ctx->resources;
 
     if (!infile) {

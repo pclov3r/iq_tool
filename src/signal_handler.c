@@ -1,7 +1,7 @@
 #include "signal_handler.h"
 #include "log.h"
 #include "app_context.h"       // Provides AppResources
-#include "input_source.h"      // Provides InputSourceContext
+#include "input_source.h"      // Provides ModuleContext
 #include "queue.h"             // Provides queue_signal_shutdown
 #include "ring_buffer.h" // Provides ring_buffer_signal_shutdown
 #include <stdio.h>
@@ -114,7 +114,7 @@ void request_shutdown(void) {
         if (r->config && r->config->input_type_str && strcasecmp(r->config->input_type_str, "rtlsdr") == 0) {
             if (r->selected_input_module_api && r->selected_input_module_api->stop_stream) {
                 log_debug("Signal handler is calling stop_stream for RTL-SDR to unblock reader thread.");
-                InputSourceContext ctx = { .config = r->config, .resources = r };
+                ModuleContext ctx = { .config = r->config, .resources = r };
                 r->selected_input_module_api->stop_stream(&ctx);
             }
         }

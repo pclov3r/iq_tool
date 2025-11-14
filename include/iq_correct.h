@@ -73,7 +73,7 @@ void iq_correct_destroy(AppResources* resources);
  * @param infile The handle to the open input file (e.g., from libsndfile).
  * @return true on success, false on a critical failure.
  */
-bool iq_correct_run_initial_calibration(InputSourceContext* ctx, SNDFILE* infile);
+bool iq_correct_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile);
 
 
 #endif // IQ_CORRECT_H_

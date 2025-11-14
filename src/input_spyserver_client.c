@@ -215,11 +215,11 @@ void spyserver_client_set_default_config(struct AppConfig* config) {
 
 // --- Function Prototypes ---
 static void* spyserver_client_producer_thread(void* arg);
-static bool spyserver_client_initialize(InputSourceContext* ctx);
-static void* spyserver_client_start_stream(InputSourceContext* ctx);
-static void spyserver_client_stop_stream(InputSourceContext* ctx);
-static void spyserver_client_cleanup(InputSourceContext* ctx);
-static void spyserver_client_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info);
+static bool spyserver_client_initialize(ModuleContext* ctx);
+static void* spyserver_client_start_stream(ModuleContext* ctx);
+static void spyserver_client_stop_stream(ModuleContext* ctx);
+static void spyserver_client_cleanup(ModuleContext* ctx);
+static void spyserver_client_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool spyserver_client_validate_options(AppConfig* config);
 
 // --- The ModuleApi V-Table ---
@@ -304,7 +304,7 @@ static bool spyserver_client_validate_options(AppConfig* config) {
 }
 
 // --- Main Module Implementations ---
-static bool spyserver_client_initialize(InputSourceContext* ctx) {
+static bool spyserver_client_initialize(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
     AppResources* resources = ctx->resources;
 
@@ -528,7 +528,7 @@ static bool spyserver_client_initialize(InputSourceContext* ctx) {
 }
 
 static void* spyserver_client_producer_thread(void* arg) {
-    InputSourceContext* ctx = (InputSourceContext*)arg;
+    ModuleContext* ctx = (ModuleContext*)arg;
     AppResources* resources = ctx->resources;
     SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)resources->input_module_private_data;
 
@@ -575,7 +575,7 @@ end_loop:;
     return NULL;
 }
 
-static void* spyserver_client_start_stream(InputSourceContext* ctx) {
+static void* spyserver_client_start_stream(ModuleContext* ctx) {
     AppResources* resources = ctx->resources;
     SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)resources->input_module_private_data;
 
@@ -676,7 +676,7 @@ end_loop:;
     return NULL;
 }
 
-static void spyserver_client_stop_stream(InputSourceContext* ctx) {
+static void spyserver_client_stop_stream(ModuleContext* ctx) {
     AppResources* resources = ctx->resources;
     if (resources->input_module_private_data) {
         SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)resources->input_module_private_data;
@@ -686,7 +686,7 @@ static void spyserver_client_stop_stream(InputSourceContext* ctx) {
     }
 }
 
-static void spyserver_client_cleanup(InputSourceContext* ctx) {
+static void spyserver_client_cleanup(ModuleContext* ctx) {
     AppResources* resources = ctx->resources;
     if (resources->input_module_private_data) {
         SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)resources->input_module_private_data;
@@ -703,7 +703,7 @@ static void spyserver_client_cleanup(InputSourceContext* ctx) {
     log_info("Exiting SpyServer client...");
 }
 
-static void spyserver_client_get_summary_info(const InputSourceContext* ctx, InputSummaryInfo* info) {
+static void spyserver_client_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const SpyServerClientPrivateData* p = (const SpyServerClientPrivateData*)ctx->resources->input_module_private_data;
     const AppResources* resources = ctx->resources;
     const AppConfig* config = ctx->config;
