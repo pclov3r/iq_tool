@@ -29,7 +29,7 @@
 #endif
 
 // The master list is now built at runtime to allow for function calls.
-static InputModule* all_modules = NULL;
+static Module* all_modules = NULL;
 static int num_all_modules = 0;
 static bool modules_initialized = false;
 
@@ -40,7 +40,7 @@ static void initialize_modules_list(MemoryArena* arena) {
     }
 
     // Define a temporary array using designated initializers for clarity and maintainability.
-    InputModule temp_modules[] = {
+    Module temp_modules[] = {
         {
             .name = "wav",
             .api = get_wav_input_module_api(),
@@ -104,7 +104,7 @@ static void initialize_modules_list(MemoryArena* arena) {
     num_all_modules = sizeof(temp_modules) / sizeof(temp_modules[0]);
     
     // MODIFIED: Allocate memory from the arena instead of the heap.
-    all_modules = (InputModule*)mem_arena_alloc(arena, sizeof(temp_modules), true);
+    all_modules = (Module*)mem_arena_alloc(arena, sizeof(temp_modules), true);
     if (all_modules) {
         memcpy(all_modules, temp_modules, sizeof(temp_modules));
     } else {
@@ -145,7 +145,7 @@ ModuleApi* get_input_module_api_by_name(const char* name, MemoryArena* arena) {
 }
 
 // MODIFIED: Signature updated.
-const InputModule* get_all_input_modules(int* count, MemoryArena* arena) {
+const Module* get_all_input_modules(int* count, MemoryArena* arena) {
     initialize_modules_list(arena); // Ensure the list is ready
     *count = num_all_modules;
     return all_modules;

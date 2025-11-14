@@ -111,7 +111,7 @@ int main(int argc, char *argv[]) {
         // Apply defaults for ONLY the selected module. This ensures the correct
         // default sample rate is set, which can then be overridden by argparse.
         int num_modules = 0;
-        const InputModule* modules = get_all_input_modules(&num_modules, &resources.setup_arena);
+        const Module* modules = get_all_input_modules(&num_modules, &resources.setup_arena);
         for (int i = 0; i < num_modules; ++i) {
             if (strcasecmp(input_type, modules[i].name) == 0) {
                 if (modules[i].set_default_config) {
