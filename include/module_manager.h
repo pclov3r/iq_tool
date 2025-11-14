@@ -12,7 +12,7 @@
 #ifndef MODULE_MANAGER_H_
 #define MODULE_MANAGER_H_
 
-#include "input_source.h" // Provides the core ModuleApi interface definition
+#include "module.h" // Provides the core ModuleApi interface definition
 #include "argparse.h"     // Provides the argparse_option struct for CLI options
 
 // --- Forward Declarations ---

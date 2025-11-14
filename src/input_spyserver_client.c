@@ -34,7 +34,7 @@
  */
 
 #include "input_spyserver_client.h"
-#include "input_source.h"
+#include "module.h"
 #include "constants.h"
 #include "log.h"
 #include "app_context.h"

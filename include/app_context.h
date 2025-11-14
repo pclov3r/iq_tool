@@ -19,7 +19,7 @@
 #include "common_types.h"
 #include "pipeline_types.h"
 #include "file_writer.h"
-#include "input_source.h"
+#include "module.h"
 #include "memory_arena.h"
 #include "presets_loader.h"
 #include "constants.h"

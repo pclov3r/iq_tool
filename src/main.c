@@ -6,7 +6,7 @@
 #include "app_context.h"
 #include "signal_handler.h"
 #include "log.h"
-#include "input_source.h"
+#include "module.h"
 #include "queue.h"
 #include "sdr_packet_serializer.h"
 #include "pipeline_context.h"

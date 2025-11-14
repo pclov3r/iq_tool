@@ -1,7 +1,7 @@
 #ifndef INPUT_RTLSDR_H_
 #define INPUT_RTLSDR_H_
 
-#include "input_source.h"
+#include "module.h"
 #include "argparse.h"
 
 // --- Forward Declaration ---
