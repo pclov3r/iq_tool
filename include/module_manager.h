@@ -23,7 +23,7 @@ struct MemoryArena;
 // --- Type Definitions ---
 
 /**
- * @struct InputModule
+ * @struct Module
  * @brief A container for all the components that define a single input source module.
  */
 typedef struct {
@@ -32,7 +32,7 @@ typedef struct {
     bool is_sdr; ///< Flag to indicate if this is an SDR source.
     void (*set_default_config)(struct AppConfig* config); ///< Pointer to the default config function.
     const struct argparse_option* (*get_cli_options)(int* count); ///< Pointer to the CLI option function.
-} InputModule;
+} Module;
 
 
 // --- Function Declarations ---
@@ -49,9 +49,9 @@ ModuleApi* get_input_module_api_by_name(const char* name, struct MemoryArena* ar
  * @brief Gets a list of all registered and compiled-in input modules.
  * @param[out] count A pointer to an integer that will be filled with the number of modules.
  * @param arena The memory arena, needed to initialize the module list on first call.
- * @return A constant pointer to the array of InputModule structs.
+ * @return A constant pointer to the array of Module structs.
  */
-const InputModule* get_all_input_modules(int* count, struct MemoryArena* arena);
+const Module* get_all_input_modules(int* count, struct MemoryArena* arena);
 
 /**
  * @brief Iterates through all registered modules and applies their default settings.
