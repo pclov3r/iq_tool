@@ -19,6 +19,11 @@
 #include <stdint.h>
 #include "constants.h" // For MAX_SUMMARY_ITEMS
 
+typedef enum {
+    MODULE_TYPE_INPUT,
+    // MODULE_TYPE_OUTPUT, // Reserved for future use
+} ModuleType;
+
 // --- Forward Declarations ---
 // These break circular dependencies and allow us to use pointers to these
 // structs without needing their full definitions in this header.

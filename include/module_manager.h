@@ -28,6 +28,7 @@ struct MemoryArena;
  */
 typedef struct {
     const char* name; ///< The name used in the --input argument (e.g., "wav", "rtlsdr").
+    ModuleType type;
     ModuleApi* api; ///< Pointer to the core operational functions for this module.
     bool is_sdr; ///< Flag to indicate if this is an SDR source.
     void (*set_default_config)(struct AppConfig* config); ///< Pointer to the default config function.
