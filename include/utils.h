@@ -14,7 +14,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "app_context.h"
-#include "input_source.h"
+#include "module.h"
 #include "memory_arena.h"
 
 // --- Function Declarations ---

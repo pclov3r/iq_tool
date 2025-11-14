@@ -1,5 +1,5 @@
 #include "input_hackrf.h"
-#include "input_source.h"
+#include "module.h"
 #include "constants.h"
 #include "app_context.h"
 #include "signal_handler.h"

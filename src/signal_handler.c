@@ -1,7 +1,7 @@
 #include "signal_handler.h"
 #include "log.h"
 #include "app_context.h"       // Provides AppResources
-#include "input_source.h"      // Provides ModuleContext
+#include "module.h"      // Provides ModuleContext
 #include "queue.h"             // Provides queue_signal_shutdown
 #include "ring_buffer.h" // Provides ring_buffer_signal_shutdown
 #include <stdio.h>

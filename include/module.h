@@ -11,8 +11,8 @@
  * properties and metadata.
  */
 
-#ifndef INPUT_SOURCE_H_
-#define INPUT_SOURCE_H_
+#ifndef MODULE_H_
+#define MODULE_H_
 
 #include <stdbool.h>
 #include <time.h>
@@ -132,4 +132,4 @@ typedef struct ModuleApi {
 
 } ModuleApi;
 
-#endif // INPUT_SOURCE_H_
+#endif // MODULE_H_

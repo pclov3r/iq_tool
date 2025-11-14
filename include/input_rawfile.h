@@ -3,7 +3,7 @@
 #ifndef INPUT_RAWFILE_H_
 #define INPUT_RAWFILE_H_
 
-#include "input_source.h"
+#include "module.h"
 #include "argparse.h"
 
 /**

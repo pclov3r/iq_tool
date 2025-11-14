@@ -1,5 +1,5 @@
 #include "input_bladerf.h"
-#include "input_source.h"
+#include "module.h"
 #include "constants.h"
 #include "log.h"
 #include "signal_handler.h"
