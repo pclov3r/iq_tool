@@ -43,6 +43,7 @@ static void initialize_modules_list(MemoryArena* arena) {
     Module temp_modules[] = {
         {
             .name = "wav",
+            .type = MODULE_TYPE_INPUT,
             .api = get_wav_input_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
@@ -50,6 +51,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         },
         {
             .name = "raw-file",
+            .type = MODULE_TYPE_INPUT,
             .api = get_raw_file_input_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
@@ -58,6 +60,7 @@ static void initialize_modules_list(MemoryArena* arena) {
     #if defined(WITH_RTLSDR)
         {
             .name = "rtlsdr",
+            .type = MODULE_TYPE_INPUT,
             .api = get_rtlsdr_input_module_api(),
             .is_sdr = true,
             .set_default_config = rtlsdr_set_default_config,
@@ -67,6 +70,7 @@ static void initialize_modules_list(MemoryArena* arena) {
     #if defined(WITH_SDRPLAY)
         {
             .name = "sdrplay",
+            .type = MODULE_TYPE_INPUT,
             .api = get_sdrplay_input_module_api(),
             .is_sdr = true,
             .set_default_config = sdrplay_set_default_config,
@@ -76,6 +80,7 @@ static void initialize_modules_list(MemoryArena* arena) {
     #if defined(WITH_HACKRF)
         {
             .name = "hackrf",
+            .type = MODULE_TYPE_INPUT,
             .api = get_hackrf_input_module_api(),
             .is_sdr = true,
             .set_default_config = hackrf_set_default_config,
@@ -85,6 +90,7 @@ static void initialize_modules_list(MemoryArena* arena) {
     #if defined(WITH_BLADERF)
         {
             .name = "bladerf",
+            .type = MODULE_TYPE_INPUT,
             .api = get_bladerf_input_module_api(),
             .is_sdr = true,
             .set_default_config = bladerf_set_default_config,
@@ -94,6 +100,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         // ADDED: Register the new SpyServer client module
         {
             .name = "spyserver-client",
+            .type = MODULE_TYPE_INPUT,
             .api = get_spyserver_client_input_module_api(),
             .is_sdr = true,
             .set_default_config = spyserver_client_set_default_config,
