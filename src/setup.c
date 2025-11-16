@@ -6,7 +6,7 @@
 #include "log.h"
 #include "module.h"
 #include "module_manager.h"
-#include "file_writer.h"
+#include "output_writer.h"
 #include "sample_convert.h"
 #include "iq_correct.h"
 #include "dc_block.h"
@@ -235,7 +235,7 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     resources->sdr_deserializer_temp_buffer = mem_arena_alloc(&resources->setup_arena, resources->sdr_deserializer_buffer_size, false);
     if (!resources->sdr_deserializer_temp_buffer) return false;
 
-    resources->writer_local_buffer = mem_arena_alloc(&resources->setup_arena, IO_FILE_WRITER_CHUNK_SIZE, false);
+    resources->writer_local_buffer = mem_arena_alloc(&resources->setup_arena, IO_OUTPUT_WRITER_CHUNK_SIZE, false);
     if (!resources->writer_local_buffer) return false;
 
     for (size_t i = 0; i < PIPELINE_NUM_CHUNKS; ++i) {
@@ -400,7 +400,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 bool prepare_output_stream(AppConfig *config, AppResources *resources) {
     if (!config || !resources) return false;
 
-    if (!file_writer_init(&resources->writer_ctx, config)) {
+    if (!output_writer_init(&resources->writer_ctx, config)) {
         return false;
     }
 
@@ -564,7 +564,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
         }
     }
     if (!config->output_to_stdout) {
-        resources->writer_input_buffer = ring_buffer_create(IO_FILE_WRITER_BUFFER_BYTES);
+        resources->writer_input_buffer = ring_buffer_create(IO_OUTPUT_WRITER_BUFFER_BYTES);
         if (!resources->writer_input_buffer) {
             log_fatal("Failed to create I/O output buffer.");
             goto cleanup;

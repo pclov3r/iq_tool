@@ -16,7 +16,7 @@
 #include "utils.h"
 #include "module_manager.h"
 #include "sample_convert.h"
-#include "file_writer.h"
+#include "output_writer.h"
 #include "presets_loader.h"
 #include "platform.h"
 #include "memory_arena.h"

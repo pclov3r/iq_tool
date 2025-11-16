@@ -186,7 +186,7 @@ void* writer_thread_func(void* arg) {
         }
 
         while (true) {
-            size_t bytes_read = ring_buffer_read(resources->writer_input_buffer, local_write_buffer, IO_FILE_WRITER_CHUNK_SIZE);
+            size_t bytes_read = ring_buffer_read(resources->writer_input_buffer, local_write_buffer, IO_OUTPUT_WRITER_CHUNK_SIZE);
 
             if (bytes_read == 0) {
                 break;
