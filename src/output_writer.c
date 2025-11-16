@@ -72,8 +72,6 @@ static bool prompt_for_overwrite(const char* path_for_messages) {
         return false;
     }
 
-    fprintf(stderr, "\n");
-
     return true;
 }
 

@@ -276,17 +276,22 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
         }
     }
 
-    // STEP 5: Print summary (UI task)
-    if (!config->output_to_stdout) {
-        print_configuration_summary(config, resources);
-    }
-
-    // STEP 6: Prepare the final output destination
+    // STEP 5: Prepare the final output destination (Moved Up)
+    // This is the last major failure point and the only interactive step.
     if (!prepare_output_stream(config, resources)) {
         cleanup_application(config, resources);
         return false;
     }
 
+    // STEP 6: Print summary (UI task) (Moved Down)
+    // Now that all settings are finalized and the output file is open,
+    // we can print the true final summary.
+    if (!config->output_to_stdout) {
+        print_configuration_summary(config, resources);
+        fprintf(stderr, "\n"); // Now we can safely add a single newline after the summary block.
+    }
+
+    // The final log message now follows the summary block correctly.
     if (!config->output_to_stdout) {
         bool source_has_known_length = resources->selected_input_module_api->has_known_length();
         if (!source_has_known_length) {
