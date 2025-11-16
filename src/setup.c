@@ -2,21 +2,12 @@
 #include "constants.h"
 #include "platform.h"
 #include "utils.h"
-#include "frequency_shift.h"
 #include "log.h"
 #include "module.h"
 #include "module_manager.h"
 #include "output_writer.h"
-#include "sample_convert.h"
-#include "iq_correct.h"
-#include "dc_block.h"
-#include "filter.h"
-#include "resampler.h"
-#include "memory_arena.h"
-#include "queue.h"
-#include "ring_buffer.h"
+#include "pipeline.h"
 #include "app_context.h"
-#include "thread_manager.h" // For threads_destroy_queues
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,52 +30,6 @@
 #include <limits.h>
 #include <stdlib.h>
 #endif
-
-// --- Forward declarations for static functions ---
-static bool create_dc_blocker(AppConfig *config, AppResources *resources);
-static bool create_iq_corrector(AppConfig *config, AppResources *resources);
-static bool create_filter(AppConfig *config, AppResources *resources);
-
-// --- START: New helpers for timed initialization ---
-
-// Context to share state between the main thread and the initializer thread.
-typedef struct {
-    ModuleContext* input_ctx;
-    pthread_mutex_t mutex;
-    bool is_complete;
-    bool success;
-} InitializerContext;
-
-// The initializer thread's only job is to run the blocking function and set a flag.
-static void* initializer_thread_func(void* arg) {
-    InitializerContext* ctx = (InitializerContext*)arg;
-    
-    bool result = ctx->input_ctx->resources->selected_input_module_api->initialize(ctx->input_ctx);
-
-    pthread_mutex_lock(&ctx->mutex);
-    ctx->success = result;
-    ctx->is_complete = true;
-    pthread_mutex_unlock(&ctx->mutex);
-    
-    return NULL;
-}
-
-// --- END: New helpers for timed initialization ---
-
-
-static bool create_dc_blocker(AppConfig *config, AppResources *resources) {
-    if (!config->dc_block.enable) return true;
-    return dc_block_create(config, resources);
-}
-
-static bool create_iq_corrector(AppConfig *config, AppResources *resources) {
-    if (!config->iq_correction.enable) return true;
-    return iq_correct_init(config, resources, &resources->setup_arena);
-}
-
-static bool create_filter(AppConfig *config, AppResources *resources) {
-    return filter_create(config, resources, &resources->setup_arena);
-}
 
 
 bool resolve_file_paths(AppConfig *config, AppResources *resources) {
@@ -172,115 +117,6 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *reso
         resources->expected_total_output_frames = (long long)round((double)resources->source_info.frames * (double)r);
     } else {
         resources->expected_total_output_frames = -1;
-    }
-
-    return true;
-}
-
-bool allocate_processing_buffers(AppConfig *config, AppResources *resources, float resample_ratio) {
-    if (!config || !resources) return false;
-
-    size_t max_pre_resample_chunk_size = PIPELINE_CHUNK_BASE_SAMPLES;
-    bool is_pre_fft_filter = (resources->user_filter_object && !config->apply_user_filter_post_resample &&
-                             (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
-                              resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC));
-
-    if (is_pre_fft_filter) {
-        if (resources->user_filter_block_size > max_pre_resample_chunk_size) {
-            max_pre_resample_chunk_size = resources->user_filter_block_size;
-        }
-    }
-
-    size_t resampler_output_capacity = (size_t)ceil((double)max_pre_resample_chunk_size * fmax(1.0, (double)resample_ratio)) + RESAMPLER_OUTPUT_SAFETY_MARGIN;
-    size_t required_capacity = (max_pre_resample_chunk_size > resampler_output_capacity) ? max_pre_resample_chunk_size : resampler_output_capacity;
-
-    bool is_post_fft_filter = (resources->user_filter_object && config->apply_user_filter_post_resample &&
-                              (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
-                               resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC));
-
-    if (is_post_fft_filter) {
-        if (resources->user_filter_block_size > required_capacity) {
-            required_capacity = resources->user_filter_block_size;
-        }
-    }
-
-    if (required_capacity > MAX_ALLOWED_FFT_BLOCK_SIZE) {
-        log_fatal("Error: Pipeline requires a buffer size (%zu) that exceeds the maximum allowed size (%d).",
-                  required_capacity, MAX_ALLOWED_FFT_BLOCK_SIZE);
-        return false;
-    }
-
-    resources->max_out_samples = required_capacity;
-    log_debug("Calculated required processing buffer capacity: %u samples.", resources->max_out_samples);
-
-    size_t raw_input_bytes_per_chunk = PIPELINE_CHUNK_BASE_SAMPLES * resources->input_bytes_per_sample_pair;
-    size_t complex_bytes_per_chunk = resources->max_out_samples * sizeof(complex_float_t);
-    resources->output_bytes_per_sample_pair = get_bytes_per_sample(config->output_format);
-    size_t final_output_bytes_per_chunk = resources->max_out_samples * resources->output_bytes_per_sample_pair;
-
-    size_t total_bytes_per_chunk = raw_input_bytes_per_chunk +
-                                   (complex_bytes_per_chunk * 2) + // ping-pong complex buffers
-                                   final_output_bytes_per_chunk;
-
-    resources->pipeline_chunk_data_pool = malloc(PIPELINE_NUM_CHUNKS * total_bytes_per_chunk);
-    if (!resources->pipeline_chunk_data_pool) {
-        log_fatal("Error: Failed to allocate the main pipeline chunk data pool.");
-        return false;
-    }
-
-    resources->sample_chunk_pool = (SampleChunk*)mem_arena_alloc(&resources->setup_arena, PIPELINE_NUM_CHUNKS * sizeof(SampleChunk), true);
-    if (!resources->sample_chunk_pool) return false;
-
-    resources->sdr_deserializer_buffer_size = PIPELINE_CHUNK_BASE_SAMPLES * sizeof(short) * COMPLEX_SAMPLE_COMPONENTS;
-    resources->sdr_deserializer_temp_buffer = mem_arena_alloc(&resources->setup_arena, resources->sdr_deserializer_buffer_size, false);
-    if (!resources->sdr_deserializer_temp_buffer) return false;
-
-    resources->writer_local_buffer = mem_arena_alloc(&resources->setup_arena, IO_OUTPUT_WRITER_CHUNK_SIZE, false);
-    if (!resources->writer_local_buffer) return false;
-
-    for (size_t i = 0; i < PIPELINE_NUM_CHUNKS; ++i) {
-        SampleChunk* item = &resources->sample_chunk_pool[i];
-        char* chunk_base = (char*)resources->pipeline_chunk_data_pool + i * total_bytes_per_chunk;
-
-        item->raw_input_data = chunk_base;
-        item->complex_sample_buffer_a = (complex_float_t*)(chunk_base + raw_input_bytes_per_chunk);
-        item->complex_sample_buffer_b = (complex_float_t*)(chunk_base + raw_input_bytes_per_chunk + complex_bytes_per_chunk);
-        item->final_output_data = (unsigned char*)(chunk_base + raw_input_bytes_per_chunk + (complex_bytes_per_chunk * 2));
-
-        item->raw_input_capacity_bytes = raw_input_bytes_per_chunk;
-        item->complex_buffer_capacity_samples = resources->max_out_samples;
-        item->final_output_capacity_bytes = final_output_bytes_per_chunk;
-        item->input_bytes_per_sample_pair = resources->input_bytes_per_sample_pair;
-    }
-
-    return true;
-}
-
-bool create_threading_components(AppConfig *config, AppResources *resources) {
-    MemoryArena* arena = &resources->setup_arena;
-    resources->free_sample_chunk_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
-
-    if (!queue_init(resources->free_sample_chunk_queue, PIPELINE_NUM_CHUNKS, arena)) {
-        return false;
-    }
-
-    if (config->iq_correction.enable) {
-        resources->iq_optimization_data_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
-        if (!queue_init(resources->iq_optimization_data_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
-    } else {
-        resources->iq_optimization_data_queue = NULL;
-    }
-
-    for (size_t i = 0; i < PIPELINE_NUM_CHUNKS; ++i) {
-        if (!queue_enqueue(resources->free_sample_chunk_queue, &resources->sample_chunk_pool[i])) {
-            log_fatal("Failed to initially populate free item queue.");
-            return false;
-        }
-    }
-
-    if (pthread_mutex_init(&resources->progress_mutex, NULL) != 0) {
-        log_fatal("Failed to initialize progress mutex: %s", strerror(errno));
-        return false;
     }
 
     return true;
@@ -411,218 +247,47 @@ bool prepare_output_stream(AppConfig *config, AppResources *resources) {
 }
 
 bool initialize_application(AppConfig *config, AppResources *resources) {
-    bool success = false;
     resources->config = config;
-    resources->lifecycle_state = LIFECYCLE_STATE_START;
     ModuleContext ctx = { .config = config, .resources = resources };
-    float resample_ratio = 0.0f;
-
-    // STEP 1: Determine pipeline mode
-    bool is_sdr = module_manager_is_sdr_module(config->input_type_str, &resources->setup_arena);
-    if (is_sdr) {
-        if (config->output_to_stdout) {
-            resources->pipeline_mode = PIPELINE_MODE_REALTIME_SDR;
-            log_debug("SDR to stdout: Real-time, low-latency mode enabled.");
-        } else {
-            resources->pipeline_mode = PIPELINE_MODE_BUFFERED_SDR;
-            log_debug("SDR to file: Buffered, max-quality mode enabled.");
-        }
-    } else {
-        resources->pipeline_mode = PIPELINE_MODE_FILE_PROCESSING;
-        log_debug("File processing: Self-paced, max-quality mode enabled.");
-    }
-
-    // STEP 2: Initialize hardware and file handles
+    
+    // --- PRE-FLIGHT CHECKS ---
+    // STEP 1: Resolve file paths (if any)
     if (!resolve_file_paths(config, resources)) {
-        goto cleanup;
+        return false;
     }
 
-    if (is_sdr) {
-        log_info("Attempting to initialize the %s device...", config->input_type_str);
-
-        pthread_t initializer_thread;
-        InitializerContext init_thread_ctx;
-        init_thread_ctx.input_ctx = &ctx;
-        init_thread_ctx.is_complete = false;
-        init_thread_ctx.success = false;
-        pthread_mutex_init(&init_thread_ctx.mutex, NULL);
-        
-        if (pthread_create(&initializer_thread, NULL, initializer_thread_func, &init_thread_ctx) != 0) {
-            log_fatal("Fatal: Failed to create the device initializer thread.");
-            pthread_mutex_destroy(&init_thread_ctx.mutex);
-            goto cleanup;
-        }
-
-        double start_time = get_monotonic_time_sec();
-        double timeout_sec = (double)SDR_INITIALIZE_TIMEOUT_MS / 1000.0;
-        bool timed_out = false;
-        
-        while (true) {
-            pthread_mutex_lock(&init_thread_ctx.mutex);
-            bool is_done = init_thread_ctx.is_complete;
-            pthread_mutex_unlock(&init_thread_ctx.mutex);
-
-            if (is_done) {
-                break; 
-            }
-
-            if (get_monotonic_time_sec() - start_time >= timeout_sec) {
-                timed_out = true;
-                break;
-            }
-            
-            #ifdef _WIN32
-                Sleep(50);
-            #else
-                struct timespec sleep_time = {0, 50000000L};
-                nanosleep(&sleep_time, NULL);
-            #endif
-        }
-
-        if (timed_out) {
-            fprintf(stderr, "\nFATAL: SDR Initialization Timed Out.\n");
-            fprintf(stderr, "FATAL: No response from the %s device within %d seconds.\n",
-                    config->input_type_str, SDR_INITIALIZE_TIMEOUT_MS / 1000);
-            fprintf(stderr, "FATAL: The SDR driver has likely hung due to a crash or device removal.\n");
-            fprintf(stderr, "FATAL: Forcing application exit.\n");
-            fflush(stderr);
-            pthread_detach(initializer_thread);
-            exit(EXIT_FAILURE);
-        }
-        
-        pthread_join(initializer_thread, NULL);
-        pthread_mutex_destroy(&init_thread_ctx.mutex);
-
-        if (!init_thread_ctx.success) {
-            log_debug("Device initialization thread finished but reported failure.");
-            goto cleanup;
-        }
-
-    } else {
-        if (!resources->selected_input_module_api->initialize(&ctx)) {
-            goto cleanup;
-        }
+    // STEP 2: Initialize the external source (SDR or file) to get its properties
+    if (!resources->selected_input_module_api->initialize(&ctx)) {
+        return false;
     }
-    
-    resources->lifecycle_state = LIFECYCLE_STATE_INPUT_INITIALIZED;
 
-    // STEP 3: Perform initial calculations
-    if (!calculate_and_validate_resample_ratio(config, resources, &resample_ratio)) {
-        goto cleanup;
+    // STEP 3: Perform prerequisite calculations based on source properties
+    if (!calculate_and_validate_resample_ratio(config, resources, &resources->resample_ratio)) {
+        cleanup_application(config, resources);
+        return false;
     }
-    
-    // STEP 4: Initialize all individual DSP components in a consistent, logical order
-    if (!create_dc_blocker(config, resources)) {
-        goto cleanup;
-    }
-    resources->lifecycle_state = LIFECYCLE_STATE_DC_BLOCK_CREATED;
 
-    if (!create_iq_corrector(config, resources)) {
-        goto cleanup;
-    }
-    resources->lifecycle_state = LIFECYCLE_STATE_IQ_CORRECTOR_CREATED;
-
-    if (!freq_shift_create(config, resources)) {
-        goto cleanup;
-    }
-    resources->lifecycle_state = LIFECYCLE_STATE_FREQ_SHIFTER_CREATED;
-
-    resources->resampler = create_resampler(config, resources, resample_ratio);
-    if (!resources->resampler && !resources->is_passthrough) {
-        goto cleanup;
-    }
-    resources->lifecycle_state = LIFECYCLE_STATE_RESAMPLER_CREATED;
-
-    if (!create_filter(config, resources)) {
-        goto cleanup;
-    }
-    resources->lifecycle_state = LIFECYCLE_STATE_FILTER_CREATED;
-
+    // --- FINAL PREPARATION ---
+    // STEP 4: Perform optional pre-stream calibration for file sources
     if (resources->selected_input_module_api->pre_stream_iq_correction) {
         if (!resources->selected_input_module_api->pre_stream_iq_correction(&ctx)) {
-            goto cleanup;
+            cleanup_application(config, resources);
+            return false;
         }
     }
-    
-    // STEP 5: Allocate memory pools and threading components
-    if (!allocate_processing_buffers(config, resources, resample_ratio)) {
-        goto cleanup;
-    }
-    resources->lifecycle_state = LIFECYCLE_STATE_BUFFERS_ALLOCATED;
 
-    if (!create_threading_components(config, resources)) {
-        goto cleanup;
-    }
-    resources->lifecycle_state = LIFECYCLE_STATE_THREADS_CREATED;
-
-    // STEP 6: Create large I/O ring buffers (if needed)
-    if (resources->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
-        resources->sdr_input_buffer = ring_buffer_create(IO_SDR_INPUT_BUFFER_BYTES);
-        if (!resources->sdr_input_buffer) {
-            log_fatal("Failed to create SDR input buffer for buffered mode.");
-            goto cleanup;
-        }
-    }
-    if (!config->output_to_stdout) {
-        resources->writer_input_buffer = ring_buffer_create(IO_OUTPUT_WRITER_BUFFER_BYTES);
-        if (!resources->writer_input_buffer) {
-            log_fatal("Failed to create I/O output buffer.");
-            goto cleanup;
-        }
-    } else {
-        resources->writer_input_buffer = NULL;
-    }
-    resources->lifecycle_state = LIFECYCLE_STATE_IO_BUFFERS_CREATED;
-
-    // STEP 7: Final checks, summary print, and output stream preparation
+    // STEP 5: Print summary (UI task)
     if (!config->output_to_stdout) {
         print_configuration_summary(config, resources);
-
-        if (fabs(resources->nco_shift_hz) > 1e-9) {
-            double rate_for_shift_check = config->shift_after_resample ? config->target_rate : (double)resources->source_info.samplerate;
-            if (!utils_check_nyquist_warning(fabs(resources->nco_shift_hz), rate_for_shift_check, "Frequency Shift")) {
-                goto cleanup;
-            }
-        }
-
-        if (config->num_filter_requests > 0) {
-            double rate_for_filter_check = config->apply_user_filter_post_resample ? config->target_rate : (double)resources->source_info.samplerate;
-            for (int i = 0; i < config->num_filter_requests; i++) {
-                const FilterRequest* req = &config->filter_requests[i];
-                double freq_to_check = 0.0;
-                const char* context = NULL;
-                switch (req->type) {
-                    case FILTER_TYPE_LOWPASS:
-                    case FILTER_TYPE_HIGHPASS:
-                        freq_to_check = req->freq1_hz;
-                        context = "Filter Cutoff";
-                        break;
-                    case FILTER_TYPE_PASSBAND:
-                    case FILTER_TYPE_STOPBAND:
-                        freq_to_check = fabsf(req->freq1_hz) + (req->freq2_hz / 2.0f);
-                        context = "Filter Edge";
-                        break;
-                    default: break;
-                }
-                if (context && !utils_check_nyquist_warning(freq_to_check, rate_for_filter_check, context)) {
-                    goto cleanup;
-                }
-            }
-        }
     }
 
+    // STEP 6: Prepare the final output destination
     if (!prepare_output_stream(config, resources)) {
-        goto cleanup;
+        cleanup_application(config, resources);
+        return false;
     }
-    resources->lifecycle_state = LIFECYCLE_STATE_OUTPUT_STREAM_OPEN;
 
-    success = true;
-    resources->lifecycle_state = LIFECYCLE_STATE_FULLY_INITIALIZED;
-
-cleanup:
-    if (!success) {
-        // Let main() handle the destruction of the arena.
-    } else if (!config->output_to_stdout) {
+    if (!config->output_to_stdout) {
         bool source_has_known_length = resources->selected_input_module_api->has_known_length();
         if (!source_has_known_length) {
             log_info("Starting SDR capture...");
@@ -630,66 +295,29 @@ cleanup:
             log_info("Starting file processing...");
         }
     }
-    return success;
+
+    return true;
 }
 
 void cleanup_application(AppConfig *config, AppResources *resources) {
     if (!resources) return;
     ModuleContext ctx = { .config = config, .resources = resources };
 
-    switch (resources->lifecycle_state) {
-        case LIFECYCLE_STATE_FULLY_INITIALIZED:
-        case LIFECYCLE_STATE_OUTPUT_STREAM_OPEN:
-            if (resources->writer_ctx.api.close) {
-                resources->writer_ctx.api.close(&resources->writer_ctx);
-            }
-            if (resources->writer_ctx.api.get_total_bytes_written) {
-                resources->final_output_size_bytes = resources->writer_ctx.api.get_total_bytes_written(&resources->writer_ctx);
-            }
-            // fall-through
-        case LIFECYCLE_STATE_IO_BUFFERS_CREATED:
-            if (resources->sdr_input_buffer) {
-                ring_buffer_destroy(resources->sdr_input_buffer);
-                resources->sdr_input_buffer = NULL;
-            }
-            if (resources->writer_input_buffer) {
-                ring_buffer_destroy(resources->writer_input_buffer);
-                resources->writer_input_buffer = NULL;
-            }
-            // fall-through
-        case LIFECYCLE_STATE_THREADS_CREATED:
-            threads_destroy_queues(resources);
-            pthread_mutex_destroy(&resources->progress_mutex);
-            // fall-through
-        case LIFECYCLE_STATE_BUFFERS_ALLOCATED:
-            if (resources->pipeline_chunk_data_pool) {
-                free(resources->pipeline_chunk_data_pool);
-                resources->pipeline_chunk_data_pool = NULL;
-            }
-            // fall-through
-        case LIFECYCLE_STATE_FILTER_CREATED:
-            filter_destroy(resources);
-            // fall-through
-        case LIFECYCLE_STATE_RESAMPLER_CREATED:
-            destroy_resampler(resources->resampler);
-            resources->resampler = NULL;
-            // fall-through
-        case LIFECYCLE_STATE_FREQ_SHIFTER_CREATED:
-            freq_shift_destroy_ncos(resources);
-            // fall-through
-        case LIFECYCLE_STATE_IQ_CORRECTOR_CREATED:
-            iq_correct_destroy(resources);
-            // fall-through
-        case LIFECYCLE_STATE_DC_BLOCK_CREATED:
-            dc_block_destroy(resources);
-            // fall-through
-        case LIFECYCLE_STATE_INPUT_INITIALIZED:
-            if (resources->selected_input_module_api && resources->selected_input_module_api->cleanup) {
-                resources->selected_input_module_api->cleanup(&ctx);
-            }
-            // fall-through
-        case LIFECYCLE_STATE_START:
-            // No resources to clean up at this stage
-            break;
+    // Clean up the high-level resources managed by setup.
+    // The pipeline_run function is now responsible for its own internal cleanup.
+    if (resources->writer_ctx.api.close) {
+        resources->writer_ctx.api.close(&resources->writer_ctx);
+        if (resources->writer_ctx.api.get_total_bytes_written) {
+            resources->final_output_size_bytes = resources->writer_ctx.api.get_total_bytes_written(&resources->writer_ctx);
+        }
+    }
+
+    if (resources->pipeline_chunk_data_pool) {
+        free(resources->pipeline_chunk_data_pool);
+        resources->pipeline_chunk_data_pool = NULL;
+    }
+    
+    if (resources->selected_input_module_api && resources->selected_input_module_api->cleanup) {
+        resources->selected_input_module_api->cleanup(&ctx);
     }
 }

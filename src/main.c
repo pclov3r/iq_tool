@@ -7,22 +7,15 @@
 #include "signal_handler.h"
 #include "log.h"
 #include "module.h"
-#include "queue.h"
-#include "sdr_packet_serializer.h"
 #include "pipeline_context.h"
-#include "ring_buffer.h"
 #include "cli.h"
 #include "setup.h"
 #include "utils.h"
 #include "module_manager.h"
-#include "sample_convert.h"
-#include "output_writer.h"
 #include "presets_loader.h"
 #include "platform.h"
 #include "memory_arena.h"
-#include "iq_correct.h"
-#include "dc_block.h"
-#include "thread_manager.h" // New, centralized thread management
+#include "pipeline.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
@@ -100,16 +93,10 @@ int main(int argc, char *argv[]) {
     }
     arena_initialized = true;
 
-    // Phase 1: Pre-scan arguments to find the input type. This provides the
-    // necessary context for the main parser to build a safe, filtered list of options.
+    // Phase 1: Pre-scan arguments to find the input type.
     const char* input_type = find_input_type_arg(argc, argv);
     if (input_type) {
-        // Store the found type in the global config so it's available to the CLI module.
-        // The string is not duplicated here because it points to argv, which has a valid lifetime.
         g_config.input_type_str = (char*)input_type;
-
-        // Apply defaults for ONLY the selected module. This ensures the correct
-        // default sample rate is set, which can then be overridden by argparse.
         int num_modules = 0;
         const Module* modules = module_manager_get_all_modules(&num_modules, &resources.setup_arena);
         for (int i = 0; i < num_modules; ++i) {
@@ -154,8 +141,7 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    // Phase 2: Call the main parser. It will now use the pre-set input_type_str
-    // to build a context-aware and safe list of options to parse.
+    // Phase 2: Call the main parser.
     if (!parse_arguments(argc, argv, &g_config, &resources.setup_arena)) {
         goto cleanup;
     }
@@ -180,24 +166,15 @@ int main(int argc, char *argv[]) {
 
     resources.start_time = time(NULL);
 
-    // --- Start of Refactored Thread Management ---
-    static PipelineContext pipeline_context;
-    pipeline_context.config = &g_config;
-    pipeline_context.resources = &resources;
 
-    ThreadManager thread_manager;
-    if (!threads_init(&thread_manager, &g_config, &resources, &pipeline_context)) {
-        log_fatal("Failed to initialize thread manager and pipeline queues.");
-        goto cleanup;
+    // The entire concurrent operation is now encapsulated in this single call.
+    PipelineContext pipeline_context = { .config = &g_config, .resources = &resources };
+    if (!pipeline_run(&pipeline_context)) {
+        // pipeline_run handles its own internal cleanup. If it fails, we
+        // just need to proceed to the main application cleanup.
+        log_error("Pipeline execution failed.");
     }
 
-    if (!threads_start_all(&thread_manager)) {
-        // Error is logged inside start_all. A shutdown is already requested.
-        // We still need to join the threads that *did* manage to start.
-    }
- 
-    threads_join_all(&thread_manager);
-    // --- End of Refactored Thread Management ---
 
     bool processing_ok = !resources.error_occurred;
     exit_status = (processing_ok || is_shutdown_requested()) ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -206,6 +183,7 @@ cleanup:
     pthread_mutex_lock(&g_console_mutex);
 
     bool final_ok = !resources.error_occurred;
+
     cleanup_application(&g_config, &resources);
 
     if (resources_initialized) {
@@ -229,8 +207,6 @@ cleanup:
 /**
  * This function manually scans the command-line arguments to find the value
  * of the `--input` or `-i` option *before* the main argparse library is invoked.
- * This is the "Phase 1" of the parsing strategy, providing the necessary context
- * for the main parser to build a safe, filtered list of options.
  */
 static const char* find_input_type_arg(int argc, char *argv[]) {
     for (int i = 1; i < argc; i++) {
