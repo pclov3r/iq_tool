@@ -18,7 +18,7 @@
 
 #include "common_types.h"
 #include "pipeline_types.h"
-#include "file_writer.h"
+#include "output_writer.h"
 #include "module.h"
 #include "memory_arena.h"
 #include "presets_loader.h"
@@ -223,7 +223,7 @@ typedef struct AppResources {
     InputSourceInfo source_info;
     format_t        input_format;
     size_t          input_bytes_per_sample_pair;
-    FileWriterContext writer_ctx;
+    OutputWriterContext writer_ctx;
     size_t          output_bytes_per_sample_pair;
     void*           input_module_private_data;
 

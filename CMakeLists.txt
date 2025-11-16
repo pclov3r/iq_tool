@@ -621,7 +621,6 @@ set(OTHER_SOURCES
     src/argparse.c
     src/cli.c
     src/config.c
-    src/file_writer.c
     src/input_rawfile.c
     src/input_spyserver_client.c
     src/input_wav.c
@@ -630,6 +629,7 @@ set(OTHER_SOURCES
     src/memory_arena.c
     src/module_manager.c
     src/networking.c
+    src/output_writer.c
     src/platform.c
     src/presets_loader.c
     src/pre_processor.c

@@ -67,7 +67,7 @@
 #define IO_SDR_INPUT_BUFFER_BYTES (256 * 1024 * 1024) // 256 MB
 
 /**
- * @def IO_FILE_WRITER_BUFFER_BYTES
+ * @def IO_OUTPUT_WRITER_BUFFER_BYTES
  * @brief The size of the ring buffer between the post-processor thread and the writer thread.
  *
  * Purpose: A large size is critical for absorbing I/O latency spikes from the
@@ -77,13 +77,13 @@
  * Trade-off: Larger values provide more stability against I/O stalls at the
  * cost of higher memory usage. 1 GB is recommended for Windows systems.
  */
-#define IO_FILE_WRITER_BUFFER_BYTES (1024 * 1024 * 1024) // 1 GB
+#define IO_OUTPUT_WRITER_BUFFER_BYTES (1024 * 1024 * 1024) // 1 GB
 
 /**
- * @def IO_FILE_WRITER_CHUNK_SIZE
+ * @def IO_OUTPUT_WRITER_CHUNK_SIZE
  * @brief The size of the local buffer in the writer thread for disk writes.
  */
-#define IO_FILE_WRITER_CHUNK_SIZE (1024 * 1024) // 1 MB
+#define IO_OUTPUT_WRITER_CHUNK_SIZE (1024 * 1024) // 1 MB
 
 /**
  * @def IO_WRITER_BUFFER_HIGH_WATER_MARK

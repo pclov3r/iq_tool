@@ -1,4 +1,4 @@
-#include "file_writer.h"
+#include "output_writer.h"
 #include "app_context.h"
 #include "memory_arena.h"
 #include "log.h"
@@ -41,16 +41,16 @@ static FILE* _secure_open_for_write(const char* out_path_utf8);
 
 
 // --- Forward Declarations for RAW Writer Operations ---
-static bool raw_open(FileWriterContext* ctx, const AppConfig* config, AppResources* resources, MemoryArena* arena);
-static size_t raw_write(FileWriterContext* ctx, const void* buffer, size_t bytes_to_write);
-static void raw_close(FileWriterContext* ctx);
-static long long generic_get_total_bytes_written(const FileWriterContext* ctx);
+static bool raw_open(OutputWriterContext* ctx, const AppConfig* config, AppResources* resources, MemoryArena* arena);
+static size_t raw_write(OutputWriterContext* ctx, const void* buffer, size_t bytes_to_write);
+static void raw_close(OutputWriterContext* ctx);
+static long long generic_get_total_bytes_written(const OutputWriterContext* ctx);
 
 
 // --- Forward Declarations for WAV Writer Operations ---
-static bool wav_open(FileWriterContext* ctx, const AppConfig* config, AppResources* resources, MemoryArena* arena);
-static size_t wav_write(FileWriterContext* ctx, const void* buffer, size_t bytes_to_write);
-static void wav_close(FileWriterContext* ctx);
+static bool wav_open(OutputWriterContext* ctx, const AppConfig* config, AppResources* resources, MemoryArena* arena);
+static size_t wav_write(OutputWriterContext* ctx, const void* buffer, size_t bytes_to_write);
+static void wav_close(OutputWriterContext* ctx);
 
 
 // --- Helper Functions ---
@@ -165,13 +165,13 @@ static FILE* _secure_open_for_write(const char* out_path_utf8) {
 // --- END MODIFICATION ---
 #endif
 
-static long long generic_get_total_bytes_written(const FileWriterContext* ctx) {
+static long long generic_get_total_bytes_written(const OutputWriterContext* ctx) {
     return ctx->total_bytes_written;
 }
 
 
 // --- RAW Writer Implementation ---
-static bool raw_open(FileWriterContext* ctx, const AppConfig* config, AppResources* resources, MemoryArena* arena) {
+static bool raw_open(OutputWriterContext* ctx, const AppConfig* config, AppResources* resources, MemoryArena* arena) {
     (void)resources;
 
     if (config->output_to_stdout) {
@@ -214,7 +214,7 @@ static bool raw_open(FileWriterContext* ctx, const AppConfig* config, AppResourc
     return true;
 }
 
-static size_t raw_write(FileWriterContext* ctx, const void* buffer, size_t bytes_to_write) {
+static size_t raw_write(OutputWriterContext* ctx, const void* buffer, size_t bytes_to_write) {
     RawWriterData* data = (RawWriterData*)ctx->private_data;
     if (!data || !data->handle) return 0;
 
@@ -225,7 +225,7 @@ static size_t raw_write(FileWriterContext* ctx, const void* buffer, size_t bytes
     return written;
 }
 
-static void raw_close(FileWriterContext* ctx) {
+static void raw_close(OutputWriterContext* ctx) {
     if (!ctx || !ctx->private_data) return;
     RawWriterData* data = (RawWriterData*)ctx->private_data;
     if (data->handle && data->handle != stdout) {
@@ -236,7 +236,7 @@ static void raw_close(FileWriterContext* ctx) {
 
 
 // --- WAV Writer Implementation ---
-static bool wav_open(FileWriterContext* ctx, const AppConfig* config, AppResources* resources, MemoryArena* arena) {
+static bool wav_open(OutputWriterContext* ctx, const AppConfig* config, AppResources* resources, MemoryArena* arena) {
     (void)resources;
 
 #ifdef _WIN32
@@ -318,7 +318,7 @@ static bool wav_open(FileWriterContext* ctx, const AppConfig* config, AppResourc
     return true;
 }
 
-static size_t wav_write(FileWriterContext* ctx, const void* buffer, size_t bytes_to_write) {
+static size_t wav_write(OutputWriterContext* ctx, const void* buffer, size_t bytes_to_write) {
     WavWriterData* data = (WavWriterData*)ctx->private_data;
     if (!data || !data->handle || bytes_to_write == 0) return 0;
 
@@ -330,7 +330,7 @@ static size_t wav_write(FileWriterContext* ctx, const void* buffer, size_t bytes
     return (size_t)bytes_written;
 }
 
-static void wav_close(FileWriterContext* ctx) {
+static void wav_close(OutputWriterContext* ctx) {
     if (!ctx || !ctx->private_data) return;
     WavWriterData* data = (WavWriterData*)ctx->private_data;
     if (data->handle) {
@@ -341,8 +341,8 @@ static void wav_close(FileWriterContext* ctx) {
 
 
 // --- Public Factory Function ---
-bool file_writer_init(FileWriterContext* ctx, const AppConfig* config) {
-    memset(ctx, 0, sizeof(FileWriterContext));
+bool output_writer_init(OutputWriterContext* ctx, const AppConfig* config) {
+    memset(ctx, 0, sizeof(OutputWriterContext));
 
     switch (config->output_type) {
         case OUTPUT_TYPE_RAW:
