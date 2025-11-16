@@ -249,8 +249,11 @@ bool prepare_output_stream(AppConfig *config, AppResources *resources) {
 bool initialize_application(AppConfig *config, AppResources *resources) {
     resources->config = config;
     ModuleContext ctx = { .config = config, .resources = resources };
-    
+
+    log_info("Attempting to initialize the '%s' input module...", config->input_type_str);
+
     // --- PRE-FLIGHT CHECKS ---
+
     // STEP 1: Resolve file paths (if any)
     if (!resolve_file_paths(config, resources)) {
         return false;
