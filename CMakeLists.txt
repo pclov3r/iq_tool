@@ -631,6 +631,7 @@ set(OTHER_SOURCES
     src/networking.c
     src/output_writer.c
     src/platform.c
+    src/pipeline.c
     src/presets_loader.c
     src/pre_processor.c
     src/post_processor.c
@@ -639,9 +640,9 @@ set(OTHER_SOURCES
     src/sdr_packet_serializer.c
     src/setup.c
     src/signal_handler.c
-    src/thread_functions.c
     src/thread_manager.c
     src/utils.c
+    src/utility_threads.c
 )
 
 if(WITH_RTLSDR)

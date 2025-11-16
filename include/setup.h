@@ -13,29 +13,7 @@
 #define SETUP_H_
 
 #include <stdbool.h>
-
-// --- Forward Declarations ---
-// We use forward declarations here to break the circular dependency
-// between this header and app_context.h. This header only needs to
-// know that these types exist for its function prototypes.
-struct AppConfig;
-struct AppResources;
-
-// --- Type Definitions for the Initialization State Machine ---
-typedef enum {
-    LIFECYCLE_STATE_START,
-    LIFECYCLE_STATE_INPUT_INITIALIZED,
-    LIFECYCLE_STATE_DC_BLOCK_CREATED,
-    LIFECYCLE_STATE_IQ_CORRECTOR_CREATED,
-    LIFECYCLE_STATE_FREQ_SHIFTER_CREATED,
-    LIFECYCLE_STATE_RESAMPLER_CREATED,
-    LIFECYCLE_STATE_FILTER_CREATED,
-    LIFECYCLE_STATE_BUFFERS_ALLOCATED,
-    LIFECYCLE_STATE_THREADS_CREATED,
-    LIFECYCLE_STATE_IO_BUFFERS_CREATED,
-    LIFECYCLE_STATE_OUTPUT_STREAM_OPEN,
-    LIFECYCLE_STATE_FULLY_INITIALIZED
-} AppLifecycleState;
+#include "app_context.h" // Include the full definitions
 
 // --- Function Declarations for Setup Steps ---
 

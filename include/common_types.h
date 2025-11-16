@@ -28,6 +28,25 @@ typedef float complex complex_float_t;
 // --- Enumerations ---
 
 /**
+ * @enum AppLifecycleState
+ * @brief Defines the states of the application during initialization for robust cleanup.
+ */
+typedef enum {
+    LIFECYCLE_STATE_START,
+    LIFECYCLE_STATE_INPUT_INITIALIZED,
+    LIFECYCLE_STATE_DC_BLOCK_CREATED,
+    LIFECYCLE_STATE_IQ_CORRECTOR_CREATED,
+    LIFECYCLE_STATE_FREQ_SHIFTER_CREATED,
+    LIFECYCLE_STATE_RESAMPLER_CREATED,
+    LIFECYCLE_STATE_FILTER_CREATED,
+    LIFECYCLE_STATE_BUFFERS_ALLOCATED,
+    LIFECYCLE_STATE_THREADS_CREATED,
+    LIFECYCLE_STATE_IO_BUFFERS_CREATED,
+    LIFECYCLE_STATE_OUTPUT_STREAM_OPEN,
+    LIFECYCLE_STATE_FULLY_INITIALIZED
+} AppLifecycleState;
+
+/**
  * @enum format_t
  * @brief Enumerates all supported raw I/Q sample formats.
  */

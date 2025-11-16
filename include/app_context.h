@@ -23,7 +23,6 @@
 #include "memory_arena.h"
 #include "presets_loader.h"
 #include "constants.h"
-#include "setup.h"
 #include "resampler.h" // For resampler_t
 
 // --- Forward Declarations ---
@@ -204,6 +203,7 @@ typedef struct AppResources {
 
     // --- DSP Objects ---
     resampler_t*    resampler;
+    float           resample_ratio; // ADDED: Store the calculated ratio
     void*           pre_resample_nco; // Opaque pointer
     void*           post_resample_nco; // Opaque pointer
     double          nco_shift_hz;
@@ -255,7 +255,6 @@ typedef struct AppResources {
     struct RingBuffer* writer_input_buffer;
 
     // --- Progress & State Tracking ---
-    AppLifecycleState lifecycle_state;
     pthread_mutex_t progress_mutex;
     double          last_sdr_heartbeat_time;
     bool            error_occurred;
