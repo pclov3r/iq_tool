@@ -266,7 +266,6 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
 
     // STEP 3: Perform prerequisite calculations based on source properties
     if (!calculate_and_validate_resample_ratio(config, resources, &resources->resample_ratio)) {
-        cleanup_application(config, resources);
         return false;
     }
 
@@ -274,7 +273,6 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     // STEP 4: Perform optional pre-stream calibration for file sources
     if (resources->selected_input_module_api->pre_stream_iq_correction) {
         if (!resources->selected_input_module_api->pre_stream_iq_correction(&ctx)) {
-            cleanup_application(config, resources);
             return false;
         }
     }
@@ -282,7 +280,6 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     // STEP 5: Prepare the final output destination (Moved Up)
     // This is the last major failure point and the only interactive step.
     if (!prepare_output_stream(config, resources)) {
-        cleanup_application(config, resources);
         return false;
     }
 
