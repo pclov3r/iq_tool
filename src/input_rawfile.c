@@ -32,7 +32,6 @@
 #define strcasecmp _stricmp
 #endif
 
-extern AppConfig g_config;
 
 static struct {
     double sample_rate_hz;

@@ -22,8 +22,6 @@
 #include <strings.h>
 #endif
 
-extern AppConfig g_config;
-
 // MODIFIED: Store original command-line arguments for improved error reporting.
 static int g_original_argc = 0;
 static const char** g_original_argv = NULL;
@@ -72,66 +70,72 @@ static int version_cb(struct argparse *self, const struct argparse_option *optio
 static int build_cli_options(struct argparse_option* options_buffer, int max_options, AppConfig* config, MemoryArena* arena, const char* active_input_type) {
     int total_opts = 0;
 
-    static const struct argparse_option generic_options[] = {
+    // --- REFACTORING FIX: All option arrays are now declared INSIDE this function ---
+    // This allows them to use the 'config' pointer, which is only known at runtime.
+
+    struct argparse_option generic_options[] = {
         OPT_GROUP("Required Input & Output"),
-        OPT_STRING('i', "input", &g_config.input_type_str, "Specifies the input type {wav|raw-file|rtlsdr|sdrplay|hackrf|bladerf|spyserver-client}", NULL, 0, 0),
-        OPT_STRING('f', "file", &g_config.output_filename_arg, "Output to a file.", NULL, 0, 0),
-        OPT_BOOLEAN('o', "stdout", &g_config.output_to_stdout, "Output binary data for piping to another program.", NULL, 0, 0),
+        OPT_STRING('i', "input", &config->input_type_str, "Specifies the input type {wav|raw-file|rtlsdr|sdrplay|hackrf|bladerf|spyserver-client}", NULL, 0, 0),
+        OPT_STRING('f', "file", &config->output_filename_arg, "Output to a file.", NULL, 0, 0),
+        OPT_BOOLEAN('o', "stdout", &config->output_to_stdout, "Output binary data for piping to another program.", NULL, 0, 0),
         OPT_GROUP("Output Options"),
-        OPT_STRING(0, "output-container", &g_config.output_type_name, "Specifies the output file container format {raw|wav|wav-rf64}", NULL, 0, 0),
-        OPT_STRING(0, "output-sample-format", &g_config.sample_type_name, "Sample format for output data {cs8|cu8|cs16|...}", NULL, 0, 0),
+        OPT_STRING(0, "output-container", &config->output_type_name, "Specifies the output file container format {raw|wav|wav-rf64}", NULL, 0, 0),
+        OPT_STRING(0, "output-sample-format", &config->sample_type_name, "Sample format for output data {cs8|cu8|cs16|...}", NULL, 0, 0),
         OPT_GROUP("Processing Options"),
-        OPT_FLOAT(0, "output-rate", &g_config.user_defined_target_rate_arg, "Output sample rate in Hz. (Required if no preset or --no-resample is used)", NULL, 0, 0),
-        OPT_FLOAT(0, "gain-multiplier", &g_config.gain, "Apply a linear gain multiplier to the samples", NULL, 0, 0),
-        OPT_FLOAT(0, "freq-shift", &g_config.freq_shift_hz_arg, "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0, 0),
-        OPT_BOOLEAN(0, "shift-after-resample", &g_config.shift_after_resample, "Apply frequency shift AFTER resampling (default is before)", NULL, 0, 0),
-        OPT_BOOLEAN(0, "no-resample", &g_config.no_resample, "Process at native input rate. Bypasses the resampler but applies all other DSP.", NULL, 0, 0),
-        OPT_BOOLEAN(0, "raw-passthrough", &g_config.raw_passthrough, "Bypass all processing. Copies raw input bytes directly to output.", NULL, 0, 0),
-        OPT_BOOLEAN(0, "iq-correction", &g_config.iq_correction.enable, "(Optional) Enable automatic I/Q imbalance correction.", NULL, 0, 0),
-        OPT_BOOLEAN(0, "dc-block", &g_config.dc_block.enable, "(Optional) Enable DC offset removal (high-pass filter).", NULL, 0, 0),
-        OPT_STRING(0, "preset", &g_config.preset_name, "Use a preset for a common target.", NULL, 0, 0),
+        OPT_FLOAT(0, "output-rate", &config->user_defined_target_rate_arg, "Output sample rate in Hz. (Required if no preset or --no-resample is used)", NULL, 0, 0),
+        OPT_FLOAT(0, "gain-multiplier", &config->gain, "Apply a linear gain multiplier to the samples", NULL, 0, 0),
+        OPT_FLOAT(0, "freq-shift", &config->freq_shift_hz_arg, "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0, 0),
+        OPT_BOOLEAN(0, "shift-after-resample", &config->shift_after_resample, "Apply frequency shift AFTER resampling (default is before)", NULL, 0, 0),
+        OPT_BOOLEAN(0, "no-resample", &config->no_resample, "Process at native input rate. Bypasses the resampler but applies all other DSP.", NULL, 0, 0),
+        OPT_BOOLEAN(0, "raw-passthrough", &config->raw_passthrough, "Bypass all processing. Copies raw input bytes directly to output.", NULL, 0, 0),
+        OPT_BOOLEAN(0, "iq-correction", &config->iq_correction.enable, "(Optional) Enable automatic I/Q imbalance correction.", NULL, 0, 0),
+        OPT_BOOLEAN(0, "dc-block", &config->dc_block.enable, "(Optional) Enable DC offset removal (high-pass filter).", NULL, 0, 0),
+        OPT_STRING(0, "preset", &config->preset_name, "Use a preset for a common target.", NULL, 0, 0),
     };
 
     #define DEFINE_CHAINABLE_FLOAT_OPTION(name, var, help_text) \
-        OPT_FLOAT( 0, name,        &g_config.var[0], help_text, NULL, 0, 0), \
-        OPT_FLOAT( 0, name "-2",     &g_config.var[1], NULL, NULL, 0, 0), \
-        OPT_FLOAT( 0, name "-3",     &g_config.var[2], NULL, NULL, 0, 0), \
-        OPT_FLOAT( 0, name "-4",     &g_config.var[3], NULL, NULL, 0, 0), \
-        OPT_FLOAT( 0, name "-5",     &g_config.var[4], NULL, NULL, 0, 0)
+        OPT_FLOAT( 0, name,        &config->var[0], help_text, NULL, 0, 0), \
+        OPT_FLOAT( 0, name "-2",     &config->var[1], NULL, NULL, 0, 0), \
+        OPT_FLOAT( 0, name "-3",     &config->var[2], NULL, NULL, 0, 0), \
+        OPT_FLOAT( 0, name "-4",     &config->var[3], NULL, NULL, 0, 0), \
+        OPT_FLOAT( 0, name "-5",     &config->var[4], NULL, NULL, 0, 0)
     #define DEFINE_CHAINABLE_STRING_OPTION(name, var, help_text) \
-        OPT_STRING(0, name,        &g_config.var[0], help_text, NULL, 0, 0), \
-        OPT_STRING(0, name "-2",     &g_config.var[1], NULL, NULL, 0, 0), \
-        OPT_STRING(0, name "-3",     &g_config.var[2], NULL, NULL, 0, 0), \
-        OPT_STRING(0, name "-4",     &g_config.var[3], NULL, NULL, 0, 0), \
-        OPT_STRING(0, name "-5",     &g_config.var[4], NULL, NULL, 0, 0)
-    static const struct argparse_option filter_options[] = {
+        OPT_STRING(0, name,        &config->var[0], help_text, NULL, 0, 0), \
+        OPT_STRING(0, name "-2",     &config->var[1], NULL, NULL, 0, 0), \
+        OPT_STRING(0, name "-3",     &config->var[2], NULL, NULL, 0, 0), \
+        OPT_STRING(0, name "-4",     &config->var[3], NULL, NULL, 0, 0), \
+        OPT_STRING(0, name "-5",     &config->var[4], NULL, NULL, 0, 0)
+        
+    struct argparse_option filter_options[] = {
         OPT_GROUP("Filtering Options (Chain up to 5 by combining options or adding suffixes -2, -3, etc. e.g., --lowpass --stopband --lowpass-2 --pass-range --pass-range-2)"),
         DEFINE_CHAINABLE_FLOAT_OPTION("lowpass", lowpass_cutoff_hz_arg, "Isolate signal at DC. Keeps freqs from -<hz> to +<hz>."),
         DEFINE_CHAINABLE_FLOAT_OPTION("highpass", highpass_cutoff_hz_arg, "Remove signal at DC. Rejects freqs from -<hz> to +<hz>."),
         DEFINE_CHAINABLE_STRING_OPTION("pass-range", pass_range_str_arg, "Isolate a specific band. Format: 'start_freq:end_freq'."),
         DEFINE_CHAINABLE_STRING_OPTION("stopband", stopband_str_arg, "Remove a specific band (notch). Format: 'start_freq:end_freq'."),
         OPT_GROUP("Filter Quality Options"),
-        OPT_FLOAT(0, "transition-width", &g_config.transition_width_hz_arg, "Set filter sharpness by transition width in Hz. (Default: Auto).", NULL, 0, 0),
-        OPT_INTEGER(0, "filter-taps", &g_config.filter_taps_arg, "Set exact filter length. Overrides --transition-width.", NULL, 0, 0),
-        OPT_FLOAT(0, "attenuation", &g_config.attenuation_db_arg, "Set filter stop-band attenuation in dB. (Default: 60).", NULL, 0, 0),
+        OPT_FLOAT(0, "transition-width", &config->transition_width_hz_arg, "Set filter sharpness by transition width in Hz. (Default: Auto).", NULL, 0, 0),
+        OPT_INTEGER(0, "filter-taps", &config->filter_taps_arg, "Set exact filter length. Overrides --transition-width.", NULL, 0, 0),
+        OPT_FLOAT(0, "attenuation", &config->attenuation_db_arg, "Set filter stop-band attenuation in dB. (Default: 60).", NULL, 0, 0),
         OPT_GROUP("Filter Implementation Options (Advanced)"),
-        OPT_STRING(0, "filter-type", &g_config.filter_type_str_arg, "Set filter implementation {fir|fft}. (Default: auto).", NULL, 0, 0),
-        OPT_INTEGER(0, "filter-fft-size", &g_config.filter_fft_size_arg, "Set FFT size for 'fft' filter type. Must be a power of 2.", NULL, 0, 0),
+        OPT_STRING(0, "filter-type", &config->filter_type_str_arg, "Set filter implementation {fir|fft}. (Default: auto).", NULL, 0, 0),
+        OPT_INTEGER(0, "filter-fft-size", &config->filter_fft_size_arg, "Set FFT size for 'fft' filter type. Must be a power of 2.", NULL, 0, 0),
     };
 
-    static const struct argparse_option sdr_general_options[] = {
+    struct argparse_option sdr_general_options[] = {
         OPT_GROUP("SDR General Options"),
-        OPT_FLOAT(0, "sdr-rf-freq", &g_config.sdr.rf_freq_hz_arg, "(Required for SDR) Tuner center frequency in Hz", NULL, 0, 0),
-        OPT_FLOAT(0, "sdr-sample-rate", &g_config.sdr.sample_rate_hz_arg, "Set sample rate in Hz. (Device-specific default)", NULL, 0, 0),
-        OPT_BOOLEAN(0, "sdr-bias-t", &g_config.sdr.bias_t_enable, "(Optional) Enable Bias-T power.", NULL, 0, 0),
+        OPT_FLOAT(0, "sdr-rf-freq", &config->sdr.rf_freq_hz_arg, "(Required for SDR) Tuner center frequency in Hz", NULL, 0, 0),
+        OPT_FLOAT(0, "sdr-sample-rate", &config->sdr.sample_rate_hz_arg, "Set sample rate in Hz. (Device-specific default)", NULL, 0, 0),
+        OPT_BOOLEAN(0, "sdr-bias-t", &config->sdr.bias_t_enable, "(Optional) Enable Bias-T power.", NULL, 0, 0),
     };
 
-    static struct argparse_option final_options[] = {
+    struct argparse_option final_options[] = {
         OPT_GROUP("Help & Version"),
         OPT_BOOLEAN('v', "version", NULL, "show program's version number and exit", version_cb, 0, OPT_NONEG),
         OPT_BOOLEAN('h', "help", NULL, "show this help message and exit", argparse_help_cb, 0, OPT_NONEG),
         OPT_END(),
     };
+
+    // The rest of the function remains the same, using the local arrays defined above.
 
     #define APPEND_OPTIONS_MEMCPY(dest, src, n) \
         do { \
@@ -202,10 +206,10 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config, MemoryArena* are
     argparse_describe(&argparse, "\nResamples an I/Q file or a stream from an SDR device to a specified format and sample rate.", NULL);
     int non_opt_argc = argparse_parse(&argparse, argc, (const char **)argv);
 
-    // After a successful parse, the input type string in g_config is now definitive.
+    // After a successful parse, the input type string in the config is now definitive.
     // We must re-check it in case the user provided a different one than our pre-scan found
     // (e.g. `-i wav -i rtlsdr`, argparse will take the last one).
-    if (g_config.input_type_str && active_input_type && strcasecmp(g_config.input_type_str, active_input_type) != 0) {
+    if (config->input_type_str && active_input_type && strcasecmp(config->input_type_str, active_input_type) != 0) {
         log_error("Multiple active modules provided.");
 	return false;
     }

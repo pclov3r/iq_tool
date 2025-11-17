@@ -435,7 +435,6 @@ static struct {
     float center_target_hz_arg;
 } s_wav_config;
 
-extern AppConfig g_config;
 
 static const struct argparse_option wav_cli_options[] = {
     OPT_GROUP("WAV Input Specific Options"),

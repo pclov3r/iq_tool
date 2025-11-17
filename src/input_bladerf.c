@@ -141,7 +141,6 @@ static void bladerf_unload_api(void) {
 
 #endif
 
-extern AppConfig g_config;
 
 // --- Private Module Configuration ---
 static struct {

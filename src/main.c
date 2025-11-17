@@ -37,11 +37,10 @@
 
 // --- Global Variable Definitions ---
 pthread_mutex_t g_console_mutex;
-AppConfig g_config;
 
 
 // --- Forward Declarations for Static Helper Functions ---
-static void initialize_resource_struct(AppResources *resources);
+static void initialize_resource_struct(AppConfig *config, AppResources *resources);
 static bool validate_configuration(AppConfig *config, const AppResources *resources);
 static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success);
 static void console_lock_function(bool lock, void *udata);
@@ -59,6 +58,9 @@ int main(int argc, char *argv[]) {
     AppResources resources;
     bool resources_initialized = false;
     bool arena_initialized = false;
+
+    AppConfig config;
+    memset(&config, 0, sizeof(AppConfig));
 
     int ret;
 
@@ -82,9 +84,9 @@ int main(int argc, char *argv[]) {
     log_set_lock(console_lock_function, &g_console_mutex);
     log_set_level(LOG_INFO);
 
-    memset(&g_config, 0, sizeof(AppConfig));
+    memset(&config, 0, sizeof(AppConfig));
 
-    initialize_resource_struct(&resources);
+    initialize_resource_struct(&config, &resources);
     reset_shutdown_flag();
     setup_signal_handlers(&resources);
 
@@ -96,20 +98,20 @@ int main(int argc, char *argv[]) {
     // Phase 1: Pre-scan arguments to find the input type.
     const char* input_type = find_input_type_arg(argc, argv);
     if (input_type) {
-        g_config.input_type_str = (char*)input_type;
+        config.input_type_str = (char*)input_type;
         int num_modules = 0;
         const Module* modules = module_manager_get_all_modules(&num_modules, &resources.setup_arena);
         for (int i = 0; i < num_modules; ++i) {
             if (strcasecmp(input_type, modules[i].name) == 0) {
                 if (modules[i].set_default_config) {
-                    modules[i].set_default_config(&g_config);
+                    modules[i].set_default_config(&config);
                 }
                 break;
             }
         }
     }
 
-    g_config.gain = 1.0f;
+    config.gain = 1.0f;
 
 #ifndef _WIN32
     pthread_t sig_thread_id;
@@ -131,32 +133,32 @@ int main(int argc, char *argv[]) {
     pthread_attr_destroy(&sig_thread_attr);
 #endif
 
-    if (!presets_load_from_file(&g_config, &resources.setup_arena)) {
+    if (!presets_load_from_file(&config, &resources.setup_arena)) {
         goto cleanup;
     }
 
     if (argc <= 1) {
-        print_usage(argv[0], &g_config, &resources.setup_arena);
+        print_usage(argv[0], &config, &resources.setup_arena);
         exit_status = EXIT_SUCCESS;
         goto cleanup;
     }
 
     // Phase 2: Call the main parser.
-    if (!parse_arguments(argc, argv, &g_config, &resources.setup_arena)) {
+    if (!parse_arguments(argc, argv, &config, &resources.setup_arena)) {
         goto cleanup;
     }
 
-    resources.selected_input_module_api = module_manager_get_input_interface_by_name(g_config.input_type_str, &resources.setup_arena);
+    resources.selected_input_module_api = module_manager_get_input_interface_by_name(config.input_type_str, &resources.setup_arena);
     if (!resources.selected_input_module_api) {
-        log_fatal("Input type '%s' is not supported or not enabled in this build.", g_config.input_type_str);
+        log_fatal("Input type '%s' is not supported or not enabled in this build.", config.input_type_str);
         goto cleanup;
     }
 
-    if (!validate_configuration(&g_config, &resources)) {
+    if (!validate_configuration(&config, &resources)) {
         goto cleanup;
     }
 
-    if (!initialize_application(&g_config, &resources)) {
+    if (!initialize_application(&config, &resources)) {
         goto cleanup;
     }
     resources_initialized = true;
@@ -168,7 +170,7 @@ int main(int argc, char *argv[]) {
 
 
     // The entire concurrent operation is now encapsulated in this single call.
-    PipelineContext pipeline_context = { .config = &g_config, .resources = &resources };
+    PipelineContext pipeline_context = { .config = &config, .resources = &resources };
     if (!pipeline_run(&pipeline_context)) {
         // pipeline_run handles its own internal cleanup. If it fails, we
         // just need to proceed to the main application cleanup.
@@ -184,10 +186,10 @@ cleanup:
 
     bool final_ok = !resources.error_occurred;
 
-    cleanup_application(&g_config, &resources);
+    cleanup_application(&config, &resources);
 
     if (resources_initialized) {
-        print_final_summary(&g_config, &resources, final_ok);
+        print_final_summary(&config, &resources, final_ok);
     }
 
     pthread_mutex_unlock(&g_console_mutex);
@@ -219,10 +221,10 @@ static const char* find_input_type_arg(int argc, char *argv[]) {
     return NULL;
 }
 
-static void initialize_resource_struct(AppResources *resources) {
+static void initialize_resource_struct(AppConfig *config, AppResources *resources) {
     memset(resources, 0, sizeof(AppResources));
-    g_config.iq_correction.enable = false;
-    g_config.dc_block.enable = false;
+    config->iq_correction.enable = false;
+    config->dc_block.enable = false;
 }
 
 static bool validate_configuration(AppConfig *config, const AppResources *resources) {
