@@ -45,7 +45,6 @@ typedef struct {
     char serial[256];
 } RtlSdrPrivateData;
 
-extern AppConfig g_config;
 
 void rtlsdr_set_default_config(AppConfig* config) {
     config->sdr.sample_rate_hz = RTLSDR_DEFAULT_SAMPLE_RATE;

@@ -31,7 +31,6 @@
 
 extern pthread_mutex_t g_console_mutex;
 
-extern AppConfig g_config;
 
 // --- Private Module Configuration ---
 static struct {

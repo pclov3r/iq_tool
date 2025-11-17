@@ -117,7 +117,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
     }
 #else // POSIX
     search_paths_list[current_path_idx++] = ".";
-    const char* xdg_config_home = getenv("XDG_CONFIG_HOME");
+    const char* xdG_CONFIG_TEMP_REFACTOR_XYZ_home = getenv("XDG_CONFIG_HOME");
     
     char* xdg_path = (char*)mem_arena_alloc(arena, MAX_PATH_BUFFER, false);
     if (!xdg_path) {
@@ -125,8 +125,8 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
     }
     
     bool xdg_path_set = false;
-    if (xdg_config_home && xdg_config_home[0] != '\0') {
-        snprintf(xdg_path, MAX_PATH_BUFFER, "%s/%s", xdg_config_home, APP_NAME);
+    if (xdG_CONFIG_TEMP_REFACTOR_XYZ_home && xdG_CONFIG_TEMP_REFACTOR_XYZ_home[0] != '\0') {
+        snprintf(xdg_path, MAX_PATH_BUFFER, "%s/%s", xdG_CONFIG_TEMP_REFACTOR_XYZ_home, APP_NAME);
         xdg_path_set = true;
     } else {
         const char* home_dir = getenv("HOME");
