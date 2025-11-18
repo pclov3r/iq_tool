@@ -4,6 +4,7 @@
  */
 
 #include "output_wav_common.h"
+#include <sndfile.h>
 #include "app_context.h"
 #include "log.h"
 #include "platform.h"
