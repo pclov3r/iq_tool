@@ -453,7 +453,7 @@ static void wav_cleanup(ModuleContext* ctx);
 static void wav_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool wav_pre_stream_iq_correction(ModuleContext* ctx);
 
-static ModuleInterface wav_module_api = {
+static InputModuleInterface wav_module_api = {
     .initialize = wav_initialize,
     .start_stream = wav_start_stream,
     .stop_stream = wav_stop_stream,
@@ -465,7 +465,7 @@ static ModuleInterface wav_module_api = {
     .pre_stream_iq_correction = wav_pre_stream_iq_correction,
 };
 
-ModuleInterface* get_wav_input_module_api(void) {
+InputModuleInterface* get_wav_input_module_api(void) {
     return &wav_module_api;
 }
 
@@ -635,14 +635,17 @@ static void* wav_start_stream(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     WavPrivateData* private_data = (WavPrivateData*)resources->input_module_private_data;
 
+    // This is now a clean, high-level check.
+    // The input module no longer knows or cares about "stdout".
+    bool pacing_required = resources->pacing_is_required;
+
     // Pre-calculate the back-pressure threshold in bytes for efficiency.
-    // This check is only relevant for file-to-file operations.
-    const size_t writer_buffer_capacity = resources->config->output_to_stdout ? 0 : ring_buffer_get_capacity(resources->writer_input_buffer);
+    const size_t writer_buffer_capacity = pacing_required ? ring_buffer_get_capacity(resources->writer_input_buffer) : 0;
     const size_t writer_buffer_threshold = (size_t)(writer_buffer_capacity * IO_WRITER_BUFFER_HIGH_WATER_MARK);
 
     while (!is_shutdown_requested() && !resources->error_occurred) {
         // --- START: Back-pressure Pacing Logic ---
-        if (!resources->config->output_to_stdout && (ring_buffer_get_size(resources->writer_input_buffer) > writer_buffer_threshold)) {
+        if (pacing_required && (ring_buffer_get_size(resources->writer_input_buffer) > writer_buffer_threshold)) {
             // The writer is falling behind. Pause briefly to let it catch up.
             #ifdef _WIN32
                 Sleep(10); // 10 ms

@@ -7,7 +7,7 @@
 #include "app_context.h" // Needed for AppResources
 #include "utils.h"       // Needed for get_monotonic_time_sec
 
-// --- Common Implementations for the ModuleInterface Interface ---
+// --- Common Implementations for the InputModuleInterface Interface ---
 
 /**
  * @brief A generic function for sources that have a known, finite length (e.g., files).

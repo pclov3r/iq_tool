@@ -5,7 +5,6 @@
 #include "log.h"
 #include "module.h"
 #include "module_manager.h"
-#include "output_writer.h"
 #include "pipeline.h"
 #include "app_context.h"
 #include <stdio.h>
@@ -141,7 +140,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     }
 
     const char* base_output_labels[] = {
-        "Container Type", "Sample Type", "Output Rate", "Gain Multiplier", "Frequency Shift",
+        "Output Type", "Sample Type", "Output Rate", "Gain Multiplier", "Frequency Shift",
         "Resampling", "Output Target", "FIR Filter", "FFT Filter"
     };
     for (size_t i = 0; i < sizeof(base_output_labels) / sizeof(base_output_labels[0]); i++) {
@@ -163,14 +162,14 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 
 
     fprintf(stderr, "--- Output Details ---\n");
-    const char* output_type_str;
-    switch (config->output_type) {
-        case OUTPUT_TYPE_RAW: output_type_str = "RAW"; break;
-        case OUTPUT_TYPE_WAV: output_type_str = "WAV"; break;
-        case OUTPUT_TYPE_WAV_RF64: output_type_str = "WAV (RF64)"; break;
-        default: output_type_str = "Unknown"; break;
+    if (resources->selected_output_module_api && resources->selected_output_module_api->get_summary_info) {
+        OutputSummaryInfo output_summary;
+        memset(&output_summary, 0, sizeof(output_summary));
+        resources->selected_output_module_api->get_summary_info(&ctx, &output_summary);
+        for (int i = 0; i < output_summary.count; i++) {
+            fprintf(stderr, " %-*s : %s\n", max_label_len, output_summary.items[i].label, output_summary.items[i].value);
+        }
     }
-    fprintf(stderr, " %-*s : %s\n", max_label_len, "Container Type", output_type_str);
 
     const char* sample_type_str = utils_get_format_description_string(config->output_format);
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Sample Type", sample_type_str);
@@ -224,75 +223,71 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Resampling", resources->is_passthrough ? "Disabled (Passthrough Mode)" : "Enabled");
 
+    bool is_file_output = resources->pacing_is_required;
     const char* output_path_for_messages;
 #ifdef _WIN32
     output_path_for_messages = config->effective_output_filename_utf8;
 #else
     output_path_for_messages = config->effective_output_filename;
 #endif
-    fprintf(stderr, " %-*s : %s\n", max_label_len, config->output_to_stdout ? "Output Target" : "Output File", config->output_to_stdout ? "<stdout>" : output_path_for_messages);
-}
-
-bool prepare_output_stream(AppConfig *config, AppResources *resources) {
-    if (!config || !resources) return false;
-
-    if (!output_writer_init(&resources->writer_ctx, config)) {
-        return false;
-    }
-
-    if (!resources->writer_ctx.api.open(&resources->writer_ctx, config, resources, &resources->setup_arena)) {
-        return false;
-    }
-    return true;
+    fprintf(stderr, " %-*s : %s\n", max_label_len, is_file_output ? "Output File" : "Output Target", is_file_output ? output_path_for_messages : "<stdout>");
 }
 
 bool initialize_application(AppConfig *config, AppResources *resources) {
     resources->config = config;
     ModuleContext ctx = { .config = config, .resources = resources };
 
+    // --- STEP 1: Look up the selected output module ---
+    const Module* selected_output_module = module_manager_get_output_module_by_name(config->output_module_str, &resources->setup_arena);
+    if (!selected_output_module) {
+        // This should have been caught by cli.c, but this is a safeguard.
+        log_fatal("Internal error: Could not retrieve selected output module '%s'.", config->output_module_str);
+        return false;
+    }
+    resources->selected_output_module_api = (OutputModuleInterface*)selected_output_module->api;
+
+    // --- STEP 2: SET THE BEHAVIORAL FLAG ---
+    // This is the correct place for this decision.
+    resources->pacing_is_required = selected_output_module->requires_output_path;
+
+    // --- The rest of the setup proceeds as before ---
+
     log_info("Attempting to initialize the '%s' input module...", config->input_type_str);
 
-    // --- PRE-FLIGHT CHECKS ---
-
-    // STEP 1: Resolve file paths (if any)
     if (!resolve_file_paths(config, resources)) {
         return false;
     }
 
-    // STEP 2: Initialize the external source (SDR or file) to get its properties
     if (!resources->selected_input_module_api->initialize(&ctx)) {
         return false;
     }
 
-    // STEP 3: Perform prerequisite calculations based on source properties
     if (!calculate_and_validate_resample_ratio(config, resources, &resources->resample_ratio)) {
         return false;
     }
 
-    // --- FINAL PREPARATION ---
-    // STEP 4: Perform optional pre-stream calibration for file sources
+    if (resources->selected_output_module_api->validate_options) {
+        if (!resources->selected_output_module_api->validate_options(config)) {
+            return false;
+        }
+    }
+
     if (resources->selected_input_module_api->pre_stream_iq_correction) {
         if (!resources->selected_input_module_api->pre_stream_iq_correction(&ctx)) {
             return false;
         }
     }
 
-    // STEP 5: Prepare the final output destination (Moved Up)
-    // This is the last major failure point and the only interactive step.
-    if (!prepare_output_stream(config, resources)) {
+    if (!resources->selected_output_module_api->initialize(&ctx)) {
         return false;
     }
 
-    // STEP 6: Print summary (UI task) (Moved Down)
-    // Now that all settings are finalized and the output file is open,
-    // we can print the true final summary.
-    if (!config->output_to_stdout) {
+    if (resources->pacing_is_required) {
         print_configuration_summary(config, resources);
-        fprintf(stderr, "\n"); // Now we can safely add a single newline after the summary block.
+        fprintf(stderr, "\n"); 
     }
 
-    // The final log message now follows the summary block correctly.
-    if (!config->output_to_stdout) {
+    if (resources->pacing_is_required) {
         bool source_has_known_length = resources->selected_input_module_api->has_known_length();
         if (!source_has_known_length) {
             log_info("Starting SDR capture...");
@@ -308,13 +303,8 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
     if (!resources) return;
     ModuleContext ctx = { .config = config, .resources = resources };
 
-    // Clean up the high-level resources managed by setup.
-    // The pipeline_run function is now responsible for its own internal cleanup.
-    if (resources->writer_ctx.api.close) {
-        resources->writer_ctx.api.close(&resources->writer_ctx);
-        if (resources->writer_ctx.api.get_total_bytes_written) {
-            resources->final_output_size_bytes = resources->writer_ctx.api.get_total_bytes_written(&resources->writer_ctx);
-        }
+    if (resources->selected_output_module_api && resources->selected_output_module_api->finalize_output) {
+        resources->selected_output_module_api->finalize_output(&ctx);
     }
 
     if (resources->pipeline_chunk_data_pool) {

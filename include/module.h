@@ -3,7 +3,7 @@
  * @brief Defines the abstract interface for all I/Q data input sources.
  *
  * This file is the cornerstone of the modular input system. It defines a generic
- * interface (`ModuleInterface`) using a structure of function pointers. Any
+ * interface (`InputModuleInterface`) using a structure of function pointers. Any
  * concrete input source, whether a file reader (WAV, raw) or a live SDR device
  * (RTL-SDR, SDRplay), must provide an implementation of this interface.
  *
@@ -18,10 +18,11 @@
 #include <time.h>
 #include <stdint.h>
 #include "constants.h" // For MAX_SUMMARY_ITEMS
+#include "argparse.h"  // For argparse_option struct
 
 typedef enum {
     MODULE_TYPE_INPUT,
-    // MODULE_TYPE_OUTPUT, // Reserved for future use
+    MODULE_TYPE_OUTPUT,
 } ModuleType;
 
 // --- Forward Declarations ---
@@ -62,6 +63,9 @@ typedef struct InputSummaryInfo {
     int         count;
 } InputSummaryInfo;
 
+// ADD THIS TYPEDEF for semantic clarity.
+typedef struct InputSummaryInfo OutputSummaryInfo;
+
 /**
  * @struct ModuleContext
  * @brief A container passing the main application state to input source functions.
@@ -75,10 +79,10 @@ typedef struct ModuleContext {
 // --- The Core Interface Definition ---
 
 /**
- * @struct ModuleInterface
+ * @struct InputModuleInterface
  * @brief The "vtable" of function pointers that defines the module interface.
  */
-typedef struct ModuleInterface {
+typedef struct InputModuleInterface {
     /**
      * @brief Performs initial setup (e.g., open file, select SDR device, set SDR parameters).
      * @param ctx The application context.
@@ -135,6 +139,43 @@ typedef struct ModuleInterface {
     // Optional function for file-based sources to perform initial I/Q correction.
     bool (*pre_stream_iq_correction)(struct ModuleContext* ctx);
 
-} ModuleInterface;
+} InputModuleInterface;
+
+/**
+ * @struct OutputModuleInterface
+ * @brief The "vtable" for output modules (writers).
+ */
+typedef struct OutputModuleInterface {
+    // Validates module-specific options (e.g., WAV only supports cs16/cu8)
+    bool (*validate_options)(struct AppConfig* config);
+
+    // Returns any CLI options specific to this output format
+    const struct argparse_option* (*get_cli_options)(int* count);
+
+    // Performs all one-time setup for the writer (opens files, etc.)
+    bool (*initialize)(struct ModuleContext* ctx);
+
+    // The main writer loop function (this IS the thread)
+    void* (*run_writer)(struct ModuleContext* ctx);
+
+    /**
+     * @brief Writes a single chunk of data directly to the output.
+     * This is used for special cases like raw_passthrough mode.
+     * @param ctx The application context.
+     * @param buffer Pointer to the data to write.
+     * @param bytes_to_write The number of bytes to write.
+     * @return The number of bytes successfully written.
+     */
+    size_t (*write_chunk)(struct ModuleContext* ctx, const void* buffer, size_t bytes_to_write);
+
+    // Finalizes the output (e.g., updates WAV headers) and closes handles
+    void (*finalize_output)(struct ModuleContext* ctx);
+
+    // Populates a summary struct with output details
+    // CHANGE THIS LINE to use the new type.
+    void (*get_summary_info)(const struct ModuleContext* ctx, OutputSummaryInfo* info);
+
+} OutputModuleInterface;
+
 
 #endif // MODULE_H_

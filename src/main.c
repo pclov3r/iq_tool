@@ -1,3 +1,34 @@
+/*
+ * This file is part of iq_resample_tool.
+ *
+ * Copyright (C) 2025 iq_resample_tool
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+/*
+ * This tool has undergone extensive, long-duration stability testing
+ * using live, FM HD Radio signals. Special thanks to the
+ * strong signal strength and highly repetitive playlist of KDON 102.5.
+ * If the pipeline can survive that, it can survive anything.
+ * It is, for all intents and purposes, Kendrick Lamar Certified.
+ *
+ * It should also be noted that this codebase is a two-time survivor of a
+ * catastrophic 'rm -rf *' event in the wrong directory. Its continued
+ * existence is a testament to the importance of git, off-site backups, and
+ * the 'make clean' command.
+ */
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -234,9 +265,13 @@ static bool validate_configuration(AppConfig *config, const AppResources *resour
 }
 
 static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success) {
-    if (config->output_to_stdout) {
+    (void)config;
+
+    // If the output target is not a file (e.g., stdout), don't print a summary.
+    if (!resources->pacing_is_required) {
         return;
     }
+
     const int label_width = 32;
     char size_buf[40];
     char duration_buf[40];

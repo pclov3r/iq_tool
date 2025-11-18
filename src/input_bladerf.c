@@ -204,7 +204,7 @@ static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_c
 static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel);
 
 
-static ModuleInterface bladerf_module_api = {
+static InputModuleInterface bladerf_module_api = {
     .initialize = bladerf_initialize,
     .start_stream = bladerf_start_stream,
     .stop_stream = bladerf_stop_stream,
@@ -216,7 +216,7 @@ static ModuleInterface bladerf_module_api = {
     .pre_stream_iq_correction = NULL
 };
 
-ModuleInterface* get_bladerf_input_module_api(void) {
+InputModuleInterface* get_bladerf_input_module_api(void) {
     return &bladerf_module_api;
 }
 
@@ -667,7 +667,7 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
                             log_warn("BladeRF reported a stream overrun (discontinuity).");
                         }
                         size_t bytes_to_write = meta.actual_count * resources->input_bytes_per_sample_pair;
-                        size_t written = resources->writer_ctx.api.write(&resources->writer_ctx, passthrough_buffer, bytes_to_write);
+                        size_t written = resources->selected_output_module_api->write_chunk(ctx, passthrough_buffer, bytes_to_write);
                         if (written < bytes_to_write) {
                             log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
                             request_shutdown();

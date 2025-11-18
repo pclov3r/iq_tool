@@ -7,10 +7,10 @@
 #include "argparse.h"
 
 /**
- * @brief Returns a pointer to the ModuleInterface struct that implements
+ * @brief Returns a pointer to the InputModuleInterface struct that implements
  *        the input source interface for WAV file input.
  */
-ModuleInterface* get_wav_input_module_api(void);
+InputModuleInterface* get_wav_input_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the WAV module.

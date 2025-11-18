@@ -32,9 +32,8 @@
 static const PresetKeyHandler key_handlers[] = {
     { "description",      PRESET_KEY_STRDUP, offsetof(PresetDefinition, description),         0 },
     { "target_rate",      PRESET_KEY_STRTOD, offsetof(PresetDefinition, target_rate),         0 },
-    { "sample_format_name", PRESET_KEY_STRDUP, offsetof(PresetDefinition, sample_format_name),  0 },
-    { "output_type",      PRESET_KEY_OUTPUT_TYPE, offsetof(PresetDefinition, output_type),       0 },
-    { "gain",             PRESET_KEY_STRTOF, offsetof(PresetDefinition, gain),              offsetof(PresetDefinition, gain_provided) },
+    { "output_sample_format_name", PRESET_KEY_STRDUP, offsetof(PresetDefinition, output_sample_format_name),  0 },
+    { "gain-multiplier",  PRESET_KEY_STRTOF, offsetof(PresetDefinition, gain),              offsetof(PresetDefinition, gain_provided) },
     { "dc_block",         PRESET_KEY_BOOL,   offsetof(PresetDefinition, dc_block_enable),   offsetof(PresetDefinition, dc_block_provided) },
     { "iq_correction",    PRESET_KEY_BOOL,   offsetof(PresetDefinition, iq_correction_enable),offsetof(PresetDefinition, iq_correction_provided) },
     { "lowpass",          PRESET_KEY_STRTOF, offsetof(PresetDefinition, lowpass_cutoff_hz), offsetof(PresetDefinition, lowpass_cutoff_hz_provided) },
@@ -326,11 +325,6 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
                         case PRESET_KEY_BOOL:
                             if (strcasecmp(value, "true") == 0) *(bool*)value_ptr = true;
                             else if (strcasecmp(value, "false") == 0) *(bool*)value_ptr = false;
-                            break;
-                        case PRESET_KEY_OUTPUT_TYPE:
-                            if (strcasecmp(value, "raw") == 0) *(OutputType*)value_ptr = OUTPUT_TYPE_RAW;
-                            else if (strcasecmp(value, "wav") == 0) *(OutputType*)value_ptr = OUTPUT_TYPE_WAV;
-                            else if (strcasecmp(value, "wav-rf64") == 0) *(OutputType*)value_ptr = OUTPUT_TYPE_WAV_RF64;
                             break;
                     }
 

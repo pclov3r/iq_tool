@@ -85,7 +85,7 @@ static const char* get_tuner_name_from_enum(enum rtlsdr_tuner tuner_type) {
     }
 }
 
-static ModuleInterface rtlsdr_module_api = {
+static InputModuleInterface rtlsdr_module_api = {
     .initialize = rtlsdr_initialize,
     .start_stream = rtlsdr_start_stream,
     .stop_stream = rtlsdr_stop_stream,
@@ -97,7 +97,7 @@ static ModuleInterface rtlsdr_module_api = {
     .pre_stream_iq_correction = NULL
 };
 
-ModuleInterface* get_rtlsdr_input_module_api(void) {
+InputModuleInterface* get_rtlsdr_input_module_api(void) {
     return &rtlsdr_module_api;
 }
 
@@ -252,7 +252,7 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
     resources->source_info.frames = -1;
 
     if (config->raw_passthrough && resources->input_format != config->output_format) {
-        log_fatal("Option --raw-passthrough requires input and output formats to be identical. RTL-SDR input is 'cu8', but output was set to '%s'.", config->sample_type_name);
+        log_fatal("Option --raw-passthrough requires input and output formats to be identical. RTL-SDR input is 'cu8', but output was set to '%s'.", config->output_sample_format_name);
         goto cleanup;
     }
 
@@ -314,7 +314,7 @@ static void* rtlsdr_start_stream(ModuleContext* ctx) {
                         break;
                     }
                     if (n_read > 0) {
-                        size_t written = resources->writer_ctx.api.write(&resources->writer_ctx, passthrough_buffer, n_read);
+                        size_t written = resources->selected_output_module_api->write_chunk(ctx, passthrough_buffer, n_read);
                         if (written < (size_t)n_read) {
                             log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
                             request_shutdown();

@@ -629,7 +629,10 @@ set(OTHER_SOURCES
     src/memory_arena.c
     src/module_manager.c
     src/networking.c
-    src/output_writer.c
+    src/output_raw_file.c
+    src/output_stdout.c
+    src/output_wav.c
+    src/output_wav_rf64.c
     src/platform.c
     src/pipeline.c
     src/presets_loader.c

@@ -15,10 +15,10 @@ struct AppConfig;
 // --- Function Declarations ---
 
 /**
- * @brief Returns a pointer to the ModuleInterface struct that implements
+ * @brief Returns a pointer to the InputModuleInterface struct that implements
  *        the input source interface for SpyServer client input.
  */
-ModuleInterface* get_spyserver_client_input_module_api(void);
+InputModuleInterface* get_spyserver_client_input_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the SpyServer client module.

@@ -119,13 +119,14 @@ The best way to see all options is to run `iq_tool --help`.
 #### Command-Line Options
 
 ```text
+Resamples an I/Q file or a stream from an SDR device to a specified format and sample rate.
+
+
 Required Input & Output
-    -i, --input=<str>                     Specifies the input type {wav|raw-file|rtlsdr|sdrplay|hackrf|bladerf}
-    -f, --file=<str>                      Output to a file.
-    -o, --stdout                          Output binary data for piping to another program.
+    -i, --input=<str>                     Specifies the input type {wav|raw-file|rtlsdr|sdrplay|hackrf|bladerf|spyserver-client}
+    -o, --output=<str>                    Specifies the output type {wav|raw|stdout} and optional file path
 
 Output Options
-    --output-container=<str>              Specifies the output file container format {raw|wav|wav-rf64}
     --output-sample-format=<str>          Sample format for output data {cs8|cu8|cs16|...}
 
 Processing Options
@@ -197,7 +198,7 @@ BladeRF-Specific Options
 SpyServer Client Options
     --spyserver-client-host=<str>         Hostname or IP of the spyserver instance (Required).
     --spyserver-client-port=<int>         Port number of the spyserver instance (Required).
-    --spyserver-client-gain=<int>         Set manual gain index (0-max). Disables AGC.
+    --spyserver-client-gain=<int>         Set manual gain. Disables AGC. (Ignored on servers without gain control)
     --spyserver-client-format=<str>       Select sample format {cu8|cs16|cs24|cf32}. Default is cu8.
 
 Available Presets
@@ -211,6 +212,8 @@ Help & Version
 ```
 
 #### Examples
+
+## ⚠️ These example are outdated and will be updated at a later time ⚠️
 
 **Example 1: Basic File Resampling**
 Resample a WAV file to a 16-bit RF64 (large WAV) file with a custom output rate.

@@ -65,7 +65,7 @@ static void rawfile_get_summary_info(const ModuleContext* ctx, InputSummaryInfo*
 static bool rawfile_validate_options(AppConfig* config);
 static bool rawfile_pre_stream_iq_correction(ModuleContext* ctx);
 
-static ModuleInterface raw_file_module_api = {
+static InputModuleInterface raw_file_module_api = {
     .initialize = rawfile_initialize,
     .start_stream = rawfile_start_stream,
     .stop_stream = rawfile_stop_stream,
@@ -77,7 +77,7 @@ static ModuleInterface raw_file_module_api = {
     .pre_stream_iq_correction = rawfile_pre_stream_iq_correction,
 };
 
-ModuleInterface* get_raw_file_input_module_api(void) {
+InputModuleInterface* get_raw_file_input_module_api(void) {
     return &raw_file_module_api;
 }
 
@@ -174,17 +174,19 @@ static void* rawfile_start_stream(ModuleContext* ctx) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf),
                  "Option --raw-passthrough requires input and output formats to be identical. Input format is '%s', output format is '%s'.",
-                 s_rawfile_config.format_str, config->sample_type_name);
+                 s_rawfile_config.format_str, config->output_sample_format_name);
         handle_fatal_thread_error(error_buf, resources);
         return NULL;
     }
 
+    bool pacing_required = resources->pacing_is_required;
+
     // Pre-calculate the back-pressure threshold in bytes for efficiency.
-    const size_t writer_buffer_capacity = ring_buffer_get_capacity(resources->writer_input_buffer);
+    const size_t writer_buffer_capacity = pacing_required ? ring_buffer_get_capacity(resources->writer_input_buffer) : 0;
     const size_t writer_buffer_threshold = (size_t)(writer_buffer_capacity * IO_WRITER_BUFFER_HIGH_WATER_MARK);
 
     while (!is_shutdown_requested() && !resources->error_occurred) {
-        if (ring_buffer_get_size(resources->writer_input_buffer) > writer_buffer_threshold) {
+        if (pacing_required && (ring_buffer_get_size(resources->writer_input_buffer) > writer_buffer_threshold)) {
             // The writer is falling behind. Pause briefly to let it catch up.
             #ifdef _WIN32
                 Sleep(10); // 10 ms
@@ -201,9 +203,6 @@ static void* rawfile_start_stream(ModuleContext* ctx) {
 
         current_item->stream_discontinuity_event = false;
 
-        // In passthrough mode, the reader thread's job is to read directly into the
-        // *final* output buffer of the chunk. The processing threads will then just
-        // act as a simple relay to pass the chunk to the writer.
         void* target_buffer;
         size_t bytes_to_read;
         if (config->raw_passthrough) {
@@ -231,11 +230,7 @@ static void* rawfile_start_stream(ModuleContext* ctx) {
             current_item->is_last_chunk = true;
             current_item->frames_read = 0;
             current_item->packet_sample_format = resources->input_format;
-
-            // The passthrough logic will happen in the processing threads now.
-            // We just need to start the shutdown sequence for all threads.
             queue_enqueue(resources->reader_output_queue, current_item);
-
             break;
         }
 
@@ -247,8 +242,6 @@ static void* rawfile_start_stream(ModuleContext* ctx) {
         resources->total_frames_read += current_item->frames_read;
         pthread_mutex_unlock(&resources->progress_mutex);
 
-        // In both modes, the chunk now goes to the pre-processor.
-        // In passthrough mode, the pre-processor will just forward it.
         if (!queue_enqueue(resources->reader_output_queue, current_item)) {
             queue_enqueue(resources->free_sample_chunk_queue, current_item);
             break;
