@@ -631,6 +631,7 @@ set(OTHER_SOURCES
     src/networking.c
     src/output_raw_file.c
     src/output_stdout.c
+    src/output_wav_common.c
     src/output_wav.c
     src/output_wav_rf64.c
     src/platform.c
