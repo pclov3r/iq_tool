@@ -18,7 +18,6 @@
 
 #include "common_types.h"
 #include "pipeline_types.h"
-#include "output_writer.h"
 #include "module.h"
 #include "memory_arena.h"
 #include "presets_loader.h"
@@ -65,10 +64,10 @@ typedef struct AppConfig {
     char*       input_type_str;
     char*       input_filename_arg;
     char*       output_filename_arg;
-    char*       sample_type_name;
+    char*       output_module_str;
+    char*       output_sample_format_name;
     char*       output_type_name;
     bool        output_type_provided;
-    bool        output_to_stdout;
     char*       preset_name;
 
     // --- Core DSP ---
@@ -203,7 +202,7 @@ typedef struct AppResources {
 
     // --- DSP Objects ---
     resampler_t*    resampler;
-    float           resample_ratio; // ADDED: Store the calculated ratio
+    float           resample_ratio;
     void*           pre_resample_nco; // Opaque pointer
     void*           post_resample_nco; // Opaque pointer
     double          nco_shift_hz;
@@ -219,13 +218,15 @@ typedef struct AppResources {
     unsigned int     post_fft_remainder_len;
 
     // --- Input/Output State ---
-    struct ModuleInterface* selected_input_module_api;
+    InputModuleInterface*  selected_input_module_api;
+    OutputModuleInterface* selected_output_module_api;
     InputSourceInfo source_info;
     format_t        input_format;
     size_t          input_bytes_per_sample_pair;
-    OutputWriterContext writer_ctx;
     size_t          output_bytes_per_sample_pair;
     void*           input_module_private_data;
+    void*           output_module_private_data;
+    bool            pacing_is_required;
 
     // --- Memory Management ---
     MemoryArena     setup_arena;

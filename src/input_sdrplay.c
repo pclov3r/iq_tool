@@ -228,7 +228,7 @@ static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_S
 static void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext);
 
 
-static ModuleInterface sdrplay_module_api = {
+static InputModuleInterface sdrplay_module_api = {
     .initialize = sdrplay_initialize,
     .start_stream = sdrplay_start_stream,
     .stop_stream = sdrplay_stop_stream,
@@ -240,7 +240,7 @@ static ModuleInterface sdrplay_module_api = {
     .pre_stream_iq_correction = NULL
 };
 
-ModuleInterface* get_sdrplay_input_module_api(void) {
+InputModuleInterface* get_sdrplay_input_module_api(void) {
     return &sdrplay_module_api;
 }
 
@@ -409,7 +409,8 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
                 temp_buffer[i * 2 + 1] = xq[samples_processed + i];
             }
             size_t bytes_to_write = samples_this_chunk * resources->input_bytes_per_sample_pair;
-            size_t written = resources->writer_ctx.api.write(&resources->writer_ctx, temp_buffer, bytes_to_write);
+            ModuleContext ctx = { .config = config, .resources = resources };
+                        size_t written = resources->selected_output_module_api->write_chunk(&ctx, temp_buffer, bytes_to_write);
             if (written < bytes_to_write) {
                 log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
                 request_shutdown();
@@ -754,7 +755,7 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
     resources->source_info.frames = -1;
 
     if (config->raw_passthrough && resources->input_format != config->output_format) {
-        log_fatal("Option --raw-passthrough requires input and output formats to be identical. SDRplay input is 'cs16', but output was set to '%s'.", config->sample_type_name);
+        log_fatal("Option --raw-passthrough requires input and output formats to be identical. SDRplay input is 'cs16', but output was set to '%s'.", config->output_sample_format_name);
         goto cleanup;
     }
 

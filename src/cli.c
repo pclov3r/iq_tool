@@ -1,5 +1,3 @@
-// cli.c
-
 #include "cli.h"
 #include "constants.h"
 #include "app_context.h"      // Provides AppConfig, MemoryArena
@@ -41,7 +39,7 @@ void print_usage(const char *prog_name, AppConfig *config, MemoryArena* arena) {
     struct argparse argparse;
     struct argparse_option all_options[MAX_TOTAL_OPTIONS];
     const char *const usages[] = {
-        "iq_tool -i <type> [input_file] [options]",
+        "iq_tool -i <in_type> [in_file] -o <out_type> [out_file] [options]",
         NULL,
     };
 
@@ -76,11 +74,9 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
     struct argparse_option generic_options[] = {
         OPT_GROUP("Required Input & Output"),
         OPT_STRING('i', "input", &config->input_type_str, "Specifies the input type {wav|raw-file|rtlsdr|sdrplay|hackrf|bladerf|spyserver-client}", NULL, 0, 0),
-        OPT_STRING('f', "file", &config->output_filename_arg, "Output to a file.", NULL, 0, 0),
-        OPT_BOOLEAN('o', "stdout", &config->output_to_stdout, "Output binary data for piping to another program.", NULL, 0, 0),
+        OPT_STRING('o', "output", &config->output_module_str, "Specifies the output type {wav|raw|stdout} and optional file path", NULL, 0, 0),
         OPT_GROUP("Output Options"),
-        OPT_STRING(0, "output-container", &config->output_type_name, "Specifies the output file container format {raw|wav|wav-rf64}", NULL, 0, 0),
-        OPT_STRING(0, "output-sample-format", &config->sample_type_name, "Sample format for output data {cs8|cu8|cs16|...}", NULL, 0, 0),
+        OPT_STRING(0, "output-sample-format", &config->output_sample_format_name, "Sample format for output data {cs8|cu8|cs16|...}", NULL, 0, 0),
         OPT_GROUP("Processing Options"),
         OPT_FLOAT(0, "output-rate", &config->user_defined_target_rate_arg, "Output sample rate in Hz. (Required if no preset or --no-resample is used)", NULL, 0, 0),
         OPT_FLOAT(0, "gain-multiplier", &config->gain, "Apply a linear gain multiplier to the samples", NULL, 0, 0),
@@ -151,9 +147,6 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], filter_options, sizeof(filter_options) / sizeof(filter_options[0]));
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], sdr_general_options, sizeof(sdr_general_options) / sizeof(sdr_general_options[0]));
 
-    // Call the Module Manager service to add all module-specific options.
-    // The complex logic of discovering and filtering options is now encapsulated there.
-    // --- BUGFIX: Pass the base pointer 'options_buffer', not the offset pointer. ---
     module_manager_populate_cli_options(
         options_buffer,
         &total_opts,
@@ -186,14 +179,11 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
 
 
 bool parse_arguments(int argc, char *argv[], AppConfig *config, MemoryArena* arena) {
-    // MODIFIED: Save original arguments for better error messages in validation.
     g_original_argc = argc;
     g_original_argv = (const char**)argv;
 
     struct argparse_option all_options[MAX_TOTAL_OPTIONS];
     
-    // The active input type is now passed down from main() to here.
-    // We need it to build the context-sensitive list of options.
     const char* active_input_type = config->input_type_str;
 
     if (build_cli_options(all_options, MAX_TOTAL_OPTIONS, config, arena, active_input_type) < 0) {
@@ -201,14 +191,11 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config, MemoryArena* are
     }
 
     struct argparse argparse;
-    const char *const usages[] = { "iq_tool -i <type> [input_file] [options]", NULL, };
+    const char *const usages[] = { "iq_tool -i <in_type> [in_file] -o <out_type> [out_file] [options]", NULL, };
     argparse_init(&argparse, all_options, usages, 0);
     argparse_describe(&argparse, "\nResamples an I/Q file or a stream from an SDR device to a specified format and sample rate.", NULL);
     int non_opt_argc = argparse_parse(&argparse, argc, (const char **)argv);
 
-    // After a successful parse, the input type string in the config is now definitive.
-    // We must re-check it in case the user provided a different one than our pre-scan found
-    // (e.g. `-i wav -i rtlsdr`, argparse will take the last one).
     if (config->input_type_str && active_input_type && strcasecmp(config->input_type_str, active_input_type) != 0) {
         log_error("Multiple active modules provided.");
 	return false;
@@ -222,61 +209,78 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config, MemoryArena* are
 }
 
 static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const char** non_opt_argv, MemoryArena* arena) {
-    // 1. Basic parsing result checks
+    // --- Step 1: Validate Input Module and its Arguments ---
     if (!config->input_type_str) {
         log_error("Missing required argument: --input <type>");
         return false;
     }
 
-    ModuleInterface* selected_module_api = module_manager_get_input_interface_by_name(config->input_type_str, arena);
+    InputModuleInterface* selected_module_api = module_manager_get_input_interface_by_name(config->input_type_str, arena);
     if (!selected_module_api) {
         log_error("Invalid input type '%s'.", config->input_type_str);
         return false;
     }
 
-    // 2. Handle non-option arguments (the input file path)
     bool is_file_input = (strcasecmp(config->input_type_str, "wav") == 0 ||
                           strcasecmp(config->input_type_str, "raw-file") == 0);
 
     if (is_file_input) {
-        if (non_opt_argc == 0) {
-            log_error("Missing <file_path> argument for '%s'.", config->input_type_str);
-            return false;
-        }
-        if (non_opt_argc > 1) {
-            log_error("Only one input file path is allowed.");
+        if (non_opt_argc < 1) {
+            log_error("Missing <in_file> argument for input type '%s'.", config->input_type_str);
             return false;
         }
         config->input_filename_arg = (char*)non_opt_argv[0];
-    } else {
-        // MODIFIED: This entire block is replaced with the new, more intelligent error handling.
-        if (non_opt_argc > 0) {
-            const char* unexpected_arg = non_opt_argv[0];
-            const char* preceding_arg = NULL;
-
-            // Search for the unexpected argument in the original command line to find what came before it.
-            for (int i = 1; i < g_original_argc; i++) {
-                // Use pointer comparison for efficiency, as argparse gives us the original pointers.
-                if (g_original_argv[i] == unexpected_arg) {
-                    preceding_arg = g_original_argv[i - 1];
-                    break;
-                }
-            }
-
-            // If the preceding argument looks like an option, we have found the likely culprit.
-            if (preceding_arg && preceding_arg[0] == '-') {
-                log_error("Argument '%s' provided is not valid for the active module '%s'.",
-                          preceding_arg, config->input_type_str);
-            } else {
-                // Fallback for a simple typo or a value without a preceding option.
-                log_error("Unexpected argument '%s' provided for active module '%s'.",
-                          unexpected_arg, config->input_type_str);
-            }
-            return false;
-        }
+        // Consume the argument
+        non_opt_argv++;
+        non_opt_argc--;
     }
 
-    // 3. Post-process SDR arguments
+    // --- Step 2: Validate Output Module and its Arguments ---
+    if (!config->output_module_str) {
+        log_fatal("Missing required argument: --output <type> [path]");
+        return false;
+    }
+
+    const Module* selected_output_module = module_manager_get_output_module_by_name(config->output_module_str, arena);
+    if (!selected_output_module) {
+        log_fatal("Invalid value for --output: '%s'.", config->output_module_str);
+        return false;
+    }
+
+    if (selected_output_module->requires_output_path) {
+        if (non_opt_argc < 1) {
+            log_fatal("Missing <out_file> argument for '--output %s'.", config->output_module_str);
+            return false;
+        }
+        config->output_filename_arg = (char*)non_opt_argv[0];
+        // Consume the argument
+        non_opt_argv++;
+        non_opt_argc--;
+    } else { // Module does not require a path (e.g., stdout)
+        config->output_filename_arg = NULL;
+    }
+
+    // --- Step 3: Check for Unexpected Extra Arguments ---
+    if (non_opt_argc > 0) {
+        const char* unexpected_arg = non_opt_argv[0];
+        const char* preceding_arg = NULL;
+
+        for (int i = 1; i < g_original_argc; i++) {
+            if (g_original_argv[i] == unexpected_arg) {
+                preceding_arg = g_original_argv[i - 1];
+                break;
+            }
+        }
+
+        if (preceding_arg && preceding_arg[0] == '-') {
+            log_error("Argument '%s' provided is not valid for the active module '%s'.", preceding_arg, config->input_type_str);
+        } else {
+            log_error("Unexpected argument: '%s'", unexpected_arg);
+        }
+        return false;
+    }
+
+    // --- Step 4: Post-process SDR arguments ---
     if (config->sdr.rf_freq_hz_arg > 0.0f) {
         config->sdr.rf_freq_hz = (double)config->sdr.rf_freq_hz_arg;
         config->sdr.rf_freq_provided = true;
@@ -286,9 +290,8 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
         config->sdr.sample_rate_provided = true;
     }
 
-    // 4. Call all validation functions from the config module in the correct order
+    // --- Step 5: Call all validation functions from the config module ---
     if (selected_module_api->validate_options && !selected_module_api->validate_options(config)) return false;
-    if (!validate_output_destination(config)) return false;
     if (!validate_output_type_and_sample_format(config)) return false;
     if (selected_module_api->validate_generic_options && !selected_module_api->validate_generic_options(config)) return false;
     if (!validate_filter_options(config)) return false;

@@ -33,7 +33,6 @@ typedef enum {
     PRESET_KEY_STRTOF,
     PRESET_KEY_STRTOL,
     PRESET_KEY_BOOL,
-    PRESET_KEY_OUTPUT_TYPE
 } PresetKeyAction;
 
 /**
@@ -58,8 +57,9 @@ typedef struct PresetDefinition {
     char*  name;
     char*  description;
     double target_rate;
-    char*  sample_format_name;
-    OutputType output_type;
+    char*  output_sample_format_name;
+    // --- DELETE THIS LINE ---
+    // OutputType output_type;
 
     // DSP parameters with flags to check if they were set by the preset
     float gain;

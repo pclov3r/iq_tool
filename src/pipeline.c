@@ -203,7 +203,8 @@ static bool _init_queues_and_buffers(AppConfig* config, AppResources* resources)
         resources->sdr_input_buffer = ring_buffer_create(IO_SDR_INPUT_BUFFER_BYTES);
         if (!resources->sdr_input_buffer) return false;
     }
-    if (!config->output_to_stdout) {
+    
+    if (resources->pacing_is_required) {
         resources->writer_input_buffer = ring_buffer_create(IO_OUTPUT_WRITER_BUFFER_BYTES);
         if (!resources->writer_input_buffer) return false;
     }
@@ -419,78 +420,13 @@ void* writer_thread_func(void* arg) {
 #endif
 
     PipelineContext* args = (PipelineContext*)arg;
-    AppResources* resources = args->resources;
-    AppConfig* config = args->config;
+    ModuleContext ctx = { .config = args->config, .resources = args->resources };
 
-    if (config->output_to_stdout) {
-        while (true) {
-            SampleChunk* item = (SampleChunk*)queue_dequeue(resources->writer_input_queue);
-            if (!item) break;
-
-            if (item->stream_discontinuity_event) {
-                queue_enqueue(resources->free_sample_chunk_queue, item);
-                continue;
-            }
-
-            if (item->is_last_chunk) {
-                queue_enqueue(resources->free_sample_chunk_queue, item);
-                break;
-            }
-
-            size_t output_bytes_this_chunk = item->frames_to_write * resources->output_bytes_per_sample_pair;
-            if (output_bytes_this_chunk > 0) {
-                size_t written_bytes = resources->writer_ctx.api.write(&resources->writer_ctx, item->final_output_data, output_bytes_this_chunk);
-                if (written_bytes != output_bytes_this_chunk) {
-                    if (!is_shutdown_requested()) {
-                        log_debug("Writer: stdout write error: %s", strerror(errno));
-                        request_shutdown();
-                    }
-                    queue_enqueue(resources->free_sample_chunk_queue, item);
-                    break;
-                }
-            }
-
-            if (!queue_enqueue(resources->free_sample_chunk_queue, item)) {
-                break;
-            }
-        }
-    } else {
-        unsigned char* local_write_buffer = (unsigned char*)resources->writer_local_buffer;
-        if (!local_write_buffer) {
-            handle_fatal_thread_error("Writer: Local write buffer is NULL.", resources);
-            return NULL;
-        }
-
-        while (true) {
-            size_t bytes_read = ring_buffer_read(resources->writer_input_buffer, local_write_buffer, IO_OUTPUT_WRITER_CHUNK_SIZE);
-
-            if (bytes_read == 0) {
-                break;
-            }
-
-            size_t written_bytes = resources->writer_ctx.api.write(&resources->writer_ctx, local_write_buffer, bytes_read);
-
-            if (written_bytes != bytes_read) {
-                char error_buf[256];
-                snprintf(error_buf, sizeof(error_buf), "Writer: File write error: %s", strerror(errno));
-                handle_fatal_thread_error(error_buf, resources);
-                break;
-            }
-
-            if (resources->progress_callback) {
-                long long current_bytes = resources->writer_ctx.api.get_total_bytes_written(&resources->writer_ctx);
-                unsigned long long current_frames = current_bytes / resources->output_bytes_per_sample_pair;
-
-                pthread_mutex_lock(&resources->progress_mutex);
-                resources->total_output_frames = current_frames;
-                pthread_mutex_unlock(&resources->progress_mutex);
-
-                resources->progress_callback(current_frames, resources->expected_total_output_frames, current_bytes, resources->progress_callback_udata);
-            }
-        }
+    if (args->resources->selected_output_module_api && args->resources->selected_output_module_api->run_writer) {
+        return args->resources->selected_output_module_api->run_writer(&ctx);
     }
 
-    log_debug("Writer thread is exiting.");
+    log_fatal("Writer thread started with no output module selected or run_writer is NULL.");
     return NULL;
 }
 
@@ -606,16 +542,18 @@ void* post_processor_thread_func(void* arg) {
 
     PipelineContext* args = (PipelineContext*)arg;
     AppResources* resources = args->resources;
-    AppConfig* config = args->config;
 
     SampleChunk* item;
     while ((item = (SampleChunk*)queue_dequeue(resources->post_processor_input_queue)) != NULL) {
 
         if (item->is_last_chunk) {
-            if (config->output_to_stdout) {
+            // If we are NOT using a paced buffer (e.g. stdout), we need to send the last_chunk marker to the writer.
+            if (!resources->pacing_is_required) {
                 queue_enqueue(resources->writer_input_queue, item);
-            } else {
-                ring_buffer_signal_end_of_stream(resources->writer_input_buffer);
+            } else { // Otherwise, we signal the ring buffer and free the chunk.
+                if (resources->writer_input_buffer) {
+                    ring_buffer_signal_end_of_stream(resources->writer_input_buffer);
+                }
                 queue_enqueue(resources->free_sample_chunk_queue, item);
             }
             break;
@@ -632,13 +570,16 @@ void* post_processor_thread_func(void* arg) {
         post_processor_apply_chain(resources, item);
 
         if (item->frames_to_write > 0) {
-            if (config->output_to_stdout) {
+            // If we are NOT using a paced buffer, pass the chunk directly to the writer thread's queue.
+            if (!resources->pacing_is_required) {
                 if (!queue_enqueue(resources->writer_input_queue, item)) {
                     break;
                 }
-            } else {
-                size_t bytes_to_write = item->frames_to_write * resources->output_bytes_per_sample_pair;
-                ring_buffer_write(resources->writer_input_buffer, item->final_output_data, bytes_to_write);
+            } else { // Otherwise, write the data to the ring buffer and return the chunk to the free pool.
+                if (resources->writer_input_buffer) {
+                    size_t bytes_to_write = item->frames_to_write * resources->output_bytes_per_sample_pair;
+                    ring_buffer_write(resources->writer_input_buffer, item->final_output_data, bytes_to_write);
+                }
                 queue_enqueue(resources->free_sample_chunk_queue, item);
             }
         } else {
@@ -649,4 +590,3 @@ void* post_processor_thread_func(void* arg) {
     log_debug("Post-processor thread is exiting.");
     return NULL;
 }
-

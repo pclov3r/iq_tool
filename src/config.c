@@ -1,5 +1,3 @@
-// config.c
-
 #include "config.h"
 #include "app_context.h" // Provides the full definition for AppConfig
 #include "constants.h"
@@ -63,18 +61,6 @@ static void add_filter_request(AppConfig *config, FilterType type, float f1, flo
     }
 }
 
-bool validate_output_destination(AppConfig *config) {
-    if (config->output_to_stdout && config->output_filename_arg) {
-        log_fatal("Options --stdout and --file <file> are mutually exclusive.");
-        return false;
-    }
-    if (!config->output_to_stdout && !config->output_filename_arg) {
-        log_fatal("Must specify an output destination: --stdout or --file <file>.");
-        return false;
-    }
-    return true;
-}
-
 // RESTRUCTURED: This function has been reordered to check for fatal errors first
 // and to explicitly log the application's "smart default" behaviors.
 bool validate_output_type_and_sample_format(AppConfig *config) {
@@ -85,12 +71,8 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
             if (strcasecmp(config->preset_name, config->presets[i].name) == 0) {
                 const PresetDefinition* p = &config->presets[i];
                 config->target_rate = p->target_rate;
-                if (!config->sample_type_name) {
-                    config->sample_type_name = p->sample_format_name;
-                }
-                if (!config->output_type_name) {
-                    config->output_type = p->output_type;
-                    config->output_type_provided = true;
+                if (!config->output_sample_format_name) {
+                    config->output_sample_format_name = p->output_sample_format_name;
                 }
                 if (p->gain_provided && config->gain == 1.0f) {
                     config->gain = p->gain;
@@ -143,67 +125,47 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
     }
 
     // --- Step 3: FATAL CHECK for Missing Rate (MOVED HERE) ---
-    // This must happen after presets and user args are processed, but before any other defaults.
     if (config->target_rate <= 0 && !config->no_resample) {
         log_fatal("Missing required argument: you must specify an --output-rate or use a preset.");
         return false;
     }
 
     // --- Step 4: Determine Output Container Type (with defaults) ---
-    if (config->output_type_name) {
-        // The user explicitly provided the --output-container flag.
-        config->output_type_provided = true;
-        if (strcasecmp(config->output_type_name, "raw") == 0) {
-            config->output_type = OUTPUT_TYPE_RAW;
-        } else if (strcasecmp(config->output_type_name, "wav") == 0) {
-            config->output_type = OUTPUT_TYPE_WAV;
-        } else if (strcasecmp(config->output_type_name, "wav-rf64") == 0) {
-            config->output_type = OUTPUT_TYPE_WAV_RF64;
-        } else {
-            log_fatal("Invalid output type '%s'. Must be 'raw', 'wav', or 'wav-rf64'.", config->output_type_name);
-            return false;
-        }
-    } else if (!config->output_type_provided) {
-        // The user did NOT provide the flag. Apply smart defaults.
-        if (config->output_to_stdout) {
-            // For stdout, the only sensible default is raw. This can remain silent.
-            config->output_type = OUTPUT_TYPE_RAW;
-        } else {
-            // For file output, default to WAV_RF64 but make it explicit to the user.
-            config->output_type = OUTPUT_TYPE_WAV_RF64;
-            log_info("No output container specified; defaulting to 'wav-rf64' for file output.");
-        }
+    // This logic is now simplified as the module choice implies the container.
+    if (strcasecmp(config->output_module_str, "raw") == 0) {
+        config->output_type = OUTPUT_TYPE_RAW;
+    } else if (strcasecmp(config->output_module_str, "wav") == 0) {
+        // For file output, default to WAV_RF64 but make it explicit to the user.
+        config->output_type = OUTPUT_TYPE_WAV_RF64;
+        log_info("Defaulting to 'wav-rf64' container for large file support.");
+    } else if (strcasecmp(config->output_module_str, "stdout") == 0) {
+        config->output_type = OUTPUT_TYPE_RAW;
     }
 
     // --- Step 5: Determine Output Sample Format (with defaults) ---
-    if (!config->sample_type_name) {
-        // If writing to a file (and not stdout), and no sample format is given,
+    if (!config->output_sample_format_name) {
+        // If writing to a file, and no sample format is given,
         // it's safe to default to 'cs16', which is the most common for WAV files.
-        if (config->output_filename_arg && !config->output_to_stdout) {
-            config->sample_type_name = "cs16";
+        if (config->output_filename_arg) {
+            config->output_sample_format_name = "cs16";
             log_info("No output sample format specified; defaulting to 'cs16' for file output.");
         } else {
             // For stdout, the format MUST be specified as we cannot guess the consumer's needs.
-            log_fatal("Missing required argument: you must specify an --output-sample-format or use a preset.");
+            log_fatal("Missing required argument: you must specify an --output-sample-format when using '--output stdout'.");
             return false;
         }
     }
 
     // --- Step 6: Final Validation of Formats and Combinations ---
-    config->output_format = utils_get_format_from_string(config->sample_type_name);
+    config->output_format = utils_get_format_from_string(config->output_sample_format_name);
     if (config->output_format == FORMAT_UNKNOWN) {
-        log_fatal("Invalid sample format '%s'. See --help for valid formats.", config->sample_type_name);
-        return false;
-    }
-
-    if (config->output_to_stdout && (config->output_type == OUTPUT_TYPE_WAV || config->output_type == OUTPUT_TYPE_WAV_RF64)) {
-        log_fatal("Invalid option: WAV/RF64 container format cannot be used with --stdout.");
+        log_fatal("Invalid sample format '%s'. See --help for valid formats.", config->output_sample_format_name);
         return false;
     }
 
     if (config->output_type == OUTPUT_TYPE_WAV || config->output_type == OUTPUT_TYPE_WAV_RF64) {
         if (config->output_format != CS16 && config->output_format != CU8) {
-            log_fatal("Invalid sample format '%s' for WAV container. Only 'cs16' and 'cu8' are supported for WAV output.", config->sample_type_name);
+            log_fatal("Invalid sample format '%s' for WAV container. Only 'cs16' and 'cu8' are supported for WAV output.", config->output_sample_format_name);
             return false;
         }
     }
@@ -289,19 +251,16 @@ bool validate_option_combinations(AppConfig *config) {
     }
 
     if (config->filter_fft_size_arg != 0) {
-        // If user explicitly typed '--filter-type fir' AND '--filter-fft-size', it's a direct contradiction.
         if (config->filter_type_str_arg && config->filter_type_request == FILTER_TYPE_FIR) {
             log_fatal("Contradictory options: --filter-fft-size cannot be used with an explicit '--filter-type fir'.");
             return false;
         }
  
-        // The user's inclusion of --filter-fft-size implies an intent to use an FFT filter, overriding any preset.
         if (config->filter_type_request != FILTER_TYPE_FFT) {
             log_debug("Option --filter-fft-size overrides preset; forcing filter type to FFT.");
             config->filter_type_request = FILTER_TYPE_FFT;
         }
 
-        // Now, validate the FFT size value itself.
         if (config->filter_fft_size_arg <= 0) {
             log_fatal("--filter-fft-size must be a positive integer.");
             return false;
@@ -313,7 +272,6 @@ bool validate_option_combinations(AppConfig *config) {
         }
     }
 
-    // Perform a preliminary check for FFT size vs. taps to fail fast.
     if (config->filter_type_request == FILTER_TYPE_FFT && config->filter_taps_arg > 0 && config->filter_fft_size_arg > 0) {
         long adjusted_taps = (config->filter_taps_arg % 2 == 0) 
                            ? config->filter_taps_arg + 1 

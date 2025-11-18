@@ -80,7 +80,7 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer);
 static int hackrf_buffered_stream_callback(hackrf_transfer* transfer);
 
 
-static ModuleInterface hackrf_module_api = {
+static InputModuleInterface hackrf_module_api = {
     .initialize = hackrf_initialize,
     .start_stream = hackrf_start_stream,
     .stop_stream = hackrf_stop_stream,
@@ -92,7 +92,7 @@ static ModuleInterface hackrf_module_api = {
     .pre_stream_iq_correction = NULL
 };
 
-ModuleInterface* get_hackrf_input_module_api(void) {
+InputModuleInterface* get_hackrf_input_module_api(void) {
     return &hackrf_module_api;
 }
 
@@ -173,7 +173,8 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
     }
 
     if (config->raw_passthrough) {
-        size_t written = resources->writer_ctx.api.write(&resources->writer_ctx, transfer->buffer, transfer->valid_length);
+        ModuleContext ctx = { .config = config, .resources = resources };
+                        size_t written = resources->selected_output_module_api->write_chunk(&ctx, transfer->buffer, transfer->valid_length);
         if (written < (size_t)transfer->valid_length) {
             log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
             request_shutdown();
@@ -305,7 +306,7 @@ static bool hackrf_initialize(ModuleContext* ctx) {
     resources->source_info.frames = -1;
 
     if (config->raw_passthrough && resources->input_format != config->output_format) {
-        log_fatal("Option --raw-passthrough requires input and output formats to be identical. HackRF input is 'cs8', but output was set to '%s'.", config->sample_type_name);
+        log_fatal("Option --raw-passthrough requires input and output formats to be identical. HackRF input is 'cs8', but output was set to '%s'.", config->output_sample_format_name);
         goto cleanup;
     }
 
