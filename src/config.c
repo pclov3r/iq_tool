@@ -83,6 +83,22 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
                 if (p->iq_correction_provided && !config->iq_correction.enable) {
                     config->iq_correction.enable = p->iq_correction_enable;
                 }
+
+                // --- NEW: Apply AGC Settings from Preset ---
+                // If a profile is provided in the preset, it implicitly enables AGC.
+                if (p->agc_profile_provided) {
+                    if (!config->output_agc.enable) {
+                        config->output_agc.enable = true;
+                    }
+                    if (!config->output_agc.profile_str_arg) {
+                        config->output_agc.profile_str_arg = p->agc_profile_str;
+                    }
+                }
+                if (p->agc_target_provided && config->output_agc.target_level_arg == 0.0f) {
+                    config->output_agc.target_level_arg = p->agc_target;
+                }
+                // -------------------------------------------
+
                 if (p->lowpass_cutoff_hz_provided && config->lowpass_cutoff_hz_arg[0] == 0.0f) {
                     config->lowpass_cutoff_hz_arg[0] = p->lowpass_cutoff_hz;
                 }
@@ -283,6 +299,60 @@ bool validate_option_combinations(AppConfig *config) {
             log_error("For %ld taps, the FFT size must be at least %ld.",
                       adjusted_taps, required_fft_size);
             return false;
+        }
+    }
+
+    // --- Validate Output AGC Options ---
+    if (config->output_agc.enable) {
+        // 1. Validate Profile
+        if (!config->output_agc.profile_str_arg) {
+            config->output_agc.profile = AGC_PROFILE_LOCAL; // Default
+        } else {
+            if (strcasecmp(config->output_agc.profile_str_arg, "dx") == 0) {
+                config->output_agc.profile = AGC_PROFILE_DX;
+            } else if (strcasecmp(config->output_agc.profile_str_arg, "local") == 0) {
+                config->output_agc.profile = AGC_PROFILE_LOCAL;
+            } else if (strcasecmp(config->output_agc.profile_str_arg, "digital") == 0) {
+                config->output_agc.profile = AGC_PROFILE_DIGITAL;
+            } else {
+                log_fatal("Invalid AGC profile '%s'. Must be 'dx', 'local', or 'digital'.", config->output_agc.profile_str_arg);
+                return false;
+            }
+        }
+
+        // 2. Validate Target Level
+        if (config->output_agc.target_level_arg != 0.0f) {
+            if (config->output_agc.target_level_arg <= 0.0f || config->output_agc.target_level_arg > 1.0f) {
+                log_fatal("Invalid AGC target level %.2f. Must be between 0.0 and 1.0.", config->output_agc.target_level_arg);
+                return false;
+            }
+            config->output_agc.target_level = config->output_agc.target_level_arg;
+        } else {
+            // Select default based on profile
+            switch (config->output_agc.profile) {
+                case AGC_PROFILE_DIGITAL:
+                    config->output_agc.target_level = AGC_DIGITAL_PEAK_TARGET;
+                    break;
+                case AGC_PROFILE_LOCAL:
+                    config->output_agc.target_level = AGC_LOCAL_TARGET;
+                    break;
+                case AGC_PROFILE_DX:
+                default:
+                    config->output_agc.target_level = AGC_DX_TARGET;
+                    break;
+            }
+        }
+
+        // 3. Check for Conflicts
+        if (config->raw_passthrough) {
+            log_fatal("Option --output-agc cannot be used with --raw-passthrough.");
+            return false;
+        }
+
+        // 4. Check for Warnings
+        if (config->gain_provided && config->gain != 1.0f) {
+            log_warn("Both --gain-multiplier and --output-agc are set.");
+            log_warn("Manual gain is applied at input, but AGC will override the final volume at output.");
         }
     }
 

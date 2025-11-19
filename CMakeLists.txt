@@ -618,6 +618,7 @@ set(DSP_SOURCES
 
 # Define the list of all other (non-DSP) source files
 set(OTHER_SOURCES
+    src/agc.c
     src/argparse.c
     src/cli.c
     src/config.c

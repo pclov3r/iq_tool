@@ -1,16 +1,6 @@
 /**
  * @file app_context.h
  * @brief Defines the primary application state and resource management structures.
- *
- * This header contains the definitions for the two most important structs that
- * represent the entire state of the application:
- *
- * 1.  `AppConfig`: Holds all user-configurable settings parsed from the
- *     command line and preset files. This struct is generally treated as
- *     read-only after initial setup.
- *
- * 2.  `AppResources`: Holds all allocated resources, state variables, DSP
- *     objects, and thread handles used during the application's lifecycle.
  */
 
 #ifndef APP_CONTEXT_H_
@@ -44,6 +34,20 @@ typedef struct {
 typedef struct {
     bool enable;
 } DcBlockConfig;
+
+/**
+ * @struct OutputAgcConfig
+ * @brief Configuration for the post-processing Automatic Gain Control.
+ */
+typedef struct {
+    bool       enable;
+    AgcProfile profile;
+    float      target_level;
+
+    // Internal storage for CLI parsing
+    char*      profile_str_arg;
+    float      target_level_arg;
+} OutputAgcConfig;
 
 /**
  * @struct FilterRequest
@@ -81,6 +85,7 @@ typedef struct AppConfig {
     bool        user_rate_provided;
     IqCorrectionConfig iq_correction;
     DcBlockConfig      dc_block;
+    OutputAgcConfig    output_agc;
 
     // --- Internal State from CLI Parsing ---
     FilterRequest filter_requests[MAX_FILTER_CHAIN];
@@ -216,6 +221,14 @@ typedef struct AppResources {
     unsigned int     pre_fft_remainder_len;
     complex_float_t* post_fft_remainder_buffer;
     unsigned int     post_fft_remainder_len;
+
+    // --- Output AGC State ---
+    void*           output_agc_object; // Opaque pointer (agc_crcf) for DX/Local
+    // State for Digital (Peak-Lock) Profile
+    bool            agc_is_locked;
+    float           agc_current_gain;
+    float           agc_peak_memory;
+    uint64_t        agc_samples_seen;
 
     // --- Input/Output State ---
     InputModuleInterface*  selected_input_module_api;

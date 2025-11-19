@@ -1,6 +1,7 @@
 #include "post_processor.h"
 #include "filter.h"
 #include "frequency_shift.h"
+#include "agc.h" // Added for Output AGC
 #include "sample_convert.h"
 #include "signal_handler.h"
 #include "log.h"
@@ -51,7 +52,11 @@ void post_processor_apply_chain(AppResources* resources, SampleChunk* item) {
             current_data_ptr = destination_buffer;
         }
 
-        // Step 3: Final Sample Format Conversion
+        // Step 3: Output Automatic Gain Control (if enabled)
+        // This runs in-place on the current data pointer.
+        agc_apply(resources, current_data_ptr, item->frames_to_write);
+
+        // Step 4: Final Sample Format Conversion
         // The current_data_ptr now points to the final, fully processed complex float data.
         if (!convert_cf32_to_block(current_data_ptr,
                                    item->final_output_data,
@@ -67,4 +72,5 @@ void post_processor_apply_chain(AppResources* resources, SampleChunk* item) {
 void post_processor_reset(AppResources* resources) {
     freq_shift_reset_nco(resources->post_resample_nco);
     filter_reset(resources); // Filter reset is applicable to both stages
+    agc_reset(resources);    // Reset AGC state
 }
