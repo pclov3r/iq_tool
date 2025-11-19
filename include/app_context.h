@@ -223,12 +223,12 @@ typedef struct AppResources {
     unsigned int     post_fft_remainder_len;
 
     // --- Output AGC State ---
-    void*           output_agc_object; // Opaque pointer (agc_crcf) for DX/Local
-    // State for Digital (Peak-Lock) Profile
+    void*           output_agc_object;
     bool            agc_is_locked;
     float           agc_current_gain;
     float           agc_peak_memory;
     uint64_t        agc_samples_seen;
+    double          agc_last_strong_peak_time;
 
     // --- Input/Output State ---
     InputModuleInterface*  selected_input_module_api;
