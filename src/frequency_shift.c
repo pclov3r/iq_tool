@@ -56,7 +56,7 @@ bool freq_shift_create(AppConfig *config, AppResources *resources) {
             log_error("Failed to create pre-resample NCO (frequency shifter).");
             return false;
         }
-        float nco_freq_rad_per_sample = (float)(2.0 * M_PI * resources->nco_shift_hz / rate_for_nco);
+        float nco_freq_rad_per_sample = (float)(2.0 * M_PI * fabs(resources->nco_shift_hz) / rate_for_nco);
         nco_crcf_set_frequency((nco_crcf)resources->pre_resample_nco, nco_freq_rad_per_sample);
     }
 
@@ -73,7 +73,7 @@ bool freq_shift_create(AppConfig *config, AppResources *resources) {
             freq_shift_destroy_ncos(resources); // Clean up pre-resample NCO if it was created
             return false;
         }
-        float nco_freq_rad_per_sample = (float)(2.0 * M_PI * resources->nco_shift_hz / rate_for_nco);
+        float nco_freq_rad_per_sample = (float)(2.0 * M_PI * fabs(resources->nco_shift_hz) / rate_for_nco);
         nco_crcf_set_frequency((nco_crcf)resources->post_resample_nco, nco_freq_rad_per_sample);
     }
 
