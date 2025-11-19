@@ -192,6 +192,34 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         return false;
     }
 
+    #ifdef _WIN32
+    HANDLE hFile = (HANDLE)_get_osfhandle(_fileno(fp));
+    BY_HANDLE_FILE_INFORMATION fileInfo;
+    if (GetFileInformationByHandle(hFile, &fileInfo)) {
+        if (fileInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            log_fatal("Security: Presets file '%s' is a directory. Aborting.", found_preset_files[0]);
+            fclose(fp);
+            return false;
+        }
+    } else {
+        log_fatal("Could not get file status for '%s'", found_preset_files[0]);
+        fclose(fp);
+        return false;
+    }
+    #else
+    struct stat file_stat;
+    if (fstat(fileno(fp), &file_stat) != 0) {
+        log_fatal("Could not get file status for '%s': %s", found_preset_files[0], strerror(errno));
+        fclose(fp);
+        return false;
+    }
+    if (!S_ISREG(file_stat.st_mode)) {
+        log_fatal("Security: Presets file '%s' is not a regular file. Aborting.", found_preset_files[0]);
+        fclose(fp);
+        return false;
+    }
+    #endif
+
     char line[MAX_LINE_LENGTH];
     PresetDefinition* current_preset = NULL;
     int capacity = 8;
@@ -213,7 +241,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
 
         if (trimmed_line[0] == '[' && strstr(trimmed_line, "preset:")) {
             if (config->num_presets >= MAX_PRESETS) {
-                log_warn("Maximum number of presets (%d) reached. Ignoring further presets.", MAX_PRESETS);
+                log_warn("Maximum number of presets (%d) reached at line %d. Ignoring further presets.", MAX_PRESETS, line_num);
                 current_preset = NULL;
                 continue;
             }
@@ -235,15 +263,26 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
             if (name_end) {
                 *name_end = '\0';
                 current_preset->name = arena_strdup(arena, trim_whitespace(name_start));
+                if (!current_preset->name) {
+                    fclose(fp);
+                    return false;
+                }
                 config->num_presets++;
+            } else {
+                log_warn("Malformed preset header at line %d: %s", line_num, trimmed_line);
+                current_preset = NULL;
             }
         } else if (current_preset && strchr(trimmed_line, '=')) {
             char* key = strtok(trimmed_line, "=");
             char* value = strtok(NULL, "");
-            if (!key || !value) continue;
+            if (!key || !value) {
+                log_warn("Malformed key-value pair at line %d.", line_num);
+                continue;
+            }
             key = trim_whitespace(key);
             value = trim_whitespace(value);
 
+            bool key_found = false;
             for (size_t i = 0; i < num_key_handlers; ++i) {
                 const PresetKeyHandler* handler = &key_handlers[i];
                 if (strcasecmp(key, handler->key_name) == 0) {
@@ -253,6 +292,10 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
                     switch (handler->action) {
                         case PRESET_KEY_STRDUP:
                             *(char**)value_ptr = arena_strdup(arena, value);
+                            if (!*(char**)value_ptr) {
+                                fclose(fp);
+                                return false;
+                            }
                             break;
                         case PRESET_KEY_STRTOD:
                             *(double*)value_ptr = strtod(value, NULL);
@@ -272,8 +315,13 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
                     if (handler->provided_flag_offset > 0) {
                         *provided_ptr = true;
                     }
+                    key_found = true;
                     break;
                 }
+            }
+
+            if (!key_found) {
+                log_warn("Unknown key '%s' in preset '%s' at line %d.", key, current_preset->name, line_num);
             }
         }
     }
