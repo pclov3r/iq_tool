@@ -168,12 +168,6 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
 
     for (int i = 0; i < config->num_filter_requests; ++i) {
         FilterRequest adjusted_req = config->filter_requests[i];
-
-        if (!config->apply_user_filter_post_resample && fabs(resources->nco_shift_hz) > 1e-9) {
-            log_debug("Compensating filter design for active pre-resample frequency shift of %.0f Hz.", resources->nco_shift_hz);
-            adjusted_req.freq1_hz -= resources->nco_shift_hz;
-        }
-
         const FilterRequest* req = &adjusted_req;
 
         if (req->type != FILTER_TYPE_LOWPASS) {
