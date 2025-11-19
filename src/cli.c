@@ -79,7 +79,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_STRING(0, "output-sample-format", &config->output_sample_format_name, "Sample format for output data {cs8|cu8|cs16|...}", NULL, 0, 0),
         OPT_GROUP("Processing Options"),
         OPT_FLOAT(0, "output-rate", &config->user_defined_target_rate_arg, "Output sample rate in Hz. (Required if no preset or --no-resample is used)", NULL, 0, 0),
-        OPT_FLOAT(0, "gain-multiplier", &config->gain, "Apply a linear gain multiplier to the samples", NULL, 0, 0),
+        OPT_FLOAT(0, "gain-multiplier", &config->gain, "Apply a linear gain multiplier to input samples", NULL, 0, 0),
         OPT_FLOAT(0, "freq-shift", &config->freq_shift_hz_arg, "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0, 0),
         OPT_BOOLEAN(0, "shift-after-resample", &config->shift_after_resample, "Apply frequency shift AFTER resampling (default is before)", NULL, 0, 0),
         OPT_BOOLEAN(0, "no-resample", &config->no_resample, "Process at native input rate. Bypasses the resampler but applies all other DSP.", NULL, 0, 0),
@@ -87,6 +87,14 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_BOOLEAN(0, "iq-correction", &config->iq_correction.enable, "(Optional) Enable automatic I/Q imbalance correction.", NULL, 0, 0),
         OPT_BOOLEAN(0, "dc-block", &config->dc_block.enable, "(Optional) Enable DC offset removal (high-pass filter).", NULL, 0, 0),
         OPT_STRING(0, "preset", &config->preset_name, "Use a preset for a common target.", NULL, 0, 0),
+    };
+
+    struct argparse_option agc_options[] = {
+        OPT_GROUP("Output Automatic Gain Control (AGC)"),
+        OPT_BOOLEAN(0, "output-agc", &config->output_agc.enable, "Enable automatic gain control on the output.", NULL, 0, 0),
+        // CHANGED: Updated default description to 'local'
+        OPT_STRING(0,  "agc-profile", &config->output_agc.profile_str_arg, "AGC profile {dx|local|digital}. (Default: local)", NULL, 0, 0),
+        OPT_FLOAT(0,   "agc-target", &config->output_agc.target_level_arg, "AGC target magnitude (0.0 - 1.0). (Default: Profile Dependent)", NULL, 0, 0),
     };
 
     #define DEFINE_CHAINABLE_FLOAT_OPTION(name, var, help_text) \
@@ -144,6 +152,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         } while (0)
 
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], generic_options, sizeof(generic_options) / sizeof(generic_options[0]));
+    APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], agc_options, sizeof(agc_options) / sizeof(agc_options[0]));
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], filter_options, sizeof(filter_options) / sizeof(filter_options[0]));
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], sdr_general_options, sizeof(sdr_general_options) / sizeof(sdr_general_options[0]));
 

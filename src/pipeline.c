@@ -25,6 +25,7 @@
 #include "frequency_shift.h"
 #include "resampler.h"
 #include "filter.h"
+#include "agc.h" // Added for Output AGC
 #include "sample_convert.h"
 #include "queue.h"
 #include "ring_buffer.h"
@@ -141,10 +142,12 @@ static bool _create_dsp_components(AppConfig* config, AppResources* resources, f
     resources->resampler = create_resampler(config, resources, resample_ratio);
     if (!resources->resampler && !resources->is_passthrough) return false;
     if (!filter_create(config, resources, &resources->setup_arena)) return false;
+    if (!agc_create(config, resources)) return false;
     return true;
 }
 
 static void _destroy_dsp_components(AppResources* resources) {
+    agc_destroy(resources);
     filter_destroy(resources);
     destroy_resampler(resources->resampler);
     resources->resampler = NULL;

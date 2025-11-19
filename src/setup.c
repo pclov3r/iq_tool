@@ -141,7 +141,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 
     const char* base_output_labels[] = {
         "Output Type", "Sample Type", "Output Rate", "Gain Multiplier", "Frequency Shift",
-        "Resampling", "Output Target", "FIR Filter", "FFT Filter"
+        "Resampling", "Output Target", "FIR Filter", "FFT Filter", "Output AGC"
     };
     for (size_t i = 0; i < sizeof(base_output_labels) / sizeof(base_output_labels[0]); i++) {
         int len = (int)strlen(base_output_labels[i]);
@@ -219,6 +219,22 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
         }
         strncat(filter_buf, stage, sizeof(filter_buf) - strlen(filter_buf) - 1);
         fprintf(stderr, " %-*s : %s\n", max_label_len, filter_label, filter_buf);
+    }
+
+    if (config->output_agc.enable) {
+        char agc_buf[128];
+        const char* profile_name = "Unknown";
+        switch (config->output_agc.profile) {
+            case AGC_PROFILE_DX:      profile_name = "DX"; break;
+            case AGC_PROFILE_LOCAL:   profile_name = "Local"; break;
+            case AGC_PROFILE_DIGITAL: profile_name = "Digital (Peak-Lock)"; break;
+            default: break;
+        }
+        
+        snprintf(agc_buf, sizeof(agc_buf), "Enabled (Profile: %s, Target: %.2f)", profile_name, config->output_agc.target_level);
+        fprintf(stderr, " %-*s : %s\n", max_label_len, "Output AGC", agc_buf);
+    } else {
+        fprintf(stderr, " %-*s : %s\n", max_label_len, "Output AGC", "Disabled");
     }
 
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Resampling", resources->is_passthrough ? "Disabled (Passthrough Mode)" : "Enabled");

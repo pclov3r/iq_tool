@@ -131,7 +131,7 @@ Output Options
 
 Processing Options
     --output-rate=<flt>                   Output sample rate in Hz. (Required if no preset or --no-resample is used)
-    --gain-multiplier=<flt>               Apply a linear gain multiplier to the samples
+    --gain-multiplier=<flt>               Apply a linear gain multiplier to input samples
     --freq-shift=<flt>                    Apply a direct frequency shift in Hz (e.g., -100e3)
     --shift-after-resample                Apply frequency shift AFTER resampling (default is before)
     --no-resample                         Process at native input rate. Bypasses the resampler but applies all other DSP.
@@ -139,6 +139,11 @@ Processing Options
     --iq-correction                       (Optional) Enable automatic I/Q imbalance correction.
     --dc-block                            (Optional) Enable DC offset removal (high-pass filter).
     --preset=<str>                        Use a preset for a common target.
+
+Output Automatic Gain Control (AGC)
+    --output-agc                          Enable automatic gain control on the output.
+    --agc-profile=<str>                   AGC profile {dx|local|digital}. (Default: local)
+    --agc-target=<flt>                    AGC target magnitude (0.0 - 1.0). (Default: Profile Dependent)
 
 Filtering Options (Chain up to 5 by combining options or adding suffixes -2, -3, etc. e.g., --lowpass --stopband --lowpass-2 --pass-range --pass-range-2)
     --lowpass=<flt>                       Isolate signal at DC. Keeps freqs from -<hz> to +<hz>.
