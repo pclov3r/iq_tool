@@ -78,9 +78,9 @@ typedef struct AppConfig {
     float       gain;
     bool        gain_provided;
     float       freq_shift_hz_arg;
-    bool        shift_after_resample;
-    bool        no_resample;
-    bool        raw_passthrough;
+    int         shift_after_resample;
+    int         no_resample;
+    int         raw_passthrough;
     float       user_defined_target_rate_arg;
     bool        user_rate_provided;
     IqCorrectionConfig iq_correction;
