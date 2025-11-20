@@ -33,6 +33,16 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
 static int version_cb(struct argparse *self, const struct argparse_option *option);
 static int build_cli_options(struct argparse_option* options_buffer, int max_options, AppConfig* config, MemoryArena* arena, const char* active_input_type);
 
+// --- NEW: Callback to catch users trying to use presets as flags ---
+// This preserves the help text formatting but prevents the "Ghost Option" silent failure.
+static int preset_flag_warning_cb(struct argparse *self, const struct argparse_option *option) {
+    (void)self;
+    // Concise, action-oriented error message (Option 1).
+    log_error("'--%s' is not a valid flag. To load the '%s' preset, use '--preset %s'.", 
+              option->long_name, option->long_name, option->long_name);
+    exit(EXIT_FAILURE);
+    return 0;
+}
 
 void print_usage(const char *prog_name, AppConfig *config, MemoryArena* arena) {
     (void)prog_name; // MODIFIED: Mark as unused to silence the warning.
@@ -176,6 +186,8 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
                 .long_name = config->presets[i].name,
                 .help = config->presets[i].description,
                 .flags = OPT_LONG_NOPREFIX,
+                .callback = preset_flag_warning_cb,
+                .value = NULL
             };
         }
         APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], preset_opts, presets_to_add);
