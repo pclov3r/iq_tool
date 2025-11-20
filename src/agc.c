@@ -120,7 +120,7 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
             // 2. SAFETY RATCHET (Fast Attack Down)
             // If we exceed 1.0, we MUST reduce gain immediately to prevent clipping.
             if (output_peak > 1.0f) {
-                float new_gain = g * 0.95f; // Reduce by 5%
+                float new_gain = 0.99f / block_peak;
                 
                 // Log only if significant change to avoid spamming
                 if (g - new_gain > 0.01f) {
