@@ -207,9 +207,13 @@ SpyServer Client Options
     --spyserver-client-format=<str>       Select sample format {cu8|cs16|cs24|cf32}. Default is cu8.
 
 Available Presets
-    cu8-nrsc5                             Sets sample type to cu8, rate to 1488375.0 Hz for FM/AM NRSC5 decoding (produces headerless raw output).
-    cs16-fm-nrsc5                         Sets sample type to cs16, rate to 744187.5 Hz for FM NRSC5 decoding (produces headerless raw output).
-    cs16-am-nrsc5                         Sets sample type to cs16, rate to 46511.71875 Hz for AM NRSC5 decoding (produces headerless raw output).
+    cu8-nrsc5                             Sets sample type to cu8, rate to 1488375.0 Hz for FM/AM NRSC5 decoding.
+    cu8-nrsc5-usb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates USB sideband (102-215kHz) (Hack) for FM NRSC5.
+    cu8-nrsc5-lsb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for FM NRSC5.
+    cs16-fm-nrsc5                         Sets sample type to cs16, rate to 744187.5 Hz for FM NRSC5 decoding.
+    cs16-fm-nrsc5-usb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates USB sideband (102-215kHz) (Hack) for FM NRSC5.
+    cs16-fm-nrsc5-lsb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for FM NRSC5.
+    cs16-am-nrsc5                         Sets sample type to cs16, rate to 46511.71875 Hz for AM NRSC5 decoding.
 
 Help & Version
     -v, --version                         show program's version number and exit
