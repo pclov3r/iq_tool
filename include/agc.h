@@ -6,7 +6,7 @@
  * automatic gain control (AGC) object. It supports three distinct profiles:
  * 1. DX: Slow RMS tracking for weak/fading signals.
  * 2. Local: Fast RMS tracking for strong analog signals.
- * 3. Digital: Peak-Detect & Lock for OFDM/QAM signals (preserves MER).
+ * 3. Digital: Peak-Detect & Lock for digital signals.
  */
 
 #ifndef AGC_H_
@@ -35,7 +35,8 @@ bool agc_create(AppConfig* config, AppResources* resources);
  *
  * This function processes the input samples in-place.
  * - For DX/Local: It uses the liquid-dsp feedback loop.
- * - For Digital: It scans for peaks (if unlocking) or applies a static gain (if locked).
+ * - For Digital: It scans for peaks and applies provisional gain (if unlocking) 
+ *   or applies a static gain (if locked).
  *
  * @param resources Pointer to the application resources.
  * @param samples Pointer to the complex float samples (modified in-place).

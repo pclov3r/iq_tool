@@ -28,7 +28,6 @@ bool agc_create(AppConfig* config, AppResources* resources) {
     resources->agc_is_locked = false;
     resources->agc_current_gain = 1.0f;
     resources->agc_samples_seen = 0;
-    resources->agc_peak_memory = 0.001f; // Avoid divide-by-zero
     
     // Initialize the timer
     resources->agc_last_strong_peak_time = get_monotonic_time_sec();
@@ -63,6 +62,9 @@ bool agc_create(AppConfig* config, AppResources* resources) {
         agc_crcf_set_gain(q, 1.0f);
 
         resources->output_agc_object = (void*)q;
+        
+        // Peak memory not used in this mode, but safe to init
+        resources->agc_peak_memory = 0.001f; 
     }
     // ---------------------------------------------------------
     // STRATEGY 2: DIGITAL (Custom Peak-Lock)
@@ -70,6 +72,10 @@ bool agc_create(AppConfig* config, AppResources* resources) {
     else {
         // No liquid object needed for Digital mode; state is managed in AppResources
         resources->output_agc_object = NULL;
+
+        // Start assuming a moderate signal (-26dB) to avoid massive gain spikes 
+        // if the very first millisecond is pure silence/noise.
+        resources->agc_peak_memory = 0.05f; 
     }
 
     log_info("Output AGC enabled.");
@@ -103,8 +109,60 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
                         ? resources->config->output_agc.target_level 
                         : AGC_DIGITAL_PEAK_TARGET;
 
-        // Phase A: Locked - Apply gain with Safety Ratchet & Slow Recovery
-        if (resources->agc_is_locked) {
+        // =========================================================
+        // PHASE A: SCANNING MODE (Startup / Look-Ahead)
+        // Pass signal through while measuring peaks, but apply the
+        // best-known gain immediately to avoid "quiet startup".
+        // =========================================================
+        if (!resources->agc_is_locked) {
+            
+            // 1. Look-Ahead: Find the peak in THIS block first
+            float chunk_peak = 0.0f;
+            for (unsigned int i = 0; i < num_samples; i++) {
+                float mag = cabsf(samples[i]);
+                if (mag > chunk_peak) chunk_peak = mag;
+            }
+
+            // 2. Update Global Peak Memory (Monotonic Growth)
+            // We only care if this block is louder than anything seen so far.
+            if (chunk_peak > resources->agc_peak_memory) {
+                resources->agc_peak_memory = chunk_peak;
+            }
+
+            // 3. Calculate "Running Gain"
+            // This is the highest gain we can apply without clipping the peak we just found.
+            // We use a small epsilon (1e-4) to prevent divide-by-zero on pure silence.
+            float safe_peak = (resources->agc_peak_memory < 1e-4f) ? 1e-4f : resources->agc_peak_memory;
+            float running_gain = target / safe_peak;
+
+            // 4. Apply Immediately (Fixes the "2-second silence" issue)
+            // This ensures the very first block uses the full dynamic range.
+            for (unsigned int i = 0; i < num_samples; i++) {
+                samples[i] *= running_gain;
+            }
+
+            // 5. Check Timer to Finalize Lock
+            double sample_rate = resources->config->target_rate;
+            double elapsed = (double)resources->agc_samples_seen / sample_rate;
+
+            if (elapsed > AGC_DIGITAL_LOCK_TIME) {
+                resources->agc_is_locked = true;
+                resources->agc_current_gain = running_gain;
+                
+                // Initialize the recovery timer for the "Locked" phase
+                resources->agc_last_strong_peak_time = get_monotonic_time_sec();
+
+                log_info("AGC Locked: Peak %.4f. Final Gain %.2f (%.1f dB).", 
+                         resources->agc_peak_memory,
+                         resources->agc_current_gain, 
+                         20.0f * log10f(resources->agc_current_gain));
+            }
+        }
+        // =========================================================
+        // PHASE B: LOCKED MODE (Maintenance)
+        // Apply gain with Safety Ratchet & Slow Recovery
+        // =========================================================
+        else {
             float g = resources->agc_current_gain;
             
             // 1. Find Peak in this block
@@ -157,40 +215,6 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
             for (unsigned int i = 0; i < num_samples; i++) {
                 samples[i] *= g;
             }
-            return;
-        }
-
-        // Phase B: Scanning
-        // Pass signal through at unity gain (1.0) while measuring peaks.
-        
-        float chunk_peak = 0.0f;
-        for (unsigned int i = 0; i < num_samples; i++) {
-            float mag = cabsf(samples[i]);
-            if (mag > chunk_peak) chunk_peak = mag;
-        }
-
-        if (chunk_peak > resources->agc_peak_memory) {
-            resources->agc_peak_memory = chunk_peak;
-        }
-
-        // Check Timer
-        double sample_rate = resources->config->target_rate;
-        double elapsed = (double)resources->agc_samples_seen / sample_rate;
-
-        if (elapsed > AGC_DIGITAL_LOCK_TIME) {
-            resources->agc_is_locked = true;
-            
-            // Calculate safe gain: Target / Max_Peak
-            if (resources->agc_peak_memory < 1e-4f) resources->agc_peak_memory = 1e-4f;
-            resources->agc_current_gain = target / resources->agc_peak_memory;
-            
-            // Initialize the recovery timer
-            resources->agc_last_strong_peak_time = get_monotonic_time_sec();
-
-            log_info("AGC Locked: Max Peak %.4f. Applied Gain %.2f (%.1f dB).", 
-                     resources->agc_peak_memory,
-                     resources->agc_current_gain, 
-                     20.0f * log10f(resources->agc_current_gain));
         }
 
         resources->agc_samples_seen += num_samples;
@@ -208,7 +232,7 @@ void agc_reset(AppResources* resources) {
     // Reset Digital state
     resources->agc_is_locked = false;
     resources->agc_samples_seen = 0;
-    resources->agc_peak_memory = 0.001f;
+    resources->agc_peak_memory = 0.05f; // Reset to safe startup floor
     resources->agc_current_gain = 1.0f;
     resources->agc_last_strong_peak_time = get_monotonic_time_sec();
 }
