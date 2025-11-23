@@ -136,6 +136,7 @@ static bool rawfile_initialize(ModuleContext* ctx) {
         case CU16: format_code |= SF_FORMAT_PCM_16; break;
         case CS8:  format_code |= SF_FORMAT_PCM_S8; break;
         case CU8:  format_code |= SF_FORMAT_PCM_U8; break;
+        case CS24: format_code |= SF_FORMAT_PCM_24; break;
         case CS32: format_code |= SF_FORMAT_PCM_32; break;
         case CU32: format_code |= SF_FORMAT_PCM_32; break;
         case CF32: format_code |= SF_FORMAT_FLOAT;  break;
