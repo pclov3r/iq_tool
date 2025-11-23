@@ -12,7 +12,6 @@
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
-
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
@@ -150,19 +149,47 @@ bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* r
             BLOCK_TO_CF32_SIGNED(int16_t, 1.0f / 2048.0f);
             break;
         case CS24: {
-            const unsigned char* in = (const unsigned char*)input_buffer;
-            const float normalizer = 1.0f / 8388608.0f; // 1.0f / 2^23
-            for (size_t i = 0; i < num_frames; ++i) {
-                // Read 3 bytes for I and sign-extend to 32-bit
-                int32_t i_val = (in[0] << 8) | (in[1] << 16) | (in[2] << 24);
-                i_val >>= 8;
-                // Read 3 bytes for Q and sign-extend to 32-bit
-                int32_t q_val = (in[3] << 8) | (in[4] << 16) | (in[5] << 24);
-                q_val >>= 8;
+            const uint8_t* restrict in_ptr = (const uint8_t*)input_buffer;
+            float* restrict out_raw = (float*)output_buffer;
+            // 1.0 / 2^23
+            const float norm_factor = (1.0f / 8388608.0f) * gain;
 
-                output_buffer[i] = ((float)i_val * normalizer * gain) + I * ((float)q_val * normalizer * gain);
-                in += 6;
+            size_t i = 0;
+
+            // Reads 4 bytes, sign-extends 24-bit to 32-bit, normalizes, and stores.
+            // Uses 'do-while(0)' to ensure it behaves like a single statement.
+            // We read 4 bytes to get the 3 bytes we need because 32-bit loads are 
+            // faster/safer than 24-bit loads on most CPUs.
+            #define CS24_IN_STEP(out_idx, byte_offset) \
+                do { \
+                    int32_t val; \
+                    memcpy(&val, in_ptr + (byte_offset), 4); \
+                    val = (val << 8) >> 8; \
+                    out_raw[(i * 2) + (out_idx)] = (float)val * norm_factor; \
+                } while (0)
+
+            // Unrolled Loop: Processes 4 samples (8 components) per iteration.
+            // This exposes instruction-level parallelism to the CPU.
+            for (; i + 4 <= num_frames; i += 4) {
+                CS24_IN_STEP(0, 0);  // Sample 0 I
+                CS24_IN_STEP(1, 3);  // Sample 0 Q
+                CS24_IN_STEP(2, 6);  // Sample 1 I
+                CS24_IN_STEP(3, 9);  // Sample 1 Q
+                CS24_IN_STEP(4, 12); // Sample 2 I
+                CS24_IN_STEP(5, 15); // Sample 2 Q
+                CS24_IN_STEP(6, 18); // Sample 3 I
+                CS24_IN_STEP(7, 21); // Sample 3 Q
+                in_ptr += 24;
             }
+
+            // Tail Loop: Processes remaining samples one by one.
+            for (; i < num_frames; ++i) {
+                CS24_IN_STEP(0, 0); // I
+                CS24_IN_STEP(1, 3); // Q
+                in_ptr += 6;
+            }
+
+            #undef CS24_IN_STEP
             break;
         }
         case CU16:
@@ -232,72 +259,128 @@ bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* r
             CF32_TO_BLOCK_UNSIGNED(uint16_t, USHRT_MAX, 32767.0f, 32767.5f);
             break;
         case CS24: {
-            unsigned char* out = (unsigned char*)output_buffer;
-            const float scale = 8388607.0f; // 2^23 - 1
-            const int32_t max_val = 8388607;
-            const int32_t min_val = -8388608;
-            for (size_t i = 0; i < num_frames; ++i) {
-                float i_f = crealf(input_buffer[i]) * scale;
-                float q_f = cimagf(input_buffer[i]) * scale;
+            const float* restrict in_raw = (const float*)input_buffer;
+            uint8_t* restrict out_ptr = (uint8_t*)output_buffer;
 
-                int32_t i_val = (int32_t)((i_f > 0.0f) ? i_f + 0.5f : i_f - 0.5f);
-                int32_t q_val = (int32_t)((q_f > 0.0f) ? q_f + 0.5f : q_f - 0.5f);
+            const float scale = 8388607.0f;     // 2^23 - 1
+            const float max_val = 8388607.0f;
+            const float min_val = -8388608.0f;  // -2^23
 
-                if (i_val > max_val) i_val = max_val;
-                if (i_val < min_val) i_val = min_val;
-                if (q_val > max_val) q_val = max_val;
-                if (q_val < min_val) q_val = min_val;
+            size_t i = 0;
 
-                out[0] = (unsigned char)(i_val & 0xFF);
-                out[1] = (unsigned char)((i_val >> 8) & 0xFF);
-                out[2] = (unsigned char)((i_val >> 16) & 0xFF);
+            // Scales, rounds, clamps, and packs float into 3 bytes (24-bit int).
+            // OPTIMIZATION: Writes 4 bytes (int32) using memcpy instead of 3 byte writes.
+            // The 4th byte is "garbage" that gets overwritten by the next sample's write.
+            // This reduces 3 memory writes to 1 unaligned store.
+            #define CS24_OUT_STEP(in_idx, byte_offset) \
+                do { \
+                    float f = in_raw[(i * 2) + (in_idx)] * scale; \
+                    f = (f > 0.0f) ? f + 0.5f : f - 0.5f; \
+                    if (f > max_val) f = max_val; \
+                    else if (f < min_val) f = min_val; \
+                    int32_t v = (int32_t)f; \
+                    memcpy(out_ptr + (byte_offset), &v, 4); \
+                } while (0)
 
-                out[3] = (unsigned char)(q_val & 0xFF);
-                out[4] = (unsigned char)((q_val >> 8) & 0xFF);
-                out[5] = (unsigned char)((q_val >> 16) & 0xFF);
-
-                out += 6;
+            // Unrolled Loop: Processes 4 samples (8 components) per iteration.
+            for (; i + 4 <= num_frames; i += 4) {
+                CS24_OUT_STEP(0, 0);
+                CS24_OUT_STEP(1, 3);
+                CS24_OUT_STEP(2, 6);
+                CS24_OUT_STEP(3, 9);
+                CS24_OUT_STEP(4, 12);
+                CS24_OUT_STEP(5, 15);
+                CS24_OUT_STEP(6, 18);
+                CS24_OUT_STEP(7, 21);
+                out_ptr += 24;
             }
+
+            // Tail Loop: Processes remaining samples one by one.
+            for (; i < num_frames; ++i) {
+                CS24_OUT_STEP(0, 0); // I
+                CS24_OUT_STEP(1, 3); // Q
+                out_ptr += 6;
+            }
+
+            #undef CS24_OUT_STEP
             break;
         }
-        case CS32:
-            // This case is handled separately from the macro because it requires
-            // double precision for intermediate calculations to avoid data loss.
-            do {
-                int32_t* out = (int32_t*)output_buffer;
-                const double max_val = (double)INT_MAX;
-                const double min_val = (double)INT_MIN;
-                for (size_t i = 0; i < num_frames; ++i) {
-                    double i_val = creal(input_buffer[i]) * max_val;
-                    double q_val = cimag(input_buffer[i]) * max_val;
-                    i_val = (i_val > 0.0) ? i_val + 0.5 : i_val - 0.5;
-                    q_val = (q_val > 0.0) ? q_val + 0.5 : q_val - 0.5;
-                    if (i_val > max_val) i_val = max_val;
-                    if (i_val < min_val) i_val = min_val;
-                    if (q_val > max_val) q_val = max_val;
-                    if (q_val < min_val) q_val = min_val;
-                    out[i * 2]     = (int32_t)i_val;
-                    out[i * 2 + 1] = (int32_t)q_val;
-                }
-            } while (0);
+        case CS32: {
+            const float* restrict in_raw = (const float*)input_buffer;
+            int32_t* restrict out_ptr = (int32_t*)output_buffer;
+
+            // Use double precision to avoid float rounding overflow at INT_MAX
+            const double scale = 2147483647.0;
+            const double max_val = 2147483647.0;
+            const double min_val = -2147483648.0;
+
+            size_t i = 0;
+
+            // Converts one float component to int32 via double precision
+            #define CS32_OUT_STEP(idx) \
+                do { \
+                    double d = (double)in_raw[i*2 + (idx)] * scale; \
+                    d = (d > 0.0) ? d + 0.5 : d - 0.5; \
+                    if (d > max_val) d = max_val; \
+                    else if (d < min_val) d = min_val; \
+                    out_ptr[i*2 + (idx)] = (int32_t)d; \
+                } while (0)
+
+            // Unrolled Loop: Processes 2 samples (4 components) per iteration.
+            // 4 Doubles = 256 bits (1 AVX2 Register).
+            for (; i + 2 <= num_frames; i += 2) {
+                CS32_OUT_STEP(0);
+                CS32_OUT_STEP(1);
+                CS32_OUT_STEP(2);
+                CS32_OUT_STEP(3);
+            }
+
+            // Tail loop
+            for (; i < num_frames; ++i) {
+                CS32_OUT_STEP(0); // I
+                CS32_OUT_STEP(1); // Q
+            }
+
+            #undef CS32_OUT_STEP
             break;
-        case CU32:
-            // This case also requires double precision.
-            do {
-                uint32_t* out = (uint32_t*)output_buffer;
-                const double max_val = (double)UINT_MAX;
-                for (size_t i = 0; i < num_frames; ++i) {
-                    double i_val = (creal(input_buffer[i]) * 2147483647.0) + 2147483647.5;
-                    double q_val = (cimag(input_buffer[i]) * 2147483647.0) + 2147483647.5;
-                    if (i_val > max_val) i_val = max_val;
-                    if (i_val < 0.0)     i_val = 0.0;
-                    if (q_val > max_val) q_val = max_val;
-                    if (q_val < 0.0)     q_val = 0.0;
-                    out[i * 2]     = (uint32_t)(i_val + 0.5);
-                    out[i * 2 + 1] = (uint32_t)(q_val + 0.5);
-                }
-            } while(0);
+        }
+        case CU32: {
+            const float* restrict in_raw = (const float*)input_buffer;
+            uint32_t* restrict out_ptr = (uint32_t*)output_buffer;
+
+            const double scale = 2147483647.0;
+            const double offset = 2147483647.5;
+            const double max_val = 4294967295.0; // UINT_MAX
+
+            size_t i = 0;
+
+            // Converts one float component to uint32 via double precision
+            #define CU32_OUT_STEP(idx) \
+                do { \
+                    double d = ((double)in_raw[i*2 + (idx)] * scale) + offset; \
+                    d += 0.5; \
+                    if (d > max_val) d = max_val; \
+                    else if (d < 0.0) d = 0.0; \
+                    out_ptr[i*2 + (idx)] = (uint32_t)d; \
+                } while (0)
+
+            // Unrolled Loop: Processes 2 samples (4 components) per iteration.
+            for (; i + 2 <= num_frames; i += 2) {
+                CU32_OUT_STEP(0);
+                CU32_OUT_STEP(1);
+                CU32_OUT_STEP(2);
+                CU32_OUT_STEP(3);
+            }
+
+            // Tail loop
+            for (; i < num_frames; ++i) {
+                CU32_OUT_STEP(0); // I
+                CU32_OUT_STEP(1); // Q
+            }
+
+            #undef CU32_OUT_STEP
             break;
+        }
         case CF32:
             memcpy(output_buffer, input_buffer, num_frames * sizeof(complex_float_t));
             break;
