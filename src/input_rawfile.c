@@ -147,15 +147,15 @@ static bool rawfile_initialize(ModuleContext* ctx) {
     sfinfo.format = format_code;
 
 #ifdef _WIN32
-    log_info("Opening RAW input file: %s", config->effective_input_filename_utf8);
-    private_data->infile = sf_wchar_open(config->effective_input_filename_w, SFM_READ, &sfinfo);
+    log_info("Opening RAW input file: %s", config->input.effective_path_utf8);
+    private_data->infile = sf_wchar_open(config->input.effective_path_w, SFM_READ, &sfinfo);
 #else
-    log_info("Opening RAW input file: %s", config->effective_input_filename);
-    private_data->infile = sf_open(config->effective_input_filename, SFM_READ, &sfinfo);
+    log_info("Opening RAW input file: %s", config->input.effective_path);
+    private_data->infile = sf_open(config->input.effective_path, SFM_READ, &sfinfo);
 #endif
 
     if (!private_data->infile) {
-        log_fatal("Error opening RAW input file '%s': %s", config->input_filename_arg, sf_strerror(NULL));
+        log_fatal("Error opening RAW input file '%s': %s", config->input.path_arg, sf_strerror(NULL));
         return false;
     }
 
@@ -171,11 +171,11 @@ static void* rawfile_start_stream(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
     RawfilePrivateData* private_data = (RawfilePrivateData*)resources->input_module_private_data;
 
-    if (config->raw_passthrough && resources->input_format != config->output_format) {
+    if (config->dsp.raw_passthrough && resources->input_format != config->output.format) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf),
                  "Option --raw-passthrough requires input and output formats to be identical. Input format is '%s', output format is '%s'.",
-                 s_rawfile_config.format_str, config->output_sample_format_name);
+                 s_rawfile_config.format_str, config->output.format_name);
         handle_fatal_thread_error(error_buf, resources);
         return NULL;
     }
@@ -206,7 +206,7 @@ static void* rawfile_start_stream(ModuleContext* ctx) {
 
         void* target_buffer;
         size_t bytes_to_read;
-        if (config->raw_passthrough) {
+        if (config->dsp.raw_passthrough) {
             target_buffer = current_item->final_output_data;
             bytes_to_read = current_item->final_output_capacity_bytes;
         } else {
@@ -272,10 +272,10 @@ static void rawfile_cleanup(ModuleContext* ctx) {
 static void rawfile_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppResources *resources = ctx->resources;
-    const char* display_path = config->input_filename_arg;
+    const char* display_path = config->input.path_arg;
 #ifdef _WIN32
-    if (config->effective_input_filename_utf8[0] != '\0') {
-        display_path = config->effective_input_filename_utf8;
+    if (config->input.effective_path_utf8[0] != '\0') {
+        display_path = config->input.effective_path_utf8;
     }
 #endif
 
@@ -294,7 +294,7 @@ static bool rawfile_pre_stream_iq_correction(ModuleContext* ctx) {
     RawfilePrivateData* private_data = (RawfilePrivateData*)ctx->resources->input_module_private_data;
 
     // This routine is only necessary if I/Q correction is enabled.
-    if (!config->iq_correction.enable) {
+    if (!config->dsp.iq_correction.enable) {
         return true;
     }
 

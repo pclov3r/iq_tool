@@ -192,7 +192,7 @@ typedef struct {
 
 
 void sdrplay_set_default_config(AppConfig* config) {
-    config->sdr.sample_rate_hz = SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
+    config->sdr_general.sample_rate_hz = SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
     s_sdrplay_config.bandwidth_hz = SDRPLAY_DEFAULT_BANDWIDTH_HZ;
     s_sdrplay_config.sdrplay_bandwidth_hz_arg = 0.0f;
     s_sdrplay_config.sdrplay_if_gain_db_arg = 0;
@@ -245,7 +245,7 @@ InputModuleInterface* get_sdrplay_input_module_api(void) {
 }
 
 static bool sdrplay_validate_generic_options(const AppConfig* config) {
-    if (!config->sdr.rf_freq_provided) {
+    if (!config->sdr_general.rf_freq_provided) {
         log_fatal("SDRplay input requires the --sdr-rf-freq option.");
         return false;
     }
@@ -293,9 +293,9 @@ static bool sdrplay_validate_options(AppConfig* config) {
         return false;
     }
 
-    if (config->sdr.sample_rate_provided) {
-        if (config->sdr.sample_rate_hz < 2e6 || config->sdr.sample_rate_hz > 10e6) {
-            log_fatal("Invalid SDRplay sample rate %.0f Hz. Must be between 2,000,000 and 10,000,000.", config->sdr.sample_rate_hz);
+    if (config->sdr_general.sample_rate_provided) {
+        if (config->sdr_general.sample_rate_hz < 2e6 || config->sdr_general.sample_rate_hz > 10e6) {
+            log_fatal("Invalid SDRplay sample rate %.0f Hz. Must be between 2,000,000 and 10,000,000.", config->sdr_general.sample_rate_hz);
             return false;
         }
     }
@@ -304,8 +304,8 @@ static bool sdrplay_validate_options(AppConfig* config) {
         log_fatal("Invalid SDRplay bandwidth %.0f Hz. See --help for valid values.", s_sdrplay_config.bandwidth_hz);
         return false;
     }
-    if (s_sdrplay_config.bandwidth_hz > config->sdr.sample_rate_hz) {
-        log_fatal("Bandwidth (%.0f Hz) cannot be greater than the sample rate (%.0f Hz).", s_sdrplay_config.bandwidth_hz, config->sdr.sample_rate_hz);
+    if (s_sdrplay_config.bandwidth_hz > config->sdr_general.sample_rate_hz) {
+        log_fatal("Bandwidth (%.0f Hz) cannot be greater than the sample rate (%.0f Hz).", s_sdrplay_config.bandwidth_hz, config->sdr_general.sample_rate_hz);
         return false;
     }
 
@@ -396,7 +396,7 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
 
     if (numSamples == 0) return;
 
-    if (config->raw_passthrough) {
+    if (config->dsp.raw_passthrough) {
         int16_t temp_buffer[8192];
         unsigned int samples_processed = 0;
         while (samples_processed < numSamples) {
@@ -530,7 +530,7 @@ static void sdrplay_get_summary_info(const ModuleContext* ctx, InputSummaryInfo*
     add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
 
     add_summary_item(info, "Bandwidth", "%.0f Hz", s_sdrplay_config.bandwidth_hz);
-    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr.rf_freq_hz);
+    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
     if (s_sdrplay_config.lna_state_provided || s_sdrplay_config.if_gain_db_provided) {
         // Manual gain mode is active. Show the status of both components.
@@ -556,7 +556,7 @@ static void sdrplay_get_summary_info(const ModuleContext* ctx, InputSummaryInfo*
         }
         add_summary_item(info, "HDR Mode", "Enabled (BW: %s Hz)", bw_str);
     }
-    add_summary_item(info, "Bias-T", "%s", config->sdr.bias_t_enable ? "Enabled" : "Disabled");
+    add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
 static bool sdrplay_initialize(ModuleContext* ctx) {
@@ -623,10 +623,10 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
     sdrplay_api_DevParamsT *devParams = private_data->sdr_device_params->devParams;
     sdrplay_api_Bw_MHzT bw_enum = map_bw_hz_to_enum(s_sdrplay_config.bandwidth_hz);
 
-    devParams->fsFreq.fsHz = config->sdr.sample_rate_hz;
+    devParams->fsFreq.fsHz = config->sdr_general.sample_rate_hz;
     chParams->tunerParams.bwType = bw_enum;
     chParams->tunerParams.ifType = sdrplay_api_IF_Zero;
-    chParams->tunerParams.rfFreq.rfHz = config->sdr.rf_freq_hz;
+    chParams->tunerParams.rfFreq.rfHz = config->sdr_general.rf_freq_hz;
     log_debug("SDRplay: API accepting sample rate %.0f Hz.", devParams->fsFreq.fsHz);
     log_debug("SDRplay: API accepting bandwidth %.0f Hz.", s_sdrplay_config.bandwidth_hz);
 
@@ -648,17 +648,17 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
     bool biast_request_handled = false;
     bool hiz_port_selected = false;
 
-    if (s_sdrplay_config.antenna_port_name || config->sdr.bias_t_enable) {
+    if (s_sdrplay_config.antenna_port_name || config->sdr_general.bias_t_enable) {
         switch (private_data->sdr_device->hwVer) {
             case SDRPLAY_RSP1A_ID:
             case SDRPLAY_RSP1B_ID:
-                if (config->sdr.bias_t_enable) {
+                if (config->sdr_general.bias_t_enable) {
                     chParams->rsp1aTunerParams.biasTEnable = 1;
                     biast_request_handled = true;
                 }
                 break;
             case SDRPLAY_RSP2_ID:
-                if (config->sdr.bias_t_enable) {
+                if (config->sdr_general.bias_t_enable) {
                     chParams->rsp2TunerParams.biasTEnable = 1;
                     biast_request_handled = true;
                 }
@@ -678,7 +678,7 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
                 }
                 break;
             case SDRPLAY_RSPduo_ID:
-                if (config->sdr.bias_t_enable) {
+                if (config->sdr_general.bias_t_enable) {
                     chParams->rspDuoTunerParams.biasTEnable = 1;
                     biast_request_handled = true;
                 }
@@ -697,7 +697,7 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
                 break;
             case SDRPLAY_RSPdx_ID:
             case SDRPLAY_RSPdxR2_ID:
-                if (config->sdr.bias_t_enable) {
+                if (config->sdr_general.bias_t_enable) {
                     devParams->rspDxParams.biasTEnable = 1;
                     biast_request_handled = true;
                 }
@@ -721,7 +721,7 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
     if (s_sdrplay_config.antenna_port_name && !antenna_request_handled) {
         log_warn("Antenna selection not applicable for the detected device.");
     }
-    if (config->sdr.bias_t_enable && !biast_request_handled) {
+    if (config->sdr_general.bias_t_enable && !biast_request_handled) {
         log_warn("Bias-T is not supported on the detected device.");
     }
 
@@ -735,7 +735,7 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
     }
 
     if (s_sdrplay_config.lna_state_provided) {
-        int num_lna_states = get_num_lna_states(private_data->sdr_device->hwVer, config->sdr.rf_freq_hz, s_sdrplay_config.use_hdr_mode, hiz_port_selected);
+        int num_lna_states = get_num_lna_states(private_data->sdr_device->hwVer, config->sdr_general.rf_freq_hz, s_sdrplay_config.use_hdr_mode, hiz_port_selected);
         if (s_sdrplay_config.lna_state < 0 || s_sdrplay_config.lna_state >= num_lna_states) {
             log_fatal("Invalid LNA state '%d'. Valid range for this device/frequency is 0 (min gain) to %d (max gain).",
                       s_sdrplay_config.lna_state, num_lna_states - 1);
@@ -751,11 +751,11 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
 
     resources->input_format = CS16;
     resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
-    resources->source_info.samplerate = (int)config->sdr.sample_rate_hz;
+    resources->source_info.samplerate = (int)config->sdr_general.sample_rate_hz;
     resources->source_info.frames = -1;
 
-    if (config->raw_passthrough && resources->input_format != config->output_format) {
-        log_fatal("Option --raw-passthrough requires input and output formats to be identical. SDRplay input is 'cs16', but output was set to '%s'.", config->output_sample_format_name);
+    if (config->dsp.raw_passthrough && resources->input_format != config->output.format) {
+        log_fatal("Option --raw-passthrough requires input and output formats to be identical. SDRplay input is 'cs16', but output was set to '%s'.", config->output.format_name);
         goto cleanup;
     }
 
@@ -794,7 +794,7 @@ static void* sdrplay_start_stream(ModuleContext* ctx) {
     sdrplay_api_ErrT err = sdrplay_api_Init(private_data->sdr_device->dev, &cbFns, resources);
 
     // After a successful Init, explicitly apply the Bias-T setting if requested.
-    if (err == sdrplay_api_Success && resources->config->sdr.bias_t_enable) {
+    if (err == sdrplay_api_Success && resources->config->sdr_general.bias_t_enable) {
         log_info("Enabling Bias-T");
         sdrplay_api_ReasonForUpdateT reasonForUpdate = sdrplay_api_Update_None;
         sdrplay_api_ReasonForUpdateExtension1T reasonForUpdateExt1 = sdrplay_api_Update_Ext1_None;

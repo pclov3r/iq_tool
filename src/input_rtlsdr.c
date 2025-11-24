@@ -47,7 +47,7 @@ typedef struct {
 
 
 void rtlsdr_set_default_config(AppConfig* config) {
-    config->sdr.sample_rate_hz = RTLSDR_DEFAULT_SAMPLE_RATE;
+    config->sdr_general.sample_rate_hz = RTLSDR_DEFAULT_SAMPLE_RATE;
 }
 
 static const struct argparse_option rtlsdr_cli_options[] = {
@@ -102,7 +102,7 @@ InputModuleInterface* get_rtlsdr_input_module_api(void) {
 }
 
 static bool rtlsdr_validate_generic_options(const AppConfig* config) {
-    if (!config->sdr.rf_freq_provided) {
+    if (!config->sdr_general.rf_freq_provided) {
         log_fatal("RTL-SDR input requires the --sdr-rf-freq option.");
         return false;
     }
@@ -127,9 +127,9 @@ static bool rtlsdr_validate_options(AppConfig* config) {
         s_rtlsdr_config.direct_sampling_provided = true;
     }
 
-    if (config->sdr.sample_rate_provided) {
-        if (config->sdr.sample_rate_hz < 225001 || config->sdr.sample_rate_hz > 3200000) {
-             log_fatal("Invalid sample rate for RTL-SDR: %.0f Hz. Must be between 225001 and 3200000.", config->sdr.sample_rate_hz);
+    if (config->sdr_general.sample_rate_provided) {
+        if (config->sdr_general.sample_rate_hz < 225001 || config->sdr_general.sample_rate_hz > 3200000) {
+             log_fatal("Invalid sample rate for RTL-SDR: %.0f Hz. Must be between 225001 and 3200000.", config->sdr_general.sample_rate_hz);
              return false;
         }
     }
@@ -204,16 +204,16 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
     const char* tuner_name = get_tuner_name_from_enum(tuner_type);
     log_info("Found RTL-SDR device with tuner: %s", tuner_name);
 
-    result = rtlsdr_set_sample_rate(private_data->dev, (uint32_t)config->sdr.sample_rate_hz);
+    result = rtlsdr_set_sample_rate(private_data->dev, (uint32_t)config->sdr_general.sample_rate_hz);
     if (result < 0) {
         log_fatal("Failed to set sample rate: %s", strerror(-result));
         goto cleanup;
     }
     uint32_t actual_rate = rtlsdr_get_sample_rate(private_data->dev);
-    log_info("RTL-SDR: Requested sample rate %.0f Hz, actual rate set to %u Hz.", config->sdr.sample_rate_hz, actual_rate);
+    log_info("RTL-SDR: Requested sample rate %.0f Hz, actual rate set to %u Hz.", config->sdr_general.sample_rate_hz, actual_rate);
     resources->source_info.samplerate = actual_rate;
 
-    result = rtlsdr_set_center_freq(private_data->dev, (uint32_t)config->sdr.rf_freq_hz);
+    result = rtlsdr_set_center_freq(private_data->dev, (uint32_t)config->sdr_general.rf_freq_hz);
     if (result < 0) {
         log_fatal("Failed to set center frequency: %s", strerror(-result));
         goto cleanup;
@@ -230,7 +230,7 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
         rtlsdr_set_freq_correction(private_data->dev, s_rtlsdr_config.ppm);
     }
 
-    if (config->sdr.bias_t_enable) {
+    if (config->sdr_general.bias_t_enable) {
         log_info("Attempting to enable Bias-T...");
         result = rtlsdr_set_bias_tee(private_data->dev, 1);
         if (result != 0) {
@@ -251,8 +251,8 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
     resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
     resources->source_info.frames = -1;
 
-    if (config->raw_passthrough && resources->input_format != config->output_format) {
-        log_fatal("Option --raw-passthrough requires input and output formats to be identical. RTL-SDR input is 'cu8', but output was set to '%s'.", config->output_sample_format_name);
+    if (config->dsp.raw_passthrough && resources->input_format != config->output.format) {
+        log_fatal("Option --raw-passthrough requires input and output formats to be identical. RTL-SDR input is 'cu8', but output was set to '%s'.", config->output.format_name);
         goto cleanup;
     }
 
@@ -294,7 +294,7 @@ static void* rtlsdr_start_stream(ModuleContext* ctx) {
 
         case PIPELINE_MODE_REALTIME_SDR:
             log_info("Starting RTL-SDR stream (Real-Time Mode)...");
-            if (config->raw_passthrough) {
+            if (config->dsp.raw_passthrough) {
                 unsigned char passthrough_buffer[16384];
                 while (!is_shutdown_requested() && !resources->error_occurred) {
                     int n_read = 0;
@@ -415,13 +415,13 @@ static void rtlsdr_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* 
     add_summary_item(info, "Input Source", "%s", source_name_buf);
     add_summary_item(info, "Input Format", "8-bit Unsigned Complex (cu8)");
     add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
-    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr.rf_freq_hz);
+    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
     if (s_rtlsdr_config.gain_provided) {
         add_summary_item(info, "Gain", "%.1f dB (Manual)", (float)s_rtlsdr_config.gain / 10.0f);
     } else {
         add_summary_item(info, "Gain", "Automatic (AGC)");
     }
-    add_summary_item(info, "Bias-T", "%s", config->sdr.bias_t_enable ? "Enabled" : "Disabled");
+    add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
     if (s_rtlsdr_config.ppm_provided) {
         add_summary_item(info, "PPM Correction", "%d", s_rtlsdr_config.ppm);
     }

@@ -18,7 +18,7 @@
 #endif
 
 bool dc_block_create(AppConfig* config, AppResources* resources) {
-    if (!config->dc_block.enable) {
+    if (!config->dsp.dc_block.enable) {
         resources->dc_block.dc_block_filter = NULL; // Ensure no filter if disabled
         return true;
     }
@@ -66,7 +66,7 @@ bool dc_block_create(AppConfig* config, AppResources* resources) {
 }
 
 void dc_block_reset(AppResources* resources) {
-    if (!resources->config->dc_block.enable || !resources->dc_block.dc_block_filter) {
+    if (!resources->config->dsp.dc_block.enable || !resources->dc_block.dc_block_filter) {
         return; // DC block is disabled or not initialized
     }
     log_debug("DC block filter reset due to stream discontinuity.");
@@ -74,7 +74,7 @@ void dc_block_reset(AppResources* resources) {
 }
 
 void dc_block_apply(AppResources* resources, complex_float_t* samples, int num_samples) {
-    if (!resources->config->dc_block.enable || !resources->dc_block.dc_block_filter) {
+    if (!resources->config->dsp.dc_block.enable || !resources->dc_block.dc_block_filter) {
         return; // DC block is disabled or not initialized
     }
 

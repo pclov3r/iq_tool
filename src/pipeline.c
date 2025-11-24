@@ -100,18 +100,18 @@ bool pipeline_run(PipelineContext* context) {
         if (!thread_manager_spawn_thread(&manager, "SDR Capture", sdr_capture_thread_func)) threads_ok = false;
     }
     if (threads_ok && !thread_manager_spawn_thread(&manager, "Reader", reader_thread_func)) threads_ok = false;
-    if (threads_ok && !config->raw_passthrough) {
+    if (threads_ok && !config->dsp.raw_passthrough) {
         if (!thread_manager_spawn_thread(&manager, "Pre-Processor", pre_processor_thread_func)) threads_ok = false;
-        if (threads_ok && !config->no_resample) {
+        if (threads_ok && !config->dsp.no_resample) {
             if (!thread_manager_spawn_thread(&manager, "Resampler", resampler_thread_func)) threads_ok = false;
         }
         if (threads_ok && !thread_manager_spawn_thread(&manager, "Post-Processor", post_processor_thread_func)) threads_ok = false;
     }
     if (threads_ok && !thread_manager_spawn_thread(&manager, "Writer", writer_thread_func)) threads_ok = false;
-    if (threads_ok && config->iq_correction.enable) {
+    if (threads_ok && config->dsp.iq_correction.enable) {
         if (!thread_manager_spawn_thread(&manager, "I/Q Optimizer", iq_optimization_thread_func)) threads_ok = false;
     }
-    if (threads_ok && module_manager_is_sdr_module(config->input_type_str, &resources->setup_arena)) {
+    if (threads_ok && module_manager_is_sdr_module(config->input.type_name, &resources->setup_arena)) {
         if (!thread_manager_spawn_thread(&manager, "SDR Watchdog", watchdog_thread_func)) threads_ok = false;
     }
 
@@ -164,21 +164,21 @@ static bool _init_queues_and_buffers(AppConfig* config, AppResources* resources)
     if (!resources->reader_output_queue || !queue_init(resources->reader_output_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
     last_output_queue = resources->reader_output_queue;
 
-    if (!config->raw_passthrough) {
+    if (!config->dsp.raw_passthrough) {
         resources->pre_processor_input_queue = last_output_queue;
         resources->pre_processor_output_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
         if (!resources->pre_processor_output_queue || !queue_init(resources->pre_processor_output_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
         last_output_queue = resources->pre_processor_output_queue;
     }
 
-    if (!config->raw_passthrough && !config->no_resample) {
+    if (!config->dsp.raw_passthrough && !config->dsp.no_resample) {
         resources->resampler_input_queue = last_output_queue;
         resources->resampler_output_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
         if (!resources->resampler_output_queue || !queue_init(resources->resampler_output_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
         last_output_queue = resources->resampler_output_queue;
     }
 
-    if (!config->raw_passthrough) {
+    if (!config->dsp.raw_passthrough) {
         resources->post_processor_input_queue = last_output_queue;
         resources->post_processor_output_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
         if (!resources->post_processor_output_queue || !queue_init(resources->post_processor_output_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
@@ -190,7 +190,7 @@ static bool _init_queues_and_buffers(AppConfig* config, AppResources* resources)
     resources->free_sample_chunk_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
     if (!queue_init(resources->free_sample_chunk_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
 
-    if (config->iq_correction.enable) {
+    if (config->dsp.iq_correction.enable) {
         resources->iq_optimization_data_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
         if (!queue_init(resources->iq_optimization_data_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
     }
@@ -233,7 +233,7 @@ static bool _allocate_processing_buffers(AppConfig *config, AppResources *resour
     if (!config || !resources) return false;
 
     size_t max_pre_resample_chunk_size = PIPELINE_CHUNK_BASE_SAMPLES;
-    bool is_pre_fft_filter = (resources->user_filter_object && !config->apply_user_filter_post_resample &&
+    bool is_pre_fft_filter = (resources->user_filter_object && !config->dsp.filter.apply_post_resample &&
                              (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
                               resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC));
 
@@ -246,7 +246,7 @@ static bool _allocate_processing_buffers(AppConfig *config, AppResources *resour
     size_t resampler_output_capacity = (size_t)ceil((double)max_pre_resample_chunk_size * fmax(1.0, (double)resample_ratio)) + RESAMPLER_OUTPUT_SAFETY_MARGIN;
     size_t required_capacity = (max_pre_resample_chunk_size > resampler_output_capacity) ? max_pre_resample_chunk_size : resampler_output_capacity;
 
-    bool is_post_fft_filter = (resources->user_filter_object && config->apply_user_filter_post_resample &&
+    bool is_post_fft_filter = (resources->user_filter_object && config->dsp.filter.apply_post_resample &&
                               (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
                                resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC));
 
@@ -267,7 +267,7 @@ static bool _allocate_processing_buffers(AppConfig *config, AppResources *resour
 
     size_t raw_input_bytes_per_chunk = PIPELINE_CHUNK_BASE_SAMPLES * resources->input_bytes_per_sample_pair;
     size_t complex_bytes_per_chunk = resources->max_out_samples * sizeof(complex_float_t);
-    resources->output_bytes_per_sample_pair = get_bytes_per_sample(config->output_format);
+    resources->output_bytes_per_sample_pair = get_bytes_per_sample(config->output.format);
     size_t final_output_bytes_per_chunk = resources->max_out_samples * resources->output_bytes_per_sample_pair;
 
     size_t total_bytes_per_chunk = raw_input_bytes_per_chunk +
@@ -465,7 +465,7 @@ void* pre_processor_thread_func(void* arg) {
  
         pre_processor_apply_chain(resources, item);
 
-        if (config->iq_correction.enable) {
+        if (config->dsp.iq_correction.enable) {
             if (item->frames_read >= IQ_CORRECTION_FFT_SIZE && !item->stream_discontinuity_event) {
                 SampleChunk* opt_item = (SampleChunk*)queue_try_dequeue(resources->free_sample_chunk_queue);
                 if (opt_item) {

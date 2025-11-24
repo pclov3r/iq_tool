@@ -44,8 +44,8 @@ static bool prompt_for_overwrite(const char* path_for_messages) {
 
 bool wav_common_validate_options(AppConfig* config) {
     // This logic is identical for both WAV and RF64.
-    if (config->output_format != CS16 && config->output_format != CU8) {
-        log_fatal("Invalid sample format '%s' for WAV/RF64 container. Only 'cs16' and 'cu8' are supported.", config->output_sample_format_name);
+    if (config->output.format != CS16 && config->output.format != CU8) {
+        log_fatal("Invalid sample format '%s' for WAV/RF64 container. Only 'cs16' and 'cu8' are supported.", config->output.format_name);
         return false;
     }
     return true;
@@ -62,15 +62,15 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
 
     // Use platform-specific UTF-8 path for messages.
     #ifdef _WIN32
-    const char* out_path = config->effective_output_filename_utf8;
+    const char* out_path = config->output.effective_path_utf8;
     #else
-    const char* out_path = config->effective_output_filename;
+    const char* out_path = config->output.effective_path;
     #endif
 
     // Check if the file exists and prompt for overwrite if necessary.
     bool file_exists = false;
     #ifdef _WIN32
-    DWORD attrs = GetFileAttributesW(config->effective_output_filename_w);
+    DWORD attrs = GetFileAttributesW(config->output.effective_path_w);
     if (attrs != INVALID_FILE_ATTRIBUTES) {
         if (attrs & FILE_ATTRIBUTE_DIRECTORY) { log_fatal("Output path '%s' is a directory. Aborting.", out_path); return false; }
         file_exists = true;
@@ -92,11 +92,11 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
     // Prepare the libsndfile info struct.
     SF_INFO sfinfo;
     memset(&sfinfo, 0, sizeof(SF_INFO));
-    sfinfo.samplerate = (int)config->target_rate;
+    sfinfo.samplerate = (int)config->output_rate.target_rate;
     sfinfo.channels = 2;
     sfinfo.format = sf_format_flag; // Use the specific format flag passed by the wrapper.
 
-    switch (config->output_format) {
+    switch (config->output.format) {
         case CS16: sfinfo.format |= SF_FORMAT_PCM_16; break;
         case CU8:  sfinfo.format |= SF_FORMAT_PCM_U8; break;
         default: return false; // Should be caught by validation.
@@ -107,7 +107,7 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
 
     // Open the file using the appropriate platform-specific function.
     #ifdef _WIN32
-    data->handle = sf_wchar_open(config->effective_output_filename_w, SFM_WRITE, &sfinfo);
+    data->handle = sf_wchar_open(config->output.effective_path_w, SFM_WRITE, &sfinfo);
     #else
     data->handle = sf_open(out_path, SFM_WRITE, &sfinfo);
     #endif

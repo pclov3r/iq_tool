@@ -29,12 +29,12 @@ bool freq_shift_create(AppConfig *config, AppResources *resources) {
 
     // First, resolve the final shift value. If a module (like WAV) hasn't already
     // calculated a shift, check for the generic manual shift option from the CLI.
-    if (resources->nco_shift_hz == 0.0 && config->freq_shift_hz_arg != 0.0f) {
-        resources->nco_shift_hz = (double)config->freq_shift_hz_arg;
+    if (resources->nco_shift_hz == 0.0 && config->dsp.freq_shift_hz != 0.0f) {
+        resources->nco_shift_hz = (double)config->dsp.freq_shift_hz;
     }
 
     // Now that the final shift value is resolved, validate dependent options.
-    if (config->shift_after_resample && fabs(resources->nco_shift_hz) < 1e-9) {
+    if (config->dsp.shift_after_resample && fabs(resources->nco_shift_hz) < 1e-9) {
         log_fatal("Option --shift-after-resample was used, but no effective frequency shift was requested or calculated.");
         return false;
     }
@@ -45,7 +45,7 @@ bool freq_shift_create(AppConfig *config, AppResources *resources) {
     }
 
     // --- Create Pre-Resample NCO ---
-    if (!config->shift_after_resample) {
+    if (!config->dsp.shift_after_resample) {
         double rate_for_nco = (double)resources->source_info.samplerate;
         if (fabs(resources->nco_shift_hz) > (SHIFT_FACTOR_LIMIT * rate_for_nco)) {
             log_error("Requested frequency shift %.2f Hz exceeds sanity limit for the pre-resample rate of %.1f Hz.", resources->nco_shift_hz, rate_for_nco);
@@ -61,8 +61,8 @@ bool freq_shift_create(AppConfig *config, AppResources *resources) {
     }
 
     // --- Create Post-Resample NCO ---
-    if (config->shift_after_resample) {
-        double rate_for_nco = config->target_rate;
+    if (config->dsp.shift_after_resample) {
+        double rate_for_nco = config->output_rate.target_rate;
          if (fabs(resources->nco_shift_hz) > (SHIFT_FACTOR_LIMIT * rate_for_nco)) {
             log_error("Requested frequency shift %.2f Hz exceeds sanity limit for the post-resample rate of %.1f Hz.", resources->nco_shift_hz, rate_for_nco);
             return false;

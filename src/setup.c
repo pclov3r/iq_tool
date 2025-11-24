@@ -35,39 +35,39 @@ bool resolve_file_paths(AppConfig *config, AppResources *resources) {
     if (!config || !resources) return false;
 
 #ifdef _WIN32
-    if (config->input_filename_arg) {
-        if (!get_absolute_path_windows(config->input_filename_arg,
-                                       config->effective_input_filename_w, MAX_PATH_BUFFER,
-                                       config->effective_input_filename_utf8, MAX_PATH_BUFFER)) {
+    if (config->input.path_arg) {
+        if (!get_absolute_path_windows(config->input.path_arg,
+                                       config->input.effective_path_w, MAX_PATH_BUFFER,
+                                       config->input.effective_path_utf8, MAX_PATH_BUFFER)) {
             return false;
         }
     }
-    if (config->output_filename_arg) {
-        if (!get_absolute_path_windows(config->output_filename_arg,
-                                       config->effective_output_filename_w, MAX_PATH_BUFFER,
-                                       config->effective_output_filename_utf8, MAX_PATH_BUFFER)) {
+    if (config->output.path_arg) {
+        if (!get_absolute_path_windows(config->output.path_arg,
+                                       config->output.effective_path_w, MAX_PATH_BUFFER,
+                                       config->output.effective_path_utf8, MAX_PATH_BUFFER)) {
             return false;
         }
     }
 #else
-    if (config->input_filename_arg) {
+    if (config->input.path_arg) {
         char resolved_input_path[PATH_MAX];
-        if (realpath(config->input_filename_arg, resolved_input_path) == NULL) {
-            log_fatal("Input file not found or path is invalid: %s (%s)", config->input_filename_arg, strerror(errno));
+        if (realpath(config->input.path_arg, resolved_input_path) == NULL) {
+            log_fatal("Input file not found or path is invalid: %s (%s)", config->input.path_arg, strerror(errno));
             return false;
         }
-        config->effective_input_filename = mem_arena_alloc(&resources->setup_arena, strlen(resolved_input_path) + 1, false);
-        if (!config->effective_input_filename) return false;
-        strcpy(config->effective_input_filename, resolved_input_path);
+        config->input.effective_path = mem_arena_alloc(&resources->setup_arena, strlen(resolved_input_path) + 1, false);
+        if (!config->input.effective_path) return false;
+        strcpy(config->input.effective_path, resolved_input_path);
     }
 
-    if (config->output_filename_arg) {
-        char* path_copy_for_dirname = mem_arena_alloc(&resources->setup_arena, strlen(config->output_filename_arg) + 1, false);
-        char* path_copy_for_basename = mem_arena_alloc(&resources->setup_arena, strlen(config->output_filename_arg) + 1, false);
+    if (config->output.path_arg) {
+        char* path_copy_for_dirname = mem_arena_alloc(&resources->setup_arena, strlen(config->output.path_arg) + 1, false);
+        char* path_copy_for_basename = mem_arena_alloc(&resources->setup_arena, strlen(config->output.path_arg) + 1, false);
         if (!path_copy_for_dirname || !path_copy_for_basename) return false;
 
-        strcpy(path_copy_for_dirname, config->output_filename_arg);
-        strcpy(path_copy_for_basename, config->output_filename_arg);
+        strcpy(path_copy_for_dirname, config->output.path_arg);
+        strcpy(path_copy_for_basename, config->output.path_arg);
 
         char* dir = dirname(path_copy_for_dirname);
         char* base = basename(path_copy_for_basename);
@@ -79,10 +79,10 @@ bool resolve_file_paths(AppConfig *config, AppResources *resources) {
         }
 
         size_t final_len = strlen(resolved_dir_path) + 1 + strlen(base) + 1;
-        config->effective_output_filename = mem_arena_alloc(&resources->setup_arena, final_len, false);
-        if (!config->effective_output_filename) return false;
+        config->output.effective_path = mem_arena_alloc(&resources->setup_arena, final_len, false);
+        if (!config->output.effective_path) return false;
 
-        snprintf(config->effective_output_filename, final_len, "%s/%s", resolved_dir_path, base);
+        snprintf(config->output.effective_path, final_len, "%s/%s", resolved_dir_path, base);
     }
 #endif
     return true;
@@ -91,20 +91,20 @@ bool resolve_file_paths(AppConfig *config, AppResources *resources) {
 bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *resources, float *out_ratio) {
     if (!config || !resources || !out_ratio) return false;
 
-    if (config->no_resample || config->raw_passthrough) {
-        if (config->raw_passthrough) {
+    if (config->dsp.no_resample || config->dsp.raw_passthrough) {
+        if (config->dsp.raw_passthrough) {
             log_info("Raw Passthrough mode enabled: Bypassing all DSP blocks.");
         } else {
             log_info("Native rate processing enabled: output rate will match input rate.");
         }
-        config->target_rate = (double)resources->source_info.samplerate;
+        config->output_rate.target_rate = (double)resources->source_info.samplerate;
         resources->is_passthrough = true;
     } else {
         resources->is_passthrough = false;
     }
 
     double input_rate_d = (double)resources->source_info.samplerate;
-    float r = (float)(config->target_rate / input_rate_d);
+    float r = (float)(config->output_rate.target_rate / input_rate_d);
 
     if (!isfinite(r) || r < MIN_ACCEPTABLE_RATIO || r > MAX_ACCEPTABLE_RATIO) {
         log_fatal("Error: Calculated resampling ratio (%.6f) is invalid or outside acceptable range.", r);
@@ -157,8 +157,8 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
         }
     }
     
-    fprintf(stderr, " %-*s : %s\n", max_label_len, "I/Q Correction", config->iq_correction.enable ? "Enabled" : "Disabled");
-    fprintf(stderr, " %-*s : %s\n", max_label_len, "DC Block", config->dc_block.enable ? "Enabled" : "Disabled");
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "I/Q Correction", config->dsp.iq_correction.enable ? "Enabled" : "Disabled");
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "DC Block", config->dsp.dc_block.enable ? "Enabled" : "Disabled");
 
 
     fprintf(stderr, "--- Output Details ---\n");
@@ -171,19 +171,19 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
         }
     }
 
-    const char* sample_type_str = utils_get_format_description_string(config->output_format);
+    const char* sample_type_str = utils_get_format_description_string(config->output.format);
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Sample Type", sample_type_str);
 
-    fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Output Rate", config->target_rate);
-    fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Gain Multiplier", config->gain);
+    fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Output Rate", config->output_rate.target_rate);
+    fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Gain Multiplier", config->dsp.gain);
 
     if (fabs(resources->nco_shift_hz) > 1e-9) {
         char shift_buf[64];
-        snprintf(shift_buf, sizeof(shift_buf), "%+.2f Hz%s", resources->nco_shift_hz, config->shift_after_resample ? " (Post-Resample)" : "");
+        snprintf(shift_buf, sizeof(shift_buf), "%+.2f Hz%s", resources->nco_shift_hz, config->dsp.shift_after_resample ? " (Post-Resample)" : "");
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Frequency Shift", shift_buf);
     }
 
-    if (config->num_filter_requests == 0) {
+    if (config->dsp.filter.count == 0) {
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Filter", "Disabled");
     } else {
         const char* filter_label;
@@ -202,11 +202,11 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
         }
         
         char filter_buf[256] = {0};
-        const char* stage = config->apply_user_filter_post_resample ? " (Post-Resample)" : "";
+        const char* stage = config->dsp.filter.apply_post_resample ? " (Post-Resample)" : "";
         strncat(filter_buf, "Enabled: ", sizeof(filter_buf) - strlen(filter_buf) - 1);
-        for (int i = 0; i < config->num_filter_requests; i++) {
+        for (int i = 0; i < config->dsp.filter.count; i++) {
             char current_filter_desc[128];
-            const FilterRequest* req = &config->filter_requests[i];
+            const FilterRequest* req = &config->dsp.filter.requests[i];
             switch (req->type) {
                 case FILTER_TYPE_LOWPASS: snprintf(current_filter_desc, sizeof(current_filter_desc), "LPF(%.0f Hz)", req->freq1_hz); break;
                 case FILTER_TYPE_HIGHPASS: snprintf(current_filter_desc, sizeof(current_filter_desc), "HPF(%.0f Hz)", req->freq1_hz); break;
@@ -221,17 +221,17 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
         fprintf(stderr, " %-*s : %s\n", max_label_len, filter_label, filter_buf);
     }
 
-    if (config->output_agc.enable) {
+    if (config->dsp.agc.enable) {
         char agc_buf[128];
         const char* profile_name = "Unknown";
-        switch (config->output_agc.profile) {
+        switch (config->dsp.agc.profile) {
             case AGC_PROFILE_DX:      profile_name = "DX"; break;
             case AGC_PROFILE_LOCAL:   profile_name = "Local"; break;
             case AGC_PROFILE_DIGITAL: profile_name = "Digital (Peak-Lock)"; break;
             default: break;
         }
         
-        snprintf(agc_buf, sizeof(agc_buf), "Enabled (Profile: %s, Target: %.2f)", profile_name, config->output_agc.target_level);
+        snprintf(agc_buf, sizeof(agc_buf), "Enabled (Profile: %s, Target: %.2f)", profile_name, config->dsp.agc.target_level);
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Output AGC", agc_buf);
     } else {
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Output AGC", "Disabled");
@@ -242,9 +242,9 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     bool is_file_output = resources->pacing_is_required;
     const char* output_path_for_messages;
 #ifdef _WIN32
-    output_path_for_messages = config->effective_output_filename_utf8;
+    output_path_for_messages = config->output.effective_path_utf8;
 #else
-    output_path_for_messages = config->effective_output_filename;
+    output_path_for_messages = config->output.effective_path;
 #endif
     fprintf(stderr, " %-*s : %s\n", max_label_len, is_file_output ? "Output File" : "Output Target", is_file_output ? output_path_for_messages : "<stdout>");
 }
@@ -254,10 +254,10 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     ModuleContext ctx = { .config = config, .resources = resources };
 
     // --- STEP 1: Look up the selected output module ---
-    const Module* selected_output_module = module_manager_get_output_module_by_name(config->output_module_str, &resources->setup_arena);
+    const Module* selected_output_module = module_manager_get_output_module_by_name(config->output.module_name, &resources->setup_arena);
     if (!selected_output_module) {
         // This should have been caught by cli.c, but this is a safeguard.
-        log_fatal("Internal error: Could not retrieve selected output module '%s'.", config->output_module_str);
+        log_fatal("Internal error: Could not retrieve selected output module '%s'.", config->output.module_name);
         return false;
     }
     resources->selected_output_module_api = (OutputModuleInterface*)selected_output_module->api;
@@ -268,7 +268,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
 
     // --- The rest of the setup proceeds as before ---
 
-    log_info("Attempting to initialize the '%s' input module...", config->input_type_str);
+    log_info("Attempting to initialize the '%s' input module...", config->input.type_name);
 
     if (!resolve_file_paths(config, resources)) {
         return false;

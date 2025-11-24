@@ -172,7 +172,7 @@ typedef struct {
 
 
 void bladerf_set_default_config(AppConfig* config) {
-    config->sdr.sample_rate_hz = BLADERF_DEFAULT_SAMPLE_RATE_HZ;
+    config->sdr_general.sample_rate_hz = BLADERF_DEFAULT_SAMPLE_RATE_HZ;
     s_bladerf_config.bandwidth_hz = BLADERF_DEFAULT_BANDWIDTH_HZ;
 }
 
@@ -221,7 +221,7 @@ InputModuleInterface* get_bladerf_input_module_api(void) {
 }
 
 static bool bladerf_validate_generic_options(const AppConfig* config) {
-    if (!config->sdr.rf_freq_provided) {
+    if (!config->sdr_general.rf_freq_provided) {
         log_fatal("BladeRF input requires the --sdr-rf-freq option.");
         return false;
     }
@@ -254,13 +254,13 @@ static bool bladerf_validate_options(AppConfig* config) {
 
     s_bladerf_config.active_bit_depth = 12;
 
-    if (config->sdr.sample_rate_hz > 61440000.0) {
+    if (config->sdr_general.sample_rate_hz > 61440000.0) {
         if (s_bladerf_config.bit_depth_provided && s_bladerf_config.bit_depth_arg == 12) {
             log_error("Invalid configuration: The BladeRF does not support 12-bit mode for sample rates above 61440000 Hz.");
             return false;
         }
         if (!s_bladerf_config.bit_depth_provided) {
-             log_warn("Sample rate of %.0f Hz exceeds the 61440000 Hz limit for 12-bit mode. Automatically switching to 8-bit mode.", config->sdr.sample_rate_hz);
+             log_warn("Sample rate of %.0f Hz exceeds the 61440000 Hz limit for 12-bit mode. Automatically switching to 8-bit mode.", config->sdr_general.sample_rate_hz);
         }
         s_bladerf_config.active_bit_depth = 8;
     } else {
@@ -386,7 +386,7 @@ static bool bladerf_initialize(ModuleContext* ctx) {
         }
     }
     
-    bool is_high_speed_mode = (config->sdr.sample_rate_hz > 61440000.0);
+    bool is_high_speed_mode = (config->sdr_general.sample_rate_hz > 61440000.0);
 
     if (is_high_speed_mode) {
         if (!is_bladerf2) {
@@ -415,7 +415,7 @@ static bool bladerf_initialize(ModuleContext* ctx) {
         goto cleanup;
     }
 
-    if (config->sdr.bias_t_enable) {
+    if (config->sdr_general.bias_t_enable) {
         if (is_bladerf2) {
             status = bladerf_set_bias_tee(private_data->dev, rx_channel, true);
             if (is_shutdown_requested()) goto cleanup;
@@ -455,7 +455,7 @@ static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf
         return false;
     }
 
-    struct bladerf_rational_rate rate_to_set = { .integer = 0, .num = (uint64_t)config->sdr.sample_rate_hz, .den = 1 };
+    struct bladerf_rational_rate rate_to_set = { .integer = 0, .num = (uint64_t)config->sdr_general.sample_rate_hz, .den = 1 };
 
     struct bladerf_rational_rate actual_rate_from_device;
     status = bladerf_set_rational_sample_rate(private_data->dev, rx_channel, &rate_to_set, &actual_rate_from_device);
@@ -470,9 +470,9 @@ static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf
     }
     double actual_rate_double = (double)actual_rate_from_device.integer + ((double)actual_rate_from_device.num / (double)actual_rate_from_device.den);
     resources->source_info.samplerate = (int)actual_rate_double;
-    log_info("BladeRF: Requested sample rate %.0f Hz, actual rate set to %d Hz.", config->sdr.sample_rate_hz, resources->source_info.samplerate);
+    log_info("BladeRF: Requested sample rate %.0f Hz, actual rate set to %d Hz.", config->sdr_general.sample_rate_hz, resources->source_info.samplerate);
 
-    status = bladerf_set_frequency(private_data->dev, rx_channel, config->sdr.rf_freq_hz);
+    status = bladerf_set_frequency(private_data->dev, rx_channel, config->sdr_general.rf_freq_hz);
     if (is_shutdown_requested()) { return false; }
     if (status != 0) {
         log_error("Failed to set BladeRF frequency: %s", bladerf_strerror(status));
@@ -489,7 +489,7 @@ static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_c
     BladerfPrivateData* private_data = (BladerfPrivateData*)resources->input_module_private_data;
     int status;
     
-    bladerf_sample_rate requested_rate = (bladerf_sample_rate)config->sdr.sample_rate_hz;
+    bladerf_sample_rate requested_rate = (bladerf_sample_rate)config->sdr_general.sample_rate_hz;
     bladerf_sample_rate actual_rate;
     status = bladerf_set_sample_rate(private_data->dev, rx_channel, requested_rate, &actual_rate);
     if (is_shutdown_requested()) { return false; }
@@ -512,7 +512,7 @@ static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_c
     else log_info("BladeRF: Requested bandwidth %u Hz, actual bandwidth set to %u Hz.", requested_bw, actual_bw);
     s_bladerf_config.bandwidth_hz = actual_bw;
 
-    status = bladerf_set_frequency(private_data->dev, rx_channel, config->sdr.rf_freq_hz);
+    status = bladerf_set_frequency(private_data->dev, rx_channel, config->sdr_general.rf_freq_hz);
     if (is_shutdown_requested()) { return false; }
     if (status != 0) {
         log_error("Failed to set BladeRF frequency: %s", bladerf_strerror(status));
@@ -583,7 +583,7 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
         return NULL;
     }
 
-    if (config->raw_passthrough && resources->input_format != config->output_format) {
+    if (config->dsp.raw_passthrough && resources->input_format != config->output.format) {
         handle_fatal_thread_error("Option --raw-passthrough requires input and output formats to be identical.", resources);
         return NULL;
     }
@@ -638,7 +638,7 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
         }
 
         case PIPELINE_MODE_REALTIME_SDR: {
-            if (config->raw_passthrough) {
+            if (config->dsp.raw_passthrough) {
                 void* passthrough_buffer = private_data->stream_temp_buffer;
                 if (!passthrough_buffer) {
                     handle_fatal_thread_error("BladeRF: Stream temp buffer is NULL for passthrough.", resources);
@@ -783,12 +783,12 @@ static void bladerf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo*
 
     add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
     add_summary_item(info, "Bandwidth", "%u Hz", s_bladerf_config.bandwidth_hz);
-    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr.rf_freq_hz);
+    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
     if (s_bladerf_config.gain_provided) add_summary_item(info, "Gain", "%d dB (Manual)", s_bladerf_config.gain);
     else add_summary_item(info, "Gain", "Automatic (AGC)");
     
-    add_summary_item(info, "Bias-T", "%s", config->sdr.bias_t_enable ? "Enabled" : "Disabled");
+    add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
 static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev) {

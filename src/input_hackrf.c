@@ -50,7 +50,7 @@ typedef struct {
 
 
 void hackrf_set_default_config(AppConfig* config) {
-    config->sdr.sample_rate_hz = HACKRF_DEFAULT_SAMPLE_RATE;
+    config->sdr_general.sample_rate_hz = HACKRF_DEFAULT_SAMPLE_RATE;
     s_hackrf_config.lna_gain = HACKRF_DEFAULT_LNA_GAIN;
     s_hackrf_config.hackrf_lna_gain_arg = HACKRF_DEFAULT_LNA_GAIN;
     s_hackrf_config.vga_gain = HACKRF_DEFAULT_VGA_GAIN;
@@ -97,7 +97,7 @@ InputModuleInterface* get_hackrf_input_module_api(void) {
 }
 
 static bool hackrf_validate_generic_options(const AppConfig* config) {
-    if (!config->sdr.rf_freq_provided) {
+    if (!config->sdr_general.rf_freq_provided) {
         log_fatal("HackRF input requires the --sdr-rf-freq option.");
         return false;
     }
@@ -125,9 +125,9 @@ static bool hackrf_validate_options(AppConfig* config) {
         s_hackrf_config.vga_gain_provided = true;
     }
 
-    if (config->sdr.sample_rate_provided) {
-        if (config->sdr.sample_rate_hz < 2e6 || config->sdr.sample_rate_hz > 20e6) {
-            log_fatal("Invalid HackRF sample rate %.0f Hz. Must be between 2,000,000 and 20,000,000.", config->sdr.sample_rate_hz);
+    if (config->sdr_general.sample_rate_provided) {
+        if (config->sdr_general.sample_rate_hz < 2e6 || config->sdr_general.sample_rate_hz > 20e6) {
+            log_fatal("Invalid HackRF sample rate %.0f Hz. Must be between 2,000,000 and 20,000,000.", config->sdr_general.sample_rate_hz);
             return false;
         }
     }
@@ -172,7 +172,7 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
         return 0;
     }
 
-    if (config->raw_passthrough) {
+    if (config->dsp.raw_passthrough) {
         ModuleContext ctx = { .config = config, .resources = resources };
                         size_t written = resources->selected_output_module_api->write_chunk(&ctx, transfer->buffer, transfer->valid_length);
         if (written < (size_t)transfer->valid_length) {
@@ -226,13 +226,13 @@ static void hackrf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* 
     add_summary_item(info, "Input Source", "HackRF One");
     add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
     add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
-    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr.rf_freq_hz);
+    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
     // as HackRF does not have a true hardware AGC. The gain is always fixed.
     add_summary_item(info, "LNA Gain", "%u dB", s_hackrf_config.lna_gain);
     add_summary_item(info, "VGA Gain", "%u dB", s_hackrf_config.vga_gain);
     add_summary_item(info, "RF Amp", "%s", s_hackrf_config.amp_enable ? "Enabled" : "Disabled");
-    add_summary_item(info, "Bias-T", "%s", config->sdr.bias_t_enable ? "Enabled" : "Disabled");
+    add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
 static bool hackrf_initialize(ModuleContext* ctx) {
@@ -262,13 +262,13 @@ static bool hackrf_initialize(ModuleContext* ctx) {
     }
     log_info("Found HackRF One.");
 
-    result = hackrf_set_sample_rate(private_data->dev, config->sdr.sample_rate_hz);
+    result = hackrf_set_sample_rate(private_data->dev, config->sdr_general.sample_rate_hz);
     if (result != HACKRF_SUCCESS) {
         log_fatal("hackrf_set_sample_rate() failed: %s (%d)", hackrf_error_name(result), result);
         goto cleanup;
     }
 
-    result = hackrf_set_freq(private_data->dev, (uint64_t)config->sdr.rf_freq_hz);
+    result = hackrf_set_freq(private_data->dev, (uint64_t)config->sdr_general.rf_freq_hz);
     if (result != HACKRF_SUCCESS) {
         log_fatal("hackrf_set_freq() failed: %s (%d)", hackrf_error_name(result), result);
         goto cleanup;
@@ -292,7 +292,7 @@ static bool hackrf_initialize(ModuleContext* ctx) {
         goto cleanup;
     }
 
-    if (config->sdr.bias_t_enable) {
+    if (config->sdr_general.bias_t_enable) {
         result = hackrf_set_antenna_enable(private_data->dev, 1);
         if (result != HACKRF_SUCCESS) {
             log_fatal("hackrf_set_antenna_enable() failed: %s (%d)", hackrf_error_name(result), result);
@@ -302,11 +302,11 @@ static bool hackrf_initialize(ModuleContext* ctx) {
 
     resources->input_format = CS8;
     resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
-    resources->source_info.samplerate = (int)config->sdr.sample_rate_hz;
+    resources->source_info.samplerate = (int)config->sdr_general.sample_rate_hz;
     resources->source_info.frames = -1;
 
-    if (config->raw_passthrough && resources->input_format != config->output_format) {
-        log_fatal("Option --raw-passthrough requires input and output formats to be identical. HackRF input is 'cs8', but output was set to '%s'.", config->output_sample_format_name);
+    if (config->dsp.raw_passthrough && resources->input_format != config->output.format) {
+        log_fatal("Option --raw-passthrough requires input and output formats to be identical. HackRF input is 'cs8', but output was set to '%s'.", config->output.format_name);
         goto cleanup;
     }
 

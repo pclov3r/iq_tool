@@ -95,18 +95,18 @@ const char* format_file_size(long long size_bytes, char* buffer, size_t buffer_s
 const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size_t buffer_size, MemoryArena* arena) {
 #ifdef _WIN32
     (void)arena; // arena is unused on Windows, this silences the warning.
-    if (config->effective_input_filename_w[0] != L'\0') {
-        const wchar_t* base_w = PathFindFileNameW(config->effective_input_filename_w);
+    if (config->input.effective_path_w[0] != L'\0') {
+        const wchar_t* base_w = PathFindFileNameW(config->input.effective_path_w);
         if (WideCharToMultiByte(CP_UTF8, 0, base_w, -1, buffer, buffer_size, NULL, NULL) > 0) {
             return buffer;
         }
     }
 #else
-    if (config->effective_input_filename) {
-        size_t len = strlen(config->effective_input_filename) + 1;
+    if (config->input.effective_path) {
+        size_t len = strlen(config->input.effective_path) + 1;
         char* temp_copy = (char*)mem_arena_alloc(arena, len, false);
         if (temp_copy) {
-            strcpy(temp_copy, config->effective_input_filename);
+            strcpy(temp_copy, config->input.effective_path);
             char* base = basename(temp_copy);
             strncpy(buffer, base, buffer_size - 1);
             buffer[buffer_size - 1] = '\0';

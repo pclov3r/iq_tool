@@ -84,7 +84,7 @@ static void _calculate_power_spectrum(IqCorrectionResources* iq_res, const compl
 // --- Public API Functions ---
 
 bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* arena) {
-    if (!config->iq_correction.enable) {
+    if (!config->dsp.iq_correction.enable) {
         resources->iq_correction.fft_plan = NULL;
         return true;
     }
@@ -139,7 +139,7 @@ bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* ar
 }
 
 void iq_correct_apply(AppResources* resources, complex_float_t* samples, int num_samples) {
-    if (!resources->config->iq_correction.enable) return;
+    if (!resources->config->dsp.iq_correction.enable) return;
 
     IqCorrectionFactors local_factors;
 
@@ -152,7 +152,7 @@ void iq_correct_apply(AppResources* resources, complex_float_t* samples, int num
 }
 
 void iq_correct_run_optimization(AppResources* resources, const complex_float_t* optimization_data) {
-    if (!resources->config->iq_correction.enable) return;
+    if (!resources->config->dsp.iq_correction.enable) return;
 
     double current_time = get_monotonic_time_sec();
     double time_since_last_run = (current_time - resources->iq_correction.last_optimization_time) * 1000.0;
@@ -219,7 +219,7 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
 }
 
 void iq_correct_destroy(AppResources* resources) {
-    if (resources->config->iq_correction.enable) {
+    if (resources->config->dsp.iq_correction.enable) {
         pthread_mutex_destroy(&resources->iq_correction.iq_factors_mutex);
     }
     if (resources->iq_correction.fft_plan) {

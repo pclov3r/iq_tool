@@ -129,7 +129,7 @@ int main(int argc, char *argv[]) {
     // Phase 1: Pre-scan arguments to find the input type.
     const char* input_type = find_input_type_arg(argc, argv);
     if (input_type) {
-        config.input_type_str = (char*)input_type;
+        config.input.type_name = (char*)input_type;
         int num_modules = 0;
         const Module* modules = module_manager_get_all_modules(&num_modules, &resources.setup_arena);
         for (int i = 0; i < num_modules; ++i) {
@@ -142,7 +142,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    config.gain = 1.0f;
+    config.dsp.gain = 1.0f;
 
 #ifndef _WIN32
     pthread_t sig_thread_id;
@@ -179,9 +179,9 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    resources.selected_input_module_api = module_manager_get_input_interface_by_name(config.input_type_str, &resources.setup_arena);
+    resources.selected_input_module_api = module_manager_get_input_interface_by_name(config.input.type_name, &resources.setup_arena);
     if (!resources.selected_input_module_api) {
-        log_fatal("Input type '%s' is not supported or not enabled in this build.", config.input_type_str);
+        log_fatal("Input type '%s' is not supported or not enabled in this build.", config.input.type_name);
         goto cleanup;
     }
 
@@ -254,8 +254,8 @@ static const char* find_input_type_arg(int argc, char *argv[]) {
 
 static void initialize_resource_struct(AppConfig *config, AppResources *resources) {
     memset(resources, 0, sizeof(AppResources));
-    config->iq_correction.enable = false;
-    config->dc_block.enable = false;
+    config->dsp.iq_correction.enable = false;
+    config->dsp.dc_block.enable = false;
 }
 
 static bool validate_configuration(AppConfig *config, const AppResources *resources) {

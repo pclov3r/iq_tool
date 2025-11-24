@@ -474,10 +474,10 @@ static void wav_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* inf
     const AppResources *resources = ctx->resources;
     WavPrivateData* private_data = (WavPrivateData*)resources->input_module_private_data;
 
-    const char* display_path = config->input_filename_arg;
+    const char* display_path = config->input.path_arg;
 #ifdef _WIN32
-    if (config->effective_input_filename_utf8[0] != '\0') {
-        display_path = config->effective_input_filename_utf8;
+    if (config->input.effective_path_utf8[0] != '\0') {
+        display_path = config->input.effective_path_utf8;
     }
 #endif
 
@@ -495,7 +495,7 @@ static void wav_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* inf
     long long input_file_size = -1LL;
 #ifdef _WIN32
     struct __stat64 stat_buf64;
-    if (_wstat64(config->effective_input_filename_w, &stat_buf64) == 0)
+    if (_wstat64(config->input.effective_path_w, &stat_buf64) == 0)
         input_file_size = stat_buf64.st_size;
 #else
     struct stat stat_buf;
@@ -550,15 +550,15 @@ static bool wav_initialize(ModuleContext* ctx) {
     resources->input_module_private_data = private_data;
 
 #ifdef _WIN32
-    log_info("Opening WAV input file: %s", config->effective_input_filename_utf8);
+    log_info("Opening WAV input file: %s", config->input.effective_path_utf8);
     SF_INFO sfinfo;
     memset(&sfinfo, 0, sizeof(SF_INFO));
-    private_data->infile = sf_wchar_open(config->effective_input_filename_w, SFM_READ, &sfinfo);
+    private_data->infile = sf_wchar_open(config->input.effective_path_w, SFM_READ, &sfinfo);
 #else
-    log_info("Opening WAV input file: %s", config->effective_input_filename);
+    log_info("Opening WAV input file: %s", config->input.effective_path);
     SF_INFO sfinfo;
     memset(&sfinfo, 0, sizeof(SF_INFO));
-    private_data->infile = sf_open(config->effective_input_filename, SFM_READ, &sfinfo);
+    private_data->infile = sf_open(config->input.effective_path, SFM_READ, &sfinfo);
 #endif
 
     if (!private_data->infile) {
@@ -612,7 +612,7 @@ static bool wav_initialize(ModuleContext* ctx) {
     }
 
     if (s_wav_config.center_target_hz_arg != 0.0f) {
-        if (config->freq_shift_hz_arg != 0.0f) {
+        if (config->dsp.freq_shift_hz != 0.0f) {
             log_fatal("Conflicting frequency shift options provided. Cannot use --freq-shift and --wav-center-target-freq at the same time.");
             sf_close(private_data->infile);
             return false;
@@ -720,7 +720,7 @@ static bool wav_pre_stream_iq_correction(ModuleContext* ctx) {
     WavPrivateData* private_data = (WavPrivateData*)ctx->resources->input_module_private_data;
 
     // This routine is only necessary if I/Q correction is enabled.
-    if (!config->iq_correction.enable) {
+    if (!config->dsp.iq_correction.enable) {
         return true;
     }
     

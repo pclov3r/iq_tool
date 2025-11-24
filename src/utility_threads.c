@@ -85,7 +85,7 @@ void* watchdog_thread_func(void* arg) {
         pthread_mutex_unlock(&resources->progress_mutex);
 
         if (timed_out) {
-            const char* input_device_name = config->input_type_str ? config->input_type_str : "SDR";
+            const char* input_device_name = config->input.type_name ? config->input.type_name : "SDR";
 
             // We use raw fprintf to stderr because the logger might be deadlocked if
             // another thread is holding the console mutex. This is a last-gasp message.

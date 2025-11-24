@@ -19,19 +19,19 @@ void pre_processor_apply_chain(AppResources* resources, SampleChunk* item) {
 
     // Step 1: Convert sample block to complex float
     if (!convert_block_to_cf32(item->raw_input_data, item->current_output_buffer,
-                               item->frames_read, item->packet_sample_format, config->gain)) {
+                               item->frames_read, item->packet_sample_format, config->dsp.gain)) {
         handle_fatal_thread_error("Pre-Processor: Failed to convert samples.", resources);
         item->frames_read = 0;
         return;
     }
 
     // Step 2: DC Blocking (if enabled)
-    if (config->dc_block.enable) {
+    if (config->dsp.dc_block.enable) {
         dc_block_apply(resources, item->current_output_buffer, item->frames_read);
     }
 
     // Step 3: I/Q Imbalance Correction (if enabled)
-    if (config->iq_correction.enable) {
+    if (config->dsp.iq_correction.enable) {
         iq_correct_apply(resources, item->current_output_buffer, item->frames_read);
     }
 
@@ -46,7 +46,7 @@ void pre_processor_apply_chain(AppResources* resources, SampleChunk* item) {
     }
 
     // Step 5: Pre-Resample Filtering (if enabled)
-    if (resources->user_filter_object && !config->apply_user_filter_post_resample) {
+    if (resources->user_filter_object && !config->dsp.filter.apply_post_resample) {
         // filter_apply will now correctly handle its internal state, whether
         // it's an in-place FIR or an out-of-place FFT. The thread function
         // is responsible for the final ping-pong swap if needed.

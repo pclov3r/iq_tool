@@ -41,22 +41,22 @@
  * @return true on success, false if the filter configuration is invalid for the output rate.
  */
 static bool _configure_filter_stage(AppConfig *config, AppResources *resources) {
-    config->apply_user_filter_post_resample = false;
+    config->dsp.filter.apply_post_resample = false;
 
-    if (config->num_filter_requests == 0 || config->no_resample || config->raw_passthrough) {
+    if (config->dsp.filter.count == 0 || config->dsp.no_resample || config->dsp.raw_passthrough) {
         return true;
     }
 
     double input_rate = (double)resources->source_info.samplerate;
-    double output_rate = config->target_rate;
+    double output_rate = config->output_rate.target_rate;
 
     // This optimization is only relevant if we are downsampling.
     if (output_rate < input_rate) {
         float max_filter_freq_hz = 0.0f;
 
         // Find the highest frequency required by any filter in the chain.
-        for (int i = 0; i < config->num_filter_requests; i++) {
-            const FilterRequest* req = &config->filter_requests[i];
+        for (int i = 0; i < config->dsp.filter.count; i++) {
+            const FilterRequest* req = &config->dsp.filter.requests[i];
             float current_max = 0.0f;
             switch (req->type) {
                 case FILTER_TYPE_LOWPASS:
@@ -85,7 +85,7 @@ static bool _configure_filter_stage(AppConfig *config, AppResources *resources) 
         } else {
             // It's safe and more efficient to filter after resampling.
             log_debug("Filter will be applied efficiently after resampling to avoid excessive CPU usage.");
-            config->apply_user_filter_post_resample = true;
+            config->dsp.filter.apply_post_resample = true;
         }
     }
     return true;
@@ -143,7 +143,7 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
     resources->user_filter_type_actual = FILTER_IMPL_NONE;
     resources->user_filter_block_size = 0;
 
-    if (config->num_filter_requests == 0) {
+    if (config->dsp.filter.count == 0) {
         return true;
     }
 
@@ -157,8 +157,8 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
     if (!master_taps) goto cleanup;
     master_taps[0] = 1.0f + 0.0f * I;
 
-    double sample_rate_for_design = config->apply_user_filter_post_resample
-                                      ? config->target_rate
+    double sample_rate_for_design = config->dsp.filter.apply_post_resample
+                                      ? config->output_rate.target_rate
                                       : (double)resources->source_info.samplerate;
 
     bool is_final_filter_complex = false;
@@ -166,8 +166,8 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
 
     log_info("Designing filter coefficients (this may be slow for large filters)...");
 
-    for (int i = 0; i < config->num_filter_requests; ++i) {
-        FilterRequest adjusted_req = config->filter_requests[i];
+    for (int i = 0; i < config->dsp.filter.count; ++i) {
+        FilterRequest adjusted_req = config->dsp.filter.requests[i];
         const FilterRequest* req = &adjusted_req;
 
         if (req->type != FILTER_TYPE_LOWPASS) {
@@ -175,14 +175,14 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
         }
 
         unsigned int current_taps_len;
-        float attenuation_db = (config->attenuation_db_arg > 0.0f) ? config->attenuation_db_arg : RESAMPLER_QUALITY_ATTENUATION_DB;
+        float attenuation_db = (config->dsp.filter.args.attenuation > 0.0f) ? config->dsp.filter.args.attenuation : RESAMPLER_QUALITY_ATTENUATION_DB;
 
-        if (config->filter_taps_arg > 0) {
-            current_taps_len = (unsigned int)config->filter_taps_arg;
+        if (config->dsp.filter.args.taps > 0) {
+            current_taps_len = (unsigned int)config->dsp.filter.args.taps;
         } else {
             float transition_width_hz;
-            if (config->transition_width_hz_arg > 0.0f) {
-                transition_width_hz = config->transition_width_hz_arg;
+            if (config->dsp.filter.args.transition_width > 0.0f) {
+                transition_width_hz = config->dsp.filter.args.transition_width;
             } else {
                 float reference_freq = (req->type == FILTER_TYPE_LOWPASS || req->type == FILTER_TYPE_HIGHPASS) ? req->freq1_hz : req->freq2_hz;
                 transition_width_hz = fabsf(reference_freq) * DEFAULT_FILTER_TRANSITION_FACTOR;
@@ -257,8 +257,8 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
 
     log_info("Final combined filter requires %d taps.", master_taps_len);
 
-    for (int i = 0; i < config->num_filter_requests; ++i) {
-        const FilterRequest* req = &config->filter_requests[i];
+    for (int i = 0; i < config->dsp.filter.count; ++i) {
+        const FilterRequest* req = &config->dsp.filter.requests[i];
         if (req->type == FILTER_TYPE_PASSBAND && fabsf(req->freq1_hz) > 1e-9f) {
             is_final_filter_complex = true;
             break;
@@ -299,8 +299,8 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
     }
 
     FilterTypeRequest final_choice;
-    if (config->filter_type_str_arg != NULL) {
-        final_choice = config->filter_type_request;
+    if (config->dsp.filter.args.type_str != NULL) {
+        final_choice = config->dsp.filter.type_req;
     } else {
         if (is_final_filter_complex) {
             log_info("Automatically choosing efficient FFT method by default.");
@@ -315,11 +315,11 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
         log_info("Preparing FFT-based filter object (this may take a moment)...");
 
         unsigned int block_size;
-        if (config->filter_fft_size_arg > 0) {
-            block_size = (unsigned int)config->filter_fft_size_arg / 2;
-            log_info("Using user-specified FFT size of %u (block size: %u).", config->filter_fft_size_arg, block_size);
+        if (config->dsp.filter.args.fft_size > 0) {
+            block_size = (unsigned int)config->dsp.filter.args.fft_size / 2;
+            log_info("Using user-specified FFT size of %u (block size: %u).", config->dsp.filter.args.fft_size, block_size);
             if (block_size < (unsigned int)master_taps_len - 1) {
-                log_fatal("The specified --filter-fft-size of %d is too small for a filter with %d taps.", config->filter_fft_size_arg, master_taps_len);
+                log_fatal("The specified --filter-fft-size of %d is too small for a filter with %d taps.", config->dsp.filter.args.fft_size, master_taps_len);
                 log_error("A block size (_n) of at least %d is required, meaning an FFT size of at least %d.", master_taps_len - 1, (master_taps_len - 1) * 2);
                 goto cleanup;
             }
@@ -363,7 +363,7 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
        (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
         resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC))
     {
-        if (config->apply_user_filter_post_resample) {
+        if (config->dsp.filter.apply_post_resample) {
             resources->post_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
                 arena,
                 resources->user_filter_block_size * sizeof(complex_float_t),

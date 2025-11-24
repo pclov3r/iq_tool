@@ -111,7 +111,7 @@ void request_shutdown(void) {
         AppResources* r = g_resources_for_signal_handler;
 
         // Special case for RTL-SDR to unblock its synchronous read loop
-        if (r->config && r->config->input_type_str && strcasecmp(r->config->input_type_str, "rtlsdr") == 0) {
+        if (r->config && r->config->input.type_name && strcasecmp(r->config->input.type_name, "rtlsdr") == 0) {
             if (r->selected_input_module_api && r->selected_input_module_api->stop_stream) {
                 log_debug("Signal handler is calling stop_stream for RTL-SDR to unblock reader thread.");
                 ModuleContext ctx = { .config = r->config, .resources = r };

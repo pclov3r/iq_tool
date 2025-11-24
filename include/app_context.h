@@ -64,47 +64,89 @@ typedef struct {
  * @brief Stores all user-defined configuration settings for the application.
  */
 typedef struct AppConfig {
-    // --- Input & Output ---
-    char*       input_type_str;
-    char*       input_filename_arg;
-    char*       output_filename_arg;
-    char*       output_module_str;
-    char*       output_sample_format_name;
-    char*       output_type_name;
-    bool        output_type_provided;
-    char*       preset_name;
+    // --- Input Configuration ---
+    struct {
+        char* type_name;      // CLI: --input (was input_type_str)
+        char* path_arg;       // CLI: [in_file] (was input_filename_arg)
 
-    // --- Core DSP ---
-    float       gain;
-    bool        gain_provided;
-    float       freq_shift_hz_arg;
-    int         shift_after_resample;
-    int         no_resample;
-    int         raw_passthrough;
-    float       user_defined_target_rate_arg;
-    bool        user_rate_provided;
-    IqCorrectionConfig iq_correction;
-    DcBlockConfig      dc_block;
-    OutputAgcConfig    output_agc;
+        // Platform-Specific Resolved Paths
+    #ifdef _WIN32
+        wchar_t effective_path_w[MAX_PATH_BUFFER];
+        char    effective_path_utf8[MAX_PATH_BUFFER];
+    #else
+        char*   effective_path;
+    #endif
+    } input;
 
-    // --- Internal State from CLI Parsing ---
-    FilterRequest filter_requests[MAX_FILTER_CHAIN];
-    int         num_filter_requests;
-    bool        apply_user_filter_post_resample;
+    // --- Output Configuration ---
+    struct {
+        char* module_name;    // CLI: --output (was output_module_str)
+        char* path_arg;       // CLI: [out_file] (was output_filename_arg)
+        char* format_name;    // CLI: --output-sample-format
+        char* type_name;      // (was output_type_name)
+        bool  type_provided;  // (was output_type_provided)
 
-    // --- Filter Arguments ---
-    float       lowpass_cutoff_hz_arg[MAX_FILTER_CHAIN];
-    float       highpass_cutoff_hz_arg[MAX_FILTER_CHAIN];
-    const char* pass_range_str_arg[MAX_FILTER_CHAIN];
-    const char* stopband_str_arg[MAX_FILTER_CHAIN];
-    float       transition_width_hz_arg;
-    int         filter_taps_arg;
-    float       attenuation_db_arg;
-    FilterTypeRequest filter_type_request;
-    const char* filter_type_str_arg;
-    int         filter_fft_size_arg;
+        // Resolved State
+        OutputType type;
+        format_t   format;
 
-    // --- SDR-Specific Arguments ---
+        // Platform-Specific Resolved Paths
+    #ifdef _WIN32
+        wchar_t effective_path_w[MAX_PATH_BUFFER];
+        char    effective_path_utf8[MAX_PATH_BUFFER];
+    #else
+        char*   effective_path;
+    #endif
+    } output;
+
+    // --- Output Sample Rate Configuration ---
+    struct {
+        double target_rate;   // The final rate used by the pipeline (Hz)
+        float  user_arg;      // CLI: --output-rate (was user_defined_target_rate_arg)
+        bool   provided;      // Was --output-rate explicitly set? (was user_rate_provided)
+    } output_rate;
+
+    // --- General DSP Configuration ---
+    struct {
+        float gain;           // CLI: --gain-multiplier
+        bool  gain_provided;
+
+        float freq_shift_hz;  // CLI: --freq-shift (was freq_shift_hz_arg)
+        int   shift_after_resample;
+
+        int   no_resample;
+        int   raw_passthrough;
+
+        // Sub-module configurations
+        IqCorrectionConfig iq_correction;
+        DcBlockConfig      dc_block;
+        OutputAgcConfig    agc; // (was output_agc)
+
+        // --- Filter Configuration ---
+        struct {
+            // Resolved Logic
+            FilterRequest requests[MAX_FILTER_CHAIN];
+            int           count; // (was num_filter_requests)
+            bool          apply_post_resample; // (was apply_user_filter_post_resample)
+            FilterTypeRequest type_req; // (was filter_type_request)
+
+            // Raw CLI Arguments (Arrays for chainable options)
+            struct {
+                float       lowpass[MAX_FILTER_CHAIN];
+                float       highpass[MAX_FILTER_CHAIN];
+                const char* pass_range[MAX_FILTER_CHAIN];
+                const char* stopband[MAX_FILTER_CHAIN];
+                float       transition_width;
+                int         taps;
+                float       attenuation;
+                const char* type_str;
+                int         fft_size;
+            } args;
+        } filter;
+    } dsp;
+
+    // --- SDR General Configuration ---
+    // Settings shared by all SDR hardware (RTL, HackRF, SDRplay, etc.)
     struct {
         double rf_freq_hz;
         float  rf_freq_hz_arg;
@@ -113,28 +155,16 @@ typedef struct AppConfig {
         float  sample_rate_hz_arg;
         bool   sample_rate_provided;
         bool   bias_t_enable;
-    } sdr;
+    } sdr_general;
 
-    // --- Resolved Final Configuration ---
-    OutputType  output_type;
-    format_t    output_format;
-    double      target_rate;
-    bool        help_requested;
+    // --- Global / Misc ---
+    char* preset_name;
+    bool  help_requested;
 
-    // --- Platform-Specific File Paths ---
-#ifdef _WIN32
-    wchar_t effective_input_filename_w[MAX_PATH_BUFFER];
-    wchar_t effective_output_filename_w[MAX_PATH_BUFFER];
-    char    effective_input_filename_utf8[MAX_PATH_BUFFER];
-    char    effective_output_filename_utf8[MAX_PATH_BUFFER];
-#else
-    char*   effective_input_filename;
-    char*   effective_output_filename;
-#endif
-
-    // --- Loaded Presets ---
+    // --- Presets Data ---
     PresetDefinition* presets;
     int               num_presets;
+
 } AppConfig;
 
 

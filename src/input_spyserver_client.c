@@ -205,7 +205,7 @@ const struct argparse_option* spyserver_client_get_cli_options(int* count) {
 
 // --- Default Configuration ---
 void spyserver_client_set_default_config(struct AppConfig* config) {
-    config->sdr.sample_rate_hz = SPYSERVER_DEFAULT_SAMPLE_RATE_HZ;
+    config->sdr_general.sample_rate_hz = SPYSERVER_DEFAULT_SAMPLE_RATE_HZ;
     s_spyserver_client_config.hostname = NULL;
     s_spyserver_client_config.port = 0;
     s_spyserver_client_config.gain = -1;
@@ -472,7 +472,7 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
         supported_rates[num_supported_rates++] = (double)max_sr / (double)(1 << i);
     }
 
-    double user_rate = config->sdr.sample_rate_hz > 0 ? config->sdr.sample_rate_hz : supported_rates[0];
+    double user_rate = config->sdr_general.sample_rate_hz > 0 ? config->sdr_general.sample_rate_hz : supported_rates[0];
     int best_rate_idx = 0;
     double min_diff = fabs(supported_rates[0] - user_rate);
     for (int i = 1; i < num_supported_rates; i++) {
@@ -496,7 +496,7 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
     int format_to_request_int = get_spyserver_enum_from_internal_format(final_format);
 
     log_info("Configuring remote device...");
-    if (!send_setting(p, SPYSERVER_SETTING_IQ_FREQUENCY, (uint32_t)config->sdr.rf_freq_hz)) return false;
+    if (!send_setting(p, SPYSERVER_SETTING_IQ_FREQUENCY, (uint32_t)config->sdr_general.rf_freq_hz)) return false;
     if (!send_setting(p, SPYSERVER_SETTING_IQ_DECIMATION, dec_index_to_send)) return false;
     if (!send_setting(p, SPYSERVER_SETTING_IQ_FORMAT, format_to_request_int)) return false;
 
@@ -724,7 +724,7 @@ static void spyserver_client_get_summary_info(const ModuleContext* ctx, InputSum
         add_summary_item(info, "Remote Device", dev_info_str);
         add_summary_item(info, "Input Format", utils_get_format_description_string(resources->input_format));
         add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
-        add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr.rf_freq_hz);
+        add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
         if (s_spyserver_client_config.gain_provided) {
             add_summary_item(info, "Gain", "%d (Manual)", s_spyserver_client_config.gain);

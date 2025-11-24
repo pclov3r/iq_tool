@@ -46,13 +46,13 @@ static bool prompt_for_overwrite(const char* path_for_messages) {
 
 #ifdef _WIN32
 static FILE* _secure_open_for_write(const AppConfig* config, const char* out_path_utf8) {
-    HANDLE hFile = CreateFileW(config->effective_output_filename_w, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE hFile = CreateFileW(config->output.effective_path_w, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
         if (GetLastError() == ERROR_FILE_EXISTS) {
             if (!prompt_for_overwrite(out_path_utf8)) {
                 return NULL;
             }
-            hFile = CreateFileW(config->effective_output_filename_w, GENERIC_WRITE, 0, NULL, TRUNCATE_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+            hFile = CreateFileW(config->output.effective_path_w, GENERIC_WRITE, 0, NULL, TRUNCATE_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
             if (hFile == INVALID_HANDLE_VALUE) {
                 print_win_error("CreateFileW (overwrite)", GetLastError());
                 return NULL;
@@ -128,10 +128,10 @@ static bool raw_out_initialize(ModuleContext* ctx) {
     }
 
     #ifdef _WIN32
-    const char* out_path = config->effective_output_filename_utf8;
+    const char* out_path = config->output.effective_path_utf8;
     data->handle = _secure_open_for_write(config, out_path);
     #else
-    const char* out_path = config->effective_output_filename;
+    const char* out_path = config->output.effective_path;
     data->handle = _secure_open_for_write(out_path);
     #endif
 

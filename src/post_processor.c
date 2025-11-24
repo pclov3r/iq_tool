@@ -19,7 +19,7 @@ void post_processor_apply_chain(AppResources* resources, SampleChunk* item) {
         complex_float_t* current_data_ptr = item->current_input_buffer;
 
         // Step 1: Post-Resample Filtering (if enabled)
-        if (resources->user_filter_object && config->apply_user_filter_post_resample) {
+        if (resources->user_filter_object && config->dsp.filter.apply_post_resample) {
             // Determine if the filter that will run is an out-of-place FFT filter.
             bool is_fft_filter = (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
                                   resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC);
@@ -61,7 +61,7 @@ void post_processor_apply_chain(AppResources* resources, SampleChunk* item) {
         if (!convert_cf32_to_block(current_data_ptr,
                                    item->final_output_data,
                                    item->frames_to_write,
-                                   config->output_format)) {
+                                   config->output.format)) {
             handle_fatal_thread_error("Post-Processor: Failed to convert samples.", resources);
             // Mark the chunk as having zero frames to prevent writing bad data
             item->frames_to_write = 0;

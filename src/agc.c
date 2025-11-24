@@ -19,7 +19,7 @@
 #endif
 
 bool agc_create(AppConfig* config, AppResources* resources) {
-    if (!config->output_agc.enable) {
+    if (!config->dsp.agc.enable) {
         resources->output_agc_object = NULL;
         return true;
     }
@@ -35,7 +35,7 @@ bool agc_create(AppConfig* config, AppResources* resources) {
     // ---------------------------------------------------------
     // STRATEGY 1: DX / LOCAL (RMS Tracking via liquid-dsp)
     // ---------------------------------------------------------
-    if (config->output_agc.profile != AGC_PROFILE_DIGITAL) {
+    if (config->dsp.agc.profile != AGC_PROFILE_DIGITAL) {
         agc_crcf q = agc_crcf_create();
         if (!q) {
             log_fatal("Failed to create liquid-dsp AGC object.");
@@ -45,14 +45,14 @@ bool agc_create(AppConfig* config, AppResources* resources) {
         float bandwidth = AGC_LOCAL_BANDWIDTH;
         float default_target = AGC_LOCAL_TARGET;
 
-        if (config->output_agc.profile == AGC_PROFILE_DX) {
+        if (config->dsp.agc.profile == AGC_PROFILE_DX) {
             bandwidth = AGC_DX_BANDWIDTH;
             default_target = AGC_DX_TARGET;
         }
 
         // Use CLI target if provided, otherwise profile default
-        float final_target = (config->output_agc.target_level_arg > 0) 
-                           ? config->output_agc.target_level 
+        float final_target = (config->dsp.agc.target_level_arg > 0) 
+                           ? config->dsp.agc.target_level 
                            : default_target;
 
         agc_crcf_set_bandwidth(q, bandwidth);
@@ -84,7 +84,7 @@ bool agc_create(AppConfig* config, AppResources* resources) {
 }
 
 void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int num_samples) {
-    if (!resources->config->output_agc.enable || num_samples == 0) return;
+    if (!resources->config->dsp.agc.enable || num_samples == 0) return;
 
     // ---------------------------------------------------------
     // STRATEGY 1: DX / LOCAL (RMS Tracking via liquid-dsp)
@@ -102,11 +102,11 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
     // ---------------------------------------------------------
     // STRATEGY 2: DIGITAL (Peak Detect, Lock, & Slow Recovery)
     // ---------------------------------------------------------
-    if (resources->config->output_agc.profile == AGC_PROFILE_DIGITAL) {
+    if (resources->config->dsp.agc.profile == AGC_PROFILE_DIGITAL) {
         
         // Determine Target
-        float target = (resources->config->output_agc.target_level_arg > 0) 
-                        ? resources->config->output_agc.target_level 
+        float target = (resources->config->dsp.agc.target_level_arg > 0) 
+                        ? resources->config->dsp.agc.target_level 
                         : AGC_DIGITAL_PEAK_TARGET;
 
         // =========================================================
@@ -142,7 +142,7 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
             }
 
             // 5. Check Timer to Finalize Lock
-            double sample_rate = resources->config->target_rate;
+            double sample_rate = resources->config->output_rate.target_rate;
             double elapsed = (double)resources->agc_samples_seen / sample_rate;
 
             if (elapsed > AGC_DIGITAL_LOCK_TIME) {
