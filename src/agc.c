@@ -118,6 +118,21 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
         
         float target = 0.5f; // Default safe fallback
 
+        // --- RESTORED LOGIC: Set target based on profile ---
+        switch (resources->config->dsp.agc.profile) {
+            case AGC_PROFILE_DIGITAL:
+                target = AGC_DIGITAL_PEAK_TARGET; // 0.9
+                break;
+            case AGC_PROFILE_DX:
+                target = AGC_DX_TARGET;           // 0.5
+                break;
+            case AGC_PROFILE_LOCAL:
+                target = AGC_LOCAL_TARGET;        // 0.5
+                break;
+            default: break;
+        }
+        // ---------------------------------------------------
+
         if (resources->config->dsp.agc.target_level_arg > 0) {
             target = resources->config->dsp.agc.target_level_arg;
         }
