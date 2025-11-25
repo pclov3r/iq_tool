@@ -35,10 +35,6 @@
  * Purpose: To ensure that all pointers returned by the arena are aligned to a
  * boundary suitable for high-performance SIMD (SSE/AVX) instructions, which
  * are heavily used by DSP libraries like liquid-dsp.
- *
- * Trade-off: A larger alignment may waste a few bytes per allocation but can
- * provide significant performance gains. 32 bytes is a safe default for
- * modern CPUs with AVX/AVX2 support.
  */
 #define MEM_ARENA_ALIGNMENT 32
 
@@ -48,9 +44,7 @@
  *
  * Purpose: To hold all DSP objects, configuration strings, and other setup data,
  * eliminating hundreds of small `malloc` calls at startup.
- *
- * Trade-off: Must be large enough to hold all initialization data. 16MB is
- * a very safe starting point.
+ * Trade-off: Must be large enough to hold all initialization data. 16MB is safe.
  */
 #define MEM_ARENA_SIZE_BYTES (16 * 1024 * 1024) // 16 MB
 
@@ -59,10 +53,7 @@
  * @brief The size of the ring buffer between the SDR capture thread and the reader thread.
  *
  * Purpose: To absorb latency spikes from the OS or SDR driver and prevent sample
- * drops during heavy processing. This is critical for stability in buffered SDR mode.
- *
- * Trade-off: Larger values provide more stability against system stalls at the
- * cost of higher memory usage.
+ * drops during heavy processing. Critical for stability in buffered SDR mode.
  */
 #define IO_SDR_INPUT_BUFFER_BYTES (256 * 1024 * 1024) // 256 MB
 
@@ -71,11 +62,7 @@
  * @brief The size of the ring buffer between the post-processor thread and the writer thread.
  *
  * Purpose: A large size is critical for absorbing I/O latency spikes from the
- * filesystem (e.g., from antivirus scans or other disk activity), preventing the
- * real-time pipeline from stalling.
- *
- * Trade-off: Larger values provide more stability against I/O stalls at the
- * cost of higher memory usage. 1 GB is recommended for Windows systems.
+ * filesystem (e.g., from antivirus scans), preventing the real-time pipeline from stalling.
  */
 #define IO_OUTPUT_WRITER_BUFFER_BYTES (1024 * 1024 * 1024) // 1 GB
 
@@ -89,11 +76,6 @@
  * @def IO_WRITER_BUFFER_HIGH_WATER_MARK
  * @brief The fullness threshold (as a fraction, 0.0-1.0) for the writer buffer
  *        that triggers back-pressure on the reader thread.
- *
- * Purpose: To prevent the reader thread from running too far ahead of the writer,
- * which can cause the pipeline to stall and trigger latent bugs in I/O libraries
- * under sustained high throughput. A value of 0.95 means the reader will pause
- * when the writer's buffer is 95% full.
  */
 #define IO_WRITER_BUFFER_HIGH_WATER_MARK 0.95f
 
@@ -101,24 +83,14 @@
  * @def PIPELINE_NUM_CHUNKS
  * @brief The number of "work trays" (SampleChunks) in the processing pipeline.
  *
- * Purpose: Defines the depth of the pipeline.
- *
- * Trade-off: More chunks increase overall pipeline latency but can improve
- * throughput by keeping all CPU cores busy. Fewer chunks reduce latency but
- * may lead to thread starvation if one stage is a bottleneck.
+ * Purpose: Defines the depth of the pipeline. More chunks increase latency but
+ * improve throughput stability.
  */
 #define PIPELINE_NUM_CHUNKS 512
 
 /**
  * @def PIPELINE_CHUNK_BASE_SAMPLES
  * @brief The base number of samples to read from the source in each chunk.
- *
- * Note: This is NOT the full processing buffer size per chunk, which is
- * calculated dynamically at runtime to be larger if resampling or FFT
- * filtering requires it.
- *
- * Trade-off: Larger chunks have higher processing latency but lower per-chunk
- * overhead. Smaller chunks have lower latency but more overhead.
  */
 #define PIPELINE_CHUNK_BASE_SAMPLES 16384
 
@@ -133,16 +105,12 @@
 // =============================================================================
 
 // The default stop-band attenuation for the liquid-dsp resampler, in dB.
-// Higher values create a higher-quality, steeper filter at the cost of more CPU.
 #define RESAMPLER_QUALITY_ATTENUATION_DB 60.0f
 
-// Defines the default sharpness of user-defined FIR filters. The transition width will be
-// this fraction of the filter's characteristic frequency (e.g., cutoff).
-// A smaller value results in a sharper, higher-quality (but more CPU-intensive) filter.
+// Defines the default sharpness of user-defined FIR filters.
 #define DEFAULT_FILTER_TRANSITION_FACTOR 0.25f
 
 // The number of separate components in a complex sample (I and Q).
-// Used for sizing buffers that handle de-interleaved data.
 #define COMPLEX_SAMPLE_COMPONENTS 2
 
 // The cutoff frequency for the DC blocking high-pass filter.
@@ -175,21 +143,29 @@
 #define AGC_LOCAL_BANDWIDTH      1e-2f
 #define AGC_LOCAL_TARGET         0.5f
 
-// 3. Digital Profile (Peak-Based)
-// Strategy: Scan for peaks, calculate gain, and LOCK.
-// Target: 0.9 (-1 dBFS Peak).
-// Why 0.9? Since we are locking based on the absolute maximum peak,
-// we can safely push the signal very close to full scale (1.0)
-// to maximize bit depth usage without fear of clipping.
-#define AGC_DIGITAL_PEAK_TARGET     0.9f
-#define AGC_DIGITAL_LOCK_TIME       2.0f     // Seconds to scan before locking
+// 3. Digital Profile (Adaptive Tracking)
+// Strategy: Smart Limiter with Hysteresis.
+// Goal: Keep peaks within a "Stability Window" to preserve MER.
 
-// Recovery Logic (Hang & Creep)
-// Strategy: If signal drops, wait (Hang) to ignore fast fading/flutter.
-// If it stays low, slowly boost (Creep) to recover from long fades.
-#define AGC_DIGITAL_HANG_TIME       4.0f     // Seconds to wait before increasing gain
-#define AGC_DIGITAL_RECOVERY_RATE   1.0005f  // Multiplier per block (approx +0.4 dB/sec at 1.5MSPS)
-#define AGC_DIGITAL_LOWER_THRESHOLD 0.75f    // If signal is below 75% of target, consider it "faded"
+// The default target peak level (0.9 = -1 dB).
+// This leaves slight headroom for inter-sample peaks during DAC reconstruction.
+#define AGC_DIGITAL_PEAK_TARGET       0.9f
+
+// The lower bound of the stability window, as a fraction of the target.
+// 0.6 = -4.4 dB relative to target (-5.4 dB total).
+// Gain will NOT change if the signal is between Target and (Target * 0.6).
+#define AGC_DIGITAL_STABILITY_WINDOW  0.6f
+
+// The noise floor threshold, as a fraction of the target.
+// 0.1 = -20 dB relative to target.
+// If signal drops below this, AGC assumes silence and holds gain (Noise Gate).
+#define AGC_DIGITAL_NOISE_THRESHOLD   0.1f
+
+// The "Slew Rate" (Tracking Speed).
+// Defines how fast the gain moves towards the target when outside the window.
+// 0.01 = Adjusts 1% of the error per block.
+// Higher = Faster recovery but more distortion. Lower = Slower recovery but cleaner signal.
+#define AGC_DIGITAL_SLEW_RATE         0.01f
 
 // =============================================================================
 // == Tier 4: SDR Hardware Interaction & Tuning
@@ -259,10 +235,6 @@
 /**
  * @def SDR_INITIALIZE_TIMEOUT_MS
  * @brief The maximum time to wait for an SDR driver to respond during initial opening.
- *
- * Purpose: Prevents the application from deadlocking indefinitely if a driver
- * hangs when the device is first opened. If this timeout is exceeded, the
-* application will log a fatal error and exit.
  */
 #define SDR_INITIALIZE_TIMEOUT_MS 10000
 
