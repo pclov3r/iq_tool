@@ -118,20 +118,18 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
         
         float target = 0.5f; // Default safe fallback
 
-        // --- RESTORED LOGIC: Set target based on profile ---
         switch (resources->config->dsp.agc.profile) {
             case AGC_PROFILE_DIGITAL:
-                target = AGC_DIGITAL_PEAK_TARGET; // 0.9
+                target = AGC_DIGITAL_PEAK_TARGET;
                 break;
             case AGC_PROFILE_DX:
-                target = AGC_DX_TARGET;           // 0.5
+                target = AGC_DX_TARGET;
                 break;
             case AGC_PROFILE_LOCAL:
-                target = AGC_LOCAL_TARGET;        // 0.5
+                target = AGC_LOCAL_TARGET;
                 break;
             default: break;
         }
-        // ---------------------------------------------------
 
         if (resources->config->dsp.agc.target_level_arg > 0) {
             target = resources->config->dsp.agc.target_level_arg;
@@ -181,10 +179,10 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
         if (outlier_detected) {
             log_info("AGC: Startup transient detected (Crest Factor %.1f). Calibrating to robust average.",
                      crest_factor);
-            log_info("AGC: Auto-calculated Input Multiplier: %.4f (%.1f dB).",
+            log_info("AGC: Calculated Initial Gain Multiplier: %.4f (%.1f dB).",
                      startup_gain, 20.0f * log10f(startup_gain));
         } else {
-            log_info("AGC: Auto-calculated Input Multiplier: %.4f (%.1f dB).",
+            log_info("AGC: Calculated Initial Gain Multiplier: %.4f (%.1f dB).",
                      startup_gain, 20.0f * log10f(startup_gain));
         }
     }

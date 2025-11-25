@@ -18,8 +18,9 @@ void pre_processor_apply_chain(AppResources* resources, SampleChunk* item) {
     item->current_output_buffer = item->complex_sample_buffer_a;
 
     // Step 1: Convert sample block to complex float
+    // UPDATED: Use input_gain instead of gain
     if (!convert_block_to_cf32(item->raw_input_data, item->current_output_buffer,
-                               item->frames_read, item->packet_sample_format, config->dsp.gain)) {
+                               item->frames_read, item->packet_sample_format, config->dsp.input_gain)) {
         handle_fatal_thread_error("Pre-Processor: Failed to convert samples.", resources);
         item->frames_read = 0;
         return;

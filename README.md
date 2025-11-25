@@ -131,7 +131,8 @@ Output Options
 
 Processing Options
     --output-rate=<flt>                   Output sample rate in Hz. (Required if no preset or --no-resample is used)
-    --gain-multiplier=<flt>               Apply a linear gain multiplier to input samples
+    --input-gain-multiplier=<flt>         Apply a linear gain multiplier to INPUT samples (before processing).
+    --output-gain-multiplier=<flt>        Apply a linear gain multiplier to OUTPUT samples (after processing).
     --freq-shift=<flt>                    Apply a direct frequency shift in Hz (e.g., -100e3)
     --shift-after-resample                Apply frequency shift AFTER resampling (default is before)
     --no-resample                         Process at native input rate. Bypasses the resampler but applies all other DSP.

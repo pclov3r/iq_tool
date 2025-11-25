@@ -33,8 +33,12 @@ typedef struct PresetDefinition {
     char*  output_sample_format_name;
 
     // DSP parameters
-    float gain;
-    bool  gain_provided;
+    float input_gain;           // Renamed from gain
+    bool  input_gain_provided;  // Renamed from gain_provided
+
+    float output_gain;          // New
+    bool  output_gain_provided; // New
+
     bool  dc_block_enable;
     bool  dc_block_provided;
     bool  iq_correction_enable;

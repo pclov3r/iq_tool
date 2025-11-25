@@ -74,9 +74,15 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
                 if (!config->output.format_name) {
                     config->output.format_name = p->output_sample_format_name;
                 }
-                if (p->gain_provided && config->dsp.gain == 1.0f) {
-                    config->dsp.gain = p->gain;
+                
+                // UPDATED: Map input_gain and output_gain from preset
+                if (p->input_gain_provided && config->dsp.input_gain == 1.0f) {
+                    config->dsp.input_gain = p->input_gain;
                 }
+                if (p->output_gain_provided && config->dsp.output_gain == 1.0f) {
+                    config->dsp.output_gain = p->output_gain;
+                }
+
                 if (p->dc_block_provided && !config->dsp.dc_block.enable) {
                     config->dsp.dc_block.enable = p->dc_block_enable;
                 }
@@ -349,9 +355,15 @@ bool validate_option_combinations(AppConfig *config) {
             return false;
         }
 
-        // 4. Check for Warnings
-        if (config->dsp.gain_provided && config->dsp.gain != 1.0f) {
-            log_warn("Both --gain-multiplier and --output-agc are set.");
+        // NEW: Conflict check for Output Gain
+        if (config->dsp.output_gain != 1.0f) {
+            log_fatal("Conflicting options: --output-agc and --output-gain-multiplier cannot be used together.");
+            return false;
+        }
+
+        // 4. Check for Warnings (Updated variable name)
+        if (config->dsp.input_gain_provided && config->dsp.input_gain != 1.0f) {
+            log_warn("Both --input-gain-multiplier and --output-agc are set.");
             log_warn("Manual gain is applied at input, but AGC will override the final volume at output.");
         }
     }

@@ -140,7 +140,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     }
 
     const char* base_output_labels[] = {
-        "Output Type", "Sample Type", "Output Rate", "Gain Multiplier", "Frequency Shift",
+        "Output Type", "Sample Type", "Output Rate", "Input Gain", "Output Gain", "Frequency Shift",
         "Resampling", "Output Target", "FIR Filter", "FFT Filter", "Output AGC"
     };
     for (size_t i = 0; i < sizeof(base_output_labels) / sizeof(base_output_labels[0]); i++) {
@@ -175,7 +175,14 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Sample Type", sample_type_str);
 
     fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Output Rate", config->output_rate.target_rate);
-    fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Gain Multiplier", config->dsp.gain);
+    
+    // UPDATED: Print Input Gain
+    fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Input Gain", config->dsp.input_gain);
+
+    // NEW: Print Output Gain if active
+    if (config->dsp.output_gain != 1.0f) {
+        fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Output Gain", config->dsp.output_gain);
+    }
 
     if (fabs(resources->nco_shift_hz) > 1e-9) {
         char shift_buf[64];

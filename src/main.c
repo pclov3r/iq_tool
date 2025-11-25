@@ -142,7 +142,8 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    config.dsp.gain = 1.0f;
+    config.dsp.input_gain = 1.0f;
+    config.dsp.output_gain = 1.0f;
 
 #ifndef _WIN32
     pthread_t sig_thread_id;

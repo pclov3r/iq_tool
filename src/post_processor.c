@@ -56,6 +56,15 @@ void post_processor_apply_chain(AppResources* resources, SampleChunk* item) {
         // This runs in-place on the current data pointer.
         agc_apply(resources, current_data_ptr, item->frames_to_write);
 
+        // Step 3.5: Manual Output Gain (if configured)
+        // Validation ensures this is mutually exclusive with AGC.
+        if (config->dsp.output_gain != 1.0f) {
+            float g = config->dsp.output_gain;
+            for (unsigned int i = 0; i < item->frames_to_write; i++) {
+                current_data_ptr[i] *= g;
+            }
+        }
+
         // Step 4: Final Sample Format Conversion
         // The current_data_ptr now points to the final, fully processed complex float data.
         if (!convert_cf32_to_block(current_data_ptr,

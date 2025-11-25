@@ -108,8 +108,11 @@ typedef struct AppConfig {
 
     // --- General DSP Configuration ---
     struct {
-        float gain;           // CLI: --gain-multiplier
-        bool  gain_provided;
+        float input_gain;           // CLI: --input-gain-multiplier
+        bool  input_gain_provided;
+
+        float output_gain;          // CLI: --output-gain-multiplier
+        bool  output_gain_provided;
 
         float freq_shift_hz;  // CLI: --freq-shift (was freq_shift_hz_arg)
         int   shift_after_resample;
