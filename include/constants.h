@@ -164,8 +164,27 @@
 // The "Slew Rate" (Tracking Speed).
 // Defines how fast the gain moves towards the target when outside the window.
 // 0.01 = Adjusts 1% of the error per block.
-// Higher = Faster recovery but more distortion. Lower = Slower recovery but cleaner signal.
 #define AGC_DIGITAL_SLEW_RATE         0.01f
+
+// Startup Transient Detection
+// If Crest Factor (Peak/Average) > 10.0, the block is considered to have a transient.
+#define AGC_DIGITAL_CREST_FACTOR_THRESHOLD 10.0f
+
+// Robust Average Calculation
+// When a transient is detected, we exclude samples > (Average * 3.0).
+#define AGC_DIGITAL_ROBUST_EXCLUSION_FACTOR 3.0f
+
+// Robust Average Multiplier
+// Scales the Robust Average to estimate the effective peak amplitude of the signal body.
+// The value 4.1297f was derived empirically from real-world I/Q recordings containing
+// a significant startup transient. This calibration targets optimal gain for digital
+// modes but may require future refinement to generalize across all signal conditions.
+#define AGC_DIGITAL_ROBUST_AVG_MULTIPLIER   4.1290f
+
+// Runtime Safety Clamp
+// We allow peaks to saturate up to 3.0x (300%) before triggering an emergency gain cut.
+// This prevents the AGC from reacting to short transients during operation.
+#define AGC_DIGITAL_SAFETY_CLAMP            3.0f
 
 // =============================================================================
 // == Tier 4: SDR Hardware Interaction & Tuning

@@ -97,44 +97,80 @@ bool agc_create(AppConfig* config, AppResources* resources) {
 void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int num_samples) {
     if (!resources->config->dsp.agc.enable || num_samples == 0) return;
 
-    // 1. Common Analysis: Find Peak of the current block
-    // We need this for the Startup Snap in all modes.
+    // 1. Common Analysis: Find Peak AND Average Energy of the current block
     float block_peak = 0.0f;
+    double block_sum = 0.0; // Use double to prevent overflow
+
     for (unsigned int i = 0; i < num_samples; i++) {
         float mag = cabsf(samples[i]);
         if (mag > block_peak) block_peak = mag;
+        block_sum += mag;
     }
+    
+    float block_average = (float)(block_sum / num_samples);
 
     // 2. Unified Startup Snap (Auto Input Gain)
-    // If this is the first block, assume it represents the signal level.
-    // We calculate the gain needed to bring this block exactly to the target.
-    // This effectively automates the --gain-multiplier argument.
+    // If this is the first block, calculate the ideal gain to hit the target immediately.
+    // We also detect outliers (transients) here to avoid setting the gain too low.
+    bool skip_safety_check = false;
+
     if (resources->agc_samples_seen == 0 && block_peak > 1e-9f) {
         
-        // Determine the target based on the active profile
         float target = 0.5f; // Default safe fallback
+        const char* profile_name = "Unknown";
 
         switch (resources->config->dsp.agc.profile) {
             case AGC_PROFILE_DIGITAL:
                 target = AGC_DIGITAL_PEAK_TARGET;
+                profile_name = "Digital";
                 break;
             case AGC_PROFILE_DX:
                 target = AGC_DX_TARGET;
+                profile_name = "DX";
                 break;
             case AGC_PROFILE_LOCAL:
                 target = AGC_LOCAL_TARGET;
+                profile_name = "Local";
                 break;
             default: break;
         }
 
-        // Override if user specified a manual target
         if (resources->config->dsp.agc.target_level_arg > 0) {
             target = resources->config->dsp.agc.target_level_arg;
         }
 
-        float startup_gain = target / block_peak;
+        // --- Outlier Rejection Logic (Two-Pass Robust Average) ---
+        float reference_level = block_peak;
+        bool outlier_detected = false;
+        float crest_factor = (block_average > 1e-9f) ? (block_peak / block_average) : 0.0f;
 
-        // Apply the calculated gain to the specific engine
+        if (crest_factor > AGC_DIGITAL_CREST_FACTOR_THRESHOLD) {
+            outlier_detected = true;
+            
+            // PASS 2: Re-calculate average excluding high-energy samples.
+            double robust_sum = 0.0;
+            unsigned int robust_count = 0;
+            float exclusion_threshold = block_average * AGC_DIGITAL_ROBUST_EXCLUSION_FACTOR;
+
+            for (unsigned int i = 0; i < num_samples; i++) {
+                float mag = cabsf(samples[i]);
+                if (mag < exclusion_threshold) {
+                    robust_sum += mag;
+                    robust_count++;
+                }
+            }
+
+            float robust_average = (robust_count > 0) ? (float)(robust_sum / robust_count) : block_average;
+
+            // Target a "Safe Peak" based on the Robust Average.
+            reference_level = robust_average * AGC_DIGITAL_ROBUST_AVG_MULTIPLIER; 
+            
+            skip_safety_check = true;
+        }
+
+        float startup_gain = target / reference_level;
+
+        // Apply the calculated gain
         if (resources->config->dsp.agc.profile == AGC_PROFILE_DIGITAL) {
             resources->agc_current_gain = startup_gain;
             resources->agc_peak_memory = target; 
@@ -144,14 +180,20 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
             }
         }
 
-        log_info("AGC: Auto-calculated Input Multiplier: %.4f (%.1f dB).", 
-                 startup_gain, 20.0f * log10f(startup_gain));
+        if (outlier_detected) {
+            log_info("AGC Profile [%s]: Startup transient detected (Crest Factor %.1f). Calibrating to robust average.", 
+                     profile_name, crest_factor);
+            log_info("AGC Profile [%s]: Auto-calculated Input Multiplier: %.4f (%.1f dB).", 
+                     profile_name, startup_gain, 20.0f * log10f(startup_gain));
+        } else {
+            log_info("AGC Profile [%s]: Auto-calculated Input Multiplier: %.4f (%.1f dB).", 
+                     profile_name, startup_gain, 20.0f * log10f(startup_gain));
+        }
     }
 
     // 3. Runtime Logic (Profile Specific)
 
     // --- A. ANALOG PROFILES (DX / Local) ---
-    // These use the standard RMS-based feedback loop from liquid-dsp.
     if (resources->config->dsp.agc.profile != AGC_PROFILE_DIGITAL) {
         if (resources->output_agc_object) {
             agc_crcf_execute_block(
@@ -166,11 +208,7 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
     }
 
     // --- B. DIGITAL PROFILE (Adaptive Tracking) ---
-    // This uses a custom logic designed to preserve Modulation Error Ratio (MER).
-    // It prioritizes constant gain within a "Stability Window" and only adjusts
-    // if the signal is clipping (Fast Attack) or significantly fading (Slow Decay).
     
-    // Re-calculate targets (using constants) in case they weren't set in startup
     float target_high = (resources->config->dsp.agc.target_level_arg > 0) 
                          ? resources->config->dsp.agc.target_level 
                          : AGC_DIGITAL_PEAK_TARGET;
@@ -180,48 +218,33 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
     float current_gain = resources->agc_current_gain;
     float projected_peak = block_peak * current_gain;
 
-    // --- CONDITION A: FAST ATTACK (Emergency Cut) ---
-    // Signal is too loud and will clip. We must reduce gain immediately.
-    if (projected_peak > target_high) {
-        float safe_gain = target_high / block_peak;
-        resources->agc_current_gain = safe_gain;
-        resources->agc_last_strong_peak_time = get_monotonic_time_sec();
-    }
-    // --- CONDITION B: SLOW DECAY (Recovery) ---
-    // Signal is too quiet, but valid. We gently ramp up the gain.
-    else if (projected_peak < target_low) {
-        // Check: Is this just noise/silence?
-        if (projected_peak > noise_floor_threshold) {
-            // It is a valid signal, but it's fading (below stability window).
-            
-            // Calculate where we WANT to be (aim for the middle of the stability window)
-            float recovery_target = (target_high + target_low) / 2.0f;
-            float desired_gain = recovery_target / block_peak;
-
-            // Apply Gain Ramp (Slew Rate Limiting).
-            // We don't snap up (that creates steps/distortion). We ramp up.
-            // Determine step size proportional to error.
-            float error_ratio = desired_gain / current_gain;
-            float step = 1.0f + ((error_ratio - 1.0f) * AGC_DIGITAL_SLEW_RATE); 
-            
-            resources->agc_current_gain *= step;
+    if (!skip_safety_check) {
+        // --- CONDITION A: FAST ATTACK (Emergency Cut) ---
+        // RELAXED SAFETY: Allow peaks up to SAFETY_CLAMP (e.g. 3.0) before triggering a cut.
+        if (projected_peak > AGC_DIGITAL_SAFETY_CLAMP) {
+            float safe_gain = target_high / block_peak;
+            resources->agc_current_gain = safe_gain;
             resources->agc_last_strong_peak_time = get_monotonic_time_sec();
         }
-        else {
-            // Signal is below noise threshold (Silence). 
-            // DO NOTHING. Hold gain.
-            // This prevents the AGC from ramping up to infinity during gaps in transmission.
+        // --- CONDITION B: SLOW DECAY (Recovery) ---
+        else if (projected_peak < target_low) {
+            if (projected_peak > noise_floor_threshold) {
+                float recovery_target = (target_high + target_low) / 2.0f;
+                float desired_gain = recovery_target / block_peak;
+                float error_ratio = desired_gain / current_gain;
+                float step = 1.0f + ((error_ratio - 1.0f) * AGC_DIGITAL_SLEW_RATE); 
+                
+                resources->agc_current_gain *= step;
+                resources->agc_last_strong_peak_time = get_monotonic_time_sec();
+            }
         }
-    }
-    // --- CONDITION C: STABILITY WINDOW (Hold) ---
-    // Signal is healthy (between target_low and target_high).
-    // Do not change gain. Constant gain is mathematically perfect for decoding.
-    else {
-        resources->agc_last_strong_peak_time = get_monotonic_time_sec();
+        // --- CONDITION C: STABILITY WINDOW (Hold) ---
+        else {
+            resources->agc_last_strong_peak_time = get_monotonic_time_sec();
+        }
     }
 
     // 4. Apply Final Gain
-    // This effectively modifies the "Input Gain" before it hits the output converter.
     float g = resources->agc_current_gain;
     for (unsigned int i = 0; i < num_samples; i++) {
         samples[i] *= g;
