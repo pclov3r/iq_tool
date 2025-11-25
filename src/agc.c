@@ -117,23 +117,6 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
     if (resources->agc_samples_seen == 0 && block_peak > 1e-9f) {
         
         float target = 0.5f; // Default safe fallback
-        const char* profile_name = "Unknown";
-
-        switch (resources->config->dsp.agc.profile) {
-            case AGC_PROFILE_DIGITAL:
-                target = AGC_DIGITAL_PEAK_TARGET;
-                profile_name = "Digital";
-                break;
-            case AGC_PROFILE_DX:
-                target = AGC_DX_TARGET;
-                profile_name = "DX";
-                break;
-            case AGC_PROFILE_LOCAL:
-                target = AGC_LOCAL_TARGET;
-                profile_name = "Local";
-                break;
-            default: break;
-        }
 
         if (resources->config->dsp.agc.target_level_arg > 0) {
             target = resources->config->dsp.agc.target_level_arg;
