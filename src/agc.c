@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <stdio.h> // For snprintf
 #include <math.h>
+#include <string.h> // For memcpy
 
 #ifdef _WIN32
 #include <liquid.h>
@@ -242,4 +243,18 @@ void agc_destroy(AppResources* resources) {
         agc_crcf_destroy((agc_crcf)resources->output_agc_object);
         resources->output_agc_object = NULL;
     }
+}
+
+int agc_populate_cli_options(struct argparse_option* buffer, struct AppConfig* config) {
+    struct argparse_option options[] = {
+        OPT_GROUP("Output Automatic Gain Control (AGC)"),
+        OPT_BOOLEAN(0, "output-agc", &config->dsp.agc.enable, "Enable automatic gain control on the output.", NULL, 0, 0),
+        // CHANGED: Updated default description to 'local'
+        OPT_STRING(0,  "agc-profile", &config->dsp.agc.profile_str_arg, "AGC profile {dx|local|digital}. (Default: local)", NULL, 0, 0),
+        OPT_FLOAT(0,   "agc-target", &config->dsp.agc.target_level_arg, "AGC target magnitude (0.0 - 1.0). (Default: Profile Dependent)", NULL, 0, 0),
+    };
+
+    size_t count = sizeof(options) / sizeof(options[0]);
+    memcpy(buffer, options, sizeof(options));
+    return (int)count;
 }

@@ -6,6 +6,8 @@
 #include "utils.h"
 #include "argparse.h"
 #include "module_manager.h"
+#include "agc.h"              // NEW: For agc_populate_cli_options
+#include "filter.h"           // NEW: For filter_populate_cli_options
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -92,44 +94,6 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_STRING(0, "preset", &config->preset_name, "Use a preset for a common target.", NULL, 0, 0),
     };
 
-    struct argparse_option agc_options[] = {
-        OPT_GROUP("Output Automatic Gain Control (AGC)"),
-        OPT_BOOLEAN(0, "output-agc", &config->dsp.agc.enable, "Enable automatic gain control on the output.", NULL, 0, 0),
-        OPT_STRING(0,  "agc-profile", &config->dsp.agc.profile_str_arg, "AGC profile {dx|local|digital}. (Default: local)", NULL, 0, 0),
-        OPT_FLOAT(0,   "agc-target", &config->dsp.agc.target_level_arg, "AGC target magnitude (0.0 - 1.0). (Default: Profile Dependent)", NULL, 0, 0),
-    };
-
-    // Updated macros to point to the nested dsp.filter.args structure
-    #define DEFINE_CHAINABLE_FLOAT_OPTION(name, var, help_text) \
-        OPT_FLOAT( 0, name,        &config->dsp.filter.args.var[0], help_text, NULL, 0, 0), \
-        OPT_FLOAT( 0, name "-2",     &config->dsp.filter.args.var[1], NULL, NULL, 0, 0), \
-        OPT_FLOAT( 0, name "-3",     &config->dsp.filter.args.var[2], NULL, NULL, 0, 0), \
-        OPT_FLOAT( 0, name "-4",     &config->dsp.filter.args.var[3], NULL, NULL, 0, 0), \
-        OPT_FLOAT( 0, name "-5",     &config->dsp.filter.args.var[4], NULL, NULL, 0, 0)
-    
-    #define DEFINE_CHAINABLE_STRING_OPTION(name, var, help_text) \
-        OPT_STRING(0, name,        &config->dsp.filter.args.var[0], help_text, NULL, 0, 0), \
-        OPT_STRING(0, name "-2",     &config->dsp.filter.args.var[1], NULL, NULL, 0, 0), \
-        OPT_STRING(0, name "-3",     &config->dsp.filter.args.var[2], NULL, NULL, 0, 0), \
-        OPT_STRING(0, name "-4",     &config->dsp.filter.args.var[3], NULL, NULL, 0, 0), \
-        OPT_STRING(0, name "-5",     &config->dsp.filter.args.var[4], NULL, NULL, 0, 0)
-        
-    struct argparse_option filter_options[] = {
-        OPT_GROUP("Filtering Options (Chain up to 5 by combining options or adding suffixes -2, -3, etc. e.g., --lowpass --stopband --lowpass-2 --pass-range --pass-range-2)"),
-        // Pass the short member names (e.g., 'lowpass') to match the struct members in dsp.filter.args
-        DEFINE_CHAINABLE_FLOAT_OPTION("lowpass", lowpass, "Isolate signal at DC. Keeps freqs from -<hz> to +<hz>."),
-        DEFINE_CHAINABLE_FLOAT_OPTION("highpass", highpass, "Remove signal at DC. Rejects freqs from -<hz> to +<hz>."),
-        DEFINE_CHAINABLE_STRING_OPTION("pass-range", pass_range, "Isolate a specific band. Format: 'start_freq:end_freq'."),
-        DEFINE_CHAINABLE_STRING_OPTION("stopband", stopband, "Remove a specific band (notch). Format: 'start_freq:end_freq'."),
-        OPT_GROUP("Filter Quality Options"),
-        OPT_FLOAT(0, "transition-width", &config->dsp.filter.args.transition_width, "Set filter sharpness by transition width in Hz. (Default: Auto).", NULL, 0, 0),
-        OPT_INTEGER(0, "filter-taps", &config->dsp.filter.args.taps, "Set exact filter length. Overrides --transition-width.", NULL, 0, 0),
-        OPT_FLOAT(0, "attenuation", &config->dsp.filter.args.attenuation, "Set filter stop-band attenuation in dB. (Default: 60).", NULL, 0, 0),
-        OPT_GROUP("Filter Implementation Options (Advanced)"),
-        OPT_STRING(0, "filter-type", &config->dsp.filter.args.type_str, "Set filter implementation {fir|fft}. (Default: auto).", NULL, 0, 0),
-        OPT_INTEGER(0, "filter-fft-size", &config->dsp.filter.args.fft_size, "Set FFT size for 'fft' filter type. Must be a power of 2.", NULL, 0, 0),
-    };
-
     struct argparse_option sdr_general_options[] = {
         OPT_GROUP("SDR General Options"),
         OPT_FLOAT(0, "sdr-rf-freq", &config->sdr_general.rf_freq_hz_arg, "(Required for SDR) Tuner center frequency in Hz", NULL, 0, 0),
@@ -154,11 +118,17 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
             total_opts += (n); \
         } while (0)
 
+    // 1. Add Generic Options
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], generic_options, sizeof(generic_options) / sizeof(generic_options[0]));
-    APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], agc_options, sizeof(agc_options) / sizeof(agc_options[0]));
-    APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], filter_options, sizeof(filter_options) / sizeof(filter_options[0]));
+
+    // 2. Delegate to Subsystems
+    total_opts += agc_populate_cli_options(&options_buffer[total_opts], config);
+    total_opts += filter_populate_cli_options(&options_buffer[total_opts], config);
+
+    // 3. Add SDR General Options
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], sdr_general_options, sizeof(sdr_general_options) / sizeof(sdr_general_options[0]));
 
+    // 4. Delegate to Modules (Inputs/Outputs)
     module_manager_populate_cli_options(
         options_buffer,
         &total_opts,
@@ -167,6 +137,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         arena
     );
 
+    // 5. Add Presets
     if (config->num_presets > 0) {
         struct argparse_option preset_header[] = { OPT_GROUP("Available Presets") };
         APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], preset_header, 1);
@@ -186,6 +157,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], preset_opts, presets_to_add);
     }
 
+    // 6. Add Final Options (Help/Version)
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], final_options, sizeof(final_options) / sizeof(final_options[0]));
 
     return total_opts;
@@ -212,7 +184,7 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config, MemoryArena* are
 
     if (config->input.type_name && active_input_type && strcasecmp(config->input.type_name, active_input_type) != 0) {
         log_error("Multiple active modules provided.");
-    return false;
+        return false;
     }
 
     if (!validate_and_process_args(config, non_opt_argc, argparse.out, arena)) {

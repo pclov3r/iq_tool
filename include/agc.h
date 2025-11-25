@@ -14,6 +14,7 @@
 
 #include <stdbool.h>
 #include "app_context.h" // Provides AppConfig, AppResources, and complex_float_t
+#include "argparse.h"    // Provides struct argparse_option
 
 // --- Function Declarations ---
 
@@ -59,5 +60,14 @@ void agc_reset(AppResources* resources);
  * @param resources Pointer to the application resources.
  */
 void agc_destroy(AppResources* resources);
+
+/**
+ * @brief Populates the CLI options specific to the AGC module.
+ *
+ * @param buffer The buffer to append options to.
+ * @param config The application configuration struct to bind options to.
+ * @return The number of options added.
+ */
+int agc_populate_cli_options(struct argparse_option* buffer, struct AppConfig* config);
 
 #endif // AGC_H_

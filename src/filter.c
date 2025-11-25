@@ -1,3 +1,8 @@
+/**
+ * @file filter.c
+ * @brief Implements the user-defined FIR/FFT filter chain.
+ */
+
 #include "filter.h"
 #include "constants.h"
 #include "log.h"
@@ -17,7 +22,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// --- MACRO to create a real-coefficient (_crcf) filter from the complex master taps ---
+// --- Create a real-coefficient (_crcf) filter from the complex master taps ---
 #define PREPARE_AND_CREATE_CRCF_FILTER(prefix, ...) \
     do { \
         float* final_real_taps = (float*)mem_arena_alloc(arena, master_taps_len * sizeof(float), false); \
@@ -523,4 +528,42 @@ _execute_fft_filter_pass(
     *remainder_len_ptr = new_remainder_len;
 
     return total_output_frames;
+}
+
+int filter_populate_cli_options(struct argparse_option* buffer, struct AppConfig* config) {
+    // Local macros for cleaner definitions inside this function
+    #define DEFINE_CHAINABLE_FLOAT_OPTION(name, var, help_text) \
+        OPT_FLOAT( 0, name,        &config->dsp.filter.args.var[0], help_text, NULL, 0, 0), \
+        OPT_FLOAT( 0, name "-2",     &config->dsp.filter.args.var[1], NULL, NULL, 0, 0), \
+        OPT_FLOAT( 0, name "-3",     &config->dsp.filter.args.var[2], NULL, NULL, 0, 0), \
+        OPT_FLOAT( 0, name "-4",     &config->dsp.filter.args.var[3], NULL, NULL, 0, 0), \
+        OPT_FLOAT( 0, name "-5",     &config->dsp.filter.args.var[4], NULL, NULL, 0, 0)
+
+    #define DEFINE_CHAINABLE_STRING_OPTION(name, var, help_text) \
+        OPT_STRING(0, name,        &config->dsp.filter.args.var[0], help_text, NULL, 0, 0), \
+        OPT_STRING(0, name "-2",     &config->dsp.filter.args.var[1], NULL, NULL, 0, 0), \
+        OPT_STRING(0, name "-3",     &config->dsp.filter.args.var[2], NULL, NULL, 0, 0), \
+        OPT_STRING(0, name "-4",     &config->dsp.filter.args.var[3], NULL, NULL, 0, 0), \
+        OPT_STRING(0, name "-5",     &config->dsp.filter.args.var[4], NULL, NULL, 0, 0)
+
+    struct argparse_option options[] = {
+        OPT_GROUP("Filtering Options (Chain up to 5 by combining options or adding suffixes -2, -3, etc. e.g., --lowpass --stopband --lowpass-2 --pass-range --pass-range-2)"),
+        DEFINE_CHAINABLE_FLOAT_OPTION("lowpass", lowpass, "Isolate signal at DC. Keeps freqs from -<hz> to +<hz>."),
+        DEFINE_CHAINABLE_FLOAT_OPTION("highpass", highpass, "Remove signal at DC. Rejects freqs from -<hz> to +<hz>."),
+        DEFINE_CHAINABLE_STRING_OPTION("pass-range", pass_range, "Isolate a specific band. Format: 'start_freq:end_freq'."),
+        DEFINE_CHAINABLE_STRING_OPTION("stopband", stopband, "Remove a specific band (notch). Format: 'start_freq:end_freq'."),
+        
+        OPT_GROUP("Filter Quality Options"),
+        OPT_FLOAT(0, "transition-width", &config->dsp.filter.args.transition_width, "Set filter sharpness by transition width in Hz. (Default: Auto).", NULL, 0, 0),
+        OPT_INTEGER(0, "filter-taps", &config->dsp.filter.args.taps, "Set exact filter length. Overrides --transition-width.", NULL, 0, 0),
+        OPT_FLOAT(0, "attenuation", &config->dsp.filter.args.attenuation, "Set filter stop-band attenuation in dB. (Default: 60).", NULL, 0, 0),
+        
+        OPT_GROUP("Filter Implementation Options (Advanced)"),
+        OPT_STRING(0, "filter-type", &config->dsp.filter.args.type_str, "Set filter implementation {fir|fft}. (Default: auto).", NULL, 0, 0),
+        OPT_INTEGER(0, "filter-fft-size", &config->dsp.filter.args.fft_size, "Set FFT size for 'fft' filter type. Must be a power of 2.", NULL, 0, 0),
+    };
+
+    size_t count = sizeof(options) / sizeof(options[0]);
+    memcpy(buffer, options, sizeof(options));
+    return (int)count;
 }

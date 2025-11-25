@@ -17,6 +17,7 @@
 #include "app_context.h"
 #include "memory_arena.h"
 #include "pipeline_types.h" // For SampleChunk
+#include "argparse.h"       // For struct argparse_option
 
 // --- Function Declarations ---
 
@@ -67,5 +68,14 @@ void filter_destroy(AppResources* resources);
  * @return The number of valid output frames produced by the filter.
  */
 unsigned int filter_apply(AppResources* resources, SampleChunk* item, bool is_post_resample);
+
+/**
+ * @brief Populates the CLI options specific to the Filter module.
+ *
+ * @param buffer The buffer to append options to.
+ * @param config The application configuration struct to bind options to.
+ * @return The number of options added.
+ */
+int filter_populate_cli_options(struct argparse_option* buffer, struct AppConfig* config);
 
 #endif // FILTER_H_
