@@ -114,7 +114,7 @@
 #define COMPLEX_SAMPLE_COMPONENTS 2
 
 // The cutoff frequency for the DC blocking high-pass filter.
-#define DC_BLOCK_CUTOFF_HZ 10.0f
+#define DC_BLOCK_CUTOFF_HZ 50.0f
 
 // --- Filter Design & Analysis Tuning ---
 #define FILTER_MINIMUM_TAPS 21
