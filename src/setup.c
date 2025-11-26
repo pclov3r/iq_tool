@@ -234,7 +234,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
         switch (config->dsp.agc.profile) {
             case AGC_PROFILE_DX:      profile_name = "DX"; break;
             case AGC_PROFILE_LOCAL:   profile_name = "Local"; break;
-            case AGC_PROFILE_DIGITAL: profile_name = "Digital (Peak-Lock)"; break;
+            case AGC_PROFILE_DIGITAL: profile_name = "Digital"; break;
             default: break;
         }
         
