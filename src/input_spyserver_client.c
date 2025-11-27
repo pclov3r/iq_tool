@@ -47,6 +47,7 @@
 #include "ring_buffer.h"
 #include "utils.h"
 #include "networking.h"
+#include "platform.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -560,6 +561,8 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
 }
 
 static void* spyserver_client_producer_thread(void* arg) {
+    platform_set_thread_priority(PRIORITY_REALTIME, "SpyServer Producer");
+
     ModuleContext* ctx = (ModuleContext*)arg;
     AppResources* resources = ctx->resources;
     SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)resources->input_module_private_data;

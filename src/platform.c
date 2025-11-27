@@ -8,22 +8,106 @@
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
-
-// --- Windows-Specific Includes ---
-
 #include <windows.h>
-#include <fcntl.h>   // For _O_BINARY
-#include <io.h>      // For _setmode
-#include <shlwapi.h> // For PathIsRelativeW, PathFindFileNameW
-#include <pathcch.h> // For PathCchCombineEx
+#include <fcntl.h>
+#include <io.h>
+#include <shlwapi.h>
+#include <pathcch.h>
+#else
+#include <unistd.h>
+#include <pthread.h>
+#include <sched.h>
+#include <sys/resource.h>
+#include <sys/syscall.h>
+#endif
 
-bool set_stdout_binary(void) {
-    if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
-        log_error("Failed to set stdout to binary mode: %s", strerror(errno));
-        return false;
+void platform_set_thread_priority(ThreadPriority priority, const char* thread_name) {
+#ifdef _WIN32
+    // --- Windows Implementation ---
+    int win_prio = THREAD_PRIORITY_NORMAL;
+    const char* prio_desc = "Normal";
+
+    switch (priority) {
+        case PRIORITY_REALTIME:
+            win_prio = THREAD_PRIORITY_TIME_CRITICAL;
+            prio_desc = "Time Critical";
+            break;
+        case PRIORITY_HIGHEST:
+            win_prio = THREAD_PRIORITY_HIGHEST;
+            prio_desc = "Highest";
+            break;
+        case PRIORITY_HIGH:
+            win_prio = THREAD_PRIORITY_ABOVE_NORMAL;
+            prio_desc = "Above Normal";
+            break;
+        default: break;
     }
-    return true;
+
+    if (!SetThreadPriority(GetCurrentThread(), win_prio)) {
+        log_warn("Failed to set '%s' thread priority to %s.", thread_name, prio_desc);
+    }
+#else
+    // --- Linux / POSIX Implementation ---
+    int policy = SCHED_OTHER;
+    struct sched_param param;
+    memset(&param, 0, sizeof(param));
+    int nice_val = 0;
+    const char* prio_desc = "Normal";
+    bool use_realtime_scheduler = false;
+
+    switch (priority) {
+        case PRIORITY_REALTIME:
+            use_realtime_scheduler = true;
+            policy = SCHED_FIFO;
+            param.sched_priority = 50; 
+            prio_desc = "Realtime (FIFO)";
+            break;
+
+        case PRIORITY_HIGHEST:
+            use_realtime_scheduler = true;
+            policy = SCHED_FIFO;
+            param.sched_priority = 20;
+            prio_desc = "Highest (FIFO)";
+            break;
+
+        case PRIORITY_HIGH:
+            // Standard scheduler, nice -5
+            use_realtime_scheduler = false;
+            nice_val = -5;
+            prio_desc = "High";
+            break;
+
+        default: 
+            return;
+    }
+
+    if (use_realtime_scheduler) {
+        // --- Attempt Realtime Scheduler ---
+        if (pthread_setschedparam(pthread_self(), policy, &param) == 0) {
+            log_debug("Set '%s' thread to %s.", thread_name, prio_desc);
+            return;
+        }
+        
+        // Log the specific error for Realtime failure (e.g. "Operation not permitted")
+        log_warn("Failed to set '%s' thread to %s: %s", 
+                 thread_name, prio_desc, strerror(errno));
+    } 
+    else if (nice_val < 0) {
+        // --- Attempt High Priority (Nice) ---
+        pid_t tid = (pid_t)syscall(SYS_gettid);
+        if (setpriority(PRIO_PROCESS, tid, nice_val) == 0) {
+            log_debug("Set '%s' thread to %s.", thread_name, prio_desc);
+            return;
+        }
+
+        // Log the specific error for Nice failure (e.g. "Permission denied")
+        log_warn("Failed to set '%s' thread to %s: %s", 
+                 thread_name, prio_desc, strerror(errno));
+    }
+#endif
 }
+
+#ifdef _WIN32
 
 void print_win_error(const char* context, DWORD error_code) {
     LPWSTR messageBuffer = NULL;
@@ -116,4 +200,4 @@ bool platform_get_executable_dir(char* buffer, size_t buffer_size) {
     return true;
 }
 
-#endif // _WIN32
+#endif

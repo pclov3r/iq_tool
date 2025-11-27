@@ -2,13 +2,19 @@
 #include "module.h"
 #include "app_context.h"
 #include "log.h"
-#include "platform.h"
 #include "queue.h"
 #include "signal_handler.h"
 #include "utils.h"
+#include "memory_arena.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+
+// --- Windows Specifics for Binary Mode ---
+#ifdef _WIN32
+#include <io.h>
+#include <fcntl.h>
+#endif
 
 // --- Private Data ---
 typedef struct {
@@ -26,10 +32,14 @@ static bool stdout_out_initialize(ModuleContext* ctx) {
     }
 
 #ifdef _WIN32
-    if (!set_stdout_binary()) {
+    // Windows: stdout defaults to text mode (\n -> \r\n), which corrupts binary I/Q data.
+    // We must forcefully set it to binary.
+    if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
+        log_error("Writer (stdout): Failed to set binary mode: %s", strerror(errno));
         return false;
     }
 #endif
+
     resources->output_module_private_data = data;
     return true;
 }

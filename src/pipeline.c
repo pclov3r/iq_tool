@@ -15,6 +15,7 @@
 #include "constants.h"
 #include "app_context.h"
 #include "utils.h"
+#include "platform.h" // Added for thread priority abstraction
 #include "signal_handler.h"
 #include "log.h"
 #include "module_manager.h"
@@ -36,9 +37,7 @@
 #include <errno.h>
 #include <stdlib.h>
 
-#ifdef _WIN32
-#include <windows.h>
-#else
+#ifndef _WIN32
 #include <unistd.h>
 #include <time.h>
 #endif
@@ -312,11 +311,8 @@ static bool _allocate_processing_buffers(AppConfig *config, AppResources *resour
 // --- Pipeline Thread Function Implementations (Private to this module) ---
 
 void* sdr_capture_thread_func(void* arg) {
-#ifdef _WIN32
-    if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL)) {
-        log_warn("Failed to set SDR capture thread priority to TIME_CRITICAL.");
-    }
-#endif
+    platform_set_thread_priority(PRIORITY_REALTIME, "SDR Capture");
+
     PipelineContext* args = (PipelineContext*)arg;
     AppResources* resources = args->resources;
     ModuleContext ctx = { .config = args->config, .resources = resources };
@@ -332,11 +328,7 @@ void* sdr_capture_thread_func(void* arg) {
 }
 
 void* reader_thread_func(void* arg) {
-#ifdef _WIN32
-    if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL)) {
-        log_warn("Failed to set reader thread priority.");
-    }
-#endif
+    platform_set_thread_priority(PRIORITY_NORMAL, "Reader");
 
     PipelineContext* args = (PipelineContext*)arg;
     AppResources* resources = args->resources;
@@ -416,11 +408,7 @@ void* reader_thread_func(void* arg) {
 }
 
 void* writer_thread_func(void* arg) {
-#ifdef _WIN32
-    if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST)) {
-        log_warn("Failed to set writer thread priority to HIGHEST.");
-    }
-#endif
+    platform_set_thread_priority(PRIORITY_HIGHEST, "Writer");
 
     PipelineContext* args = (PipelineContext*)arg;
     ModuleContext ctx = { .config = args->config, .resources = args->resources };
@@ -434,11 +422,7 @@ void* writer_thread_func(void* arg) {
 }
 
 void* pre_processor_thread_func(void* arg) {
-#ifdef _WIN32
-    if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL)) {
-        log_warn("Failed to set pre-processor thread priority.");
-    }
-#endif
+    platform_set_thread_priority(PRIORITY_HIGH, "Pre-Processor");
 
     PipelineContext* args = (PipelineContext*)arg;
     AppResources* resources = args->resources;
@@ -490,6 +474,8 @@ void* pre_processor_thread_func(void* arg) {
 }
 
 void* resampler_thread_func(void* arg) {
+    platform_set_thread_priority(PRIORITY_NORMAL, "Resampler");
+
     PipelineContext* args = (PipelineContext*)arg;
     AppResources* resources = args->resources;
 
@@ -537,11 +523,7 @@ void* resampler_thread_func(void* arg) {
 }
 
 void* post_processor_thread_func(void* arg) {
-#ifdef _WIN32
-    if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL)) {
-        log_warn("Failed to set post-processor thread priority.");
-    }
-#endif
+    platform_set_thread_priority(PRIORITY_HIGH, "Post-Processor");
 
     PipelineContext* args = (PipelineContext*)arg;
     AppResources* resources = args->resources;
