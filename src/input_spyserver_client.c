@@ -434,7 +434,7 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
         return false;
     }
 
-    log_info("Client has control of the device. Negotiating stream parameters...");
+    log_info("Client has control of the remote device. Negotiating stream parameters...");
 
     // Determine the format our client wants to request based on user args or defaults.
     format_t requested_format = utils_get_format_from_string(s_spyserver_client_config.format_str);
@@ -500,18 +500,50 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
     if (!send_setting(p, SPYSERVER_SETTING_IQ_DECIMATION, dec_index_to_send)) return false;
     if (!send_setting(p, SPYSERVER_SETTING_IQ_FORMAT, format_to_request_int)) return false;
 
+    uint32_t effective_gain_index = 0;
+
     if (s_spyserver_client_config.gain_provided) {
-        if (!send_setting(p, SPYSERVER_SETTING_GAIN, s_spyserver_client_config.gain)) return false;
+        // Strictly check the protocol: Does the device support a gain index range?
+        if (p->device_info.MaximumGainIndex > 0) {
+            uint32_t requested_gain = (uint32_t)s_spyserver_client_config.gain;
+
+            // Fail outright if the user requests a gain value that does not exist
+            if (requested_gain > p->device_info.MaximumGainIndex) {
+                log_fatal("Requested gain value %u is out of range.", requested_gain);
+                log_fatal("Valid gain range for this server is 0 to %u.", p->device_info.MaximumGainIndex);
+
+                networking_disconnect(p->net_ctx);
+                networking_cleanup_module();
+                return false;
+            }
+
+            if (!send_setting(p, SPYSERVER_SETTING_GAIN, requested_gain)) {
+                networking_disconnect(p->net_ctx);
+                networking_cleanup_module();
+                return false;
+            }
+
+            // Store the successfully applied gain for the digital gain calculation below
+            effective_gain_index = requested_gain;
+
+        } else {
+            // If the server simply doesn't support gain (e.g. Airspy HF+ or fixed config), warn but proceed.
+            log_warn("Manual gain requested, but not supported by this server. Ignoring.");
+            // effective_gain_index remains 0
+        }
     }
 
     float digital_gain_float = 0.0f;
     uint32_t device_type = p->device_info.DeviceType;
+
     if (device_type == SPYSERVER_DEV_AIRSPY_ONE) {
-        uint32_t gain_index = s_spyserver_client_config.gain_provided ? s_spyserver_client_config.gain : 0;
-        digital_gain_float = (float)(p->device_info.MaximumGainIndex - gain_index) + ((float)dec_index_to_send * 3.01f);
+        // Airspy One specific formula requires the Gain Index we just determined/validated
+        digital_gain_float = (float)(p->device_info.MaximumGainIndex - effective_gain_index) + ((float)dec_index_to_send * 3.01f);
     } else {
+        // Airspy HF+, RTL-SDR, and others do NOT use the Gain Index in this calculation
         digital_gain_float = (float)dec_index_to_send * 3.01f;
     }
+
     if (!send_setting(p, SPYSERVER_SETTING_IQ_DIGITAL_GAIN, (uint32_t)digital_gain_float)) return false;
 
     if (!send_setting(p, SPYSERVER_SETTING_STREAMING_MODE, SPYSERVER_STREAM_MODE_IQ_ONLY)) return false;
@@ -547,7 +579,7 @@ static void* spyserver_client_producer_thread(void* arg) {
         if (body_size == 0) continue;
 
         if (ring_buffer_write(p->stream_buffer, &header, sizeof(header)) < sizeof(header)) {
-             log_warn("SpyServer stream buffer overrun on header write. Dropping data.");
+             log_warn("Stream buffer overrun on header write. Dropping data.");
              break;
         }
 
@@ -560,7 +592,7 @@ static void* spyserver_client_producer_thread(void* arg) {
             }
 
             if (ring_buffer_write(p->stream_buffer, network_read_buffer, to_read) < to_read) {
-                log_warn("SpyServer stream buffer overrun on body write. Dropping data.");
+                log_warn("Stream buffer overrun on body write. Dropping data.");
                 goto end_loop;
             }
             bytes_remaining -= to_read;
