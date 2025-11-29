@@ -10,18 +10,18 @@ The goal of this tool is to provide an easy, fast, and lightweight command-line 
 
 ### ⚠️ A Quick Word of Warning: This is a fast moving AI-Assisted Project ⚠️
 
-TL;DR: If you're looking for a stable platform, look at [GNU Radio](https://github.com/gnuradio/gnuradio)
+**If you're looking for a stable platform, look at [GNU Radio](https://github.com/gnuradio/gnuradio). This project is a playground and should not be relied upon. At least not yet.**
 
 Let's be upfront: a large language model (AI) helped write a significant portion of this code, *if not most.* I guided it, reviewed its output the best I could, and tested the result, but this project didn't evolve through the typical trial-and-error of a human-only endeavor. Even this README you're reading was drafted by the AI based on the source code, then edited and refined by me.
 
-Second, it's worth knowing that this was a learning project for me. I chose to use  C for its simplicity and how it keeps you close to the metal; I also figured it would be a better target for AI code and DSP versus a more complex language like C++. Since I was learning the language as I went, what you'll see in the code is my journey of tackling C, threading, and DSP all at once. The focus was always on getting a practical, working result, which means some of the solutions are probably not what you'd find in a textbook. However, I have made a effort to clean up and refactor the code to the best of my knowledge and research.
+Second, it's worth knowing that this was a learning project for me. I chose to use C for its simplicity and how it keeps you close to the metal; I also figured it would be a better target for AI code and DSP versus a more complex language like C++. Since I was learning the language as I went, what you'll see in the code is my journey of tackling C, threading, and DSP all at once. The focus was always on getting a practical, working result, which means some of the solutions are probably not what you'd find in a textbook. However, I have made a effort to clean up and refactor the code to the best of my knowledge and research.
 
 *What does this mean?*
 
 *   **It's Experimental.** While it works, it hasn't been battle-tested across a wide variety of systems and edge cases nor has it had a security review.
 *   **Design choices not stable.** You may see features, command line options, etc. suddenly appear and disappear. You may also see large commits of lots of changes. **The mainline codebase may also be broken at times due to fast moving code and changes. Releases may be more stable.** 
 *   **Bugs are expected.** The logic very likely has quirks that haven't been discovered yet. Other issues causing crashes likely exist too. 
-*   **Use with caution!** I wouldn't use this for anything mission-critical without a thorough personal review of the code. *For serious work, a mature framework like* [GNU Radio](https://github.com/gnuradio/gnuradio) *is always a better bet.*
+*   **Use with caution!** I wouldn't use this for anything mission-critical without a thorough personal review.
 
 ---
 
@@ -32,13 +32,16 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
     *   **WAV Files:** Reads standard 8-bit and 16-bit complex (I/Q) WAV files.
     *   **Raw I/Q Files:** Just point it at a headerless file, but you have to tell it the sample rate and format.
     *   **SDR Hardware:** Streams directly from **RTL-SDR**, **SDRplay**, **HackRF**, and **BladeRF** devices.
-    *   **Partial SpyServer Support:** Connect to SpyServer instances.
+    *   **SpyServer Support:** Connect to networked SpyServer instances.
 *   **WAV Metadata Parsing:** Automatically reads metadata from SDR I/Q captures to make your life easier, especially for frequency correction.
     *   `auxi` chunks from **SDR Console, SDRconnect,** and **SDRuno**.
     *   SDR# style filenames (e.g., `..._20240520_181030Z_97300000Hz_...`).
 *   **Processing Features:**
     *   **Resampling** to a new sample rate.
     *   **Frequency Shifting:** Apply shifts before or after resampling.
+    *   **Automatic Gain Control (AGC):** 
+        *   **DX/Local:** RMS-based tracking for analog signals.
+        *   **Digital:** Adaptive tracking with hysteresis to preserve MER for digital signals.
     *   **Filtering:**
         *   Apply low-pass, high-pass, band-pass, or notch FIR filters.
         *   Offers two processing methods: a `FIR` (time-domain) method and an `FFT` (frequency-domain) method and will attempt to automatically default to the most suitable method.
@@ -120,7 +123,6 @@ The best way to see all options is to run `iq_tool --help`.
 
 ```text
 Resamples an I/Q file or a stream from an SDR device to a specified format and sample rate.
-
 
 Required Input & Output
     -i, --input=<str>                     Specifies the input type {wav|raw-file|rtlsdr|sdrplay|hackrf|bladerf|spyserver-client}
@@ -209,12 +211,7 @@ SpyServer Client Options
 
 Available Presets
     cu8-nrsc5                             Sets sample type to cu8, rate to 1488375.0 Hz for FM/AM NRSC5 decoding.
-    cu8-nrsc5-usb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates USB sideband (102-215kHz) (Hack) for FM NRSC5.
-    cu8-nrsc5-lsb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for FM NRSC5.
-    cs16-fm-nrsc5                         Sets sample type to cs16, rate to 744187.5 Hz for FM NRSC5 decoding.
-    cs16-fm-nrsc5-usb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates USB sideband (102-215kHz) (Hack) for FM NRSC5.
-    cs16-fm-nrsc5-lsb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for FM NRSC5.
-    cs16-am-nrsc5                         Sets sample type to cs16, rate to 46511.71875 Hz for AM NRSC5 decoding.
+    [...other presets...]
 
 Help & Version
     -v, --version                         show program's version number and exit
@@ -223,30 +220,28 @@ Help & Version
 
 #### Examples
 
-## ⚠️ These example are outdated and will be updated at a later time ⚠️
-
 **Example 1: Basic File Resampling**
 Resample a WAV file to a 16-bit RF64 (large WAV) file with a custom output rate.
 ```bash
-iq_tool --input wav my_capture.wav -f my_capture_resampled.wav --output-container wav-rf64 --output-sample-format cs16 --output-rate 240000
+iq_tool --input wav my_capture.wav --output wav-rf64 processed.wav --output-sample-format cs16 --output-rate 240000
 ```
 
 **Example 2: Channel Selection (FFT Filter)**
 Isolate a specific range of frequencies from a live SDR stream. The tool will automatically select the `fft` filter because this is an asymmetric (offset) filter.
 ```bash
-iq_tool --input rtlsdr --sdr-rf-freq 98.5e6 --pass-range 50e3:250e3 --output-rate 240000 --stdout | ...
+iq_tool --input rtlsdr --sdr-rf-freq 98.5e6 --pass-range 50e3:250e3 --output stdout --output-rate 240000 --output-sample-format cs16 | ...
 ```
 
 **Example 3: Piping to a Decoder with a Preset (WAV Input)**
 Use the `cu8-nrsc5` preset to resample and automatically correct the frequency, then pipe it to `nrsc5`. (Assumes the WAV has frequency metadata).
 ```bash
-iq_tool --input wav my_capture.wav --wav-center-target-freq 97.3e6 --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
+iq_tool --input wav my_capture.wav --wav-center-target-freq 97.3e6 --preset cu8-nrsc5 --output stdout | nrsc5 -r - 0
 ```
 
 **Example 4: Streaming from an SDRplay Device with Preset**
-Tune an SDRplay RSPdx to 102.5 MHz, set a manual gain level and select an antenna port before piping to nrsc5.
+Tune an SDRplay RSPdx to 102.5 MHz, set a manual gain level (using LNA state) and select an antenna port before piping to nrsc5.
 ```bash
-iq_tool --input sdrplay --sdr-rf-freq 102.5e6 --sdrplay-gain-level 20 --sdrplay-antenna B --preset cu8-nrsc5 --stdout | nrsc5 -r - 0
+iq_tool --input sdrplay --sdr-rf-freq 102.5e6 --sdrplay-lna-state 4 --sdrplay-antenna B --preset cu8-nrsc5 --output stdout | nrsc5 -r - 0
 ```
 
 ### Configuration via Presets
@@ -274,7 +269,8 @@ This tool is a work in progress.
     *   [x] Add BladeRF support.
     *   [x] Refactor configuration system for full modularity.
     *   [x] Implement FFT-based filtering option.
-    *   [X] Partial SpyServer Support
+    *   [x] SpyServer Support
+    *   [x] Implement Output AGC (DX, Local, and Digital profiles).
     *   [ ] Add Airspy & HydaSDR support
     *   [ ] Improve I/Q correction algorithm stability.
     *   [ ] Refine and standardize log levels throughout the application.
@@ -295,11 +291,11 @@ The sequence of threads and their responsibilities are as follows:
 1.  **Reader Thread:** The first thread in the pipeline acquires raw samples from the selected input source (a file or SDR). It fills a `SampleChunk` buffer with this raw data and adds it to a queue for the next stage.
     *   **SDR-to-File Mode:** When reading from a live SDR to a file, an additional `sdr_capture_thread` is used. This thread's callback writes data to an intermediate ring buffer in a structured packet format. Each packet consists of a header (containing the number of samples and format flags) followed by the corresponding sample data. This packet structure also allows for non-data events, like stream resets, to be communicated. The main Reader thread's job is to read and parse these packets from the buffer, providing a consistent stream to the rest of the pipeline regardless of the source SDR.
 
-2.  **Pre-Processor Thread:** This thread takes raw sample buffers from the first queue. It converts the data to a 32-bit complex float format and performs any DSP operations scheduled before resampling (e.g., DC blocking).
+2.  **Pre-Processor Thread:** This thread takes raw sample buffers from the first queue. It converts the data to a 32-bit complex float format and performs any DSP operations scheduled before resampling (e.g., DC blocking, Frequency Shifting).
 
 3.  **Resampler Thread:** This thread takes the complex float buffers and changes the sample rate of the data using a filter from the `liquid-dsp` library.
 
-4.  **Post-Processor Thread:** This thread takes the resampled buffers. It performs any DSP operations scheduled after resampling (e.g., FIR filtering) and then converts the data into the final, user-specified output byte format.
+4.  **Post-Processor Thread:** This thread takes the resampled buffers. It performs any DSP operations scheduled after resampling (e.g., Filtering, AGC, Frequency Shifting) and then converts the data into the final, user-specified output byte format.
 
 5.  **Writer Thread:** The final thread takes the formatted buffers and writes the data to the output destination.
     *   **File Output:** When writing to a file, the post-processor adds its data to a ring buffer. The writer thread reads from this buffer and writes to the disk.
@@ -309,12 +305,12 @@ The sequence of threads and their responsibilities are as follows:
 
 The tool is designed to be easily extendable for new input sources (like different SDRs or file types). This is handled through a simple but powerful interface in the code.
 
-*   **The Interface (`input_source.h`):** The core of the system is a `struct` of function pointers called `InputSourceOps`. It defines a standard contract that every input source must follow, with functions like `initialize`, `start_stream`, `stop_stream`, `cleanup`, etc.
-*   **The Registry (`input_manager.c`):** This file acts as a simple "factory" or registry. It maintains a master list of all available input modules (RTL-SDR, WAV, etc.). When you run the tool with `--input rtlsdr`, the manager looks up the "rtlsdr" entry and provides the main application with the correct `InputSourceOps` struct for that device.
+*   **The Interface (`module.h`):** The core of the system is a `struct` of function pointers called `InputModuleInterface`. It defines a standard contract that every input source must follow, with functions like `initialize`, `start_stream`, `stop_stream`, `cleanup`, etc.
+*   **The Registry (`module_manager.c`):** This file acts as a simple "factory" or registry. It maintains a master list of all available input modules (RTL-SDR, WAV, etc.). When you run the tool with `--input rtlsdr`, the manager looks up the "rtlsdr" entry and provides the main application with the correct `InputModuleInterface` struct for that device.
 *   **Adding a New Source:**
-    1.  Create a new `input_source.c` file that implements the required functions from the `InputSourceOps` interface.
+    1.  Create a new `input_source.c` file that implements the required functions from the `InputModuleInterface` interface.
     2.  Define any specific command-line options in that file.
-    3.  Add the new module to the master list in `input_manager.c`.
+    3.  Add the new module to the master list in `module_manager.c`.
     4.  Update the `CMakeLists.txt` file to compile the new file and link against the library.
 
 This design keeps all the logic for a specific input source contained in its own file, making the code clean and easy to maintain and extend.
