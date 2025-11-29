@@ -644,14 +644,14 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
     size_t high_water_mark = (size_t)(bytes_per_second * SPYSERVER_PREBUFFER_TARGET_SECONDS);
 
     // Sanity Cap: Never wait for more than 80% of the buffer capacity
-    size_t max_safe_mark = (size_t)(buffer_capacity * 0.8);
+    size_t max_safe_mark = (size_t)(buffer_capacity * SPYSERVER_PREBUFFER_MAX_FILL_RATIO);
     if (high_water_mark > max_safe_mark) {
         high_water_mark = max_safe_mark;
     }
 
     // Minimum Floor: Ensure at least ~64KB to prevent immediate underrun
-    if (high_water_mark < 65536) {
-        high_water_mark = 65536;
+    if (high_water_mark < SPYSERVER_PREBUFFER_MIN_BYTES) {
+        high_water_mark = SPYSERVER_PREBUFFER_MIN_BYTES;
     }
 
     log_info("Pre-buffering SpyServer data...");

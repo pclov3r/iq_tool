@@ -232,6 +232,8 @@
 #define SPYSERVER_DEFAULT_SAMPLE_RATE_HZ 600000.0
 #define SPYSERVER_MAX_BUFFER_BYTES (128 * 1024 * 1024) // 128 MB maximum buffer size
 #define SPYSERVER_PREBUFFER_TARGET_SECONDS 2.5f // Buffer 2.5 seconds of I/Q data before starting pipeline
+#define SPYSERVER_PREBUFFER_MIN_BYTES 65536 // Minimum floor of 64KB for pre-buffering
+#define SPYSERVER_PREBUFFER_MAX_FILL_RATIO 0.8f // Cap pre-buffering at 80% of capacity to prevent immediate overrun
 
 // =============================================================================
 // == Tier 5: Sanity Checks & Hard Limits
