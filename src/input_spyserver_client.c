@@ -242,24 +242,34 @@ InputModuleInterface* get_spyserver_client_input_module_api(void) {
 
 // --- Helper Functions for Protocol and Logic ---
 
+typedef struct {
+    format_t internal_fmt;
+    int spyserver_fmt;
+} FormatMap;
+
+static const FormatMap format_map[] = {
+    { CU8,  SPYSERVER_STREAM_FORMAT_UINT8 },
+    { CS16, SPYSERVER_STREAM_FORMAT_INT16 },
+    { CS24, SPYSERVER_STREAM_FORMAT_INT24 },
+    { CF32, SPYSERVER_STREAM_FORMAT_FLOAT },
+};
+
 static int get_spyserver_enum_from_internal_format(format_t fmt) {
-    switch (fmt) {
-        case CU8:  return SPYSERVER_STREAM_FORMAT_UINT8;
-        case CS16: return SPYSERVER_STREAM_FORMAT_INT16;
-        case CS24: return SPYSERVER_STREAM_FORMAT_INT24;
-        case CF32: return SPYSERVER_STREAM_FORMAT_FLOAT;
-        default:   return SPYSERVER_STREAM_FORMAT_INVALID;
+    for (size_t i = 0; i < sizeof(format_map) / sizeof(format_map[0]); i++) {
+        if (format_map[i].internal_fmt == fmt) {
+            return format_map[i].spyserver_fmt;
+        }
     }
+    return SPYSERVER_STREAM_FORMAT_INVALID;
 }
 
 static format_t get_internal_format_from_spyserver_enum(int spyserver_format) {
-    switch(spyserver_format) {
-        case SPYSERVER_STREAM_FORMAT_UINT8: return CU8;
-        case SPYSERVER_STREAM_FORMAT_INT16: return CS16;
-        case SPYSERVER_STREAM_FORMAT_INT24: return CS24;
-        case SPYSERVER_STREAM_FORMAT_FLOAT: return CF32;
-        default: return FORMAT_UNKNOWN;
+    for (size_t i = 0; i < sizeof(format_map) / sizeof(format_map[0]); i++) {
+        if (format_map[i].spyserver_fmt == spyserver_format) {
+            return format_map[i].internal_fmt;
+        }
     }
+    return FORMAT_UNKNOWN;
 }
 
 static bool send_setting(SpyServerClientPrivateData* p, uint32_t setting, uint32_t value) {
@@ -549,7 +559,8 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
 
     if (!send_setting(p, SPYSERVER_SETTING_STREAMING_MODE, SPYSERVER_STREAM_MODE_IQ_ONLY)) return false;
 
-    p->stream_buffer = ring_buffer_create(SPYSERVER_STREAM_BUFFER_BYTES);
+    // --- CHANGED: Use the MAX_BUFFER_BYTES constant ---
+    p->stream_buffer = ring_buffer_create(SPYSERVER_MAX_BUFFER_BYTES);
     if (!p->stream_buffer) {
         networking_disconnect(p->net_ctx);
         networking_cleanup_module();
@@ -625,8 +636,24 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
         return NULL;
     }
 
+    // --- CHANGED: Dynamic Pre-buffering Logic ---
     size_t buffer_capacity = ring_buffer_get_capacity(p->stream_buffer);
-    size_t high_water_mark = (size_t)(buffer_capacity * SPYSERVER_PREBUFFER_HIGH_WATER_MARK);
+
+    // Calculate bytes required for the target duration based on rate and sample size
+    double bytes_per_second = (double)resources->source_info.samplerate * (double)resources->input_bytes_per_sample_pair;
+    size_t high_water_mark = (size_t)(bytes_per_second * SPYSERVER_PREBUFFER_TARGET_SECONDS);
+
+    // Sanity Cap: Never wait for more than 80% of the buffer capacity
+    size_t max_safe_mark = (size_t)(buffer_capacity * 0.8);
+    if (high_water_mark > max_safe_mark) {
+        high_water_mark = max_safe_mark;
+    }
+
+    // Minimum Floor: Ensure at least ~64KB to prevent immediate underrun
+    if (high_water_mark < 65536) {
+        high_water_mark = 65536;
+    }
+
     log_info("Pre-buffering SpyServer data...");
 
     while (!is_shutdown_requested() && ring_buffer_get_size(p->stream_buffer) < high_water_mark) {
@@ -637,6 +664,7 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
             usleep(100000);
         #endif
     }
+    // ---------------------------------------------
 
     if (is_shutdown_requested() || resources->error_occurred) {
         log_warn("Shutdown requested during pre-buffering phase.");

@@ -1,6 +1,3 @@
-#ifndef CONSTANTS_H_
-#define CONSTANTS_H_
-
 /**
  * @file constants.h
  * @brief Central configuration for application resource usage and performance tuning.
@@ -10,6 +7,9 @@
  * between performance, memory usage, and stability. Adjust these values to tune
  * the application for specific hardware or use cases.
  */
+
+#ifndef CONSTANTS_H_
+#define CONSTANTS_H_
 
 // =============================================================================
 // == Tier 1: High-Level Application Behavior
@@ -230,8 +230,8 @@
 #endif // defined(WITH_BLADERF)
 
 #define SPYSERVER_DEFAULT_SAMPLE_RATE_HZ 600000.0
-#define SPYSERVER_STREAM_BUFFER_BYTES (16 * 1024 * 1024) // 16 MB buffer for network jitter
-#define SPYSERVER_PREBUFFER_HIGH_WATER_MARK 0.5f // Start processing when buffer is 50% full
+#define SPYSERVER_MAX_BUFFER_BYTES (128 * 1024 * 1024) // 128 MB maximum buffer size
+#define SPYSERVER_PREBUFFER_TARGET_SECONDS 2.5f // Buffer 2.5 seconds of I/Q data before starting pipeline
 
 // =============================================================================
 // == Tier 5: Sanity Checks & Hard Limits
