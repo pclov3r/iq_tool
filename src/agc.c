@@ -109,7 +109,7 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
     
     float block_average = (float)(block_sum / num_samples);
 
-    // 2. Unified Startup Snap (Auto Input Gain)
+    // 2. Unified Startup Snap (Auto Gain)
     // If this is the first block, calculate the ideal gain to hit the target immediately.
     // We also detect outliers (transients) here to avoid setting the gain too low.
     bool skip_safety_check = false;
@@ -215,6 +215,13 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
     float projected_peak = block_peak * current_gain;
 
     if (!skip_safety_check) {
+        // --- TIME-BASED ADJUSTMENT CALCULATION ---
+        // Calculate the duration of this block in seconds to ensure consistent
+        // attack/decay rates regardless of sample rate or buffer size.
+        float sample_rate = (float)resources->config->output_rate.target_rate;
+        if (sample_rate < 1.0f) sample_rate = 48000.0f; // Sanity check
+        float block_duration = (float)num_samples / sample_rate;
+
         // --- CONDITION A: FAST ATTACK (Emergency Cut) ---
         // RELAXED SAFETY: Allow peaks up to SAFETY_CLAMP (e.g. 3.0) before triggering a cut.
         if (projected_peak > AGC_DIGITAL_SAFETY_CLAMP) {
@@ -228,7 +235,12 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
                 float recovery_target = (target_high + target_low) / 2.0f;
                 float desired_gain = recovery_target / block_peak;
                 float error_ratio = desired_gain / current_gain;
-                float step = 1.0f + ((error_ratio - 1.0f) * AGC_DIGITAL_SLEW_RATE); 
+                
+                // Scale the slew rate by the block duration (Time-Based Tracking)
+                float adjustment_speed = AGC_DIGITAL_SLEW_RATE * block_duration;
+                if (adjustment_speed > 1.0f) adjustment_speed = 1.0f; // Clamp to max 100% per block
+
+                float step = 1.0f + ((error_ratio - 1.0f) * adjustment_speed); 
                 
                 resources->agc_current_gain *= step;
                 resources->agc_last_strong_peak_time = get_monotonic_time_sec();

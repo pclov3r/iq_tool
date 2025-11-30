@@ -179,7 +179,7 @@
 // The "Slew Rate" (Tracking Speed).
 // Defines how fast the gain moves towards the target when outside the window.
 // 0.01 = Adjusts 1% of the error per block.
-#define AGC_DIGITAL_SLEW_RATE         0.01f
+#define AGC_DIGITAL_SLEW_RATE         0.5f
 
 // Startup Transient Detection
 // If Crest Factor (Peak/Average) > 10.0, the block is considered to have a transient.
