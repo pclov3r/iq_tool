@@ -1,24 +1,32 @@
 #include "ring_buffer.h"
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
 #include <stdbool.h>
 #include "log.h"
 
-// The full definition of the opaque RingBuffer struct from the header file.
+#ifdef _WIN32
+    #include <windows.h>
+    #define MEMORY_BARRIER() MemoryBarrier()
+    #define SLEEP_MS(x) Sleep(x)
+#elif defined(__GNUC__) || defined(__clang__)
+    #include <unistd.h>
+    #define MEMORY_BARRIER() __sync_synchronize()
+    #define SLEEP_MS(x) usleep((x) * 1000)
+#else
+    #error "Compiler not supported for lock-free ring buffer."
+#endif
+
 struct RingBuffer {
     unsigned char* buffer;
     size_t capacity;
     
-    // C99 version: Use standard variables. All access must be protected by the mutex.
-    size_t write_pos;
-    size_t read_pos;
+    // C99 Lock-Free Implementation:
+    // Volatile prevents register caching.
+    volatile size_t write_pos;
+    volatile size_t read_pos;
     
-    pthread_mutex_t mutex;
-    pthread_cond_t data_available_cond;
-    
-    bool end_of_stream;
-    bool shutting_down;
+    volatile bool end_of_stream;
+    volatile bool shutting_down;
 };
 
 RingBuffer* ring_buffer_create(size_t capacity) {
@@ -36,142 +44,133 @@ RingBuffer* ring_buffer_create(size_t capacity) {
     }
 
     iob->capacity = capacity;
-    
-    // Initialize standard variables.
     iob->write_pos = 0;
     iob->read_pos = 0;
-    
-    pthread_mutex_init(&iob->mutex, NULL);
-    pthread_cond_init(&iob->data_available_cond, NULL);
-    
     iob->end_of_stream = false;
     iob->shutting_down = false;
 
-    log_debug("I/O buffer created with %zu bytes capacity.", capacity);
+    log_debug("I/O buffer created with %zu bytes capacity (Lock-Free Writer / Blocking Reader).", capacity);
     return iob;
 }
 
 void ring_buffer_destroy(RingBuffer* iob) {
     if (!iob) return;
-    
-    pthread_mutex_destroy(&iob->mutex);
-    pthread_cond_destroy(&iob->data_available_cond);
     free(iob->buffer);
     free(iob);
 }
 
+// PRODUCER: High Priority, Lock-Free, Never Sleeps
 size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes) {
     if (!iob || !data || bytes == 0) return 0;
 
-    // The entire write operation is now protected by a single lock.
-    pthread_mutex_lock(&iob->mutex);
+    // 1. Load indices
+    size_t w = iob->write_pos;
+    size_t r = iob->read_pos;
+    size_t cap = iob->capacity;
 
-    size_t available_space;
-    if (iob->write_pos >= iob->read_pos) {
-        available_space = iob->capacity - (iob->write_pos - iob->read_pos) - 1;
-    } else {
-        available_space = (iob->read_pos - iob->write_pos) - 1;
+    // 2. Calculate available space (One slot reserved to distinguish full/empty)
+    size_t size = (w >= r) ? (w - r) : (cap - (r - w));
+    size_t available = (cap - 1) - size;
+
+    // Drop data if full. We cannot block the hardware thread.
+    if (bytes > available) {
+        return 0; 
     }
 
-    size_t bytes_to_write = (bytes > available_space) ? available_space : bytes;
-    if (bytes_to_write > 0) {
-        size_t first_chunk_size = (iob->write_pos + bytes_to_write > iob->capacity) ? (iob->capacity - iob->write_pos) : bytes_to_write;
-        memcpy(iob->buffer + iob->write_pos, data, first_chunk_size);
+    // 3. Copy Data
+    size_t first_chunk_size = (w + bytes > cap) ? (cap - w) : bytes;
+    memcpy(iob->buffer + w, data, first_chunk_size);
 
-        size_t second_chunk_size = bytes_to_write - first_chunk_size;
-        if (second_chunk_size > 0) {
-            memcpy(iob->buffer, (const unsigned char*)data + first_chunk_size, second_chunk_size);
-        }
-
-        iob->write_pos = (iob->write_pos + bytes_to_write) % iob->capacity;
-        
-        // Signal the consumer thread that new data is available.
-        pthread_cond_signal(&iob->data_available_cond);
+    size_t second_chunk_size = bytes - first_chunk_size;
+    if (second_chunk_size > 0) {
+        memcpy(iob->buffer, (const unsigned char*)data + first_chunk_size, second_chunk_size);
     }
 
-    pthread_mutex_unlock(&iob->mutex);
+    // 4. Barrier: Ensure data is committed before index update
+    MEMORY_BARRIER();
 
-    return bytes_to_write;
+    // 5. Update Write Index
+    iob->write_pos = (w + bytes) % cap;
+
+    return bytes;
 }
 
+// CONSUMER: Low Priority, Blocking (Sleeps if empty)
 size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes) {
     if (!iob || !buffer || max_bytes == 0) return 0;
 
-    // The entire read operation is now protected by a single lock.
-    pthread_mutex_lock(&iob->mutex);
+    size_t w, r, cap, available;
 
-    size_t available_data;
-
+    // --- BLOCKING LOOP ---
+    // Wait until data arrives or stream ends
     while (true) {
-        available_data = (iob->write_pos >= iob->read_pos) ? (iob->write_pos - iob->read_pos) : (iob->capacity - (iob->read_pos - iob->write_pos));
+        w = iob->write_pos;
+        r = iob->read_pos;
+        cap = iob->capacity;
 
-        if (available_data > 0 || iob->shutting_down || iob->end_of_stream) {
-            break;
-        }
-        
-        pthread_cond_wait(&iob->data_available_cond, &iob->mutex);
-    }
+        // Check shutdown first
+        if (iob->shutting_down) return 0;
 
-    if (iob->shutting_down) {
-        pthread_mutex_unlock(&iob->mutex);
-        return 0;
-    }
+        // Calculate available
+        available = (w >= r) ? (w - r) : (cap - (r - w));
 
-    if (available_data == 0 && iob->end_of_stream) {
-        pthread_mutex_unlock(&iob->mutex);
-        return 0;
-    }
-    
-    size_t bytes_to_read = (max_bytes > available_data) ? available_data : max_bytes;
-
-    if (bytes_to_read > 0) {
-        size_t first_chunk_size = (iob->read_pos + bytes_to_read > iob->capacity) ? (iob->capacity - iob->read_pos) : bytes_to_read;
-        memcpy(buffer, iob->buffer + iob->read_pos, first_chunk_size);
-
-        size_t second_chunk_size = bytes_to_read - first_chunk_size;
-        if (second_chunk_size > 0) {
-            memcpy((unsigned char*)buffer + first_chunk_size, iob->buffer, second_chunk_size);
+        if (available > 0) {
+            break; // Data found! Proceed to read.
         }
 
-        iob->read_pos = (iob->read_pos + bytes_to_read) % iob->capacity;
+        // If empty AND end_of_stream is set, we are truly done.
+        if (iob->end_of_stream) {
+            return 0;
+        }
+
+        // Buffer empty, but stream alive. Sleep briefly to yield CPU.
+        // This replaces the Condition Variable wait.
+        SLEEP_MS(1); 
     }
 
-    pthread_mutex_unlock(&iob->mutex);
+    // 1. Determine read size
+    size_t bytes_to_read = (max_bytes > available) ? available : max_bytes;
+
+    // 2. Barrier: Ensure we see the latest data written by producer
+    MEMORY_BARRIER();
+
+    // 3. Copy Data
+    size_t first_chunk_size = (r + bytes_to_read > cap) ? (cap - r) : bytes_to_read;
+    memcpy(buffer, iob->buffer + r, first_chunk_size);
+
+    size_t second_chunk_size = bytes_to_read - first_chunk_size;
+    if (second_chunk_size > 0) {
+        memcpy((unsigned char*)buffer + first_chunk_size, iob->buffer, second_chunk_size);
+    }
+
+    // 4. Barrier: Ensure read is done before updating index
+    MEMORY_BARRIER();
+
+    // 5. Update Read Index
+    iob->read_pos = (r + bytes_to_read) % cap;
 
     return bytes_to_read;
 }
 
 void ring_buffer_signal_end_of_stream(RingBuffer* iob) {
     if (!iob) return;
-    pthread_mutex_lock(&iob->mutex);
     iob->end_of_stream = true;
-    pthread_cond_signal(&iob->data_available_cond);
-    pthread_mutex_unlock(&iob->mutex);
 }
 
 void ring_buffer_signal_shutdown(RingBuffer* iob) {
     if (!iob) return;
-    pthread_mutex_lock(&iob->mutex);
     iob->shutting_down = true;
-    pthread_cond_signal(&iob->data_available_cond);
-    pthread_mutex_unlock(&iob->mutex);
 }
 
 size_t ring_buffer_get_size(RingBuffer* iob) {
     if (!iob) return 0;
-
-    pthread_mutex_lock(&iob->mutex);
-    size_t available_data = (iob->write_pos >= iob->read_pos) 
-                          ? (iob->write_pos - iob->read_pos) 
-                          : (iob->capacity - (iob->read_pos - iob->write_pos));
-    pthread_mutex_unlock(&iob->mutex);
-    
-    return available_data;
+    size_t w = iob->write_pos;
+    size_t r = iob->read_pos;
+    if (w >= r) return w - r;
+    return iob->capacity - (r - w);
 }
 
 size_t ring_buffer_get_capacity(RingBuffer* iob) {
     if (!iob) return 0;
-    // Capacity is immutable, so a mutex isn't strictly necessary,
-    // but it's good practice for consistency.
     return iob->capacity;
 }
