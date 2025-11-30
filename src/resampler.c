@@ -2,6 +2,7 @@
 #include "constants.h"
 #include "log.h"
 #include "app_context.h"
+#include <stdlib.h> // For exit()
 
 // This is now the ONLY file in our application outside of the processing
 // threads that knows about the specific liquid-dsp implementation.
@@ -46,8 +47,18 @@ void resampler_reset(resampler_t* resampler) {
     }
 }
 
-void resampler_execute(resampler_t* resampler, complex_float_t* input, unsigned int num_input_frames, complex_float_t* output, unsigned int* num_output_frames) {
+void resampler_execute(resampler_t* resampler, complex_float_t* input, unsigned int num_input_frames, complex_float_t* output, size_t max_output_capacity, unsigned int* num_output_frames) {
     if (resampler) {
         msresamp_crcf_execute((msresamp_crcf)resampler, (liquid_float_complex*)input, num_input_frames, (liquid_float_complex*)output, num_output_frames);
+
+        // --- MEMORY SAFETY GUARD RAIL ---
+        // If liquid-dsp wrote more samples than we allocated space for, we have corrupted the heap.
+        // We must crash immediately to prevent undefined behavior downstream.
+        if (*num_output_frames > max_output_capacity) {
+            log_fatal("CRITICAL: Resampler buffer overflow detected!");
+            log_fatal("Wrote %u samples, but buffer capacity is %zu.", *num_output_frames, max_output_capacity);
+            log_fatal("Forcing Exit");
+            exit(EXIT_FAILURE);
+        }
     }
 }

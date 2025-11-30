@@ -11,12 +11,12 @@
 #define RESAMPLER_H_
 
 #include <stdbool.h>
+#include <stddef.h> // Added for size_t
+#include "common_types.h"
 
 // --- Forward Declarations ---
 struct AppConfig;
 struct AppResources;
-// We need complex_float_t for the execute function signature
-#include "common_types.h"
 
 // --- Opaque Type Definition ---
 // By forward-declaring the struct and using a typedef, we hide the
@@ -44,8 +44,15 @@ void resampler_reset(resampler_t* resampler);
 
 /**
  * @brief Executes the resampler on a block of samples.
+ *
+ * @param resampler The resampler object.
+ * @param input Pointer to input buffer.
+ * @param num_input_frames Number of frames in input.
+ * @param output Pointer to output buffer.
+ * @param max_output_capacity The maximum number of samples the output buffer can hold (Guard Rail).
+ * @param num_output_frames Pointer to store the actual number of frames produced.
  */
-void resampler_execute(resampler_t* resampler, complex_float_t* input, unsigned int num_input_frames, complex_float_t* output, unsigned int* num_output_frames);
+void resampler_execute(resampler_t* resampler, complex_float_t* input, unsigned int num_input_frames, complex_float_t* output, size_t max_output_capacity, unsigned int* num_output_frames);
 
 
 #endif // RESAMPLER_H_

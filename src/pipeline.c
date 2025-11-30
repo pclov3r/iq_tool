@@ -434,7 +434,13 @@ void* resampler_thread_func(void* arg) {
             // In passthrough, we must copy the data to the output buffer
             memcpy(item->current_output_buffer, item->current_input_buffer, output_frames_this_chunk * sizeof(complex_float_t));
         } else {
-            resampler_execute(resources->resampler, item->current_input_buffer, (unsigned int)item->frames_read, item->current_output_buffer, &output_frames_this_chunk);
+            // --- UPDATED CALL WITH CAPACITY CHECK ---
+            resampler_execute(resources->resampler,
+                              item->current_input_buffer,
+                              (unsigned int)item->frames_read,
+                              item->current_output_buffer,
+                              item->complex_buffer_capacity_samples, // Pass capacity
+                              &output_frames_this_chunk);
         }
         item->frames_to_write = output_frames_this_chunk;
 
