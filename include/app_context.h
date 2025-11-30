@@ -238,6 +238,10 @@ typedef struct {
 typedef struct AppResources {
     const AppConfig* config;
 
+    // --- Dynamic Pipeline Sizing ---
+    size_t          pipeline_alloc_size_samples; // Max samples per chunk (for malloc)
+    size_t          pipeline_read_chunk_size;    // Size requested by the reader (Input)
+
     // --- DSP Objects ---
     resampler_t*    resampler;
     float           resample_ratio;

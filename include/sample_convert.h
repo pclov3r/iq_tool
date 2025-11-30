@@ -7,6 +7,7 @@
 #define SAMPLE_CONVERT_H_
 
 #include <stddef.h>
+#include <stdint.h>
 #include "common_types.h"
 
 // --- Function Declarations ---
@@ -48,5 +49,30 @@ bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* r
  * @return true on success, false if the output format is unhandled.
  */
 bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* restrict output_buffer, size_t num_frames, format_t output_format);
+
+// --- Interleaving Helpers ---
+// These functions are used by Input Modules (e.g., SDRplay) that receive Planar data
+// (separate I and Q arrays) but must write Interleaved data to the RingBuffer.
+// The 'restrict' keyword is crucial here to allow auto-vectorization (SIMD).
+
+/**
+ * @brief Interleaves 8-bit signed planar data into an interleaved buffer.
+ */
+void sample_convert_interleave_s8(const int8_t* restrict i_plane, const int8_t* restrict q_plane, int8_t* restrict interleaved_out, size_t num_samples);
+
+/**
+ * @brief Interleaves 8-bit unsigned planar data into an interleaved buffer.
+ */
+void sample_convert_interleave_u8(const uint8_t* restrict i_plane, const uint8_t* restrict q_plane, uint8_t* restrict interleaved_out, size_t num_samples);
+
+/**
+ * @brief Interleaves 16-bit signed planar data into an interleaved buffer.
+ */
+void sample_convert_interleave_s16(const int16_t* restrict i_plane, const int16_t* restrict q_plane, int16_t* restrict interleaved_out, size_t num_samples);
+
+/**
+ * @brief Interleaves 16-bit unsigned planar data into an interleaved buffer.
+ */
+void sample_convert_interleave_u16(const uint16_t* restrict i_plane, const uint16_t* restrict q_plane, uint16_t* restrict interleaved_out, size_t num_samples);
 
 #endif // SAMPLE_CONVERT_H_

@@ -431,7 +431,11 @@ static bool bladerf_initialize(ModuleContext* ctx) {
     resources->input_format = (s_bladerf_config.active_bit_depth == 8) ? CS8 : SC16Q11;
     resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
 
-    size_t buffer_size_bytes = PIPELINE_CHUNK_BASE_SAMPLES * resources->input_bytes_per_sample_pair;
+    // Note: We intentionally allocate a large enough temp buffer for max transfer size,
+    // not just the chunk size, to handle whatever the hardware gives us in Buffered Mode.
+    // However, in the new architecture, we might not even need this intermediate buffer
+    // if we wrote directly, but BladeRF's sync_rx interface requires a destination pointer.
+    size_t buffer_size_bytes = 131072 * resources->input_bytes_per_sample_pair; // Safe upper bound
     private_data->stream_temp_buffer = mem_arena_alloc(&resources->setup_arena, buffer_size_bytes, false);
     if (!private_data->stream_temp_buffer) goto cleanup;
 
@@ -589,8 +593,10 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
     }
 
     unsigned int samples_per_transfer = (unsigned int)(resources->source_info.samplerate * BLADERF_TRANSFER_SIZE_SECONDS);
-    if (samples_per_transfer > PIPELINE_CHUNK_BASE_SAMPLES) samples_per_transfer = PIPELINE_CHUNK_BASE_SAMPLES;
-    if (samples_per_transfer < 4096) samples_per_transfer = 4096;
+    // Sanity clamp for max transfer size allowed by libbladeRF in sync mode
+    if (samples_per_transfer > 65536) samples_per_transfer = 65536; 
+    
+    // Ensure it's a multiple of 1024 for USB efficiency
     samples_per_transfer = (samples_per_transfer / 1024) * 1024;
     log_debug("BladeRF: Using dynamic transfer size of %u samples.", samples_per_transfer);
 
@@ -625,13 +631,15 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
                         sdr_packet_serializer_write_reset_event(resources->sdr_input_buffer);
                     }
                     
-                    sdr_write_interleaved_chunks(
-                        resources,
-                        (const unsigned char*)temp_buffer,
-                        meta.actual_count * resources->input_bytes_per_sample_pair,
-                        resources->input_bytes_per_sample_pair,
-                        resources->input_format
-                    );
+                    // --- CHANGED: Dump the whole block ---
+                    if (!sdr_packet_serializer_write_block(
+                            resources->sdr_input_buffer,
+                            meta.actual_count,
+                            temp_buffer,
+                            resources->input_format))
+                    {
+                        log_warn("BladeRF: Ring buffer overrun, dropped block.");
+                    }
                 }
             }
             break;
@@ -676,13 +684,23 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
                     }
                 }
             } else {
+                // Normal Processing (Realtime)
                 while (!is_shutdown_requested() && !resources->error_occurred) {
                     SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
                     if (!item) break;
 
                     memset(&meta, 0, sizeof(meta));
                     meta.flags = BLADERF_META_FLAG_RX_NOW;
-                    status = bladerf_sync_rx(private_data->dev, item->raw_input_data, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
+                    
+                    // --- CHANGED: Use dynamic chunk capacity ---
+                    // Note: We clamp samples_per_transfer to the item capacity to avoid overflow.
+                    unsigned int request_count = samples_per_transfer;
+                    unsigned int max_item_samples = item->raw_input_capacity_bytes / resources->input_bytes_per_sample_pair;
+                    if (request_count > max_item_samples) {
+                        request_count = max_item_samples;
+                    }
+
+                    status = bladerf_sync_rx(private_data->dev, item->raw_input_data, request_count, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
                     
                     if (status == 0) {
                         // --- HEARTBEAT ---

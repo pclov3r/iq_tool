@@ -80,6 +80,27 @@
 #define IO_WRITER_BUFFER_HIGH_WATER_MARK 0.95f
 
 /**
+ * @def PIPELINE_TARGET_BLOCK_SAMPLES
+ * @brief The target number of samples for a processing block.
+ *
+ * This is calculated to ensure that the working set (Input Buffer + Output Buffer)
+ * fits comfortably inside a standard CPU L2 Cache (256KB).
+ *
+ * Calculation: 12,288 samples * 8 bytes/sample (complex float) * 2 buffers (Ping/Pong)
+ * = ~192 KB. This leaves ~64KB for instructions, stack, and OS overhead.
+ */
+#define PIPELINE_TARGET_BLOCK_SAMPLES 12288
+
+/**
+ * @def PIPELINE_MIN_READ_SAMPLES
+ * @brief The minimum number of samples to read from the source per cycle.
+ *
+ * Prevents excessive mutex locking overhead during extreme upsampling scenarios
+ * (e.g. where the calculated input requirement might be < 10 samples).
+ */
+#define PIPELINE_MIN_READ_SAMPLES 256
+
+/**
  * @def PIPELINE_NUM_CHUNKS
  * @brief The number of "work trays" (SampleChunks) in the processing pipeline.
  *
@@ -87,12 +108,6 @@
  * improve throughput stability.
  */
 #define PIPELINE_NUM_CHUNKS 512
-
-/**
- * @def PIPELINE_CHUNK_BASE_SAMPLES
- * @brief The base number of samples to read from the source in each chunk.
- */
-#define PIPELINE_CHUNK_BASE_SAMPLES 16384
 
 /**
  * @def RESAMPLER_OUTPUT_SAFETY_MARGIN

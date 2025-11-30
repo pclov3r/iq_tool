@@ -404,10 +404,15 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
             if (samples_this_chunk > (sizeof(temp_buffer) / sizeof(int16_t) / 2)) {
                 samples_this_chunk = sizeof(temp_buffer) / sizeof(int16_t) / 2;
             }
-            for (unsigned int i = 0; i < samples_this_chunk; i++) {
-                temp_buffer[i * 2]     = xi[samples_processed + i];
-                temp_buffer[i * 2 + 1] = xq[samples_processed + i];
-            }
+            
+            // Interleave logic
+            sample_convert_interleave_s16(
+                xi + samples_processed, 
+                xq + samples_processed, 
+                temp_buffer, 
+                samples_this_chunk
+            );
+
             size_t bytes_to_write = samples_this_chunk * resources->input_bytes_per_sample_pair;
             ModuleContext ctx = { .config = config, .resources = resources };
                         size_t written = resources->selected_output_module_api->write_chunk(&ctx, temp_buffer, bytes_to_write);
@@ -426,15 +431,19 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
         }
         item->stream_discontinuity_event = false;
         size_t samples_to_copy = numSamples;
-        if (samples_to_copy > PIPELINE_CHUNK_BASE_SAMPLES) {
+        
+        // This limit check uses the new elastic size
+        size_t capacity_samples = item->raw_input_capacity_bytes / sizeof(int16_t) / 2;
+        if (samples_to_copy > capacity_samples) {
             log_warn("SDRplay callback provided more samples than buffer can hold. Truncating.");
-            samples_to_copy = PIPELINE_CHUNK_BASE_SAMPLES;
+            samples_to_copy = capacity_samples;
         }
+        
         int16_t *raw_buffer = (int16_t*)item->raw_input_data;
-        for (unsigned int i = 0; i < samples_to_copy; i++) {
-            raw_buffer[i * 2] = xi[i];
-            raw_buffer[i * 2 + 1] = xq[i];
-        }
+        
+        // Use optimized interleave helper directly into the SampleChunk buffer
+        sample_convert_interleave_s16(xi, xq, raw_buffer, samples_to_copy);
+
         item->frames_read = samples_to_copy;
         item->is_last_chunk = false;
 	    item->packet_sample_format = resources->input_format;
@@ -467,7 +476,28 @@ static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_S
     }
 
     if (numSamples > 0) {
-        if (!sdr_packet_serializer_write_deinterleaved_chunk(resources->sdr_input_buffer, numSamples, xi, xq, CS16)) {
+        // --- NEW ARCHITECTURE: PRODUCER-SIDE INTERLEAVING ---
+        // 1. Allocate temporary buffer (Fixed size to avoid C90 VLA error)
+        // We cap this at 8192 samples (32KB buffer), which covers standard USB transfer sizes.
+        #define MAX_SDRPLAY_CB_SAMPLES 8192
+
+        if (numSamples > MAX_SDRPLAY_CB_SAMPLES) {
+            log_warn("SDRplay callback chunk too large (%u samples). Dropping.", numSamples);
+            return;
+        }
+
+        int16_t interleaved_data[MAX_SDRPLAY_CB_SAMPLES * 2];
+
+        // 2. Interleave using SIMD-optimized helper
+        sample_convert_interleave_s16(xi, xq, interleaved_data, numSamples);
+        #undef MAX_SDRPLAY_CB_SAMPLES
+        // 3. Write single Interleaved block to RingBuffer
+        if (!sdr_packet_serializer_write_block(
+                resources->sdr_input_buffer, 
+                numSamples, 
+                interleaved_data, 
+                CS16)) 
+        {
             log_warn("SDR input buffer overrun! Dropped data.");
         }
     }

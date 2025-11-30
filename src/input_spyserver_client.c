@@ -48,6 +48,7 @@
 #include "utils.h"
 #include "networking.h"
 #include "platform.h"
+#include "sdr_packet_serializer.h" // Required for standardized packet format
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -187,6 +188,10 @@ typedef struct {
     bool device_info_ok;
     format_t active_format;
     RingBuffer* stream_buffer;
+
+    // Scratch buffer for reading network payloads before stripping headers
+    unsigned char* rx_buffer;
+    size_t rx_buffer_size;
 } SpyServerClientPrivateData;
 
 
@@ -322,7 +327,13 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
     SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(SpyServerClientPrivateData), true);
     if (!p) return false;
     resources->input_module_private_data = p;
-    p->net_ctx = NULL; // Initialize handle
+    p->net_ctx = NULL;
+
+    // Allocate receive scratch buffer
+    // 256KB is large enough for typical SpyServer chunks. Large payloads will be split.
+    p->rx_buffer_size = 256 * 1024;
+    p->rx_buffer = (unsigned char*)mem_arena_alloc(&resources->setup_arena, p->rx_buffer_size, false);
+    if (!p->rx_buffer) return false;
 
     // This module now takes responsibility for initializing its dependency.
     if (!networking_initialize_module()) {
@@ -578,41 +589,78 @@ static void* spyserver_client_producer_thread(void* arg) {
     AppResources* resources = ctx->resources;
     SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)resources->input_module_private_data;
 
-    unsigned char network_read_buffer[65536];
 
     while (!is_shutdown_requested()) {
         SpyServerMessageHeader header;
+
+        // Block waiting for a protocol header
         if (!networking_recv_all(p->net_ctx, &header, sizeof(header))) {
             if (!is_shutdown_requested()) {
-                 handle_fatal_thread_error("Connection to spyserver lost.", resources);
+                 handle_fatal_thread_error("Connection to spyserver lost (header recv failed).", resources);
             }
             break;
         }
 
+        uint32_t msg_type = header.MessageType & 0xFFFF;
         uint32_t body_size = header.BodySize;
-        if (body_size == 0) continue;
 
-        if (ring_buffer_write(p->stream_buffer, &header, sizeof(header)) < sizeof(header)) {
-             log_warn("Stream buffer overrun on header write. Dropping data.");
-             break;
-        }
+        // Is this an I/Q data packet?
+        bool is_iq_data = (msg_type >= SPYSERVER_MSG_TYPE_UINT8_IQ && msg_type <= SPYSERVER_MSG_TYPE_FLOAT_IQ);
 
-        size_t bytes_remaining = body_size;
-        while(bytes_remaining > 0) {
-            size_t to_read = (bytes_remaining > sizeof(network_read_buffer)) ? sizeof(network_read_buffer) : bytes_remaining;
-            if (!networking_recv_all(p->net_ctx, network_read_buffer, to_read)) {
-                if (!is_shutdown_requested()) handle_fatal_thread_error("Connection to spyserver lost.", resources);
-                goto end_loop;
+        if (is_iq_data && body_size > 0) {
+            // --- PROTOCOL CLEANING LOGIC ---
+            // We read the I/Q payload from the network, but we wrap it in our
+            // internal standardized header before writing to the RingBuffer.
+
+            size_t bytes_remaining = body_size;
+            size_t bpp = get_bytes_per_sample(p->active_format);
+            if (bpp == 0) bpp = 1; // Sanity guard against div/0
+
+            while (bytes_remaining > 0 && !is_shutdown_requested()) {
+                // Determine how much to read in this chunk (limited by scratch buffer size)
+                size_t to_read = (bytes_remaining > p->rx_buffer_size) ? p->rx_buffer_size : bytes_remaining;
+
+                // Align read size to sample boundary to avoid partial samples
+                to_read = (to_read / bpp) * bpp;
+                if (to_read == 0) break; // Should not happen unless buffer is tiny or corrupt packet
+
+                // 1. Read Payload Chunk from Network
+                if (!networking_recv_all(p->net_ctx, p->rx_buffer, to_read)) {
+                    if (!is_shutdown_requested()) handle_fatal_thread_error("Connection lost reading payload.", resources);
+                    goto end_loop;
+                }
+
+                // 2. Wrap and Write to Ring Buffer
+                // This function creates the internal header and writes both header + data
+                // atomically to the ring buffer.
+                uint32_t samples_in_chunk = (uint32_t)(to_read / bpp);
+                if (!sdr_packet_serializer_write_block(p->stream_buffer, samples_in_chunk, p->rx_buffer, p->active_format)) {
+                    // Buffer overrun. We drop the packet to keep up with the real-time stream.
+                    // This is preferable to lagging behind and parsing old data.
+                    log_warn("SpyServer: Ring buffer full, dropped %u samples.", samples_in_chunk);
+                }
+
+                bytes_remaining -= to_read;
+
+                // --- HEARTBEAT ---
+                sdr_input_update_heartbeat(resources);
             }
-
-            if (ring_buffer_write(p->stream_buffer, network_read_buffer, to_read) < to_read) {
-                log_warn("Stream buffer overrun on body write. Dropping data.");
-                goto end_loop;
-            }
-            bytes_remaining -= to_read;
         }
-
-        sdr_input_update_heartbeat(resources);
+        else {
+            // --- METADATA / INFO / SYNC ---
+            // We discard these packets to prevent them from entering the processing pipeline.
+            size_t bytes_to_discard = body_size;
+            // Use a discard buffer on the stack for skipping unwanted packet bodies
+            unsigned char discard_buffer[4096];
+            while (bytes_to_discard > 0) {
+                size_t to_read = (bytes_to_discard > sizeof(discard_buffer)) ? sizeof(discard_buffer) : bytes_to_discard;
+                if (!networking_recv_all(p->net_ctx, discard_buffer, to_read)) {
+                    if (!is_shutdown_requested()) handle_fatal_thread_error("Connection lost discarding packet.", resources);
+                    goto end_loop;
+                }
+                bytes_to_discard -= to_read;
+            }
+        }
     }
 
 end_loop:;
@@ -636,23 +684,14 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
         return NULL;
     }
 
-    // --- CHANGED: Dynamic Pre-buffering Logic ---
     size_t buffer_capacity = ring_buffer_get_capacity(p->stream_buffer);
-
-    // Calculate bytes required for the target duration based on rate and sample size
     double bytes_per_second = (double)resources->source_info.samplerate * (double)resources->input_bytes_per_sample_pair;
     size_t high_water_mark = (size_t)(bytes_per_second * SPYSERVER_PREBUFFER_TARGET_SECONDS);
 
-    // Sanity Cap: Never wait for more than 80% of the buffer capacity
+    // Sanity Cap
     size_t max_safe_mark = (size_t)(buffer_capacity * SPYSERVER_PREBUFFER_MAX_FILL_RATIO);
-    if (high_water_mark > max_safe_mark) {
-        high_water_mark = max_safe_mark;
-    }
-
-    // Minimum Floor: Ensure at least ~64KB to prevent immediate underrun
-    if (high_water_mark < SPYSERVER_PREBUFFER_MIN_BYTES) {
-        high_water_mark = SPYSERVER_PREBUFFER_MIN_BYTES;
-    }
+    if (high_water_mark > max_safe_mark) high_water_mark = max_safe_mark;
+    if (high_water_mark < SPYSERVER_PREBUFFER_MIN_BYTES) high_water_mark = SPYSERVER_PREBUFFER_MIN_BYTES;
 
     log_info("Pre-buffering SpyServer data...");
 
@@ -664,7 +703,6 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
             usleep(100000);
         #endif
     }
-    // ---------------------------------------------
 
     if (is_shutdown_requested() || resources->error_occurred) {
         log_warn("Shutdown requested during pre-buffering phase.");
@@ -672,63 +710,57 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
         log_info("Pre-buffering complete.");
     }
 
+    SerializerState state;
+    memset(&state, 0, sizeof(state));
+
     while (!is_shutdown_requested()) {
-        SpyServerMessageHeader header;
-        if (ring_buffer_read(p->stream_buffer, &header, sizeof(header)) < sizeof(header)) {
-            break; // End of stream
+        SampleChunk* item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+        if (!item) break;
+
+        bool is_reset = false;
+
+        // Read clean data from the ring buffer into the sample chunk
+        int64_t frames_read = sdr_packet_serializer_read_packet(
+            p->stream_buffer,
+            item,
+            &state,
+            &is_reset,
+            resources->pipeline_read_chunk_size
+        );
+
+        if (frames_read < 0) {
+            handle_fatal_thread_error("SpyServer Client: Fatal error parsing internal buffer stream.", resources);
+            queue_enqueue(resources->free_sample_chunk_queue, item);
+            break;
         }
 
-        uint32_t msg_type = header.MessageType & 0xFFFF;
-        uint32_t body_size = header.BodySize;
-
-        if (body_size == 0 || msg_type < SPYSERVER_MSG_TYPE_UINT8_IQ || msg_type > SPYSERVER_MSG_TYPE_FLOAT_IQ) {
-            if (body_size > 0) {
-                char discard_buf[1024];
-                while(body_size > 0) {
-                    size_t to_read = body_size > sizeof(discard_buf) ? sizeof(discard_buf) : body_size;
-                    if (ring_buffer_read(p->stream_buffer, discard_buf, to_read) < to_read) goto end_loop;
-                    body_size -= to_read;
-                }
-            }
-            continue;
+        if (frames_read == 0 && !is_reset) {
+            // End of Stream (Producer closed buffer)
+            item->is_last_chunk = true;
+            item->frames_read = 0;
+            queue_enqueue(resources->reader_output_queue, item);
+            break;
         }
 
-        size_t bytes_remaining_in_packet = body_size;
-        while (bytes_remaining_in_packet > 0) {
-            SampleChunk* item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
-            if (!item) goto end_loop; // Shutdown signaled
+        item->frames_read = frames_read;
+        item->stream_discontinuity_event = is_reset;
+        item->is_last_chunk = false;
 
-            size_t bytes_this_chunk = (bytes_remaining_in_packet > item->raw_input_capacity_bytes)
-                                    ? item->raw_input_capacity_bytes
-                                    : bytes_remaining_in_packet;
+        // Packet format is set by the serializer based on the header it read
+        // But for extra safety, we ensure byte size matches
+        item->input_bytes_per_sample_pair = get_bytes_per_sample(item->packet_sample_format);
 
-            if (ring_buffer_read(p->stream_buffer, item->raw_input_data, bytes_this_chunk) < bytes_this_chunk) {
-                queue_enqueue(resources->free_sample_chunk_queue, item);
-                goto end_loop; // End of stream or error
-            }
+        if (item->frames_read > 0) {
+            pthread_mutex_lock(&resources->progress_mutex);
+            resources->total_frames_read += item->frames_read;
+            pthread_mutex_unlock(&resources->progress_mutex);
+        }
 
-            item->packet_sample_format = p->active_format;
-            item->input_bytes_per_sample_pair = get_bytes_per_sample(p->active_format);
-            item->frames_read = bytes_this_chunk / item->input_bytes_per_sample_pair;
-
-            item->is_last_chunk = false;
-            item->stream_discontinuity_event = false;
-
-            if (item->frames_read > 0) {
-                pthread_mutex_lock(&resources->progress_mutex);
-                resources->total_frames_read += item->frames_read;
-                pthread_mutex_unlock(&resources->progress_mutex);
-            }
-
-            if (!queue_enqueue(resources->reader_output_queue, item)) {
-                queue_enqueue(resources->free_sample_chunk_queue, item);
-                goto end_loop; // Shutdown signaled
-            }
-
-            bytes_remaining_in_packet -= bytes_this_chunk;
+        if (!queue_enqueue(resources->reader_output_queue, item)) {
+            queue_enqueue(resources->free_sample_chunk_queue, item);
+            break;
         }
     }
-end_loop:;
 
     if (!is_shutdown_requested()) {
         request_shutdown();
@@ -761,6 +793,7 @@ static void spyserver_client_cleanup(ModuleContext* ctx) {
             networking_disconnect(p->net_ctx);
             p->net_ctx = NULL;
         }
+        // rx_buffer is in arena, no free needed
         networking_cleanup_module();
     }
     log_info("Exiting SpyServer client...");

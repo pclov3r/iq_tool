@@ -147,14 +147,19 @@ static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ct
         return;
     }
 
-    // Simply hand off the entire buffer to the reusable chunker.
-    sdr_write_interleaved_chunks(
-        resources,
-        buf,
-        len,
-        resources->input_bytes_per_sample_pair,
-        CU8
-    );
+    // --- NEW ARCHITECTURE: DUMP THE WHOLE BLOCK ---
+    // RTL-SDR provides interleaved CU8 (1 byte I, 1 byte Q = 2 bytes per sample).
+    // We no longer chop this up. We send the full hardware buffer to the ring buffer.
+    uint32_t num_samples = len / 2;
+
+    if (!sdr_packet_serializer_write_block(
+            resources->sdr_input_buffer,
+            num_samples,
+            buf,
+            CU8))
+    {
+        log_warn("SDR input buffer overrun! Dropped data.");
+    }
 }
 
 static bool rtlsdr_initialize(ModuleContext* ctx) {
@@ -328,7 +333,11 @@ static void* rtlsdr_start_stream(ModuleContext* ctx) {
                     if (!item) break;
 
                     int n_read = 0;
-                    size_t bytes_to_read = PIPELINE_CHUNK_BASE_SAMPLES * resources->input_bytes_per_sample_pair;
+                    
+                    // --- CHANGED: Use dynamic capacity instead of fixed constant ---
+                    // This allows the elastic sizing logic in setup.c to control the read size.
+                    size_t bytes_to_read = item->raw_input_capacity_bytes;
+                    
                     result = rtlsdr_read_sync(private_data->dev, item->raw_input_data, bytes_to_read, &n_read);
 
                     if (result >= 0) {

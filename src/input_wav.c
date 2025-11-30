@@ -634,9 +634,9 @@ static bool wav_initialize(ModuleContext* ctx) {
 static void* wav_start_stream(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     WavPrivateData* private_data = (WavPrivateData*)resources->input_module_private_data;
+    const AppConfig *config = ctx->config;
 
     // This is now a clean, high-level check.
-    // The input module no longer knows or cares about "stdout".
     bool pacing_required = resources->pacing_is_required;
 
     // Pre-calculate the back-pressure threshold in bytes for efficiency.
@@ -663,7 +663,24 @@ static void* wav_start_stream(ModuleContext* ctx) {
 
         current_item->stream_discontinuity_event = false;
 
-        int64_t bytes_read = sf_read_raw(private_data->infile, current_item->raw_input_data, current_item->raw_input_capacity_bytes);
+        // --- CHANGED: Use elastic chunk size ---
+        // Request the optimal number of samples for the pipeline, not the max buffer capacity.
+        size_t samples_to_read = resources->pipeline_read_chunk_size;
+        
+        // Ensure we don't overflow the buffer (sanity check)
+        size_t capacity_samples = current_item->raw_input_capacity_bytes / resources->input_bytes_per_sample_pair;
+        if (samples_to_read > capacity_samples) {
+            samples_to_read = capacity_samples;
+        }
+
+        void* target_buffer;
+        if (config->dsp.raw_passthrough) {
+            target_buffer = current_item->final_output_data;
+        } else {
+            target_buffer = current_item->raw_input_data;
+        }
+
+        int64_t bytes_read = sf_read_raw(private_data->infile, target_buffer, samples_to_read * resources->input_bytes_per_sample_pair);
 
         if (bytes_read < 0) {
             log_fatal("libsndfile read error: %s", sf_strerror(private_data->infile));
@@ -678,9 +695,15 @@ static void* wav_start_stream(ModuleContext* ctx) {
         current_item->frames_read = bytes_read / resources->input_bytes_per_sample_pair;
         current_item->packet_sample_format = resources->input_format;
         
-        current_item->is_last_chunk = (current_item->frames_read == 0);
+        // If we read fewer bytes than requested (and it wasn't 0), it's the last chunk.
+        // If read 0, it's definitely the end.
+        if ((size_t)current_item->frames_read < samples_to_read) {
+             current_item->is_last_chunk = true;
+        } else {
+             current_item->is_last_chunk = false;
+        }
 
-        if (!current_item->is_last_chunk) {
+        if (current_item->frames_read > 0) {
             pthread_mutex_lock(&resources->progress_mutex);
             resources->total_frames_read += current_item->frames_read;
             pthread_mutex_unlock(&resources->progress_mutex);
@@ -692,6 +715,9 @@ static void* wav_start_stream(ModuleContext* ctx) {
         }
 
         if (current_item->is_last_chunk) {
+            // If the last read was 0 samples, we already sent an empty chunk marked as last.
+            // If the last read was N samples (partial), we sent it marked as last.
+            // In either case, we are done.
             break;
         }
     }

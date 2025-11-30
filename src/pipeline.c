@@ -45,7 +45,6 @@
 // --- Private Function Prototypes for Setup Helpers ---
 static bool _init_queues_and_buffers(AppConfig* config, AppResources* resources);
 static void _destroy_queues_and_buffers(AppResources* resources);
-static bool _allocate_processing_buffers(AppConfig *config, AppResources *resources, float resample_ratio);
 static bool _create_dsp_components(AppConfig* config, AppResources* resources, float resample_ratio);
 static void _destroy_dsp_components(AppResources* resources);
 
@@ -73,9 +72,11 @@ bool pipeline_run(PipelineContext* context) {
         return false;
     }
 
-    // --- Step 2: Allocate all memory pools ---
-    if (!_allocate_processing_buffers(config, resources, resources->resample_ratio)) {
-        log_fatal("Failed to allocate processing buffers.");
+    // --- Step 2: Allocate all memory pools (Now handled in setup.c via allocate_processing_buffers) ---
+    // Note: The memory pool allocation was moved to setup.c to happen earlier in the lifecycle.
+    // We check if it was successful here.
+    if (!resources->pipeline_chunk_data_pool) {
+        log_fatal("Pipeline memory pool not allocated. Initialization order error.");
         _destroy_dsp_components(resources);
         return false;
     }
@@ -228,85 +229,6 @@ static void _destroy_queues_and_buffers(AppResources* resources) {
     if(resources->iq_optimization_data_queue) queue_destroy(resources->iq_optimization_data_queue);
 }
 
-static bool _allocate_processing_buffers(AppConfig *config, AppResources *resources, float resample_ratio) {
-    if (!config || !resources) return false;
-
-    size_t max_pre_resample_chunk_size = PIPELINE_CHUNK_BASE_SAMPLES;
-    bool is_pre_fft_filter = (resources->user_filter_object && !config->dsp.filter.apply_post_resample &&
-                             (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
-                              resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC));
-
-    if (is_pre_fft_filter) {
-        if (resources->user_filter_block_size > max_pre_resample_chunk_size) {
-            max_pre_resample_chunk_size = resources->user_filter_block_size;
-        }
-    }
-
-    size_t resampler_output_capacity = (size_t)ceil((double)max_pre_resample_chunk_size * fmax(1.0, (double)resample_ratio)) + RESAMPLER_OUTPUT_SAFETY_MARGIN;
-    size_t required_capacity = (max_pre_resample_chunk_size > resampler_output_capacity) ? max_pre_resample_chunk_size : resampler_output_capacity;
-
-    bool is_post_fft_filter = (resources->user_filter_object && config->dsp.filter.apply_post_resample &&
-                              (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
-                               resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC));
-
-    if (is_post_fft_filter) {
-        if (resources->user_filter_block_size > required_capacity) {
-            required_capacity = resources->user_filter_block_size;
-        }
-    }
-
-    if (required_capacity > MAX_ALLOWED_FFT_BLOCK_SIZE) {
-        log_fatal("Error: Pipeline requires a buffer size (%zu) that exceeds the maximum allowed size (%d).",
-                  required_capacity, MAX_ALLOWED_FFT_BLOCK_SIZE);
-        return false;
-    }
-
-    resources->max_out_samples = required_capacity;
-    log_debug("Calculated required processing buffer capacity: %u samples.", resources->max_out_samples);
-
-    size_t raw_input_bytes_per_chunk = PIPELINE_CHUNK_BASE_SAMPLES * resources->input_bytes_per_sample_pair;
-    size_t complex_bytes_per_chunk = resources->max_out_samples * sizeof(complex_float_t);
-    resources->output_bytes_per_sample_pair = get_bytes_per_sample(config->output.format);
-    size_t final_output_bytes_per_chunk = resources->max_out_samples * resources->output_bytes_per_sample_pair;
-
-    size_t total_bytes_per_chunk = raw_input_bytes_per_chunk +
-                                   (complex_bytes_per_chunk * 2) + // ping-pong complex buffers
-                                   final_output_bytes_per_chunk;
-
-    resources->pipeline_chunk_data_pool = malloc(PIPELINE_NUM_CHUNKS * total_bytes_per_chunk);
-    if (!resources->pipeline_chunk_data_pool) {
-        log_fatal("Error: Failed to allocate the main pipeline chunk data pool.");
-        return false;
-    }
-
-    resources->sample_chunk_pool = (SampleChunk*)mem_arena_alloc(&resources->setup_arena, PIPELINE_NUM_CHUNKS * sizeof(SampleChunk), true);
-    if (!resources->sample_chunk_pool) return false;
-
-    resources->sdr_deserializer_buffer_size = PIPELINE_CHUNK_BASE_SAMPLES * sizeof(short) * COMPLEX_SAMPLE_COMPONENTS;
-    resources->sdr_deserializer_temp_buffer = mem_arena_alloc(&resources->setup_arena, resources->sdr_deserializer_buffer_size, false);
-    if (!resources->sdr_deserializer_temp_buffer) return false;
-
-    resources->writer_local_buffer = mem_arena_alloc(&resources->setup_arena, IO_OUTPUT_WRITER_CHUNK_SIZE, false);
-    if (!resources->writer_local_buffer) return false;
-
-    for (size_t i = 0; i < PIPELINE_NUM_CHUNKS; ++i) {
-        SampleChunk* item = &resources->sample_chunk_pool[i];
-        char* chunk_base = (char*)resources->pipeline_chunk_data_pool + i * total_bytes_per_chunk;
-
-        item->raw_input_data = chunk_base;
-        item->complex_sample_buffer_a = (complex_float_t*)(chunk_base + raw_input_bytes_per_chunk);
-        item->complex_sample_buffer_b = (complex_float_t*)(chunk_base + raw_input_bytes_per_chunk + complex_bytes_per_chunk);
-        item->final_output_data = (unsigned char*)(chunk_base + raw_input_bytes_per_chunk + (complex_bytes_per_chunk * 2));
-
-        item->raw_input_capacity_bytes = raw_input_bytes_per_chunk;
-        item->complex_buffer_capacity_samples = resources->max_out_samples;
-        item->final_output_capacity_bytes = final_output_bytes_per_chunk;
-        item->input_bytes_per_sample_pair = resources->input_bytes_per_sample_pair;
-    }
-
-    return true;
-}
-
 
 // --- Pipeline Thread Function Implementations (Private to this module) ---
 
@@ -338,18 +260,24 @@ void* reader_thread_func(void* arg) {
         case PIPELINE_MODE_BUFFERED_SDR: {
             log_debug("Reader thread starting in buffered SDR mode.");
 
+            // --- STATEFUL SIPPING LOGIC ---
+            // Initialize the serializer state for this thread.
+            SerializerState state;
+            memset(&state, 0, sizeof(state));
+
             while (!is_shutdown_requested() && !resources->error_occurred) {
                 SampleChunk* item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
                 if (!item) break;
 
                 bool is_reset = false;
 
+                // Call the serializer with the state and the calculated elastic request size
                 int64_t frames_read = sdr_packet_serializer_read_packet(
                     resources->sdr_input_buffer,
                     item,
+                    &state,
                     &is_reset,
-                    resources->sdr_deserializer_temp_buffer,
-                    resources->sdr_deserializer_buffer_size
+                    resources->pipeline_read_chunk_size
                 );
 
                 if (frames_read < 0) {
@@ -385,6 +313,8 @@ void* reader_thread_func(void* arg) {
 
         case PIPELINE_MODE_REALTIME_SDR:
         case PIPELINE_MODE_FILE_PROCESSING: {
+            // These modes manage their own chunking inside their start_stream functions,
+            // which have already been updated to use 'pipeline_read_chunk_size'.
             ModuleContext ctx = { .config = config, .resources = resources };
             resources->selected_input_module_api->start_stream(&ctx);
             break;

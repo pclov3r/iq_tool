@@ -145,14 +145,17 @@ static int hackrf_buffered_stream_callback(hackrf_transfer* transfer) {
         return -1;
     }
 
-    // Simply hand off the entire buffer to the reusable chunker.
-    sdr_write_interleaved_chunks(
-        resources,
-        transfer->buffer,
-        transfer->valid_length,
-        resources->input_bytes_per_sample_pair,
-        CS8
-    );
+    // --- NEW ARCHITECTURE: DUMP THE WHOLE BLOCK ---
+    // HackRF provides interleaved CS8 (2 bytes per sample).
+    // valid_length is in bytes.
+    if (!sdr_packet_serializer_write_block(
+            resources->sdr_input_buffer, 
+            transfer->valid_length / 2, // num_samples
+            transfer->buffer, 
+            CS8)) 
+    {
+        log_warn("SDR input buffer overrun! Dropped data.");
+    }
 
     return 0;
 }
@@ -194,9 +197,10 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
         item->stream_discontinuity_event = false;
 
         size_t chunk_size = transfer->valid_length - bytes_processed;
-        const size_t pipeline_buffer_size = PIPELINE_CHUNK_BASE_SAMPLES * resources->input_bytes_per_sample_pair;
-        if (chunk_size > pipeline_buffer_size) {
-            chunk_size = pipeline_buffer_size;
+        
+        // --- CHANGED: Use dynamic capacity instead of fixed constant ---
+        if (chunk_size > item->raw_input_capacity_bytes) {
+            chunk_size = item->raw_input_capacity_bytes;
         }
 
         memcpy(item->raw_input_data, transfer->buffer + bytes_processed, chunk_size);

@@ -1,4 +1,5 @@
 #include "setup.h"
+#include "sample_convert.h"
 #include "constants.h"
 #include "platform.h"
 #include "utils.h"
@@ -21,6 +22,7 @@
 #include <windows.h>
 #include <fcntl.h>
 #include <io.h>
+#include <malloc.h>
 #else
 #include <fcntl.h>
 #include <unistd.h>
@@ -29,6 +31,9 @@
 #include <limits.h>
 #include <stdlib.h>
 #endif
+
+// Helper macro to align a size up to the next power of 2 boundary (e.g. 32 bytes)
+#define ALIGN_UP(size, align) (((size) + (align) - 1) & ~((align) - 1))
 
 
 bool resolve_file_paths(AppConfig *config, AppResources *resources) {
@@ -121,6 +126,203 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *reso
     return true;
 }
 
+bool validate_and_configure_filter_stage(struct AppConfig *config, struct AppResources *resources) {
+    config->dsp.filter.apply_post_resample = false;
+
+    if (config->dsp.filter.count == 0 || config->dsp.no_resample || config->dsp.raw_passthrough) {
+        return true;
+    }
+
+    double input_rate = (double)resources->source_info.samplerate;
+    double output_rate = config->output_rate.target_rate;
+
+    // Optimization: If downsampling, filtering AFTER resampling might be more efficient
+    // IF the filter frequency is within the new Nyquist limit.
+    if (output_rate < input_rate) {
+        float max_filter_freq_hz = 0.0f;
+
+        for (int i = 0; i < config->dsp.filter.count; i++) {
+            const FilterRequest* req = &config->dsp.filter.requests[i];
+            float current_max = 0.0f;
+            switch (req->type) {
+                case FILTER_TYPE_LOWPASS:
+                case FILTER_TYPE_HIGHPASS:
+                    current_max = fabsf(req->freq1_hz);
+                    break;
+                case FILTER_TYPE_PASSBAND:
+                case FILTER_TYPE_STOPBAND:
+                    current_max = fabsf(req->freq1_hz) + (req->freq2_hz / 2.0f);
+                    break;
+                default:
+                    break;
+            }
+            if (current_max > max_filter_freq_hz) {
+                max_filter_freq_hz = current_max;
+            }
+        }
+
+        double output_nyquist = output_rate / 2.0;
+
+        if (max_filter_freq_hz > output_nyquist) {
+            log_fatal("Filter configuration is incompatible with the output sample rate.");
+            log_error("The specified filter chain extends to %.0f Hz, but the output rate of %.0f Hz can only support frequencies up to %.0f Hz.",
+                      max_filter_freq_hz, output_rate, output_nyquist);
+            return false;
+        } else {
+            // It's safe and more efficient to filter after resampling.
+            log_debug("Filter will be applied efficiently after resampling to avoid excessive CPU usage.");
+            config->dsp.filter.apply_post_resample = true;
+        }
+    }
+    return true;
+}
+
+// --- ELASTIC BUFFER ALLOCATION LOGIC ---
+bool allocate_processing_buffers(AppConfig *config, AppResources *resources, float resample_ratio) {
+    if (!config || !resources) return false;
+
+    // 1. Determine the "Fat Pipe" (highest data rate side)
+    //    Upsampling (Ratio > 1.0): Output is the Fat Pipe.
+    //    Downsampling (Ratio <= 1.0): Input is the Fat Pipe.
+    bool upsampling = (resample_ratio > 1.0f);
+
+    size_t target_block_samples = PIPELINE_TARGET_BLOCK_SAMPLES; // 12,288 samples (~192KB)
+
+    // 2. Adjust target for FFT requirements if necessary
+    if (resources->user_filter_object) {
+        // If the user has an FFT filter, the block size MUST be at least the FFT block size.
+        // We prioritize functional correctness over L2 cache optimization here.
+        if (resources->user_filter_block_size > target_block_samples) {
+            log_debug("Adjusting pipeline block size to %u to accommodate FFT filter requirements.", resources->user_filter_block_size);
+            target_block_samples = resources->user_filter_block_size;
+        }
+    }
+
+    size_t calculated_input_samples = 0;
+    size_t sample_allocation_count = 0;
+
+    if (upsampling) {
+        // --- CASE A: UPSAMPLING ---
+        // The Output is pinned to the Target.
+        // Calculate Input required: Input = Target / Ratio.
+        size_t raw_input_calc = (size_t)(target_block_samples / resample_ratio);
+
+        // Sanity Floor: Prevent tiny read requests that cause excessive locking overhead.
+        if (raw_input_calc < PIPELINE_MIN_READ_SAMPLES) {
+            calculated_input_samples = PIPELINE_MIN_READ_SAMPLES;
+        } else {
+            calculated_input_samples = raw_input_calc;
+        }
+
+        // We must allocate enough memory to hold the *Result* of this input chunk.
+        // Allocation = (Input * Ratio) + Safety Margin.
+        sample_allocation_count = (size_t)ceil((double)calculated_input_samples * resample_ratio) + RESAMPLER_OUTPUT_SAFETY_MARGIN;
+    }
+    else {
+        // --- CASE B: DOWNSAMPLING / PASSTHROUGH ---
+        // The Input is pinned to the Target.
+        calculated_input_samples = target_block_samples;
+
+        // Allocation = Input Size + Safety Margin.
+        // (Since output shrinks, the input buffer determines the required memory pool size).
+        sample_allocation_count = target_block_samples + RESAMPLER_OUTPUT_SAFETY_MARGIN;
+    }
+
+    // Store the results for runtime usage
+    resources->pipeline_read_chunk_size = calculated_input_samples;
+    resources->pipeline_alloc_size_samples = sample_allocation_count;
+
+    log_debug("Pipeline Sizing: Read Request=%zu samples, Alloc Capacity=%zu samples (Target=%zu, Ratio=%.4f)", 
+              resources->pipeline_read_chunk_size, 
+              resources->pipeline_alloc_size_samples,
+              target_block_samples, 
+              resample_ratio);
+
+    // 3. FFT Limit Safety Check
+    if (resources->pipeline_alloc_size_samples > MAX_ALLOWED_FFT_BLOCK_SIZE) {
+        log_fatal("Calculated pipeline buffer size (%zu) exceeds maximum allowed FFT size (%d).", 
+                  resources->pipeline_alloc_size_samples, MAX_ALLOWED_FFT_BLOCK_SIZE);
+        return false;
+    }
+
+    // Update legacy field used by some filters
+    resources->max_out_samples = (unsigned int)resources->pipeline_alloc_size_samples;
+
+    // --- MEMORY ALLOCATION WITH ALIGNMENT ---
+
+    // Calculate raw byte sizes
+    size_t raw_input_bytes = resources->pipeline_alloc_size_samples * resources->input_bytes_per_sample_pair;
+    size_t complex_bytes = resources->pipeline_alloc_size_samples * sizeof(complex_float_t);
+    resources->output_bytes_per_sample_pair = get_bytes_per_sample(config->output.format);
+    size_t final_output_bytes = resources->pipeline_alloc_size_samples * resources->output_bytes_per_sample_pair;
+
+    // Calculate Strides (Aligned to 32 bytes)
+    size_t raw_stride = ALIGN_UP(raw_input_bytes, MEM_ARENA_ALIGNMENT);
+    size_t complex_stride = ALIGN_UP(complex_bytes, MEM_ARENA_ALIGNMENT);
+    size_t final_stride = ALIGN_UP(final_output_bytes, MEM_ARENA_ALIGNMENT);
+
+    // Total size of one "Tray" (SampleChunk data area)
+    size_t total_bytes_per_chunk = raw_stride + (complex_stride * 2) + final_stride;
+
+    // Allocate the Big Pool using OS-specific aligned allocation
+    size_t pool_total_size = PIPELINE_NUM_CHUNKS * total_bytes_per_chunk;
+
+#ifdef _WIN32
+    resources->pipeline_chunk_data_pool = _aligned_malloc(pool_total_size, MEM_ARENA_ALIGNMENT);
+#else
+    int align_ret = posix_memalign(&resources->pipeline_chunk_data_pool, MEM_ARENA_ALIGNMENT, pool_total_size);
+    if (align_ret != 0) {
+        resources->pipeline_chunk_data_pool = NULL; // Mark as failed
+        log_fatal("posix_memalign failed with error: %d", align_ret);
+    }
+#endif
+
+    if (!resources->pipeline_chunk_data_pool) {
+        log_fatal("Error: Failed to allocate aligned pipeline chunk data pool (%zu bytes).", pool_total_size);
+        return false;
+    }
+
+    // Allocate metadata structures from the Arena (small objects)
+    resources->sample_chunk_pool = (SampleChunk*)mem_arena_alloc(&resources->setup_arena, PIPELINE_NUM_CHUNKS * sizeof(SampleChunk), true);
+    if (!resources->sample_chunk_pool) return false;
+
+    // Assign pointers within the monolithic pool
+    for (size_t i = 0; i < PIPELINE_NUM_CHUNKS; ++i) {
+        SampleChunk* item = &resources->sample_chunk_pool[i];
+        char* chunk_base = (char*)resources->pipeline_chunk_data_pool + (i * total_bytes_per_chunk);
+
+        // Set pointers using the aligned strides
+        item->raw_input_data = chunk_base;
+        item->complex_sample_buffer_a = (complex_float_t*)(chunk_base + raw_stride);
+        item->complex_sample_buffer_b = (complex_float_t*)(chunk_base + raw_stride + complex_stride);
+        item->final_output_data = (unsigned char*)(chunk_base + raw_stride + (complex_stride * 2));
+
+        // Set capacities (using the actual usable byte count, not the stride padding)
+        item->raw_input_capacity_bytes = raw_input_bytes;
+        item->complex_buffer_capacity_samples = resources->pipeline_alloc_size_samples;
+        item->final_output_capacity_bytes = final_output_bytes;
+        item->input_bytes_per_sample_pair = resources->input_bytes_per_sample_pair;
+    }
+
+    // Allocate aux buffers
+    resources->sdr_deserializer_buffer_size = PIPELINE_TARGET_BLOCK_SAMPLES * sizeof(short) * COMPLEX_SAMPLE_COMPONENTS * 2; // Double size for safety
+    resources->sdr_deserializer_temp_buffer = mem_arena_alloc(&resources->setup_arena, resources->sdr_deserializer_buffer_size, false);
+    if (!resources->sdr_deserializer_temp_buffer) return false;
+
+    resources->writer_local_buffer = mem_arena_alloc(&resources->setup_arena, IO_OUTPUT_WRITER_CHUNK_SIZE, false);
+    if (!resources->writer_local_buffer) return false;
+
+    return true;
+}
+
+bool create_threading_components(AppConfig *config, AppResources *resources) {
+    (void)config;
+    if (pthread_mutex_init(&resources->progress_mutex, NULL) != 0) {
+        return false;
+    }
+    return true;
+}
+
 void print_configuration_summary(const AppConfig *config, const AppResources *resources) {
     if (!config || !resources || !resources->selected_input_module_api) return;
 
@@ -176,10 +378,8 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 
     fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Output Rate", config->output_rate.target_rate);
     
-    // UPDATED: Print Input Gain
     fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Input Gain", config->dsp.input_gain);
 
-    // NEW: Print Output Gain if active
     if (config->dsp.output_gain != 1.0f) {
         fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Output Gain", config->dsp.output_gain);
     }
@@ -254,6 +454,16 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     output_path_for_messages = config->output.effective_path;
 #endif
     fprintf(stderr, " %-*s : %s\n", max_label_len, is_file_output ? "Output File" : "Output Target", is_file_output ? output_path_for_messages : "<stdout>");
+    
+    // Log the calculated elastic buffer sizes for verification
+    log_debug("Pipeline Config: Read Size = %zu samples, Chunk Alloc = %zu samples.", 
+              resources->pipeline_read_chunk_size, resources->pipeline_alloc_size_samples);
+}
+
+bool prepare_output_stream(struct AppConfig *config, struct AppResources *resources) {
+    if (!resources->selected_output_module_api) return false;
+    ModuleContext ctx = { .config = config, .resources = resources };
+    return resources->selected_output_module_api->initialize(&ctx);
 }
 
 bool initialize_application(AppConfig *config, AppResources *resources) {
@@ -263,17 +473,13 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     // --- STEP 1: Look up the selected output module ---
     const Module* selected_output_module = module_manager_get_output_module_by_name(config->output.module_name, &resources->setup_arena);
     if (!selected_output_module) {
-        // This should have been caught by cli.c, but this is a safeguard.
         log_fatal("Internal error: Could not retrieve selected output module '%s'.", config->output.module_name);
         return false;
     }
     resources->selected_output_module_api = (OutputModuleInterface*)selected_output_module->api;
 
     // --- STEP 2: SET THE BEHAVIORAL FLAG ---
-    // This is the correct place for this decision.
     resources->pacing_is_required = selected_output_module->requires_output_path;
-
-    // --- The rest of the setup proceeds as before ---
 
     log_info("Attempting to initialize the '%s' input module...", config->input.type_name);
 
@@ -289,6 +495,10 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
         return false;
     }
 
+    if (!validate_and_configure_filter_stage(config, resources)) {
+        return false;
+    }
+
     if (resources->selected_output_module_api->validate_options) {
         if (!resources->selected_output_module_api->validate_options(config)) {
             return false;
@@ -301,7 +511,15 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
         }
     }
 
-    if (!resources->selected_output_module_api->initialize(&ctx)) {
+    if (!allocate_processing_buffers(config, resources, resources->resample_ratio)) {
+        return false;
+    }
+
+    if (!create_threading_components(config, resources)) {
+        return false;
+    }
+
+    if (!prepare_output_stream(config, resources)) {
         return false;
     }
 
@@ -331,10 +549,14 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
     }
 
     if (resources->pipeline_chunk_data_pool) {
+#ifdef _WIN32
+        _aligned_free(resources->pipeline_chunk_data_pool);
+#else
         free(resources->pipeline_chunk_data_pool);
+#endif
         resources->pipeline_chunk_data_pool = NULL;
     }
-    
+ 
     if (resources->selected_input_module_api && resources->selected_input_module_api->cleanup) {
         resources->selected_input_module_api->cleanup(&ctx);
     }
