@@ -35,13 +35,16 @@ static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
         case CTRL_CLOSE_EVENT:
         case CTRL_SHUTDOWN_EVENT:
             if (!is_shutdown_requested()) {
+                // 1. Trigger shutdown immediately (High Priority)
+                request_shutdown();
+
+                // 2. Log the event (Low Priority / Cosmetic)
                 pthread_mutex_lock(&g_console_mutex);
                 if (_isatty(_fileno(stderr))) {
                     fprintf(stderr, LINE_CLEAR_SEQUENCE);
                 }
                 log_debug("Ctrl+C detected, initiating graceful shutdown...");
                 pthread_mutex_unlock(&g_console_mutex);
-                request_shutdown();
             }
             return TRUE;
         default:
@@ -61,13 +64,16 @@ void* signal_handler_thread(void *arg) {
 
     if (sigwait(&signal_set, &sig) == 0) {
         if (!is_shutdown_requested()) {
+            // 1. Trigger shutdown immediately (High Priority)
+            request_shutdown();
+
+            // 2. Log the event (Low Priority / Cosmetic)
             pthread_mutex_lock(&g_console_mutex);
             if (isatty(fileno(stderr))) {
                 fprintf(stderr, LINE_CLEAR_SEQUENCE);
             }
             log_debug("Signal %d (%s) received, initiating graceful shutdown...", sig, strsignal(sig));
             pthread_mutex_unlock(&g_console_mutex);
-            request_shutdown();
         }
     }
     return NULL;
@@ -119,9 +125,7 @@ void request_shutdown(void) {
             }
         }
 
-        // --- CORRECTED SHUTDOWN LOGIC ---
-        // Signal all queues to wake up any waiting threads. Check each pointer
-        // as they are created dynamically.
+        // Signal all queues to wake up any waiting threads.
         if (r->free_sample_chunk_queue)
             queue_signal_shutdown(r->free_sample_chunk_queue);
         if (r->reader_output_queue)
@@ -132,7 +136,6 @@ void request_shutdown(void) {
             queue_signal_shutdown(r->resampler_output_queue);
         if (r->post_processor_output_queue)
             queue_signal_shutdown(r->post_processor_output_queue);
-        // Note: writer_input_queue is just a pointer to one of the above, so no need to signal it separately.
         if (r->iq_optimization_data_queue)
             queue_signal_shutdown(r->iq_optimization_data_queue);
         
@@ -140,7 +143,6 @@ void request_shutdown(void) {
         if (r->writer_input_buffer)
             ring_buffer_signal_shutdown(r->writer_input_buffer);
         
-        // Also signal the SDR input buffer to unblock the reader thread in buffered mode.
         if (r->sdr_input_buffer)
             ring_buffer_signal_shutdown(r->sdr_input_buffer);
     }
