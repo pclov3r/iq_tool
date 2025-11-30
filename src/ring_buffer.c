@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <pthread.h> // Added for Condition Variables
 #include "log.h"
 
 #ifdef _WIN32
@@ -27,6 +28,11 @@ struct RingBuffer {
     
     volatile bool end_of_stream;
     volatile bool shutting_down;
+
+    // Synchronization for Backpressure (Producer Waiting)
+    // These are NOT used by the lock-free writer (SDR hardware thread).
+    pthread_mutex_t sync_mutex;
+    pthread_cond_t space_free_cond;
 };
 
 RingBuffer* ring_buffer_create(size_t capacity) {
@@ -49,17 +55,24 @@ RingBuffer* ring_buffer_create(size_t capacity) {
     iob->end_of_stream = false;
     iob->shutting_down = false;
 
-    log_debug("I/O buffer created with %zu bytes capacity (Lock-Free Writer / Blocking Reader).", capacity);
+    // Initialize sync primitives for backpressure
+    pthread_mutex_init(&iob->sync_mutex, NULL);
+    pthread_cond_init(&iob->space_free_cond, NULL);
+
+    log_debug("I/O buffer created with %zu bytes capacity (Lock-Free Writer / Cond-Var Backpressure).", capacity);
     return iob;
 }
 
 void ring_buffer_destroy(RingBuffer* iob) {
     if (!iob) return;
+    pthread_mutex_destroy(&iob->sync_mutex);
+    pthread_cond_destroy(&iob->space_free_cond);
     free(iob->buffer);
     free(iob);
 }
 
 // PRODUCER: High Priority, Lock-Free, Never Sleeps
+// Note: This function remains untouched by mutexes/cond-vars to ensure SDR safety.
 size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes) {
     if (!iob || !data || bytes == 0) return 0;
 
@@ -124,7 +137,6 @@ size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes) {
         }
 
         // Buffer empty, but stream alive. Sleep briefly to yield CPU.
-        // This replaces the Condition Variable wait.
         SLEEP_MS(1); 
     }
 
@@ -149,17 +161,42 @@ size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes) {
     // 5. Update Read Index
     iob->read_pos = (r + bytes_to_read) % cap;
 
+    // 6. Signal Backpressure
+    // We freed up space. Wake up any waiting producers (File Readers).
+    pthread_mutex_lock(&iob->sync_mutex);
+    pthread_cond_broadcast(&iob->space_free_cond);
+    pthread_mutex_unlock(&iob->sync_mutex);
+
     return bytes_to_read;
+}
+
+// BACKPRESSURE WAIT: Used by File Readers (Producers)
+void ring_buffer_wait_for_threshold(RingBuffer* iob, size_t target_size) {
+    if (!iob) return;
+
+    pthread_mutex_lock(&iob->sync_mutex);
+    // While buffer is too full, wait for Consumer to signal space freed.
+    while (!iob->shutting_down && ring_buffer_get_size(iob) > target_size) {
+        pthread_cond_wait(&iob->space_free_cond, &iob->sync_mutex);
+    }
+    pthread_mutex_unlock(&iob->sync_mutex);
 }
 
 void ring_buffer_signal_end_of_stream(RingBuffer* iob) {
     if (!iob) return;
     iob->end_of_stream = true;
+    // Wake up any backpressure waiters so they can exit/finish
+    pthread_mutex_lock(&iob->sync_mutex);
+    pthread_cond_broadcast(&iob->space_free_cond);
+    pthread_mutex_unlock(&iob->sync_mutex);
 }
 
 void ring_buffer_signal_shutdown(RingBuffer* iob) {
     if (!iob) return;
     iob->shutting_down = true;
+    pthread_mutex_lock(&iob->sync_mutex);
+    pthread_cond_broadcast(&iob->space_free_cond);
+    pthread_mutex_unlock(&iob->sync_mutex);
 }
 
 size_t ring_buffer_get_size(RingBuffer* iob) {

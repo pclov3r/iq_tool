@@ -44,6 +44,17 @@ size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes);
 size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes);
 
 /**
+ * @brief Blocks the calling thread until the buffer usage drops below a target.
+ * 
+ * This is used for BACKPRESSURE (e.g. File Readers). It sleeps efficiently
+ * on a condition variable until the Consumer clears enough space.
+ * 
+ * @param iob The I/O buffer.
+ * @param target_size The size (in bytes) to wait for. Returns when current_size <= target_size.
+ */
+void ring_buffer_wait_for_threshold(RingBuffer* iob, size_t target_size);
+
+/**
  * @brief Signals that no more data will be written to the buffer.
  */
 void ring_buffer_signal_end_of_stream(RingBuffer* iob);

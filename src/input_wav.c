@@ -644,17 +644,9 @@ static void* wav_start_stream(ModuleContext* ctx) {
     const size_t writer_buffer_threshold = (size_t)(writer_buffer_capacity * IO_WRITER_BUFFER_HIGH_WATER_MARK);
 
     while (!is_shutdown_requested() && !resources->error_occurred) {
-        // --- START: Back-pressure Pacing Logic ---
         if (pacing_required && (ring_buffer_get_size(resources->writer_input_buffer) > writer_buffer_threshold)) {
-            // The writer is falling behind. Pause briefly to let it catch up.
-            #ifdef _WIN32
-                Sleep(10); // 10 ms
-            #else
-                usleep(10000); // 10 ms
-            #endif
-            continue; // Re-evaluate the buffer state in the next loop iteration.
+            ring_buffer_wait_for_threshold(resources->writer_input_buffer, writer_buffer_threshold);
         }
-        // --- END: Back-pressure Pacing Logic ---
 
         SampleChunk *current_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
         if (!current_item) {
