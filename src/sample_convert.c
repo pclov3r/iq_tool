@@ -395,7 +395,7 @@ bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* r
 
 // --- Interleaving Helpers Implementation ---
 
-#define DEFINE_INTERLEAVE_HELPER(type_name, type) \
+#define DEFINE_IQ_INTERLEAVER(type_name, type) \
 void sample_convert_interleave_##type_name( \
     const type* restrict i_plane, \
     const type* restrict q_plane, \
@@ -408,7 +408,7 @@ void sample_convert_interleave_##type_name( \
     } \
 }
 
-DEFINE_INTERLEAVE_HELPER(s8, int8_t)
-DEFINE_INTERLEAVE_HELPER(u8, uint8_t)
-DEFINE_INTERLEAVE_HELPER(s16, int16_t)
-DEFINE_INTERLEAVE_HELPER(u16, uint16_t)
+DEFINE_IQ_INTERLEAVER(s8, int8_t)
+DEFINE_IQ_INTERLEAVER(u8, uint8_t)
+DEFINE_IQ_INTERLEAVER(s16, int16_t)
+DEFINE_IQ_INTERLEAVER(u16, uint16_t)
