@@ -31,6 +31,8 @@
 #include <math.h>
 #include <limits.h>
 #include <assert.h> // Added for robust error checking in debug builds
+#include <stddef.h> // For size_t
+#include <stdint.h> // For int8_t, uint8_t, etc.
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -393,30 +395,20 @@ bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* r
 
 // --- Interleaving Helpers Implementation ---
 
-void sample_convert_interleave_s8(const int8_t* restrict i_plane, const int8_t* restrict q_plane, int8_t* restrict interleaved_out, size_t num_samples) {
-    for (size_t k = 0; k < num_samples; k++) {
-        interleaved_out[k * 2]     = i_plane[k];
-        interleaved_out[k * 2 + 1] = q_plane[k];
-    }
+#define DEFINE_INTERLEAVE_HELPER(type_name, type) \
+void sample_convert_interleave_##type_name( \
+    const type* restrict i_plane, \
+    const type* restrict q_plane, \
+    type* restrict interleaved_out, \
+    size_t num_samples) \
+{ \
+    for (size_t k = 0; k < num_samples; k++) { \
+        interleaved_out[k * 2]     = i_plane[k]; \
+        interleaved_out[k * 2 + 1] = q_plane[k]; \
+    } \
 }
 
-void sample_convert_interleave_u8(const uint8_t* restrict i_plane, const uint8_t* restrict q_plane, uint8_t* restrict interleaved_out, size_t num_samples) {
-    for (size_t k = 0; k < num_samples; k++) {
-        interleaved_out[k * 2]     = i_plane[k];
-        interleaved_out[k * 2 + 1] = q_plane[k];
-    }
-}
-
-void sample_convert_interleave_s16(const int16_t* restrict i_plane, const int16_t* restrict q_plane, int16_t* restrict interleaved_out, size_t num_samples) {
-    for (size_t k = 0; k < num_samples; k++) {
-        interleaved_out[k * 2]     = i_plane[k];
-        interleaved_out[k * 2 + 1] = q_plane[k];
-    }
-}
-
-void sample_convert_interleave_u16(const uint16_t* restrict i_plane, const uint16_t* restrict q_plane, uint16_t* restrict interleaved_out, size_t num_samples) {
-    for (size_t k = 0; k < num_samples; k++) {
-        interleaved_out[k * 2]     = i_plane[k];
-        interleaved_out[k * 2 + 1] = q_plane[k];
-    }
-}
+DEFINE_INTERLEAVE_HELPER(s8, int8_t)
+DEFINE_INTERLEAVE_HELPER(u8, uint8_t)
+DEFINE_INTERLEAVE_HELPER(s16, int16_t)
+DEFINE_INTERLEAVE_HELPER(u16, uint16_t)
