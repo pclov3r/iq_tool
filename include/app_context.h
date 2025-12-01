@@ -241,6 +241,7 @@ typedef struct AppResources {
     // --- Dynamic Pipeline Sizing ---
     size_t          pipeline_alloc_size_samples; // Max samples per chunk (for malloc)
     size_t          pipeline_read_chunk_size;    // Size requested by the reader (Input)
+    size_t          pipeline_num_chunks;         // Total number of chunks in the pool (calculated at runtime)
 
     // --- DSP Objects ---
     resampler_t*    resampler;

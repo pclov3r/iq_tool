@@ -160,42 +160,46 @@ static bool _init_queues_and_buffers(AppConfig* config, AppResources* resources)
     MemoryArena* arena = &resources->setup_arena;
     Queue* last_output_queue = NULL;
 
+    // CRITICAL: Use the dynamically calculated chunk count for queue sizing
+    size_t queue_capacity = resources->pipeline_num_chunks;
+
     resources->reader_output_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
-    if (!resources->reader_output_queue || !queue_init(resources->reader_output_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
+    if (!resources->reader_output_queue || !queue_init(resources->reader_output_queue, queue_capacity, arena)) return false;
     last_output_queue = resources->reader_output_queue;
 
     if (!config->dsp.raw_passthrough) {
         resources->pre_processor_input_queue = last_output_queue;
         resources->pre_processor_output_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
-        if (!resources->pre_processor_output_queue || !queue_init(resources->pre_processor_output_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
+        if (!resources->pre_processor_output_queue || !queue_init(resources->pre_processor_output_queue, queue_capacity, arena)) return false;
         last_output_queue = resources->pre_processor_output_queue;
     }
 
     if (!config->dsp.raw_passthrough && !config->dsp.no_resample) {
         resources->resampler_input_queue = last_output_queue;
         resources->resampler_output_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
-        if (!resources->resampler_output_queue || !queue_init(resources->resampler_output_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
+        if (!resources->resampler_output_queue || !queue_init(resources->resampler_output_queue, queue_capacity, arena)) return false;
         last_output_queue = resources->resampler_output_queue;
     }
 
     if (!config->dsp.raw_passthrough) {
         resources->post_processor_input_queue = last_output_queue;
         resources->post_processor_output_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
-        if (!resources->post_processor_output_queue || !queue_init(resources->post_processor_output_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
+        if (!resources->post_processor_output_queue || !queue_init(resources->post_processor_output_queue, queue_capacity, arena)) return false;
         last_output_queue = resources->post_processor_output_queue;
     }
 
     resources->writer_input_queue = last_output_queue;
 
     resources->free_sample_chunk_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
-    if (!queue_init(resources->free_sample_chunk_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
+    if (!queue_init(resources->free_sample_chunk_queue, queue_capacity, arena)) return false;
 
     if (config->dsp.iq_correction.enable) {
         resources->iq_optimization_data_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
-        if (!queue_init(resources->iq_optimization_data_queue, PIPELINE_NUM_CHUNKS, arena)) return false;
+        if (!queue_init(resources->iq_optimization_data_queue, queue_capacity, arena)) return false;
     }
 
-    for (size_t i = 0; i < PIPELINE_NUM_CHUNKS; ++i) {
+    // Populate the free queue with the pre-allocated chunks
+    for (size_t i = 0; i < resources->pipeline_num_chunks; ++i) {
         if (!queue_enqueue(resources->free_sample_chunk_queue, &resources->sample_chunk_pool[i])) {
             log_fatal("Failed to initially populate free item queue.");
             return false;

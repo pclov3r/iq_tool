@@ -101,13 +101,26 @@
 #define PIPELINE_MIN_READ_SAMPLES 256
 
 /**
- * @def PIPELINE_NUM_CHUNKS
- * @brief The number of "work trays" (SampleChunks) in the processing pipeline.
+ * @def PIPELINE_TARGET_BUFFER_DURATION_SEC
+ * @brief Target amount of time to buffer inside the processing chain.
  *
- * Purpose: Defines the depth of the pipeline. More chunks increase latency but
- * improve throughput stability.
+ * Instead of a hardcoded number of chunks, we calculate the depth dynamically
+ * to ensure we have enough buffer to survive disk stalls (e.g. 2 seconds).
  */
-#define PIPELINE_NUM_CHUNKS 512
+#define PIPELINE_TARGET_BUFFER_DURATION_SEC 2.0f
+
+/**
+ * @def PIPELINE_MIN_CHUNKS
+ * @brief Minimum number of chunks in the pipeline (Sanity Floor).
+ */
+#define PIPELINE_MIN_CHUNKS 64
+
+/**
+ * @def PIPELINE_MAX_CHUNKS
+ * @brief Maximum number of chunks in the pipeline (Sanity Ceiling).
+ * Prevents excessive RAM usage on very low sample rate signals.
+ */
+#define PIPELINE_MAX_CHUNKS 16384
 
 /**
  * @def RESAMPLER_OUTPUT_SAFETY_MARGIN

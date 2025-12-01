@@ -59,7 +59,7 @@ RingBuffer* ring_buffer_create(size_t capacity) {
     pthread_mutex_init(&iob->sync_mutex, NULL);
     pthread_cond_init(&iob->space_free_cond, NULL);
 
-    log_debug("I/O buffer created with %zu bytes capacity (Lock-Free Writer / Cond-Var Backpressure).", capacity);
+    log_info("I/O buffer created with %zu bytes capacity.", capacity);
     return iob;
 }
 

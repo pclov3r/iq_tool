@@ -232,12 +232,6 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     resources->pipeline_read_chunk_size = calculated_input_samples;
     resources->pipeline_alloc_size_samples = sample_allocation_count;
 
-    log_debug("Pipeline Sizing: Read Request=%zu samples, Alloc Capacity=%zu samples (Target=%zu, Ratio=%.4f)", 
-              resources->pipeline_read_chunk_size, 
-              resources->pipeline_alloc_size_samples,
-              target_block_samples, 
-              resample_ratio);
-
     // 3. FFT Limit Safety Check
     if (resources->pipeline_alloc_size_samples > MAX_ALLOWED_FFT_BLOCK_SIZE) {
         log_fatal("Calculated pipeline buffer size (%zu) exceeds maximum allowed FFT size (%d).", 
@@ -247,6 +241,37 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
 
     // Update legacy field used by some filters
     resources->max_out_samples = (unsigned int)resources->pipeline_alloc_size_samples;
+
+    // -------------------------------------------------------------------------
+    // 4. Calculate Dynamic Pipeline Depth ("Trays")
+    // -------------------------------------------------------------------------
+    double input_rate = (double)resources->source_info.samplerate;
+
+    // FAIL FAST: If the input rate is unknown or invalid, we cannot safely configure the pipeline.
+    if (input_rate <= 0.0) {
+        log_fatal("Internal Error: Input sample rate is invalid (%.0f Hz). Cannot calculate buffer depth.", input_rate);
+        log_fatal("Please check the input source configuration.");
+        return false;
+    }
+
+    // How much time does one chunk represent?
+    double seconds_per_chunk = (double)resources->pipeline_read_chunk_size / input_rate;
+
+    // How many chunks do we need to hit the target duration?
+    size_t calculated_chunks = (size_t)(PIPELINE_TARGET_BUFFER_DURATION_SEC / seconds_per_chunk);
+
+    // Apply Sanity Clamps
+    if (calculated_chunks < PIPELINE_MIN_CHUNKS) calculated_chunks = PIPELINE_MIN_CHUNKS;
+    if (calculated_chunks > PIPELINE_MAX_CHUNKS) calculated_chunks = PIPELINE_MAX_CHUNKS;
+
+    resources->pipeline_num_chunks = calculated_chunks;
+
+    log_info("Pipeline Sizing: Read=%zu samples, Alloc=%zu samples, Depth=%zu chunks (%.2f sec buffer at %.0f Hz)", 
+              resources->pipeline_read_chunk_size,
+              resources->pipeline_alloc_size_samples,
+              resources->pipeline_num_chunks,
+              resources->pipeline_num_chunks * seconds_per_chunk,
+              input_rate);
 
     // --- MEMORY ALLOCATION WITH ALIGNMENT ---
 
@@ -265,7 +290,8 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     size_t total_bytes_per_chunk = raw_stride + (complex_stride * 2) + final_stride;
 
     // Allocate the Big Pool using OS-specific aligned allocation
-    size_t pool_total_size = PIPELINE_NUM_CHUNKS * total_bytes_per_chunk;
+    // CRITICAL: We now use the dynamically calculated pipeline_num_chunks
+    size_t pool_total_size = resources->pipeline_num_chunks * total_bytes_per_chunk;
 
 #ifdef _WIN32
     resources->pipeline_chunk_data_pool = _aligned_malloc(pool_total_size, MEM_ARENA_ALIGNMENT);
@@ -283,11 +309,11 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     }
 
     // Allocate metadata structures from the Arena (small objects)
-    resources->sample_chunk_pool = (SampleChunk*)mem_arena_alloc(&resources->setup_arena, PIPELINE_NUM_CHUNKS * sizeof(SampleChunk), true);
+    resources->sample_chunk_pool = (SampleChunk*)mem_arena_alloc(&resources->setup_arena, resources->pipeline_num_chunks * sizeof(SampleChunk), true);
     if (!resources->sample_chunk_pool) return false;
 
     // Assign pointers within the monolithic pool
-    for (size_t i = 0; i < PIPELINE_NUM_CHUNKS; ++i) {
+    for (size_t i = 0; i < resources->pipeline_num_chunks; ++i) {
         SampleChunk* item = &resources->sample_chunk_pool[i];
         char* chunk_base = (char*)resources->pipeline_chunk_data_pool + (i * total_bytes_per_chunk);
 
