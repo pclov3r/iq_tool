@@ -126,7 +126,7 @@
  * @def RESAMPLER_OUTPUT_SAFETY_MARGIN
  * @brief A safety margin for the resampler's output buffer calculation.
  */
-#define RESAMPLER_OUTPUT_SAFETY_MARGIN  256
+#define RESAMPLER_OUTPUT_SAFETY_MARGIN  384
 
 // =============================================================================
 // == Tier 3: DSP Algorithm Quality & Tuning
