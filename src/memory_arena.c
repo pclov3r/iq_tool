@@ -21,7 +21,7 @@ bool mem_arena_init(MemoryArena* arena, size_t capacity) {
     if (!arena) return false;
 
     if (capacity == 0) {
-        log_fatal("Memory arena initialized with zero capacity.");
+        log_fatal("Cannot initialize memory arena with zero capacity.");
         return false;
     }
 
@@ -31,8 +31,8 @@ bool mem_arena_init(MemoryArena* arena, size_t capacity) {
 #else
     // POSIX: Use posix_memalign to ensure MEM_ARENA_ALIGNMENT
     void* ptr = NULL;
-    int ret = posix_memalign(&ptr, MEM_ARENA_ALIGNMENT, capacity);
-    if (ret == 0) {
+    int alloc_ret = posix_memalign(&ptr, MEM_ARENA_ALIGNMENT, capacity);
+    if (alloc_ret == 0) {
         arena->memory = ptr;
     } else {
         arena->memory = NULL;
@@ -93,7 +93,7 @@ void* mem_arena_alloc(MemoryArena* arena, size_t size, bool zero_memory) {
 
     void* ptr = (char*)arena->memory + arena->offset;
     arena->offset += aligned_size;
-
+    
     pthread_mutex_unlock(&arena->mutex);
 
     // FIX: Make zero-initialization optional for performance.
