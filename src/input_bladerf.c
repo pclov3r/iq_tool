@@ -148,7 +148,7 @@ static struct {
     int channel;
     int gain;
     bool gain_provided;
-    long bladerf_gain_arg;
+    int bladerf_gain_arg;
     uint32_t bandwidth_hz;
     bool bandwidth_provided;
     float bladerf_bandwidth_hz_arg;

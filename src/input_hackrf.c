@@ -36,10 +36,10 @@ extern pthread_mutex_t g_console_mutex;
 static struct {
     uint32_t lna_gain;
     bool lna_gain_provided;
-    long hackrf_lna_gain_arg;
+    int hackrf_lna_gain_arg;
     uint32_t vga_gain;
     bool vga_gain_provided;
-    long hackrf_vga_gain_arg;
+    int hackrf_vga_gain_arg;
     bool amp_enable;
 } s_hackrf_config;
 
@@ -106,7 +106,7 @@ static bool hackrf_validate_generic_options(const AppConfig* config) {
 
 static bool hackrf_validate_options(AppConfig* config) {
     if (s_hackrf_config.hackrf_lna_gain_arg != HACKRF_DEFAULT_LNA_GAIN) {
-        long lna_gain = s_hackrf_config.hackrf_lna_gain_arg;
+        int lna_gain = s_hackrf_config.hackrf_lna_gain_arg;
         if (lna_gain < 0 || lna_gain > 40 || (lna_gain % 8 != 0)) {
             log_fatal("Invalid LNA gain %ld dB. Must be 0-40 in 8 dB steps.", lna_gain);
             return false;
@@ -116,7 +116,7 @@ static bool hackrf_validate_options(AppConfig* config) {
     }
 
     if (s_hackrf_config.hackrf_vga_gain_arg != HACKRF_DEFAULT_VGA_GAIN) {
-        long vga_gain = s_hackrf_config.hackrf_vga_gain_arg;
+        int vga_gain = s_hackrf_config.hackrf_vga_gain_arg;
         if (vga_gain < 0 || vga_gain > 62 || (vga_gain % 2 != 0)) {
             log_fatal("Invalid VGA gain %ld dB. Must be 0-62 in 2 dB steps.", vga_gain);
             return false;
