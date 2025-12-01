@@ -7,6 +7,10 @@
 #include <string.h>
 #include <errno.h>
 
+#ifdef _WIN32
+#include <malloc.h> // For _aligned_malloc and _aligned_free
+#endif
+
 /**
  * @brief Initializes a memory arena with a specified capacity.
  * @param arena Pointer to the MemoryArena struct to initialize.
@@ -16,28 +20,42 @@
 bool mem_arena_init(MemoryArena* arena, size_t capacity) {
     if (!arena) return false;
 
-    // FIX: Handle malloc(0) edge case gracefully.
     if (capacity == 0) {
-        log_warn("Initializing memory arena with zero capacity.");
-        arena->memory = NULL;
-        arena->capacity = 0;
-        arena->offset = 0;
-    } else {
-        arena->memory = malloc(capacity);
-        if (!arena->memory) {
-            log_fatal("Failed to allocate memory for setup arena (%zu bytes).", capacity);
-            return false;
-        }
-        arena->capacity = capacity;
-        arena->offset = 0;
+        log_fatal("Memory arena initialized with zero capacity.");
+        return false;
     }
+
+#ifdef _WIN32
+    // Windows: Use _aligned_malloc to ensure MEM_ARENA_ALIGNMENT
+    arena->memory = _aligned_malloc(capacity, MEM_ARENA_ALIGNMENT);
+#else
+    // POSIX: Use posix_memalign to ensure MEM_ARENA_ALIGNMENT
+    void* ptr = NULL;
+    int ret = posix_memalign(&ptr, MEM_ARENA_ALIGNMENT, capacity);
+    if (ret == 0) {
+        arena->memory = ptr;
+    } else {
+        arena->memory = NULL;
+    }
+#endif
+
+    if (!arena->memory) {
+        log_fatal("Failed to allocate memory for setup arena (%zu bytes).", capacity);
+        return false;
+    }
+    arena->capacity = capacity;
+    arena->offset = 0;
 
     // Initialize the mutex
     int ret = pthread_mutex_init(&arena->mutex, NULL);
     if (ret != 0) {
         log_fatal("Failed to initialize memory arena mutex: %s", strerror(ret));
         if (arena->memory) {
+#ifdef _WIN32
+            _aligned_free(arena->memory);
+#else
             free(arena->memory);
+#endif
             arena->memory = NULL;
         }
         return false;
@@ -75,7 +93,7 @@ void* mem_arena_alloc(MemoryArena* arena, size_t size, bool zero_memory) {
 
     void* ptr = (char*)arena->memory + arena->offset;
     arena->offset += aligned_size;
-    
+
     pthread_mutex_unlock(&arena->mutex);
 
     // FIX: Make zero-initialization optional for performance.
@@ -93,7 +111,11 @@ void mem_arena_destroy(MemoryArena* arena) {
     if (arena) {
         pthread_mutex_destroy(&arena->mutex);
         if (arena->memory) {
+#ifdef _WIN32
+            _aligned_free(arena->memory);
+#else
             free(arena->memory);
+#endif
             arena->memory = NULL;
         }
         arena->capacity = 0;
