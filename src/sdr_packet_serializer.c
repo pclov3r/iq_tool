@@ -8,20 +8,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define IQPK_MAGIC 0x4B505149
-
-#pragma pack(push, 1)
-typedef struct {
-    uint32_t magic;
-    uint32_t num_samples;
-    uint8_t  flags;
-    uint8_t  format_id;
-} SdrInputChunkHeader;
-#pragma pack(pop)
-
-#define SDR_CHUNK_FLAG_INTERLEAVED  (1 << 0)
-#define SDR_CHUNK_FLAG_STREAM_RESET (1 << 1)
-
 // --- INTERNAL HELPER ---
 static bool _has_space_for(RingBuffer* buffer, size_t bytes_needed) {
     size_t cap = ring_buffer_get_capacity(buffer);
@@ -46,30 +32,14 @@ bool sdr_packet_serializer_write_block(RingBuffer* buffer, uint32_t num_samples,
     SdrInputChunkHeader header;
     header.magic = IQPK_MAGIC;
     header.num_samples = num_samples;
-    header.flags = SDR_CHUNK_FLAG_INTERLEAVED;
+    header.flags = 0; // Data is implicitly interleaved now
     header.format_id = (uint8_t)format;
+
+    // Ensure padding bytes are zeroed for deterministic behavior and future compatibility
+    memset(header.reserved, 0, sizeof(header.reserved));
 
     ring_buffer_write(buffer, &header, sizeof(header));
     ring_buffer_write(buffer, sample_data, data_size);
-
-    return true;
-}
-
-bool sdr_packet_serializer_write_deinterleaved_chunk(RingBuffer* buffer, uint32_t num_samples, const short* i_data, const short* q_data, format_t format) {
-    size_t bytes_per_plane = num_samples * sizeof(short);
-    size_t total_needed = sizeof(SdrInputChunkHeader) + (bytes_per_plane * 2);
-
-    if (!_has_space_for(buffer, total_needed)) return false;
-
-    SdrInputChunkHeader header;
-    header.magic = IQPK_MAGIC;
-    header.num_samples = num_samples;
-    header.flags = 0; 
-    header.format_id = (uint8_t)format;
-    
-    ring_buffer_write(buffer, &header, sizeof(header));
-    ring_buffer_write(buffer, i_data, bytes_per_plane);
-    ring_buffer_write(buffer, q_data, bytes_per_plane);
 
     return true;
 }
@@ -82,6 +52,9 @@ bool sdr_packet_serializer_write_reset_event(RingBuffer* buffer) {
     header.num_samples = 0;
     header.flags = SDR_CHUNK_FLAG_STREAM_RESET;
     header.format_id = (uint8_t)FORMAT_UNKNOWN;
+
+    // Ensure padding bytes are zeroed
+    memset(header.reserved, 0, sizeof(header.reserved));
 
     ring_buffer_write(buffer, &header, sizeof(header));
     return true;
@@ -96,11 +69,11 @@ int64_t sdr_packet_serializer_read_packet(RingBuffer* buffer,
                                           size_t request_size_samples) 
 {
     *is_reset_event = false;
-    
+
     // 1. Fetch Header if needed
     if (state->samples_remaining_in_packet == 0) {
         uint32_t current_word = 0;
-        
+
         // Sync Loop: Find the Magic Number
         while (true) {
             size_t bytes_read = ring_buffer_read(buffer, &current_word, sizeof(uint32_t));
@@ -117,9 +90,11 @@ int64_t sdr_packet_serializer_read_packet(RingBuffer* buffer,
         }
 
         // Read rest of header
+        // Note: sizeof(SdrInputChunkHeader) now includes the 16-byte padding defined in the header.
         SdrInputChunkHeader header;
         header.magic = current_word;
         size_t rest_size = sizeof(SdrInputChunkHeader) - sizeof(uint32_t);
+
         if (ring_buffer_read(buffer, ((char*)&header) + sizeof(uint32_t), rest_size) < rest_size) return -1;
 
         if (header.flags & SDR_CHUNK_FLAG_STREAM_RESET) {
