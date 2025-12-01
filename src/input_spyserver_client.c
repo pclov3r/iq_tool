@@ -570,8 +570,27 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
 
     if (!send_setting(p, SPYSERVER_SETTING_STREAMING_MODE, SPYSERVER_STREAM_MODE_IQ_ONLY)) return false;
 
-    // --- CHANGED: Use the MAX_BUFFER_BYTES constant ---
-    p->stream_buffer = ring_buffer_create(SPYSERVER_MAX_BUFFER_BYTES);
+    // -------------------------------------------------------------------------
+    // NEW: Dynamic Ring Buffer Sizing
+    // -------------------------------------------------------------------------
+    double bytes_per_sec = (double)actual_rate * (double)resources->input_bytes_per_sample_pair;
+
+    // Calculate total capacity based on the pre-buffer target and the headroom factor.
+    // e.g. 2.5s * 4.0 = 10.0s of total capacity.
+    size_t desired_buffer_size = (size_t)(bytes_per_sec * SPYSERVER_PREBUFFER_TARGET_SECONDS * SPYSERVER_BUFFER_HEADROOM_FACTOR);
+
+    // Sanity Clamp: Minimum 1MB
+    if (desired_buffer_size < SPYSERVER_RING_BUFFER_MIN_BYTES) desired_buffer_size = SPYSERVER_RING_BUFFER_MIN_BYTES;
+
+    // Hard Ceiling: Never exceed the absolute max defined in constants.h
+    if (desired_buffer_size > SPYSERVER_MAX_BUFFER_BYTES) desired_buffer_size = SPYSERVER_MAX_BUFFER_BYTES;
+
+    log_info("SpyServer Ring Buffer: Allocating %zu bytes (%.2f sec capacity) for %.2f sec pre-buffer target.", 
+             desired_buffer_size,
+             (double)desired_buffer_size / bytes_per_sec,
+             SPYSERVER_PREBUFFER_TARGET_SECONDS);
+
+    p->stream_buffer = ring_buffer_create(desired_buffer_size);
     if (!p->stream_buffer) {
         networking_disconnect(p->net_ctx);
         networking_cleanup_module();
