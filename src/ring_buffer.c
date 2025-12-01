@@ -1,21 +1,10 @@
 #include "ring_buffer.h"
+#include "platform.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include <pthread.h> // Added for Condition Variables
 #include "log.h"
-
-#ifdef _WIN32
-    #include <windows.h>
-    #define MEMORY_BARRIER() MemoryBarrier()
-    #define SLEEP_MS(x) Sleep(x)
-#elif defined(__GNUC__) || defined(__clang__)
-    #include <unistd.h>
-    #define MEMORY_BARRIER() __sync_synchronize()
-    #define SLEEP_MS(x) usleep((x) * 1000)
-#else
-    #error "Compiler not supported for lock-free ring buffer."
-#endif
 
 struct RingBuffer {
     unsigned char* buffer;

@@ -7,6 +7,16 @@
 #ifdef _WIN32
 // Includes required for Windows-specific function signatures below
 #include <windows.h>
+// Windows implementation
+#define MEMORY_BARRIER() MemoryBarrier()
+#define SLEEP_MS(x) Sleep(x)
+#elif defined(__GNUC__) || defined(__clang__)
+#include <unistd.h>
+// GCC/Clang (Linux/macOS) implementation
+#define MEMORY_BARRIER() __sync_synchronize()
+#define SLEEP_MS(x) usleep((x) * 1000)
+#else
+#error "Compiler not supported for lock-free primitives."
 #endif
 
 // --- Thread Priority Abstraction ---
