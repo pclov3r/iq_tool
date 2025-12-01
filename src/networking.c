@@ -9,6 +9,7 @@
  */
 
 #include "networking.h"
+#include "constants.h" // Added for NETWORK_SOCKET_TIMEOUT_MS
 #include "log.h"
 #include "memory_arena.h"
 #include <stdlib.h>
@@ -26,6 +27,7 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/time.h> // Added for struct timeval
 #endif
 
 // --- Private State ---
@@ -126,6 +128,13 @@ NetworkingContext* networking_connect(const char* hostname, int port, struct Mem
         ctx->socket_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
 #ifdef _WIN32
         if (ctx->socket_fd == INVALID_SOCKET) continue;
+
+        // --- Apply Timeouts (Windows) ---
+        // Windows setsockopt takes DWORD in milliseconds.
+        DWORD timeout = NETWORK_SOCKET_TIMEOUT_MS;
+        setsockopt(ctx->socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
+        setsockopt(ctx->socket_fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout));
+
         if (connect(ctx->socket_fd, p->ai_addr, (int)p->ai_addrlen) == SOCKET_ERROR) {
             closesocket(ctx->socket_fd);
             ctx->socket_fd = INVALID_SOCKET;
@@ -133,6 +142,15 @@ NetworkingContext* networking_connect(const char* hostname, int port, struct Mem
         }
 #else
         if (ctx->socket_fd < 0) continue;
+
+        // --- Apply Timeouts (POSIX) ---
+        // POSIX setsockopt takes struct timeval (seconds + microseconds).
+        struct timeval timeout;
+        timeout.tv_sec = NETWORK_SOCKET_TIMEOUT_MS / 1000;
+        timeout.tv_usec = (NETWORK_SOCKET_TIMEOUT_MS % 1000) * 1000;
+        setsockopt(ctx->socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        setsockopt(ctx->socket_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+
         if (connect(ctx->socket_fd, p->ai_addr, p->ai_addrlen) < 0) {
             close(ctx->socket_fd);
             ctx->socket_fd = -1;
@@ -182,7 +200,18 @@ bool networking_send_all(NetworkingContext* ctx, const void* data, size_t len) {
     while (total_sent < len) {
         int sent = send(ctx->socket_fd, (const char*)data + total_sent, (int)(len - total_sent), 0);
         if (sent <= 0) {
-            log_error("Failed to send data to remote host.");
+#ifdef _WIN32
+            if (sent < 0 && WSAGetLastError() == WSAETIMEDOUT) {
+                log_error("Network send timed out.");
+            } else
+#else
+            if (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                log_error("Network send timed out.");
+            } else
+#endif
+            {
+                log_error("Failed to send data to remote host.");
+            }
             return false;
         }
         total_sent += sent;
@@ -196,9 +225,18 @@ bool networking_recv_all(NetworkingContext* ctx, void* data, size_t len) {
     while (total_recv < len) {
         int recvd = recv(ctx->socket_fd, (char*)data + total_recv, (int)(len - total_recv), 0);
         if (recvd <= 0) {
-            // recv returns 0 for a clean disconnect, which we treat as an error
-            // since the caller was expecting to receive a specific number of bytes.
-            log_error("Failed to receive data from remote host (connection closed or error).");
+#ifdef _WIN32
+            if (recvd < 0 && WSAGetLastError() == WSAETIMEDOUT) {
+                log_error("Network receive timed out.");
+            } else
+#else
+            if (recvd < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                log_error("Network receive timed out.");
+            } else
+#endif
+            {
+                log_error("Failed to receive data from remote host (connection closed or error).");
+            }
             return false;
         }
         total_recv += recvd;

@@ -309,4 +309,13 @@
 // watchdog triggers a shutdown. This must be longer than any SDR's internal timeouts.
 #define WATCHDOG_TIMEOUT_MS 8000
 
+/**
+ * @def NETWORK_SOCKET_TIMEOUT_MS
+ * @brief The receive/send timeout for network sockets in milliseconds.
+ *
+ * Prevents the reader thread from hanging indefinitely if the server disappears
+ * without closing the TCP connection (half-open socket).
+ */
+#define NETWORK_SOCKET_TIMEOUT_MS 5000
+
 #endif // CONSTANTS_H_
