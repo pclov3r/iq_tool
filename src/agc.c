@@ -140,7 +140,7 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
         bool outlier_detected = false;
         float crest_factor = (block_average > 1e-9f) ? (block_peak / block_average) : 0.0f;
 
-        if (crest_factor > AGC_DIGITAL_CREST_FACTOR_THRESHOLD) {
+        if (crest_factor > AGC_DIGITAL_CREST_FACTOR_THRESHOLD || num_samples < 5000) {
             outlier_detected = true;
             
             // PASS 2: Re-calculate average excluding high-energy samples.
@@ -161,6 +161,8 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
             // Target a "Safe Peak" based on the Robust Average.
             reference_level = robust_average * AGC_DIGITAL_ROBUST_AVG_MULTIPLIER; 
             
+            if (reference_level > block_peak) reference_level = block_peak;
+
             skip_safety_check = true;
         }
 

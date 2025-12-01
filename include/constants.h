@@ -195,19 +195,19 @@
 #define AGC_DIGITAL_SLEW_RATE         0.5f
 
 // Startup Transient Detection
-// If Crest Factor (Peak/Average) > 10.0, the block is considered to have a transient.
-#define AGC_DIGITAL_CREST_FACTOR_THRESHOLD 10.0f
+// If Crest Factor (Peak/Average) > 3.0, the block is considered to have a transient.
+#define AGC_DIGITAL_CREST_FACTOR_THRESHOLD 3.0f
 
 // Robust Average Calculation
-// When a transient is detected, we exclude samples > (Average * 3.0).
-#define AGC_DIGITAL_ROBUST_EXCLUSION_FACTOR 3.0f
+// When a transient is detected, we exclude samples > (Average * 1.5).
+#define AGC_DIGITAL_ROBUST_EXCLUSION_FACTOR 1.5f
 
 // Robust Average Multiplier
 // Scales the Robust Average to estimate the effective peak amplitude of the signal body.
-// The value 4.1297f was derived empirically from real-world I/Q recordings containing
-// a significant startup transient. This calibration targets optimal gain for digital
-// modes but may require future refinement to generalize across all signal conditions.
-#define AGC_DIGITAL_ROBUST_AVG_MULTIPLIER   4.1290f
+// The value 2.1904f was derived empirically from real-world I/Q recordings containing
+// a significant startup transient. This calibration attempt to targets optimal gain for
+// digital modes but may require future refinement to generalize across all signal conditions.
+#define AGC_DIGITAL_ROBUST_AVG_MULTIPLIER   2.1904f
 
 // Runtime Safety Clamp
 // We allow peaks to saturate up to 3.0x (300%) before triggering an emergency gain cut.
@@ -257,13 +257,26 @@
 #define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS  32
 #endif // defined(WITH_BLADERF)
 
-#define SPYSERVER_DEFAULT_SAMPLE_RATE_HZ 600000.0       // Default sample rate used during initialization
-#define SPYSERVER_MAX_BUFFER_BYTES (128 * 1024 * 1024)  // Absolute hard limit for the ring buffer size (128 MB)
-#define SPYSERVER_PREBUFFER_TARGET_SECONDS 2.5f         // Start processing only after buffering this much data
-#define SPYSERVER_PREBUFFER_MIN_BYTES 65536             // Minimum data floor required to trigger pre-buffering
-#define SPYSERVER_BUFFER_HEADROOM_FACTOR 4.0f           // Total buffer capacity multiplier relative to target (Safety Margin)
-#define SPYSERVER_RING_BUFFER_MIN_BYTES (1024 * 1024)   // Absolute minimum capacity for the ring buffer (1 MB)
-#define SPYSERVER_PREBUFFER_MAX_FILL_RATIO 0.8f         // Cap pre-buffering at 80% of capacity to prevent immediate overrun
+// Default sample rate used during initialization
+#define SPYSERVER_DEFAULT_SAMPLE_RATE_HZ 600000.0
+
+// Absolute hard limit for the ring buffer size (128 MB)
+#define SPYSERVER_MAX_BUFFER_BYTES (128 * 1024 * 1024)
+
+// Start processing only after buffering this much data
+#define SPYSERVER_PREBUFFER_TARGET_SECONDS 2.5f
+
+// Minimum data floor required to trigger pre-buffering
+#define SPYSERVER_PREBUFFER_MIN_BYTES 65536
+
+// Total buffer capacity multiplier relative to target (Safety Margin)
+#define SPYSERVER_BUFFER_HEADROOM_FACTOR 4.0f
+
+// Absolute minimum capacity for the ring buffer (1 MB)
+#define SPYSERVER_RING_BUFFER_MIN_BYTES (1024 * 1024)
+
+// Cap pre-buffering at 80% of capacity to prevent immediate overrun
+#define SPYSERVER_PREBUFFER_MAX_FILL_RATIO 0.8f
 
 // =============================================================================
 // == Tier 5: Sanity Checks & Hard Limits
