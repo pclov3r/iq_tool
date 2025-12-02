@@ -40,18 +40,14 @@ set(CMAKE_C_EXTENSIONS ON)
 
 set(CPU_TARGET_ARCHITECTURE "native" CACHE STRING "Target CPU arch (-march=...).")
 
-if(MSVC)
-    add_compile_options(/W3)
-    add_compile_definitions(_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE _USE_MATH_DEFINES)
-else()
-    add_compile_options(-Wall -Wextra -pedantic -Wvla -Wsign-compare -Wshadow -Wmissing-prototypes)
-    add_compile_definitions(_GNU_SOURCE)
-    add_compile_options(-fvisibility=hidden)
+# Standard flags for GCC / Clang / MinGW
+add_compile_options(-Wall -Wextra -pedantic -Wvla -Wsign-compare -Wshadow -Wmissing-prototypes)
+add_compile_definitions(_GNU_SOURCE)
+add_compile_options(-fvisibility=hidden)
 
-    set(RELEASE_COMPILE_OPTIONS -O3 -ftree-vectorize)
-    if(NOT CPU_TARGET_ARCHITECTURE STREQUAL "")
-        list(APPEND RELEASE_COMPILE_OPTIONS "-march=${CPU_TARGET_ARCHITECTURE}")
-    endif()
+set(RELEASE_COMPILE_OPTIONS -O3 -ftree-vectorize)
+if(NOT CPU_TARGET_ARCHITECTURE STREQUAL "")
+    list(APPEND RELEASE_COMPILE_OPTIONS "-march=${CPU_TARGET_ARCHITECTURE}")
 endif()
 
 if(MINGW)
@@ -231,17 +227,16 @@ target_compile_definitions(iq_tool PRIVATE GIT_HASH="${VERSION_INFO}")
 target_compile_definitions(iq_tool PRIVATE APP_NAME="${PROJECT_NAME}")
 
 # Apply Compiler Options
-if(NOT MSVC)
-    target_compile_options(iq_tool PRIVATE
-        $<IF:$<CONFIG:Debug>,-ggdb -fsanitize=undefined -fsanitize=address -fno-omit-frame-pointer,>
-        $<IF:$<CONFIG:Release>,${RELEASE_COMPILE_OPTIONS},>
-    )
-    if(CMAKE_BUILD_TYPE STREQUAL "Release")
-        set_source_files_properties(${DSP_SOURCES} PROPERTIES COMPILE_OPTIONS "-ffast-math")
-    endif()
+target_compile_options(iq_tool PRIVATE
+    $<IF:$<CONFIG:Debug>,-ggdb -fsanitize=undefined -fsanitize=address -fno-omit-frame-pointer,>
+    $<IF:$<CONFIG:Release>,${RELEASE_COMPILE_OPTIONS},>
+)
 
-    set_source_files_properties(${NETWORK_SOURCES} PROPERTIES COMPILE_OPTIONS "-fstack-protector-strong;-U_FORTIFY_SOURCE;-D_FORTIFY_SOURCE=2")
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set_source_files_properties(${DSP_SOURCES} PROPERTIES COMPILE_OPTIONS "-ffast-math")
 endif()
+
+set_source_files_properties(${NETWORK_SOURCES} PROPERTIES COMPILE_OPTIONS "-fstack-protector-strong;-U_FORTIFY_SOURCE;-D_FORTIFY_SOURCE=2")
 
 #=======================================================================
 # Linking
