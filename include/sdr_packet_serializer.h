@@ -39,7 +39,7 @@ struct SampleChunk;
 #define IQPK_MAGIC 0x4B505149
 
 /**
- * @brief Flag indicating a stream discontinuity (e.g., buffer overrun). 
+ * @brief Flag indicating a stream discontinuity (e.g., buffer overrun).
  *        Payload length is usually 0 when this is set.
  */
 #define SDR_CHUNK_FLAG_STREAM_RESET (1 << 0)
@@ -48,10 +48,10 @@ struct SampleChunk;
 // --- Data Structures ---
 
 /**
- * @brief The 16-byte packet header placed before every data payload in the ring buffer.
+ * @brief The packet header placed before every data payload in the ring buffer.
  *
- * We use explicit padding to ensure the total size is 16 bytes. This guarantees that
- * the payload immediately following this header starts on a 16-byte aligned boundary
+ * We use explicit padding to ensure the total size is 32 bytes. This guarantees that
+ * the payload immediately following this header starts on a 32-byte aligned boundary
  * (assuming the ring buffer itself is aligned), which is critical for SIMD/AVX performance.
  */
 #pragma pack(push, 1)
@@ -60,7 +60,7 @@ typedef struct {
     uint32_t num_samples;  ///< The number of I/Q pairs in the following payload.
     uint8_t  flags;        ///< Bitmask of stream status flags (e.g. RESET).
     uint8_t  format_id;    ///< The format_t enum value of the sample data.
-    uint8_t  reserved[6];  ///< Padding to reach 16 bytes. Zeroed out.
+    uint8_t  reserved[22];
 } SdrInputChunkHeader;
 #pragma pack(pop)
 
@@ -82,7 +82,7 @@ typedef struct {
 /**
  * @brief Writes a packet of INTERLEAVED samples to the ring buffer.
  *
- * This function creates the 16-byte header and writes it, followed immediately
+ * This function creates the header and writes it, followed immediately
  * by the raw sample data. The operation is atomic: if the buffer cannot hold
  * both the header and the full payload, nothing is written, and false is returned.
  *
@@ -111,14 +111,8 @@ bool sdr_packet_serializer_write_reset_event(struct RingBuffer* buffer);
 /**
  * @brief Reads data from the ring buffer into a SampleChunk.
  *
- * This function acts as a state machine. It handles:
- * 1. Scanning for the Magic Number if synchronization is lost.
- * 2. Reading the Packet Header.
- * 3. Reading the Payload in chunks (defined by `request_size_samples`).
- *
- * It allows the Reader thread to "sip" data from a large hardware packet
- * over multiple processing cycles without needing to copy the entire hardware
- * packet at once.
+ * This function acts as a state machine. It handles reading the Packet Header
+ * and sipping the Payload in chunks.
  *
  * @param buffer The source ring buffer.
  * @param target_chunk The SampleChunk to fill with data. The `packet_sample_format` field will be updated.

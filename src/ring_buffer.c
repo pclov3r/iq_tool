@@ -1,20 +1,25 @@
 #include "ring_buffer.h"
 #include "platform.h"
+#include "constants.h" // Added for MEM_ARENA_ALIGNMENT
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include <pthread.h> // Added for Condition Variables
 #include "log.h"
 
+#ifdef _WIN32
+#include <malloc.h> // Required for _aligned_malloc on Windows
+#endif
+
 struct RingBuffer {
     unsigned char* buffer;
     size_t capacity;
-    
+
     // C99 Lock-Free Implementation:
     // Volatile prevents register caching.
     volatile size_t write_pos;
     volatile size_t read_pos;
-    
+
     volatile bool end_of_stream;
     volatile bool shutting_down;
 
@@ -31,7 +36,18 @@ RingBuffer* ring_buffer_create(size_t capacity) {
         return NULL;
     }
 
-    iob->buffer = (unsigned char*)malloc(capacity);
+    // CHANGED: Use aligned allocation to ensure the buffer base address
+    // matches the SIMD alignment requirements (32 bytes).
+#ifdef _WIN32
+    iob->buffer = (unsigned char*)_aligned_malloc(capacity, MEM_ARENA_ALIGNMENT);
+#else
+    void* ptr = NULL;
+    if (posix_memalign(&ptr, MEM_ARENA_ALIGNMENT, capacity) != 0) {
+        ptr = NULL;
+    }
+    iob->buffer = (unsigned char*)ptr;
+#endif
+
     if (!iob->buffer) {
         log_fatal("Failed to allocate memory for RingBuffer data buffer of size %zu bytes.", capacity);
         free(iob);
@@ -56,7 +72,15 @@ void ring_buffer_destroy(RingBuffer* iob) {
     if (!iob) return;
     pthread_mutex_destroy(&iob->sync_mutex);
     pthread_cond_destroy(&iob->space_free_cond);
-    free(iob->buffer);
+
+    // CHANGED: Use the correct free for aligned memory
+    if (iob->buffer) {
+#ifdef _WIN32
+        _aligned_free(iob->buffer);
+#else
+        free(iob->buffer);
+#endif
+    }
     free(iob);
 }
 

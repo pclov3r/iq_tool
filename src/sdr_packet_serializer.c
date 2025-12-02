@@ -66,36 +66,25 @@ int64_t sdr_packet_serializer_read_packet(RingBuffer* buffer,
                                           SampleChunk* target_chunk,
                                           SerializerState* state,
                                           bool* is_reset_event,
-                                          size_t request_size_samples) 
+                                          size_t request_size_samples)
 {
     *is_reset_event = false;
 
     // 1. Fetch Header if needed
     if (state->samples_remaining_in_packet == 0) {
-        uint32_t current_word = 0;
-
-        // Sync Loop: Find the Magic Number
-        while (true) {
-            size_t bytes_read = ring_buffer_read(buffer, &current_word, sizeof(uint32_t));
-            if (bytes_read == 0) return 0; // EOS
-            if (bytes_read < sizeof(uint32_t)) return -1; // Error
-
-            if (current_word == IQPK_MAGIC) break; // Found it
-
-            // Shift 1 byte and retry (sliding window)
-            unsigned char byte;
-            current_word = (current_word >> 8);
-            if (ring_buffer_read(buffer, &byte, 1) < 1) return 0;
-            current_word |= ((uint32_t)byte << 24);
-        }
-
-        // Read rest of header
-        // Note: sizeof(SdrInputChunkHeader) now includes the 16-byte padding defined in the header.
         SdrInputChunkHeader header;
-        header.magic = current_word;
-        size_t rest_size = sizeof(SdrInputChunkHeader) - sizeof(uint32_t);
 
-        if (ring_buffer_read(buffer, ((char*)&header) + sizeof(uint32_t), rest_size) < rest_size) return -1;
+        // Single atomic read of the 32-byte header
+        size_t bytes_read = ring_buffer_read(buffer, &header, sizeof(header));
+
+        if (bytes_read == 0) return 0; // End of Stream (Normal)
+
+        // SANITY CHECK: Fail Fast.
+        if (bytes_read < sizeof(header) || header.magic != IQPK_MAGIC) {
+            log_error("Stream Sync Error: Magic number mismatch! Expected 0x%08X, got 0x%08X. Buffer overrun likely.",
+                      IQPK_MAGIC, header.magic);
+            return -1;
+        }
 
         if (header.flags & SDR_CHUNK_FLAG_STREAM_RESET) {
             *is_reset_event = true;
@@ -124,7 +113,10 @@ int64_t sdr_packet_serializer_read_packet(RingBuffer* buffer,
 
     // Read
     size_t bytes_to_read = samples_to_read * bpp;
-    if (ring_buffer_read(buffer, target_chunk->raw_input_data, bytes_to_read) < bytes_to_read) return -1;
+    if (ring_buffer_read(buffer, target_chunk->raw_input_data, bytes_to_read) < bytes_to_read) {
+        log_error("Stream Error: Unexpected end of buffer while reading payload.");
+        return -1;
+    }
 
     state->samples_remaining_in_packet -= samples_to_read;
     target_chunk->packet_sample_format = state->current_packet_format;
