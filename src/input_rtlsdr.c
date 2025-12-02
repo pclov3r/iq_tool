@@ -287,21 +287,14 @@ static void* rtlsdr_start_stream(ModuleContext* ctx) {
     switch (resources->pipeline_mode) {
         case PIPELINE_MODE_BUFFERED_SDR:
             log_info("Starting RTL-SDR stream (Buffered Mode)...");
+            // NOTE: rtlsdr_read_async BLOCKS until the stream stops or is cancelled.
             result = rtlsdr_read_async(private_data->dev, rtlsdr_stream_callback, resources, 0, 0);
+            
             if (result < 0) {
                 char error_buf[256];
                 snprintf(error_buf, sizeof(error_buf), "rtlsdr_read_async() failed: %s", strerror(-result));
                 handle_fatal_thread_error(error_buf, resources);
                 return NULL;
-            }
-            // In async mode, the main loop just waits for shutdown. The callback does the work.
-            while (!is_shutdown_requested() && !resources->error_occurred) {
-                #ifdef _WIN32
-                Sleep(100);
-                #else
-                struct timespec sleep_time = {0, 100000000L};
-                nanosleep(&sleep_time, NULL);
-                #endif
             }
             break;
 

@@ -116,13 +116,11 @@ void request_shutdown(void) {
     if (g_resources_for_signal_handler) {
         AppResources* r = g_resources_for_signal_handler;
 
-        // Special case for RTL-SDR to unblock its synchronous read loop
-        if (r->config && r->config->input.type_name && strcasecmp(r->config->input.type_name, "rtlsdr") == 0) {
-            if (r->selected_input_module_api && r->selected_input_module_api->stop_stream) {
-                log_debug("Signal handler is calling stop_stream for RTL-SDR to unblock reader thread.");
-                ModuleContext ctx = { .config = r->config, .resources = r };
-                r->selected_input_module_api->stop_stream(&ctx);
-            }
+        // Generic shutdown: If the active input module has a stop function, call it.
+        // This handles blocking SDR drivers (like RTL-SDR) and background threads.
+        if (r->selected_input_module_api && r->selected_input_module_api->stop_stream) {
+            ModuleContext ctx = { .config = r->config, .resources = r };
+            r->selected_input_module_api->stop_stream(&ctx);
         }
 
         // Signal all queues to wake up any waiting threads.
