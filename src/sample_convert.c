@@ -160,13 +160,13 @@ bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* r
 
             // Reads 4 bytes, sign-extends 24-bit to 32-bit, normalizes, and stores.
             // Uses 'do-while(0)' to ensure it behaves like a single statement.
-            // We read 4 bytes to get the 3 bytes we need because 32-bit loads are 
+            // We read 4 bytes to get the 3 bytes we need because 32-bit loads are
             // faster/safer than 24-bit loads on most CPUs.
             #define CS24_IN_STEP(out_idx, byte_offset) \
                 do { \
                     int32_t val; \
                     memcpy(&val, in_ptr + (byte_offset), 4); \
-                    val = (val << 8) >> 8; \
+                    val = (int32_t)((uint32_t)val << 8) >> 8; \
                     out_raw[(i * 2) + (out_idx)] = (float)val * norm_factor; \
                 } while (0)
 
