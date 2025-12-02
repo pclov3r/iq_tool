@@ -509,7 +509,7 @@ _execute_fft_filter_pass(
     unsigned int total_frames_to_process = old_remainder_len + frames_in;
 
     memcpy(scratch_buffer, remainder_buffer, old_remainder_len * sizeof(complex_float_t));
-    memcpy(scratch_buffer + old_remainder_len, input_buffer, frames_in * sizeof(complex_float_t));
+    memmove(scratch_buffer + old_remainder_len, input_buffer, frames_in * sizeof(complex_float_t));
 
     unsigned int processed_frames = 0;
     unsigned int total_output_frames = 0;
