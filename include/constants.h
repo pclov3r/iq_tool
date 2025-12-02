@@ -221,12 +221,15 @@
 
 #if defined(WITH_RTLSDR)
 #define RTLSDR_DEFAULT_SAMPLE_RATE 2400000.0
+#define RTLSDR_PASSTHROUGH_BUFFER_SIZE 16384
 #endif
 
 #if defined(WITH_SDRPLAY)
 #define SDRPLAY_DEFAULT_SAMPLE_RATE_HZ 2000000.0
 #define SDRPLAY_DEFAULT_BANDWIDTH_HZ   1536000.0
 #define SDRPLAY_DEFAULT_IF_GAIN_DB     -50
+// Define a safe max chunk size (16384 samples * 2 channels * 2 bytes = 64KB)
+#define MAX_SDRPLAY_CONVERSION_SAMPLES 16384
 #endif
 
 #if defined(WITH_HACKRF)

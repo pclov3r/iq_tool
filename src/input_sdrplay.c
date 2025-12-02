@@ -188,6 +188,7 @@ typedef struct {
     sdrplay_api_DeviceT *sdr_device;
     sdrplay_api_DeviceParamsT *sdr_device_params;
     bool sdr_api_is_open;
+    int16_t *interleave_buffer;
 } SdrplayPrivateData;
 
 
@@ -397,25 +398,27 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
     if (numSamples == 0) return;
 
     if (config->dsp.raw_passthrough) {
-        int16_t temp_buffer[8192];
+        SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
+        int16_t* interleaved_data = private_data->interleave_buffer;
+
         unsigned int samples_processed = 0;
         while (samples_processed < numSamples) {
             unsigned int samples_this_chunk = numSamples - samples_processed;
-            if (samples_this_chunk > (sizeof(temp_buffer) / sizeof(int16_t) / 2)) {
-                samples_this_chunk = sizeof(temp_buffer) / sizeof(int16_t) / 2;
+            if (samples_this_chunk > MAX_SDRPLAY_CONVERSION_SAMPLES) {
+                samples_this_chunk = MAX_SDRPLAY_CONVERSION_SAMPLES;
             }
-            
+
             // Interleave logic
             sample_convert_interleave_s16(
-                xi + samples_processed, 
-                xq + samples_processed, 
-                temp_buffer, 
+                xi + samples_processed,
+                xq + samples_processed,
+                interleaved_data,
                 samples_this_chunk
             );
 
             size_t bytes_to_write = samples_this_chunk * resources->input_bytes_per_sample_pair;
             ModuleContext ctx = { .config = config, .resources = resources };
-                        size_t written = resources->selected_output_module_api->write_chunk(&ctx, temp_buffer, bytes_to_write);
+                        size_t written = resources->selected_output_module_api->write_chunk(&ctx, interleaved_data, bytes_to_write);
             if (written < bytes_to_write) {
                 log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
                 request_shutdown();
@@ -462,6 +465,7 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
 static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext) {
     (void)params;
     AppResources *resources = (AppResources*)cbContext;
+    SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
 
     // --- HEARTBEAT ---
     sdr_input_update_heartbeat(resources);
@@ -476,21 +480,16 @@ static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_S
     }
 
     if (numSamples > 0) {
-        // --- NEW ARCHITECTURE: PRODUCER-SIDE INTERLEAVING ---
-        // 1. Allocate temporary buffer (Fixed size to avoid C90 VLA error)
-        // We cap this at 8192 samples (32KB buffer), which covers standard USB transfer sizes.
-        #define MAX_SDRPLAY_CB_SAMPLES 8192
-
-        if (numSamples > MAX_SDRPLAY_CB_SAMPLES) {
+        if (numSamples > MAX_SDRPLAY_CONVERSION_SAMPLES) {
             log_warn("SDRplay callback chunk too large (%u samples). Dropping.", numSamples);
             return;
         }
 
-        int16_t interleaved_data[MAX_SDRPLAY_CB_SAMPLES * 2];
+        int16_t* interleaved_data = private_data->interleave_buffer;
 
         // 2. Interleave using SIMD-optimized helper
         sample_convert_interleave_s16(xi, xq, interleaved_data, numSamples);
-        #undef MAX_SDRPLAY_CB_SAMPLES
+        
         // 3. Write single Interleaved block to RingBuffer
         if (!sdr_packet_serializer_write_block(
                 resources->sdr_input_buffer, 
@@ -597,7 +596,12 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
 
     SdrplayPrivateData* private_data = (SdrplayPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(SdrplayPrivateData), true);
     if (!private_data) return false;
-    
+
+    // Allocate persistent scratch buffer for interleaving (64KB)
+    size_t conversion_buf_size = MAX_SDRPLAY_CONVERSION_SAMPLES * 2 * sizeof(int16_t);
+    private_data->interleave_buffer = (int16_t*)mem_arena_alloc(&resources->setup_arena, conversion_buf_size, false);
+    if (!private_data->interleave_buffer) return false;
+
     private_data->sdr_device = NULL;
     private_data->sdr_api_is_open = false;
     resources->input_module_private_data = private_data;

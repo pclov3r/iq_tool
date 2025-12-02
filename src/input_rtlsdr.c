@@ -43,6 +43,7 @@ typedef struct {
     char manufact[256];
     char product[256];
     char serial[256];
+    unsigned char *passthrough_buffer;
 } RtlSdrPrivateData;
 
 
@@ -176,6 +177,13 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
     if (!private_data) {
         return false;
     }
+
+    // Allocate persistent buffer for realtime passthrough (16KB)
+    private_data->passthrough_buffer = (unsigned char*)mem_arena_alloc(&resources->setup_arena, RTLSDR_PASSTHROUGH_BUFFER_SIZE, false);
+    if (!private_data->passthrough_buffer) {
+        return false;
+    }
+
     private_data->dev = NULL; // Initialize resource state
     resources->input_module_private_data = private_data;
 
@@ -300,10 +308,12 @@ static void* rtlsdr_start_stream(ModuleContext* ctx) {
         case PIPELINE_MODE_REALTIME_SDR:
             log_info("Starting RTL-SDR stream (Real-Time Mode)...");
             if (config->dsp.raw_passthrough) {
-                unsigned char passthrough_buffer[16384];
+                // Use persistent buffer from arena instead of stack
+                unsigned char *passthrough_buffer = private_data->passthrough_buffer;
+                
                 while (!is_shutdown_requested() && !resources->error_occurred) {
                     int n_read = 0;
-                    result = rtlsdr_read_sync(private_data->dev, passthrough_buffer, sizeof(passthrough_buffer), &n_read);
+                    result = rtlsdr_read_sync(private_data->dev, passthrough_buffer, RTLSDR_PASSTHROUGH_BUFFER_SIZE, &n_read);
                     
                     if (result >= 0) {
                         // --- HEARTBEAT ---
