@@ -136,11 +136,11 @@ typedef struct {
 } IqState;
 
 // --- Forward Declarations ---
-static void init_window(float *w, int length);
+static void init_window(float * restrict w, int length);
 static void init_boost_window(void);
-static void apply_window(complex float *buffer, float *w, int length);
-static void adjust_phase_amplitude(IqState *st, complex float* iq, int length);
-static void estimate_imbalance(IqState *st, const complex float* iq, int length);
+static void apply_window(complex float * restrict buffer, float * restrict w, int length);
+static void adjust_phase_amplitude(IqState *st, complex float* restrict iq, int length);
+static void estimate_imbalance(IqState *st, const complex float* restrict iq, int length);
 
 // ============================================================================
 // == Public API Implementation
@@ -346,7 +346,7 @@ bool iq_correct_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile) {
 // == Internal Logic (Adapted from libairspyhf)
 // ============================================================================
 
-static void init_window(float *w, int length)
+static void init_window(float * restrict w, int length)
 {
     const int len_m1 = length - 1;
     for (int i = 0; i < length; i++)
@@ -366,14 +366,14 @@ static void init_boost_window(void) {
     }
 }
 
-static void apply_window(complex float *buffer, float *w, int length)
+static void apply_window(complex float * restrict buffer, float * restrict w, int length)
 {
     for (int i = 0; i < length; i++) {
         buffer[i] *= w[i];
     }
 }
 
-static void adjust_phase_amplitude(IqState *st, complex float* iq, int length)
+static void adjust_phase_amplitude(IqState *st, complex float* restrict iq, int length)
 {
     float scale = 1.0f / (length - 1);
     float current_phase = st->phase;
@@ -450,7 +450,7 @@ static complex float utility(IqState *st, complex float* ccorr)
     return acc;
 }
 
-static void estimate_imbalance(IqState *st, const complex float* iq, int length)
+static void estimate_imbalance(IqState *st, const complex float* restrict iq, int length)
 {
     int i, j;
     float amplitude, phase, mu;
