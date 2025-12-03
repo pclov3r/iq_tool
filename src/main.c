@@ -113,7 +113,7 @@ int main(int argc, char *argv[]) {
     pthread_mutexattr_destroy(&attr);
 
     log_set_lock(console_lock_function, &g_console_mutex);
-    log_set_level(LOG_DEBUG);
+    log_set_level(LOG_INFO);
 
     memset(&config, 0, sizeof(AppConfig));
 
