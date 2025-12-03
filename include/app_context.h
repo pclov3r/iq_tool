@@ -193,19 +193,9 @@ typedef struct {
  * @brief Holds all allocated objects and state for the I/Q correction module.
  */
 typedef struct {
-    IqCorrectionFactors factors_buffer[2];
-    int                 active_buffer_idx;
-    pthread_mutex_t     iq_factors_mutex;
-    void*               fft_plan; // Opaque pointer
-    complex_float_t*    fft_buffer;
-    complex_float_t*    fft_shift_buffer;
-    float*              spectrum_buffer;
-    float*              window_coeffs;
-    float               average_power;
-    float               power_range;
-    complex_float_t*    optimization_accum_buffer;
-    int                 samples_in_accum;
-    double              last_optimization_time;
+    pthread_mutex_t iq_factors_mutex;       ///< Protects shared state updates.
+    void*           internal_state;         ///< Opaque pointer to the algorithm's internal state struct.
+    double          last_optimization_time; ///< Timestamp to throttle the optimizer thread.
 } IqCorrectionResources;
 
 /**

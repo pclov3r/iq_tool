@@ -150,7 +150,7 @@
 #define FILTER_FREQ_RESPONSE_POINTS 2048
 
 // --- I/Q Correction Algorithm Tuning ---
-#define IQ_CORRECTION_FFT_SIZE           1024
+#define IQ_CORRECTION_FFT_SIZE           4096
 #define IQ_CORRECTION_INTERVAL_MS        500
 #define IQ_BASE_INCREMENT                0.0001f
 #define IQ_MAX_PASSES                    25

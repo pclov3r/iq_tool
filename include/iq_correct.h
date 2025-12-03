@@ -1,11 +1,32 @@
+/*
+Copyright (c) 2016-2023, Youssef Touil <youssef@airspy.com>
+Copyright (c) 2018, Leif Asbrink <leif@sm5bsz.com>
+
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+		Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+		Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the
+		documentation and/or other materials provided with the distribution.
+		Neither the name of Airspy HF+ nor the names of its contributors may be used to endorse or promote products derived from this software
+		without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
 /**
  * @file iq_correct.h
  * @brief Defines the interface for the automatic I/Q imbalance correction module.
  *
- * This module implements an algorithm to detect and correct for I/Q imbalance
- * (gain and phase errors) in the signal. It works by analyzing the signal's
- * spectrum to measure the asymmetry between the positive and negative frequencies
- * and then iteratively adjusts correction factors to minimize this asymmetry.
+ * This module adapts the Airspy HF+ / SM5BSZ correlation-based estimator
+ * for use within the iq_tool pipeline. It detects and corrects gain and phase
+ * imbalances by analyzing the signal spectrum.
  */
 
 #ifndef IQ_CORRECT_H_
@@ -21,8 +42,7 @@
 /**
  * @brief Initializes the I/Q correction module.
  *
- * This function sets up the necessary liquid-dsp FFT plan and allocates
- * all required workspace buffers from the provided memory arena.
+ * Allocates internal state buffers and FFT plans required by the SM5BSZ algorithm.
  *
  * @param config Pointer to the application configuration.
  * @param resources Pointer to the application resources where correction state will be stored.
@@ -34,8 +54,9 @@ bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* ar
 /**
  * @brief Applies the current I/Q imbalance correction to a block of samples.
  *
- * This function reads the latest correction factors (in a thread-safe manner)
- * and applies them to the provided sample buffer in-place.
+ * This function performs the "Fast Path" processing:
+ * 1. Interpolates phase/amplitude correction factors.
+ * 2. Applies the correction matrix to the samples in-place.
  *
  * @param resources Pointer to the application resources.
  * @param samples Pointer to the complex float samples (modified in-place).
@@ -44,11 +65,12 @@ bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* ar
 void iq_correct_apply(AppResources* resources, complex_float_t* samples, int num_samples);
 
 /**
- * @brief Runs one pass of the I/Q imbalance optimization algorithm.
+ * @brief Runs the I/Q imbalance optimization/estimation algorithm.
  *
- * This function analyzes the provided block of samples to measure the current
- * imbalance and updates the global correction factors. This is typically run
- * in a separate, lower-priority thread.
+ * This function performs the "Slow Path" processing:
+ * 1. Performs an FFT on the input data.
+ * 2. Calculates correlation between signal and image.
+ * 3. Updates the global phase/amplitude correction targets.
  *
  * @param resources Pointer to the application resources.
  * @param optimization_data Pointer to the block of complex float samples to analyze.
@@ -58,22 +80,17 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
 /**
  * @brief Cleans up resources allocated by the I/Q correction module.
  *
- * This function destroys the liquid-dsp FFT plan object.
- *
  * @param resources Pointer to the application resources.
  */
 void iq_correct_destroy(AppResources* resources);
 
 /**
  * @brief Performs a synchronous, one-shot I/Q calibration pass for file-based inputs.
- * This should be called by file-based input modules during their pre-stream phase.
- * It reads from the file, runs the optimization, and rewinds the file.
  *
  * @param ctx The application context.
  * @param infile The handle to the open input file (e.g., from libsndfile).
  * @return true on success, false on a critical failure.
  */
 bool iq_correct_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile);
-
 
 #endif // IQ_CORRECT_H_
