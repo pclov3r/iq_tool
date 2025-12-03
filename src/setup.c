@@ -96,21 +96,34 @@ bool resolve_file_paths(AppConfig *config, AppResources *resources) {
 bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *resources, float *out_ratio) {
     if (!config || !resources || !out_ratio) return false;
 
-    if (config->dsp.no_resample || config->dsp.raw_passthrough) {
-        if (config->dsp.raw_passthrough) {
-            log_info("Raw Passthrough mode enabled: Bypassing all DSP blocks.");
-        } else {
-            log_info("Native rate processing enabled: output rate will match input rate.");
-        }
+    // --- Step 1: Handle Smart Default (Missing Rate) ---
+    // If the user didn't specify a rate (0), use the hardware/file input rate.
+    if (config->output_rate.target_rate <= 0.0) {
         config->output_rate.target_rate = (double)resources->source_info.samplerate;
-        resources->is_passthrough = true;
-    } else {
-        resources->is_passthrough = false;
+        log_info("No output rate specified. Defaulting to native input rate: %.0f Hz", config->output_rate.target_rate);
     }
 
+    // --- Step 2: Calculate Ratio ---
     double input_rate_d = (double)resources->source_info.samplerate;
     float r = (float)(config->output_rate.target_rate / input_rate_d);
 
+    // --- Step 3: Check for Passthrough Conditions ---
+    if (config->dsp.raw_passthrough) {
+        log_info("Raw Passthrough mode enabled: Bypassing all DSP blocks.");
+        resources->is_passthrough = true;
+        r = 1.0f; // Force ratio to 1.0 for buffer calcs
+    }
+    else if (fabs(r - 1.0f) < 1e-6) {
+        resources->is_passthrough = true;
+        r = 1.0f; // Snap to exact 1.0
+    }
+    else {
+        resources->is_passthrough = false;
+        log_info("Resampling enabled: %.0f Hz -> %.0f Hz (Ratio: %.4f)",
+                 input_rate_d, config->output_rate.target_rate, r);
+    }
+
+    // --- Step 4: Validate Ratio ---
     if (!isfinite(r) || r < MIN_ACCEPTABLE_RATIO || r > MAX_ACCEPTABLE_RATIO) {
         log_fatal("Error: Calculated resampling ratio (%.6f) is invalid or outside acceptable range.", r);
         return false;
@@ -129,7 +142,8 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *reso
 bool validate_and_configure_filter_stage(struct AppConfig *config, struct AppResources *resources) {
     config->dsp.filter.apply_post_resample = false;
 
-    if (config->dsp.filter.count == 0 || config->dsp.no_resample || config->dsp.raw_passthrough) {
+    // If resampling is disabled (is_passthrough), we don't need to check for post-resample filtering.
+    if (config->dsp.filter.count == 0 || resources->is_passthrough || config->dsp.raw_passthrough) {
         return true;
     }
 

@@ -146,13 +146,7 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
         config->output_rate.provided = true;
     }
 
-    // --- Step 3: FATAL CHECK for Missing Rate (MOVED HERE) ---
-    if (config->output_rate.target_rate <= 0 && !config->dsp.no_resample) {
-        log_fatal("Missing required argument: you must specify an --output-rate or use a preset.");
-        return false;
-    }
-
-    // --- Step 4: Determine Output Container Type (with defaults) ---
+    // --- Step 3: Determine Output Container Type (with defaults) ---
     // This logic is now simplified as the module choice implies the container.
     if (strcasecmp(config->output.module_name, "raw") == 0) {
         config->output.type = OUTPUT_TYPE_RAW;
@@ -164,7 +158,7 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
         config->output.type = OUTPUT_TYPE_RAW;
     }
 
-    // --- Step 5: Determine Output Sample Format (with defaults) ---
+    // --- Step 4: Determine Output Sample Format (with defaults) ---
     if (!config->output.format_name) {
         // If writing to a file, and no sample format is given,
         // it's safe to default to 'cs16', which is the most common for WAV files.
@@ -178,7 +172,7 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
         }
     }
 
-    // --- Step 6: Final Validation of Formats and Combinations ---
+    // --- Step 5: Final Validation of Formats and Combinations ---
     config->output.format = utils_get_format_from_string(config->output.format_name);
     if (config->output.format == FORMAT_UNKNOWN) {
         log_fatal("Invalid sample format '%s'. See --help for valid formats.", config->output.format_name);
@@ -373,25 +367,11 @@ bool validate_option_combinations(AppConfig *config) {
         log_fatal("Option --output-rate cannot be used with --preset.");
         return false;
     }
-    if (config->dsp.no_resample) {
-        if (config->output_rate.provided) {
-            log_fatal("Option --no-resample cannot be used with --output-rate.");
-            return false;
-        }
-        if (config->preset_name) {
-            log_fatal("Option --no-resample cannot be used with --preset.");
-            return false;
-        }
-    }
 
     if (config->dsp.raw_passthrough) {
         if (config->dsp.filter.count > 0) {
             log_fatal("Option --raw-passthrough cannot be used with any filtering options.");
             return false;
-        }
-        if (!config->dsp.no_resample) {
-            log_warn("Option --raw-passthrough implies --no-resample. Forcing resampler off.");
-            config->dsp.no_resample = true;
         }
         if (config->dsp.freq_shift_hz != 0.0f) {
             log_fatal("Option --raw-passthrough cannot be used with frequency shifting options.");

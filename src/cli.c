@@ -83,7 +83,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_GROUP("Output Options"),
         OPT_STRING(0, "output-sample-format", &config->output.format_name, "Sample format for output data {cs8|cu8|cs16|...}", NULL, 0, 0),
         OPT_GROUP("Processing Options"),
-        OPT_FLOAT(0, "output-rate", &config->output_rate.user_arg, "Output sample rate in Hz. (Required if no preset or --no-resample is used)", NULL, 0, 0),
+        OPT_FLOAT(0, "output-rate", &config->output_rate.user_arg, "Output sample rate in Hz.", NULL, 0, 0),
         
         // CHANGE: Renamed input gain option and added output gain option
         OPT_FLOAT(0, "input-gain-multiplier", &config->dsp.input_gain, "Apply a linear gain multiplier to INPUT samples (before processing).", NULL, 0, 0),
@@ -91,7 +91,6 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         
         OPT_FLOAT(0, "freq-shift", &config->dsp.freq_shift_hz, "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0, 0),
         OPT_BOOLEAN(0, "shift-after-resample", &config->dsp.shift_after_resample, "Apply frequency shift AFTER resampling (default is before)", NULL, 0, 0),
-        OPT_BOOLEAN(0, "no-resample", &config->dsp.no_resample, "Process at native input rate. Bypasses the resampler but applies all other DSP.", NULL, 0, 0),
         OPT_BOOLEAN(0, "raw-passthrough", &config->dsp.raw_passthrough, "Bypass all processing. Copies raw input bytes directly to output.", NULL, 0, 0),
         OPT_BOOLEAN(0, "iq-correction", &config->dsp.iq_correction.enable, "(Optional) Enable automatic I/Q imbalance correction.", NULL, 0, 0),
         OPT_BOOLEAN(0, "dc-block", &config->dsp.dc_block.enable, "(Optional) Enable DC offset removal (high-pass filter).", NULL, 0, 0),

@@ -102,7 +102,7 @@ bool pipeline_run(PipelineContext* context) {
     if (threads_ok && !thread_manager_spawn_thread(&manager, "Reader", reader_thread_func)) threads_ok = false;
     if (threads_ok && !config->dsp.raw_passthrough) {
         if (!thread_manager_spawn_thread(&manager, "Pre-Processor", pre_processor_thread_func)) threads_ok = false;
-        if (threads_ok && !config->dsp.no_resample) {
+        if (threads_ok && !resources->is_passthrough) {
             if (!thread_manager_spawn_thread(&manager, "Resampler", resampler_thread_func)) threads_ok = false;
         }
         if (threads_ok && !thread_manager_spawn_thread(&manager, "Post-Processor", post_processor_thread_func)) threads_ok = false;
@@ -174,7 +174,7 @@ static bool _init_queues_and_buffers(AppConfig* config, AppResources* resources)
         last_output_queue = resources->pre_processor_output_queue;
     }
 
-    if (!config->dsp.raw_passthrough && !config->dsp.no_resample) {
+    if (!config->dsp.raw_passthrough && !resources->is_passthrough) {
         resources->resampler_input_queue = last_output_queue;
         resources->resampler_output_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
         if (!resources->resampler_output_queue || !queue_init(resources->resampler_output_queue, queue_capacity, arena)) return false;

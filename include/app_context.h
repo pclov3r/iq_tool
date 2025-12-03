@@ -117,7 +117,6 @@ typedef struct AppConfig {
         float freq_shift_hz;  // CLI: --freq-shift (was freq_shift_hz_arg)
         int   shift_after_resample;
 
-        int   no_resample;
         int   raw_passthrough;
 
         // Sub-module configurations
