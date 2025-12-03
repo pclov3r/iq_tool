@@ -23,6 +23,9 @@
 // Module-specific includes
 #include "sdrplay_api.h"
 
+// --- Configuration Constants ---
+#define SDRPLAY_TARGET_VERSION 3.15f
+
 #if defined(_WIN32)
 #include "platform.h"
 #include <windows.h>
@@ -41,6 +44,7 @@ typedef struct {
     HINSTANCE dll_handle;
     sdrplay_api_ErrT (*Open)(void);
     sdrplay_api_ErrT (*Close)(void);
+    sdrplay_api_ErrT (*ApiVersion)(float *apiVer); // Added Version Check
     sdrplay_api_ErrT (*GetDevices)(sdrplay_api_DeviceT*, unsigned int*, unsigned int);
     sdrplay_api_ErrT (*SelectDevice)(sdrplay_api_DeviceT*);
     sdrplay_api_ErrT (*ReleaseDevice)(sdrplay_api_DeviceT*);
@@ -50,6 +54,8 @@ typedef struct {
     sdrplay_api_ErrT (*Update)(HANDLE, sdrplay_api_TunerSelectT, sdrplay_api_ReasonForUpdateT, sdrplay_api_ReasonForUpdateExtension1T);
     sdrplay_api_ErrT (*Init)(HANDLE, sdrplay_api_CallbackFnsT*, void*);
     sdrplay_api_ErrT (*Uninit)(HANDLE);
+    sdrplay_api_ErrT (*LockDeviceApi)(void);
+    sdrplay_api_ErrT (*UnlockDeviceApi)(void);
 } SdrplayApiFunctionPointers;
 
 static SdrplayApiFunctionPointers sdrplay_api;
@@ -126,6 +132,7 @@ static bool sdrplay_load_api(void) {
     log_debug("SDRplay API DLL loaded successfully. Loading function pointers...");
     LOAD_SDRPLAY_FUNC(Open);
     LOAD_SDRPLAY_FUNC(Close);
+    LOAD_SDRPLAY_FUNC(ApiVersion);
     LOAD_SDRPLAY_FUNC(GetDevices);
     LOAD_SDRPLAY_FUNC(SelectDevice);
     LOAD_SDRPLAY_FUNC(ReleaseDevice);
@@ -135,6 +142,8 @@ static bool sdrplay_load_api(void) {
     LOAD_SDRPLAY_FUNC(Update);
     LOAD_SDRPLAY_FUNC(Init);
     LOAD_SDRPLAY_FUNC(Uninit);
+    LOAD_SDRPLAY_FUNC(LockDeviceApi);
+    LOAD_SDRPLAY_FUNC(UnlockDeviceApi);
     log_debug("All SDRplay API function pointers loaded.");
     return true;
 }
@@ -149,6 +158,7 @@ static void sdrplay_unload_api(void) {
 
 #define sdrplay_api_Open          sdrplay_api.Open
 #define sdrplay_api_Close         sdrplay_api.Close
+#define sdrplay_api_ApiVersion    sdrplay_api.ApiVersion
 #define sdrplay_api_GetDevices    sdrplay_api.GetDevices
 #define sdrplay_api_SelectDevice  sdrplay_api.SelectDevice
 #define sdrplay_api_ReleaseDevice sdrplay_api.ReleaseDevice
@@ -158,6 +168,8 @@ static void sdrplay_unload_api(void) {
 #define sdrplay_api_Update        sdrplay_api.Update
 #define sdrplay_api_Init          sdrplay_api.Init
 #define sdrplay_api_Uninit        sdrplay_api.Uninit
+#define sdrplay_api_LockDeviceApi sdrplay_api.LockDeviceApi
+#define sdrplay_api_UnlockDeviceApi sdrplay_api.UnlockDeviceApi
 
 #endif
 
@@ -181,6 +193,10 @@ static struct {
     double bandwidth_hz;
     float sdrplay_bandwidth_hz_arg;
     bool bandwidth_provided;
+    // New Flags for Notch Filters
+    bool notch_fm;
+    bool notch_dab;
+    bool notch_am;
 } s_sdrplay_config;
 
 // --- Private Module State ---
@@ -198,6 +214,9 @@ void sdrplay_set_default_config(AppConfig* config) {
     s_sdrplay_config.sdrplay_bandwidth_hz_arg = 0.0f;
     s_sdrplay_config.sdrplay_if_gain_db_arg = 0;
     s_sdrplay_config.sdrplay_hdr_bw_hz_arg = 0.0f;
+    s_sdrplay_config.notch_fm = false;
+    s_sdrplay_config.notch_dab = false;
+    s_sdrplay_config.notch_am = false;
 }
 
 static const struct argparse_option sdrplay_cli_options[] = {
@@ -209,6 +228,10 @@ static const struct argparse_option sdrplay_cli_options[] = {
     OPT_STRING(0, "sdrplay-antenna", &s_sdrplay_config.antenna_port_name, "Select antenna port (device-specific).", NULL, 0, 0),
     OPT_BOOLEAN(0, "sdrplay-hdr-mode", &s_sdrplay_config.use_hdr_mode, "(Optional) Enable HDR mode on RSPdx/RSPdxR2.", NULL, 0, 0),
     OPT_FLOAT(0, "sdrplay-hdr-bw", &s_sdrplay_config.sdrplay_hdr_bw_hz_arg, "Set bandwidth for HDR mode. Requires --sdrplay-hdr-mode.", NULL, 0, 0),
+    // Notch Filter Options
+    OPT_BOOLEAN(0, "sdrplay-notch-fm", &s_sdrplay_config.notch_fm, "Enable FM Broadcast Notch Filter.", NULL, 0, 0),
+    OPT_BOOLEAN(0, "sdrplay-notch-dab",&s_sdrplay_config.notch_dab, "Enable DAB Broadcast Notch Filter.", NULL, 0, 0),
+    OPT_BOOLEAN(0, "sdrplay-notch-am", &s_sdrplay_config.notch_am, "Enable MW/AM Notch Filter (RSPduo Tuner A only).", NULL, 0, 0),
 };
 
 const struct argparse_option* sdrplay_get_cli_options(int* count) {
@@ -247,7 +270,7 @@ InputModuleInterface* get_sdrplay_input_module_api(void) {
 
 static bool sdrplay_validate_generic_options(const AppConfig* config) {
     if (!config->sdr_general.rf_freq_provided) {
-        log_fatal("SDRplay input requires the --sdr-rf-freq option.");
+        log_error("SDRplay input requires the --sdr-rf-freq option.");
         return false;
     }
     return true;
@@ -259,10 +282,10 @@ static bool sdrplay_validate_options(AppConfig* config) {
     } else {
         s_sdrplay_config.lna_state = 0; // Ensure default is 0 if not provided
     }
-    
+
     if (s_sdrplay_config.sdrplay_if_gain_db_arg != 0) {
         if (s_sdrplay_config.sdrplay_if_gain_db_arg > 0 || s_sdrplay_config.sdrplay_if_gain_db_arg < -59) {
-            log_fatal("Invalid value for --sdrplay-if-gain. Must be between -59 and 0.");
+            log_error("Invalid value for --sdrplay-if-gain. Must be between -59 and 0.");
             return false;
         }
         s_sdrplay_config.if_gain_db = s_sdrplay_config.sdrplay_if_gain_db_arg;
@@ -283,30 +306,30 @@ static bool sdrplay_validate_options(AppConfig* config) {
         else if (fabs(bw_hz - 1200000.0) < 1.0) s_sdrplay_config.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_1_200;
         else if (fabs(bw_hz - 1700000.0) < 1.0) s_sdrplay_config.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_1_700;
         else {
-            log_fatal("Invalid HDR bandwidth '%.0f'. Valid values are 200e3, 500e3, 1.2e6, 1.7e6.", bw_hz);
+            log_error("Invalid HDR bandwidth '%.0f'. Valid values are 200e3, 500e3, 1.2e6, 1.7e6.", bw_hz);
             return false;
         }
         s_sdrplay_config.hdr_bw_mode_provided = true;
     }
 
     if (s_sdrplay_config.hdr_bw_mode_provided && !s_sdrplay_config.use_hdr_mode) {
-        log_fatal("Option --sdrplay-hdr-bw requires --sdrplay-hdr-mode to be specified.");
+        log_error("Option --sdrplay-hdr-bw requires --sdrplay-hdr-mode to be specified.");
         return false;
     }
 
     if (config->sdr_general.sample_rate_provided) {
         if (config->sdr_general.sample_rate_hz < 2e6 || config->sdr_general.sample_rate_hz > 10e6) {
-            log_fatal("Invalid SDRplay sample rate %.0f Hz. Must be between 2,000,000 and 10,000,000.", config->sdr_general.sample_rate_hz);
+            log_error("Invalid SDRplay sample rate %.0f Hz. Must be between 2,000,000 and 10,000,000.", config->sdr_general.sample_rate_hz);
             return false;
         }
     }
-    
+
     if (map_bw_hz_to_enum(s_sdrplay_config.bandwidth_hz) == sdrplay_api_BW_Undefined) {
-        log_fatal("Invalid SDRplay bandwidth %.0f Hz. See --help for valid values.", s_sdrplay_config.bandwidth_hz);
+        log_error("Invalid SDRplay bandwidth %.0f Hz. See --help for valid values.", s_sdrplay_config.bandwidth_hz);
         return false;
     }
     if (s_sdrplay_config.bandwidth_hz > config->sdr_general.sample_rate_hz) {
-        log_fatal("Bandwidth (%.0f Hz) cannot be greater than the sample rate (%.0f Hz).", s_sdrplay_config.bandwidth_hz, config->sdr_general.sample_rate_hz);
+        log_error("Bandwidth (%.0f Hz) cannot be greater than the sample rate (%.0f Hz).", s_sdrplay_config.bandwidth_hz, config->sdr_general.sample_rate_hz);
         return false;
     }
 
@@ -434,16 +457,16 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
         }
         item->stream_discontinuity_event = false;
         size_t samples_to_copy = numSamples;
-        
+
         // This limit check uses the new elastic size
         size_t capacity_samples = item->raw_input_capacity_bytes / sizeof(int16_t) / 2;
         if (samples_to_copy > capacity_samples) {
             log_warn("SDRplay callback provided more samples than buffer can hold. Truncating.");
             samples_to_copy = capacity_samples;
         }
-        
+
         int16_t *raw_buffer = (int16_t*)item->raw_input_data;
-        
+
         // Use optimized interleave helper directly into the SampleChunk buffer
         sample_convert_interleave_s16(xi, xq, raw_buffer, samples_to_copy);
 
@@ -487,15 +510,15 @@ static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_S
 
         int16_t* interleaved_data = private_data->interleave_buffer;
 
-        // 2. Interleave using SIMD-optimized helper
+        // 2. Interleave using helper
         sample_convert_interleave_s16(xi, xq, interleaved_data, numSamples);
-        
+
         // 3. Write single Interleaved block to RingBuffer
         if (!sdr_packet_serializer_write_block(
-                resources->sdr_input_buffer, 
-                numSamples, 
-                interleaved_data, 
-                CS16)) 
+                resources->sdr_input_buffer,
+                numSamples,
+                interleaved_data,
+                CS16))
         {
             log_warn("SDR input buffer overrun! Dropped data.");
         }
@@ -533,7 +556,10 @@ static void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_Tuner
                 log_info("Overload condition corrected.");
             }
             pthread_mutex_unlock(&g_console_mutex);
-            sdrplay_api_Update(private_data->sdr_device->dev, tuner, sdrplay_api_Update_Ctrl_OverloadMsgAck, sdrplay_api_Update_Ext1_None);
+            // --- Overload ACK Logic ---
+            if (overload_state == sdrplay_api_Overload_Detected) {
+                sdrplay_api_Update(private_data->sdr_device->dev, tuner, sdrplay_api_Update_Ctrl_OverloadMsgAck, sdrplay_api_Update_Ext1_None);
+            }
             break;
         }
         case sdrplay_api_GainChange:
@@ -572,7 +598,7 @@ static void sdrplay_get_summary_info(const ModuleContext* ctx, InputSummaryInfo*
     }
 
     if (s_sdrplay_config.antenna_port_name) add_summary_item(info, "Antenna Port", "%s", s_sdrplay_config.antenna_port_name);
-    
+
     if (s_sdrplay_config.use_hdr_mode) {
         const char* bw_str = "1700000";
         if (s_sdrplay_config.hdr_bw_mode_provided) {
@@ -585,6 +611,12 @@ static void sdrplay_get_summary_info(const ModuleContext* ctx, InputSummaryInfo*
         }
         add_summary_item(info, "HDR Mode", "Enabled (BW: %s Hz)", bw_str);
     }
+ 
+    // Notch Filter Summary
+    if (s_sdrplay_config.notch_fm)  add_summary_item(info, "FM Notch", "Enabled");
+    if (s_sdrplay_config.notch_dab) add_summary_item(info, "DAB Notch", "Enabled");
+    if (s_sdrplay_config.notch_am)  add_summary_item(info, "AM Notch", "Enabled");
+
     add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
@@ -612,33 +644,59 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
 
     err = sdrplay_api_Open();
     if (err != sdrplay_api_Success) {
-        log_fatal("Failed to open SDRplay API: %s", sdrplay_api_GetErrorString(err));
+        log_error("Failed to open SDRplay API: %s", sdrplay_api_GetErrorString(err));
         goto cleanup;
     }
     private_data->sdr_api_is_open = true;
+
+    // --- Version Check ---
+    float current_version = 0.0f;
+    if (sdrplay_api_ApiVersion(&current_version) != sdrplay_api_Success) {
+        log_error("Could not determine SDRplay API version.");
+        goto cleanup;
+    }
+
+    if (current_version < SDRPLAY_TARGET_VERSION) {
+        log_error("SDRplay API version %.2f installed.", current_version);
+        log_error("Please upgrade to %.2f or newer.", SDRPLAY_TARGET_VERSION);
+        goto cleanup;
+    }
+
+    // --- LOCK API ---
+    sdrplay_api_LockDeviceApi();
 
     sdrplay_api_DeviceT devs[SDRPLAY_MAX_DEVICES];
     unsigned int numDevs = 0;
     err = sdrplay_api_GetDevices(devs, &numDevs, SDRPLAY_MAX_DEVICES);
     if (err != sdrplay_api_Success) {
-        log_fatal("Failed to list SDRplay devices: %s", sdrplay_api_GetErrorString(err));
+        log_error("Failed to list SDRplay devices: %s", sdrplay_api_GetErrorString(err));
+        sdrplay_api_UnlockDeviceApi(); // Early unlock
         goto cleanup;
     }
     if (numDevs == 0) {
-        log_fatal("No SDRplay devices found.");
+        log_error("No SDRplay devices found.");
+        sdrplay_api_UnlockDeviceApi(); // Early unlock
         goto cleanup;
     }
     if ((unsigned int)s_sdrplay_config.device_index >= numDevs) {
-        log_fatal("Device index %d is out of range. Found %u devices (0 to %u).",
+        log_error("Device index %d is out of range. Found %u devices (0 to %u).",
                   s_sdrplay_config.device_index, numDevs, numDevs - 1);
+        sdrplay_api_UnlockDeviceApi(); // Early unlock
         goto cleanup;
     }
 
     private_data->sdr_device = (sdrplay_api_DeviceT *)mem_arena_alloc(&resources->setup_arena, sizeof(sdrplay_api_DeviceT), true);
-    if (!private_data->sdr_device) goto cleanup;
+    if (!private_data->sdr_device) {
+        sdrplay_api_UnlockDeviceApi(); // Early unlock
+        goto cleanup;
+    }
     memcpy(private_data->sdr_device, &devs[s_sdrplay_config.device_index], sizeof(sdrplay_api_DeviceT));
 
     err = sdrplay_api_SelectDevice(private_data->sdr_device);
+
+    // --- UNLOCK API ---
+    sdrplay_api_UnlockDeviceApi();
+
     if (err != sdrplay_api_Success) {
         log_fatal("Failed to select SDRplay device %d: %s", s_sdrplay_config.device_index, sdrplay_api_GetErrorString(err));
         private_data->sdr_device = NULL;
@@ -657,6 +715,16 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
     sdrplay_api_DevParamsT *devParams = private_data->sdr_device_params->devParams;
     sdrplay_api_Bw_MHzT bw_enum = map_bw_hz_to_enum(s_sdrplay_config.bandwidth_hz);
 
+    // --- BULK MODE ENFORCEMENT ---
+    if (devParams) {
+        devParams->mode = sdrplay_api_BULK;
+    }
+
+    // --- DSP HARDWARE ENFORCEMENT ---
+    // Always enable hardware DC/IQ correction as it is tuned for the tuner physics.
+    chParams->ctrlParams.dcOffset.DCenable = 1;
+    chParams->ctrlParams.dcOffset.IQenable = 1;
+
     devParams->fsFreq.fsHz = config->sdr_general.sample_rate_hz;
     chParams->tunerParams.bwType = bw_enum;
     chParams->tunerParams.ifType = sdrplay_api_IF_Zero;
@@ -666,7 +734,7 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
 
     if (s_sdrplay_config.use_hdr_mode) {
         if (private_data->sdr_device->hwVer != SDRPLAY_RSPdx_ID && private_data->sdr_device->hwVer != SDRPLAY_RSPdxR2_ID) {
-            log_fatal("--sdrplay-hdr-mode is only supported on RSPdx and RSPdx-R2 devices.");
+            log_error("--sdrplay-hdr-mode is only supported on RSPdx and RSPdx-R2 devices.");
             goto cleanup;
         }
         devParams->rspDxParams.hdrEnable = 1;
@@ -681,6 +749,50 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
     bool antenna_request_handled = false;
     bool biast_request_handled = false;
     bool hiz_port_selected = false;
+
+    // --- NOTCH FILTER LOGIC ---
+    // Apply notch filter settings based on hardware version
+    unsigned char hwVer = private_data->sdr_device->hwVer;
+    bool notches_applied = false;
+
+    if (hwVer == SDRPLAY_RSP1A_ID || hwVer == SDRPLAY_RSP1B_ID) {
+        if (s_sdrplay_config.notch_fm)  devParams->rsp1aParams.rfNotchEnable = 1;
+        if (s_sdrplay_config.notch_dab) devParams->rsp1aParams.rfDabNotchEnable = 1;
+        notches_applied = true;
+    }
+    else if (hwVer == SDRPLAY_RSPdx_ID || hwVer == SDRPLAY_RSPdxR2_ID) {
+        if (s_sdrplay_config.notch_fm)  devParams->rspDxParams.rfNotchEnable = 1;
+        if (s_sdrplay_config.notch_dab) devParams->rspDxParams.rfDabNotchEnable = 1;
+        notches_applied = true;
+    }
+    else if (hwVer == SDRPLAY_RSPduo_ID) {
+        if (s_sdrplay_config.notch_fm)  chParams->rspDuoTunerParams.rfNotchEnable = 1;
+        if (s_sdrplay_config.notch_dab) chParams->rspDuoTunerParams.rfDabNotchEnable = 1;
+
+        // AM Notch is specific to RSPduo Tuner A (High-Z port capability)
+        if (s_sdrplay_config.notch_am) {
+            if (private_data->sdr_device->tuner == sdrplay_api_Tuner_A) {
+                chParams->rspDuoTunerParams.tuner1AmNotchEnable = 1;
+            } else {
+                log_warn("SDRplay: AM Notch ignored (Only available on Tuner A).");
+            }
+        }
+        notches_applied = true;
+    }
+    else if (hwVer == SDRPLAY_RSP2_ID) {
+        // RSP2: Only has one "RF Notch" (Broadband)
+        if (s_sdrplay_config.notch_fm) {
+            chParams->rsp2TunerParams.rfNotchEnable = 1;
+            notches_applied = true;
+        }
+        if (s_sdrplay_config.notch_dab) log_warn("SDRplay: DAB notch not supported on RSP2.");
+    }
+
+    if (notches_applied) {
+        if (s_sdrplay_config.notch_fm)  log_info("SDRplay: FM Notch Enabled.");
+        if (s_sdrplay_config.notch_dab) log_info("SDRplay: DAB Notch Enabled.");
+        if (s_sdrplay_config.notch_am)  log_info("SDRplay: AM Notch Enabled.");
+    }
 
     if (s_sdrplay_config.antenna_port_name || config->sdr_general.bias_t_enable) {
         switch (private_data->sdr_device->hwVer) {
@@ -705,7 +817,7 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
                         chParams->rsp2TunerParams.amPortSel = sdrplay_api_Rsp2_AMPORT_2;
                         hiz_port_selected = true;
                     } else {
-                        log_fatal("Invalid antenna port '%s' for RSP2. Use A, B, or HIZ.", s_sdrplay_config.antenna_port_name);
+                        log_error("Invalid antenna port '%s' for RSP2. Use A, B, or HIZ.", s_sdrplay_config.antenna_port_name);
                         goto cleanup;
                     }
                     antenna_request_handled = true;
@@ -723,7 +835,7 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
                         chParams->rspDuoTunerParams.tuner1AmPortSel = sdrplay_api_RspDuo_AMPORT_2;
                         hiz_port_selected = true;
                     } else {
-                        log_fatal("Invalid antenna port '%s' for RSPduo. Use A or HIZ.", s_sdrplay_config.antenna_port_name);
+                        log_error("Invalid antenna port '%s' for RSPduo. Use A or HIZ.", s_sdrplay_config.antenna_port_name);
                         goto cleanup;
                     }
                     antenna_request_handled = true;
@@ -743,7 +855,7 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
                     } else if (strcasecmp(s_sdrplay_config.antenna_port_name, "C") == 0) {
                         devParams->rspDxParams.antennaSel = sdrplay_api_RspDx_ANTENNA_C;
                     } else {
-                        log_fatal("Invalid antenna port '%s' for RSPdx/RSPdx-R2. Use A, B, or C.", s_sdrplay_config.antenna_port_name);
+                        log_error("Invalid antenna port '%s' for RSPdx/RSPdx-R2. Use A, B, or C.", s_sdrplay_config.antenna_port_name);
                         goto cleanup;
                     }
                     antenna_request_handled = true;
@@ -771,7 +883,7 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
     if (s_sdrplay_config.lna_state_provided) {
         int num_lna_states = get_num_lna_states(private_data->sdr_device->hwVer, config->sdr_general.rf_freq_hz, s_sdrplay_config.use_hdr_mode, hiz_port_selected);
         if (s_sdrplay_config.lna_state < 0 || s_sdrplay_config.lna_state >= num_lna_states) {
-            log_fatal("Invalid LNA state '%d'. Valid range for this device/frequency is 0 (min gain) to %d (max gain).",
+            log_error("Invalid LNA state '%d'. Valid range for this device/frequency is 0 (min gain) to %d (max gain).",
                       s_sdrplay_config.lna_state, num_lna_states - 1);
             goto cleanup;
         }
@@ -789,7 +901,7 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
     resources->source_info.frames = -1;
 
     if (config->dsp.raw_passthrough && resources->input_format != config->output.format) {
-        log_fatal("Option --raw-passthrough requires input and output formats to be identical. SDRplay input is 'cs16', but output was set to '%s'.", config->output.format_name);
+        log_error("Option --raw-passthrough requires input and output formats to be identical. SDRplay input is 'cs16', but output was set to '%s'.", config->output.format_name);
         goto cleanup;
     }
 
@@ -881,9 +993,9 @@ static void* sdrplay_start_stream(ModuleContext* ctx) {
 #endif
         }
     }
-    
+
     sdrplay_stop_stream(ctx);
-    
+
     return NULL;
 }
 
