@@ -153,6 +153,8 @@ typedef struct AppConfig {
         double rf_freq_hz;
         float  rf_freq_hz_arg;
         bool   rf_freq_provided;
+        double frequency_offset_hz;
+        float  frequency_offset_arg;
         double sample_rate_hz;
         float  sample_rate_hz_arg;
         bool   sample_rate_provided;

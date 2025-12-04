@@ -100,6 +100,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
     struct argparse_option sdr_general_options[] = {
         OPT_GROUP("SDR General Options"),
         OPT_FLOAT(0, "sdr-rf-freq", &config->sdr_general.rf_freq_hz_arg, "(Required for SDR) Tuner center frequency in Hz", NULL, 0, 0),
+        OPT_FLOAT(0, "frequency-offset", &config->sdr_general.frequency_offset_arg, "Frequency offset in Hz (e.g. 125e6 for HamItUp).", NULL, 0, 0),
         OPT_FLOAT(0, "sdr-sample-rate", &config->sdr_general.sample_rate_hz_arg, "Set sample rate in Hz. (Device-specific default)", NULL, 0, 0),
         OPT_BOOLEAN(0, "sdr-bias-t", &config->sdr_general.bias_t_enable, "(Optional) Enable Bias-T power.", NULL, 0, 0),
     };
@@ -272,6 +273,29 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
     // --- Step 4: Post-process SDR arguments ---
     if (config->sdr_general.rf_freq_hz_arg > 0.0f) {
         config->sdr_general.rf_freq_hz = (double)config->sdr_general.rf_freq_hz_arg;
+
+        // Apply Frequency Offset Logic
+        if (config->sdr_general.frequency_offset_arg != 0.0f) {
+            config->sdr_general.frequency_offset_hz = (double)config->sdr_general.frequency_offset_arg;
+
+            // 1. PERFORM MATH FIRST: Target + Offset = Hardware
+            config->sdr_general.rf_freq_hz += config->sdr_general.frequency_offset_hz;
+
+            // 2. LOG RESULT
+            log_info("Applying Frequency Offset: Target %.0f Hz + Offset %+.0f Hz = Tuning to %.0f Hz",
+                     config->sdr_general.rf_freq_hz - config->sdr_general.frequency_offset_hz,
+                     config->sdr_general.frequency_offset_hz,
+                     config->sdr_general.rf_freq_hz);
+
+            // Sanity check the resulting hardware frequency
+            if (config->sdr_general.rf_freq_hz <= 0.0) {
+                double user_target = config->sdr_general.rf_freq_hz - config->sdr_general.frequency_offset_hz;
+                log_error("Calculated hardware frequency is %.0f Hz (must be positive).", config->sdr_general.rf_freq_hz);
+                log_error("Target: %.0f Hz, Offset: %+.0f Hz", user_target, config->sdr_general.frequency_offset_hz);
+                return false;
+            }
+        }
+
         config->sdr_general.rf_freq_provided = true;
     }
     if (config->sdr_general.sample_rate_hz_arg > 0.0f) {

@@ -381,6 +381,17 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
         }
     }
 
+    // Check our dynamic items if offset is active to ensure alignment
+    bool use_offset_display = (fabs(config->sdr_general.frequency_offset_hz) > 1e-9);
+    
+    if (use_offset_display) {
+        const char* offset_labels[] = { "Actual Frequency", "Frequency Offset", "Tuned Frequency" };
+        for (int i = 0; i < 3; i++) {
+            int len = (int)strlen(offset_labels[i]);
+            if (len > max_label_len) max_label_len = len;
+        }
+    }
+
     const char* base_output_labels[] = {
         "Output Type", "Sample Type", "Output Rate", "Input Gain", "Output Gain", "Frequency Shift",
         "Resampling", "Output Target", "FIR Filter", "FFT Filter", "Output AGC"
@@ -395,7 +406,26 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     fprintf(stderr, "\n--- Input Details ---\n");
     if (summary_info.count > 0) {
         for (int i = 0; i < summary_info.count; i++) {
-            fprintf(stderr, " %-*s : %s\n", max_label_len, summary_info.items[i].label, summary_info.items[i].value);
+            
+            // Intercept "RF Frequency" ONLY if we are using an offset
+            if (use_offset_display && strcmp(summary_info.items[i].label, "RF Frequency") == 0) {
+                
+                // MATH: User Target = Hardware - Offset
+                double user_target_hz = config->sdr_general.rf_freq_hz - config->sdr_general.frequency_offset_hz;
+
+                // 1. Source (The Signal / User Intent)
+                fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Actual Frequency", user_target_hz);
+
+                // 2. Modifier (The Converter Offset)
+                fprintf(stderr, " %-*s : %+.0f Hz\n", max_label_len, "Frequency Offset", config->sdr_general.frequency_offset_hz);
+
+                // 3. Result (The Hardware Reality)
+                fprintf(stderr, " %-*s : %s\n", max_label_len, "Tuned Frequency", summary_info.items[i].value);
+                
+            } else {
+                // Standard Print
+                fprintf(stderr, " %-*s : %s\n", max_label_len, summary_info.items[i].label, summary_info.items[i].value);
+            }
         }
     }
     
