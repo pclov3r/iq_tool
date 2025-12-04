@@ -122,8 +122,6 @@ The best way to see all options is to run `iq_tool --help`.
 #### Command-Line Options
 
 ```text
-Resamples an I/Q file or a stream from an SDR device to a specified format and sample rate.
-
 Required Input & Output
     -i, --input=<str>                     Specifies the input type {wav|raw-file|rtlsdr|sdrplay|hackrf|bladerf|spyserver-client}
     -o, --output=<str>                    Specifies the output type {wav|raw|stdout} and optional file path
@@ -132,12 +130,11 @@ Output Options
     --output-sample-format=<str>          Sample format for output data {cs8|cu8|cs16|...}
 
 Processing Options
-    --output-rate=<flt>                   Output sample rate in Hz. (Required if no preset or --no-resample is used)
+    --output-rate=<flt>                   Output sample rate in Hz.
     --input-gain-multiplier=<flt>         Apply a linear gain multiplier to INPUT samples (before processing).
     --output-gain-multiplier=<flt>        Apply a linear gain multiplier to OUTPUT samples (after processing).
     --freq-shift=<flt>                    Apply a direct frequency shift in Hz (e.g., -100e3)
     --shift-after-resample                Apply frequency shift AFTER resampling (default is before)
-    --no-resample                         Process at native input rate. Bypasses the resampler but applies all other DSP.
     --raw-passthrough                     Bypass all processing. Copies raw input bytes directly to output.
     --iq-correction                       (Optional) Enable automatic I/Q imbalance correction.
     --dc-block                            (Optional) Enable DC offset removal (high-pass filter).
@@ -165,6 +162,7 @@ Filter Implementation Options (Advanced)
 
 SDR General Options
     --sdr-rf-freq=<flt>                   (Required for SDR) Tuner center frequency in Hz
+    --sdr-frequency-offset=<flt>          Frequency offset in Hz (e.g. 125e6 for HamItUp).
     --sdr-sample-rate=<flt>               Set sample rate in Hz. (Device-specific default)
     --sdr-bias-t                          (Optional) Enable Bias-T power.
 
@@ -189,6 +187,9 @@ SDRplay-Specific Options
     --sdrplay-antenna=<str>               Select antenna port (device-specific).
     --sdrplay-hdr-mode                    (Optional) Enable HDR mode on RSPdx/RSPdxR2.
     --sdrplay-hdr-bw=<flt>                Set bandwidth for HDR mode. Requires --sdrplay-hdr-mode.
+    --sdrplay-notch-fm                    Enable FM Broadcast Notch Filter.
+    --sdrplay-notch-dab                   Enable DAB Broadcast Notch Filter.
+    --sdrplay-notch-am                    Enable MW/AM Notch Filter (RSPduo Tuner A only).
 
 HackRF-Specific Options
     --hackrf-lna-gain=<int>               Set LNA (IF) gain in dB. (Optional, Default: 16)
@@ -211,7 +212,12 @@ SpyServer Client Options
 
 Available Presets
     cu8-nrsc5                             Sets sample type to cu8, rate to 1488375.0 Hz for FM/AM NRSC5 decoding.
-    [...other presets...]
+    cu8-nrsc5-usb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates USB sideband (102-215kHz) (Hack) for FM NRSC5.
+    cu8-nrsc5-lsb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for FM NRSC5.
+    cs16-fm-nrsc5                         Sets sample type to cs16, rate to 744187.5 Hz for FM NRSC5 decoding.
+    cs16-fm-nrsc5-usb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates USB sideband (102-215kHz) (Hack) for FM NRSC5.
+    cs16-fm-nrsc5-lsb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for FM NRSC5.
+    cs16-am-nrsc5                         Sets sample type to cs16, rate to 46511.71875 Hz for AM NRSC5 decoding.
 
 Help & Version
     -v, --version                         show program's version number and exit
