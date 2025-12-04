@@ -15,10 +15,25 @@ struct RingBuffer {
     unsigned char* buffer;
     size_t capacity;
 
+    // --- PADDING 1 ---
+    // Isolates the read-only configuration (buffer/capacity) from the
+    // frequently updated write position.
+    char _pad1[64];
+
     // C99 Lock-Free Implementation:
     // Volatile prevents register caching.
     volatile size_t write_pos;
+
+    // --- PADDING 2 ---
+    // Pushes 'read_pos' into a completely different cache line
+    // than 'write_pos'. Prevents False Sharing between Producer and Consumer cores.
+    char _pad2[64];
+
     volatile size_t read_pos;
+
+    // --- PADDING 3 ---
+    // Isolates the reader index from the flags and mutexes below.
+    char _pad3[64];
 
     volatile bool end_of_stream;
     volatile bool shutting_down;
