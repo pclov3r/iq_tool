@@ -298,6 +298,7 @@ void* reader_thread_func(void* arg) {
                 }
 
                 item->frames_read = frames_read;
+                item->frames_to_write = (unsigned int)frames_read;
                 item->stream_discontinuity_event = is_reset;
                 item->is_last_chunk = false;
 
@@ -380,8 +381,12 @@ void* pre_processor_thread_func(void* arg) {
             }
             continue;
         }
- 
+
         pre_processor_apply_chain(resources, item);
+
+        if (resources->is_passthrough) {
+            item->frames_to_write = (unsigned int)item->frames_read;
+            }
 
         if (config->dsp.iq_correction.enable) {
             if (item->frames_read >= IQ_CORRECTION_FFT_SIZE && !item->stream_discontinuity_event) {

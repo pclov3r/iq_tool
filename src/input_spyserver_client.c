@@ -762,6 +762,7 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
         }
 
         item->frames_read = frames_read;
+        item->frames_to_write = (unsigned int)frames_read;
         item->stream_discontinuity_event = is_reset;
         item->is_last_chunk = false;
 

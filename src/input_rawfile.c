@@ -229,6 +229,7 @@ static void* rawfile_start_stream(ModuleContext* ctx) {
 
         current_item->frames_read = bytes_read / resources->input_bytes_per_sample_pair;
         current_item->packet_sample_format = resources->input_format;
+        current_item->frames_to_write = (unsigned int)current_item->frames_read;
 
         // If we read fewer bytes than requested (and it wasn't 0), it's the last chunk.
         // If read 0, it's definitely the end.
