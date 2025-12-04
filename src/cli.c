@@ -56,7 +56,8 @@ void print_usage(const char *prog_name, AppConfig *config, MemoryArena* arena) {
     build_cli_options(all_options, MAX_TOTAL_OPTIONS, config, arena, NULL);
 
     argparse_init(&argparse, all_options, usages, 0);
-    argparse_describe(&argparse, "\nResamples an I/Q file or a stream from an SDR device to a specified format and sample rate.", NULL);
+    // CHANGE: Removed description string.
+    argparse_describe(&argparse, NULL, NULL);
     argparse_usage(&argparse);
 }
 
@@ -100,7 +101,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
     struct argparse_option sdr_general_options[] = {
         OPT_GROUP("SDR General Options"),
         OPT_FLOAT(0, "sdr-rf-freq", &config->sdr_general.rf_freq_hz_arg, "(Required for SDR) Tuner center frequency in Hz", NULL, 0, 0),
-        OPT_FLOAT(0, "frequency-offset", &config->sdr_general.frequency_offset_arg, "Frequency offset in Hz (e.g. 125e6 for HamItUp).", NULL, 0, 0),
+        OPT_FLOAT(0, "sdr-frequency-offset", &config->sdr_general.frequency_offset_arg, "Frequency offset in Hz (e.g. 125e6 for HamItUp).", NULL, 0, 0),
         OPT_FLOAT(0, "sdr-sample-rate", &config->sdr_general.sample_rate_hz_arg, "Set sample rate in Hz. (Device-specific default)", NULL, 0, 0),
         OPT_BOOLEAN(0, "sdr-bias-t", &config->sdr_general.bias_t_enable, "(Optional) Enable Bias-T power.", NULL, 0, 0),
     };
@@ -183,7 +184,8 @@ bool parse_arguments(int argc, char *argv[], AppConfig *config, MemoryArena* are
     struct argparse argparse;
     const char *const usages[] = { "iq_tool -i <in_type> [in_file] -o <out_type> [out_file] [options]", NULL, };
     argparse_init(&argparse, all_options, usages, 0);
-    argparse_describe(&argparse, "\nResamples an I/Q file or a stream from an SDR device to a specified format and sample rate.", NULL);
+    // CHANGE: Removed description string.
+    argparse_describe(&argparse, NULL, NULL);
     int non_opt_argc = argparse_parse(&argparse, argc, (const char **)argv);
 
     if (config->input.type_name && active_input_type && strcasecmp(config->input.type_name, active_input_type) != 0) {
