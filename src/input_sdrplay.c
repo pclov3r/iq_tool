@@ -205,6 +205,7 @@ typedef struct {
     sdrplay_api_DeviceParamsT *sdr_device_params;
     bool sdr_api_is_open;
     int16_t *interleave_buffer;
+    bool is_streaming;
 } SdrplayPrivateData;
 
 
@@ -636,6 +637,7 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
 
     private_data->sdr_device = NULL;
     private_data->sdr_api_is_open = false;
+    private_data->is_streaming = false;
     resources->input_module_private_data = private_data;
 
 #if defined(_WIN32)
@@ -938,6 +940,7 @@ static void* sdrplay_start_stream(ModuleContext* ctx) {
     }
 
     sdrplay_api_ErrT err = sdrplay_api_Init(private_data->sdr_device->dev, &cbFns, resources);
+    if (err == sdrplay_api_Success) private_data->is_streaming = true;
 
     // After a successful Init, explicitly apply the Bias-T setting if requested.
     if (err == sdrplay_api_Success && resources->config->sdr_general.bias_t_enable) {
@@ -1002,8 +1005,9 @@ static void* sdrplay_start_stream(ModuleContext* ctx) {
 static void sdrplay_stop_stream(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
     SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
-    if (private_data && private_data->sdr_device) {
+    if (private_data && private_data->sdr_device && private_data->is_streaming) {
         log_info("Stopping SDRplay stream...");
+        private_data->is_streaming = false;
         sdrplay_api_ErrT err = sdrplay_api_Uninit(private_data->sdr_device->dev);
         if (err != sdrplay_api_Success && err != sdrplay_api_StopPending) {
             log_error("Failed to uninitialize SDRplay device: %s", sdrplay_api_GetErrorString(err));
