@@ -207,16 +207,19 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
         return false;
     }
 
-    InputModuleInterface* selected_module_api = module_manager_get_input_interface_by_name(config->input.type_name, arena);
-    if (!selected_module_api) {
+    // Lookup the full module definition to check capabilities/requirements
+    const Module* selected_input_module = module_manager_get_module_by_name(config->input.type_name, arena);
+
+    if (!selected_input_module || selected_input_module->type != MODULE_TYPE_INPUT) {
         log_error("Invalid input type '%s'.", config->input.type_name);
         return false;
     }
 
-    bool is_file_input = (strcasecmp(config->input.type_name, "wav") == 0 ||
-                          strcasecmp(config->input.type_name, "raw-file") == 0);
+    // We still need the API pointer for later validation steps in this function
+    InputModuleInterface* selected_module_api = (InputModuleInterface*)selected_input_module->api;
 
-    if (is_file_input) {
+    // Check if this specific input module requires a positional argument (file path)
+    if (selected_input_module->requires_input_path) {
         if (non_opt_argc < 1) {
             log_error("Missing <in_file> argument for input type '%s'.", config->input.type_name);
             return false;

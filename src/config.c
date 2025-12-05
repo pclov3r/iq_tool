@@ -2,6 +2,7 @@
 #include "app_context.h" // Provides the full definition for AppConfig
 #include "constants.h"
 #include "log.h"
+#include "module_manager.h"
 #include "utils.h"
 #include <string.h>
 #include <stdlib.h>
@@ -146,16 +147,10 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
         config->output_rate.provided = true;
     }
 
-    // --- Step 3: Determine Output Container Type (with defaults) ---
-    // This logic is now simplified as the module choice implies the container.
-    if (strcasecmp(config->output.module_name, "raw") == 0) {
-        config->output.type = OUTPUT_TYPE_RAW;
-    } else if (strcasecmp(config->output.module_name, "wav") == 0) {
-        // For file output, default to WAV_RF64 but make it explicit to the user.
-        config->output.type = OUTPUT_TYPE_WAV_RF64;
-        log_info("Defaulting to 'wav-rf64' container for large file support.");
-    } else if (strcasecmp(config->output.module_name, "stdout") == 0) {
-        config->output.type = OUTPUT_TYPE_RAW;
+    // --- Step 3: Determine Output Container Type (from module definition) ---
+    const Module* out_mod = module_manager_get_module_by_name(config->output.module_name, NULL);
+    if (out_mod) {
+        config->output.type = out_mod->output_type;
     }
 
     // --- Step 4: Determine Output Sample Format (with defaults) ---

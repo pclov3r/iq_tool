@@ -13,6 +13,7 @@
 
 #include "module.h" // Provides the core InputModuleInterface interface definition
 #include "argparse.h"     // Provides the argparse_option struct for CLI options
+#include "common_types.h"
 
 // --- Forward Declarations ---
 // We only use pointers to these structs, so we don't need their full definitions.
@@ -33,6 +34,8 @@ typedef struct Module {
     void (*set_default_config)(struct AppConfig* config); ///< Pointer to the default config function.
     const struct argparse_option* (*get_cli_options)(int* count); ///< Pointer to the CLI option function.
     bool requires_output_path; ///< For output modules, indicates if a file path argument is needed.
+    bool requires_input_path;  // For INPUT modules (read from file)
+    OutputType output_type;
 } Module;
 
 

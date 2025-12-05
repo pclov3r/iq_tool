@@ -56,6 +56,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = wav_get_cli_options,
+            .requires_input_path = true,
             .requires_output_path = false,
         },
         {
@@ -65,6 +66,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = rawfile_get_cli_options,
+            .requires_input_path = true,
             .requires_output_path = false,
         },
     #if defined(WITH_RTLSDR)
@@ -75,6 +77,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .is_sdr = true,
             .set_default_config = rtlsdr_set_default_config,
             .get_cli_options = rtlsdr_get_cli_options,
+            .requires_input_path = false,
             .requires_output_path = false,
         },
     #endif
@@ -86,6 +89,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .is_sdr = true,
             .set_default_config = sdrplay_set_default_config,
             .get_cli_options = sdrplay_get_cli_options,
+            .requires_input_path = false,
             .requires_output_path = false,
         },
     #endif
@@ -97,6 +101,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .is_sdr = true,
             .set_default_config = hackrf_set_default_config,
             .get_cli_options = hackrf_get_cli_options,
+            .requires_input_path = false,
             .requires_output_path = false,
         },
     #endif
@@ -108,6 +113,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .is_sdr = true,
             .set_default_config = bladerf_set_default_config,
             .get_cli_options = bladerf_get_cli_options,
+            .requires_input_path = false,
             .requires_output_path = false,
         },
     #endif
@@ -118,49 +124,58 @@ static void initialize_modules_list(MemoryArena* arena) {
             .is_sdr = true,
             .set_default_config = spyserver_client_set_default_config,
             .get_cli_options = spyserver_client_get_cli_options,
+            .requires_input_path = false,
             .requires_output_path = false,
         },
         // --- OUTPUT MODULES ---
         {
             .name = "raw-file",
             .type = MODULE_TYPE_OUTPUT,
+            .output_type = OUTPUT_TYPE_RAW,
             .api = get_raw_file_output_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = NULL,
+            .requires_input_path = false,
             .requires_output_path = true,
         },
         {
             .name = "wav", // The command for the standard WAV format
             .type = MODULE_TYPE_OUTPUT,
+            .output_type = OUTPUT_TYPE_WAV,
             .api = get_wav_output_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = NULL,
+            .requires_input_path = false,
             .requires_output_path = true,
         },
         {
             .name = "wav-rf64", // The command for the modern RF64 format
             .type = MODULE_TYPE_OUTPUT,
+            .output_type = OUTPUT_TYPE_WAV_RF64,
             .api = get_wav_rf64_output_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = NULL,
+            .requires_input_path = false,
             .requires_output_path = true,
         },
         {
             .name = "stdout",
             .type = MODULE_TYPE_OUTPUT,
+            .output_type = OUTPUT_TYPE_RAW,
             .api = get_stdout_output_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = NULL,
+            .requires_input_path = false,
             .requires_output_path = false,
         },
     };
 
     num_all_modules = sizeof(temp_modules) / sizeof(temp_modules[0]);
-    
+
     all_modules = (Module*)mem_arena_alloc(arena, sizeof(temp_modules), true);
     if (all_modules) {
         memcpy(all_modules, temp_modules, sizeof(temp_modules));
@@ -255,4 +270,15 @@ void module_manager_populate_cli_options(
             }
         }
     }
+}
+
+const Module* module_manager_get_module_by_name(const char* name, MemoryArena* arena) {
+    initialize_modules_list(arena);
+    if (!name || !all_modules) return NULL;
+    for (int i = 0; i < num_all_modules; ++i) {
+        if (strcasecmp(name, all_modules[i].name) == 0) {
+            return &all_modules[i];
+        }
+    }
+    return NULL;
 }
