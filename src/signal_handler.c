@@ -1,9 +1,9 @@
 #include "signal_handler.h"
 #include "log.h"
 #include "app_context.h"       // Provides AppResources
-#include "module.h"      // Provides ModuleContext
+#include "module.h"            // Provides ModuleContext
 #include "queue.h"             // Provides queue_signal_shutdown
-#include "ring_buffer.h" // Provides ring_buffer_signal_shutdown
+#include "ring_buffer.h"       // Provides ring_buffer_signal_shutdown
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -21,11 +21,8 @@
 
 extern pthread_mutex_t g_console_mutex;
 
-#define LINE_CLEAR_SEQUENCE "\r \r"
-
 static AppResources *g_resources_for_signal_handler = NULL;
 static volatile sig_atomic_t g_shutdown_flag = 0;
-
 
 #ifdef _WIN32
 static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
@@ -35,16 +32,19 @@ static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
         case CTRL_CLOSE_EVENT:
         case CTRL_SHUTDOWN_EVENT:
             if (!is_shutdown_requested()) {
-                // 1. Trigger shutdown immediately (High Priority)
-                request_shutdown();
-
-                // 2. Log the event (Low Priority / Cosmetic)
+                // 1. Cosmetic: Force a newline immediately so ^C doesn't mess up the next log
                 pthread_mutex_lock(&g_console_mutex);
                 if (_isatty(_fileno(stderr))) {
-                    fprintf(stderr, LINE_CLEAR_SEQUENCE);
+                    fprintf(stderr, "\n");
                 }
-                log_debug("Ctrl+C detected, initiating graceful shutdown...");
                 pthread_mutex_unlock(&g_console_mutex);
+
+                // 2. Trigger shutdown (High Priority)
+                // This will trigger rtlsdr_stop_stream, which prints logs.
+                request_shutdown();
+
+                // 3. Log the event
+                log_debug("Ctrl+C detected, initiating graceful shutdown...");
             }
             return TRUE;
         default:
@@ -62,24 +62,30 @@ void* signal_handler_thread(void *arg) {
     sigaddset(&signal_set, SIGINT);
     sigaddset(&signal_set, SIGTERM);
 
+    // Wait for a signal to arrive
     if (sigwait(&signal_set, &sig) == 0) {
         if (!is_shutdown_requested()) {
-            // 1. Trigger shutdown immediately (High Priority)
-            request_shutdown();
-
-            // 2. Log the event (Low Priority / Cosmetic)
+            
+            // 1. Cosmetic: Force a newline immediately.
+            // This separates the terminal's "^C" echo from the logs that follow.
             pthread_mutex_lock(&g_console_mutex);
             if (isatty(fileno(stderr))) {
-                fprintf(stderr, LINE_CLEAR_SEQUENCE);
+                fprintf(stderr, "\n");
             }
-            log_debug("Signal %d (%s) received, initiating graceful shutdown...", sig, strsignal(sig));
             pthread_mutex_unlock(&g_console_mutex);
+
+            // 2. Trigger shutdown (High Priority)
+            // This calls rtlsdr_stop_stream(), which generates logs.
+            // Since we printed \n above, these logs will appear on a fresh line.
+            request_shutdown();
+
+            // 3. Log the specific signal
+            log_debug("Signal %d (%s) received, initiating graceful shutdown...", sig, strsignal(sig));
         }
     }
     return NULL;
 }
 #endif
-
 
 void setup_signal_handlers(AppResources *resources) {
     g_resources_for_signal_handler = resources;
@@ -92,6 +98,7 @@ void setup_signal_handlers(AppResources *resources) {
     sigemptyset(&signal_set);
     sigaddset(&signal_set, SIGINT);
     sigaddset(&signal_set, SIGTERM);
+    // Block signals in the main thread so they are handled by the dedicated thread
     if (pthread_sigmask(SIG_BLOCK, &signal_set, NULL) != 0) {
         fprintf(stderr, "FATAL: Failed to set signal mask.\n");
         exit(EXIT_FAILURE);

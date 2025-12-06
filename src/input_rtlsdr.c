@@ -336,11 +336,21 @@ static void* rtlsdr_start_stream(ModuleContext* ctx) {
                     if (!item) break;
 
                     int n_read = 0;
-                    
-                    // --- CHANGED: Use dynamic capacity instead of fixed constant ---
+
+                    // --- Use dynamic capacity instead of fixed constant ---
                     // This allows the elastic sizing logic in setup.c to control the read size.
                     size_t bytes_to_read = item->raw_input_capacity_bytes;
-                    
+
+                    // Round down to the nearest multiple of 512 to satisfy USB bulk transfer requirements.
+                    // 512 is the standard USB 2.0 High Speed packet size.
+                    bytes_to_read = bytes_to_read & ~511;
+
+                    if (bytes_to_read == 0) {
+                        log_warn("Buffer size too small for USB transfer alignment!");
+                        queue_enqueue(resources->free_sample_chunk_queue, item);
+                        continue;
+                    }
+
                     result = rtlsdr_read_sync(private_data->dev, item->raw_input_data, bytes_to_read, &n_read);
 
                     if (result >= 0) {
@@ -406,6 +416,8 @@ static void rtlsdr_cleanup(ModuleContext* ctx) {
         RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)resources->input_module_private_data;
         if (private_data->dev) {
             log_info("Closing RTL-SDR device...");
+            // Reset buffer to clear USB stalls before closing; prevents I2C errors
+            rtlsdr_reset_buffer(private_data->dev);
             rtlsdr_close(private_data->dev);
             private_data->dev = NULL;
         }
