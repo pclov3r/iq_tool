@@ -68,6 +68,7 @@ You'll need a pretty standard C development environment.
 *   **(Optional) BladeRF Library (libbladeRF):** For BladeRF support (e.g., `libbladerf-dev`). Windows installers found **[here](https://github.com/Nuand/bladeRF/releases)**.
 *   **(Optional) HackRF Library (libhackrf):** For HackRF support (e.g., `libhackrf-dev`).
 *   **(Optional) SDRplay API Library:** To build with SDRplay support, you must first download and install the official API from the **[SDRplay website](https://www.sdrplay.com/downloads/)**.
+*   **(Optional) NRSC5 Library (libnrsc5):** For NRSC5 (HD Radio) playback support. GitHub repo found **[here](https://github.com/theori-io/nrsc5)**.
 
 #### On Linux (Debian/Ubuntu Example)
 
@@ -88,7 +89,7 @@ You'll need a pretty standard C development environment.
     cmake ..
 
     # Or, build with everything enabled
-    cmake -DWITH_RTLSDR=ON -DWITH_SDRPLAY=ON -DWITH_HACKRF=ON -DWITH_BLADERF=ON ..
+    cmake -DWITH_RTLSDR=ON -DWITH_SDRPLAY=ON -DWITH_HACKRF=ON -DWITH_BLADERF=ON -DWITH_NRSC5=ON ..
 
     make
     ```
@@ -98,7 +99,7 @@ You'll find the `iq_tool` executable in the `build` directory.
 
 #### Using Pre-compiled Binaries
 
-Pre-compiled binaries for Windows are available on the project's **[releases page](https://github.com/pclov3r/iq_tool/releases)**.
+Pre-compiled binaries for Windows without NRSC5 output module support are available on the project's **[releases page](https://github.com/pclov3r/iq_tool/releases)**.
 
 > **Note:** Not every commit will result in a new release and Windows binary. Releases are typically made after significant changes.
 
@@ -122,6 +123,9 @@ The best way to see all options is to run `iq_tool --help`.
 #### Command-Line Options
 
 ```text
+Usage: iq_tool -i <in_type> [in_file] -o <out_type> [out_file] [options]
+
+
 Required Input & Output
     -i, --input=<str>                     Specifies the input type {wav|raw-file|rtlsdr|sdrplay|hackrf|bladerf|spyserver-client}
     -o, --output=<str>                    Specifies the output type {wav|raw|stdout} and optional file path
@@ -209,6 +213,10 @@ SpyServer Client Options
     --spyserver-client-port=<int>         Port number of the spyserver instance (Required).
     --spyserver-client-gain=<int>         Set manual gain. Disables AGC. (Ignored on servers without gain control)
     --spyserver-client-format=<str>       Select sample format {cu8|cs16|cs24|cf32}. Default is cu8.
+
+NRSC5 Output Options
+    --nrsc5-mode=<str>                    Set decoder mode {cs16-fm|cs16-am|cu8-fm|cu8-am}. (Default: cs16-fm)
+    --nrsc5-program=<int>                 Select HD program/subchannel (0-7). (Required)
 
 Available Presets
     cu8-nrsc5                             Sets sample type to cu8, rate to 1488375.0 Hz for FM/AM NRSC5 decoding.

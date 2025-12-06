@@ -561,18 +561,15 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
         return false;
     }
 
+    // --- REMOVED: Output Option Validation (Moved to cli.c) ---
+    // This ensures validation happens before expensive input initialization.
+
     if (!calculate_and_validate_resample_ratio(config, resources, &resources->resample_ratio)) {
         return false;
     }
 
     if (!validate_and_configure_filter_stage(config, resources)) {
         return false;
-    }
-
-    if (resources->selected_output_module_api->validate_options) {
-        if (!resources->selected_output_module_api->validate_options(config)) {
-            return false;
-        }
     }
 
     if (resources->selected_input_module_api->pre_stream_iq_correction) {

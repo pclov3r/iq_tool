@@ -37,7 +37,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
 // --- Callback to catch users trying to use presets as flags ---
 static int preset_flag_warning_cb(struct argparse *self, const struct argparse_option *option) {
     (void)self;
-    log_error("'--%s' is not a valid flag. To load the '%s' preset, use '--preset %s'.", 
+    log_error("'--%s' is not a valid flag. To load the '%s' preset, use '--preset %s'.",
               option->long_name, option->long_name, option->long_name);
     exit(EXIT_FAILURE);
     return 0;
@@ -85,11 +85,11 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_STRING(0, "output-sample-format", &config->output.format_name, "Sample format for output data {cs8|cu8|cs16|...}", NULL, 0, 0),
         OPT_GROUP("Processing Options"),
         OPT_FLOAT(0, "output-rate", &config->output_rate.user_arg, "Output sample rate in Hz.", NULL, 0, 0),
-        
+
         // CHANGE: Renamed input gain option and added output gain option
         OPT_FLOAT(0, "input-gain-multiplier", &config->dsp.input_gain, "Apply a linear gain multiplier to INPUT samples (before processing).", NULL, 0, 0),
         OPT_FLOAT(0, "output-gain-multiplier", &config->dsp.output_gain, "Apply a linear gain multiplier to OUTPUT samples (after processing).", NULL, 0, 0),
-        
+
         OPT_FLOAT(0, "freq-shift", &config->dsp.freq_shift_hz, "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0, 0),
         OPT_BOOLEAN(0, "shift-after-resample", &config->dsp.shift_after_resample, "Apply frequency shift AFTER resampling (default is before)", NULL, 0, 0),
         OPT_BOOLEAN(0, "raw-passthrough", &config->dsp.raw_passthrough, "Bypass all processing. Copies raw input bytes directly to output.", NULL, 0, 0),
@@ -146,7 +146,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
     if (config->num_presets > 0) {
         struct argparse_option preset_header[] = { OPT_GROUP("Available Presets") };
         APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], preset_header, 1);
-        
+
         struct argparse_option preset_opts[MAX_PRESETS];
         int presets_to_add = (config->num_presets > MAX_PRESETS) ? MAX_PRESETS : config->num_presets;
         for (int i = 0; i < presets_to_add; i++) {
@@ -310,7 +310,21 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
 
     // --- Step 5: Call all validation functions from the config module ---
     if (selected_module_api->validate_options && !selected_module_api->validate_options(config)) return false;
+
     if (!validate_output_type_and_sample_format(config)) return false;
+
+    // --- Validate Output Module Options (Early Check) ---
+    // We look up the output module again to get its API.
+    // This allows modules like 'nrsc5' to check for missing flags (program_id)
+    // AND override the sample rate/format set in Step 2 if necessary.
+    const Module* out_mod_val = module_manager_get_output_module_by_name(config->output.module_name, arena);
+    if (out_mod_val) {
+        OutputModuleInterface* out_api = (OutputModuleInterface*)out_mod_val->api;
+        if (out_api->validate_options) {
+            if (!out_api->validate_options(config)) return false;
+        }
+    }
+
     if (selected_module_api->validate_generic_options && !selected_module_api->validate_generic_options(config)) return false;
     if (!validate_filter_options(config)) return false;
     if (!validate_iq_correction_options(config)) return false;

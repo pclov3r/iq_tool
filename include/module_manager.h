@@ -35,6 +35,7 @@ typedef struct Module {
     const struct argparse_option* (*get_cli_options)(int* count); ///< Pointer to the CLI option function.
     bool requires_output_path; ///< For output modules, indicates if a file path argument is needed.
     bool requires_input_path;  // For INPUT modules (read from file)
+    bool module_defines_format;
     OutputType output_type;
 } Module;
 

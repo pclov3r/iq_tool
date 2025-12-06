@@ -27,6 +27,9 @@
 #include "output_wav.h"
 #include "output_wav_rf64.h"
 #include "output_stdout.h"
+#if defined(WITH_NRSC5)
+#include "output_nrsc5.h"
+#endif
 
 
 #ifdef _WIN32
@@ -172,6 +175,20 @@ static void initialize_modules_list(MemoryArena* arena) {
             .requires_input_path = false,
             .requires_output_path = false,
         },
+    #if defined(WITH_NRSC5)
+        {
+            .name = "nrsc5",
+            .type = MODULE_TYPE_OUTPUT,
+            .output_type = OUTPUT_TYPE_RAW, // Consumes raw I/Q from pipeline
+            .api = get_nrsc5_output_module_api(),
+            .is_sdr = false,
+            .set_default_config = NULL,
+            .get_cli_options = nrsc5_get_cli_options,
+            .requires_input_path = false,
+            .requires_output_path = false, // It plays audio, doesn't write to file
+            .module_defines_format = true, // <--- The Fix
+        },
+    #endif
     };
 
     num_all_modules = sizeof(temp_modules) / sizeof(temp_modules[0]);

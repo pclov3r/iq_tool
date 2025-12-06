@@ -22,6 +22,7 @@ option(WITH_RTLSDR "Enable RTL-SDR device support" OFF)
 option(WITH_SDRPLAY "Enable SDRplay device support" OFF)
 option(WITH_HACKRF "Enable HackRF device support" OFF)
 option(WITH_BLADERF "Enable BladeRF device support" OFF)
+option(WITH_NRSC5 "Enable NRSC5 (HD Radio) output support" OFF)
 option(BUILD_DOCUMENTATION "Enable building Doxygen documentation" OFF)
 
 set(SNDFILE_INCLUDE_DIR "" CACHE PATH "Manual include path for libsndfile")
@@ -30,6 +31,8 @@ set(LIQUID_INCLUDE_DIR "" CACHE PATH "Manual include path for liquid-dsp")
 set(LIQUID_LIBRARY "" CACHE PATH "Manual library path for liquid-dsp")
 set(EXPAT_INCLUDE_DIR "" CACHE PATH "Manual include path for Expat")
 set(EXPAT_LIBRARY "" CACHE PATH "Manual library path for Expat")
+set(NRSC5_INCLUDE_DIR "" CACHE PATH "Manual include path for libnrsc5")
+set(NRSC5_LIBRARY "" CACHE PATH "Manual library path for libnrsc5")
 
 #=======================================================================
 # Compiler Flags Setup
@@ -65,6 +68,9 @@ if(WITH_HACKRF)
 endif()
 if(WITH_BLADERF)
     add_compile_definitions(WITH_BLADERF)
+endif()
+if(WITH_NRSC5)
+    add_compile_definitions(WITH_NRSC5)
 endif()
 
 #=======================================================================
@@ -110,6 +116,11 @@ endif()
 if(WITH_BLADERF)
     message(STATUS "Looking for required library: libbladeRF...")
     find_package(BladeRF REQUIRED)
+endif()
+
+if(WITH_NRSC5)
+    message(STATUS "Looking for required library: libnrsc5...")
+    find_package(NRSC5 REQUIRED)
 endif()
 
 #=======================================================================
@@ -181,6 +192,10 @@ if(WITH_BLADERF)
     list(APPEND OTHER_SOURCES src/input_bladerf.c)
     include_directories(${BladeRF_INCLUDE_DIRS} ${LibUSB_INCLUDE_DIRS})
 endif()
+if(WITH_NRSC5)
+    list(APPEND OTHER_SOURCES src/output_nrsc5.c)
+    include_directories(${NRSC5_INCLUDE_DIRS})
+endif()
 
 #=======================================================================
 # Target Creation
@@ -250,7 +265,8 @@ target_link_libraries(iq_tool PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(iq_tool PRIVATE shlwapi pathcch shell32 ws2_32)
+    # Added ole32 for Miniaudio (WASAPI support)
+    target_link_libraries(iq_tool PRIVATE shlwapi pathcch shell32 ws2_32 ole32)
 else()
     target_link_libraries(iq_tool PRIVATE m)
 endif()
@@ -266,6 +282,11 @@ if(WITH_HACKRF)
 endif()
 if(WITH_BLADERF)
     target_link_libraries(iq_tool PRIVATE ${BladeRF_LIBRARIES} ${LibUSB_LIBRARIES})
+endif()
+if(WITH_NRSC5)
+    target_link_libraries(iq_tool PRIVATE ${NRSC5_LIBRARIES})
+    # Miniaudio on Linux/Unix requires libdl (dlopen) for backend loading
+    target_link_libraries(iq_tool PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
 #=======================================================================
@@ -344,5 +365,10 @@ if(WITH_BLADERF)
     message(STATUS "  BladeRF Support:   ENABLED (${BladeRF_LIBRARIES})")
 else()
     message(STATUS "  BladeRF Support:   DISABLED (use -DWITH_BLADERF=ON to enable)")
+endif()
+if(WITH_NRSC5)
+    message(STATUS "  NRSC5 Support:     ENABLED (${NRSC5_LIBRARIES})")
+else()
+    message(STATUS "  NRSC5 Support:     DISABLED (use -DWITH_NRSC5=ON to enable)")
 endif()
 message(STATUS "--------------------------------------------------")

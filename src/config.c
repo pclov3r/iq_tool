@@ -75,7 +75,7 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
                 if (!config->output.format_name) {
                     config->output.format_name = p->output_sample_format_name;
                 }
-                
+
                 // UPDATED: Map input_gain and output_gain from preset
                 if (p->input_gain_provided && config->dsp.input_gain == 1.0f) {
                     config->dsp.input_gain = p->input_gain;
@@ -147,7 +147,8 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
         config->output_rate.provided = true;
     }
 
-    // --- Step 3: Determine Output Container Type (from module definition) ---
+    // --- Step 3: Determine Output Container Type ---
+    // We retrieve the module definition here to check its properties
     const Module* out_mod = module_manager_get_module_by_name(config->output.module_name, NULL);
     if (out_mod) {
         config->output.type = out_mod->output_type;
@@ -155,14 +156,20 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
 
     // --- Step 4: Determine Output Sample Format (with defaults) ---
     if (!config->output.format_name) {
-        // If writing to a file, and no sample format is given,
-        // it's safe to default to 'cs16', which is the most common for WAV files.
+        // Case A: Writing to a file (WAV/RAW)
         if (config->output.path_arg) {
             config->output.format_name = "cs16";
             log_info("No output sample format specified; defaulting to 'cs16' for file output.");
-        } else {
-            // For stdout, the format MUST be specified as we cannot guess the consumer's needs.
-            log_fatal("Missing required argument: you must specify an --output-sample-format when using '--output stdout'.");
+        }
+        // Case B: Module defines its own format
+        else if (out_mod && out_mod->module_defines_format) {
+            // Default to cs16 as a safe placeholder.
+            // The specific module's validation logic can override this later if needed.
+            config->output.format_name = "cs16";
+        }
+        // Case C: Raw stream (stdout) with no guidance
+        else {
+            log_fatal("Missing required argument: you must specify an --output-sample-format when using '--output %s'.", config->output.module_name);
             return false;
         }
     }
