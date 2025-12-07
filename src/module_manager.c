@@ -30,7 +30,7 @@
 #if defined(WITH_NRSC5)
 #include "output_nrsc5.h"
 #endif
-
+#include "output_wfm.h"
 
 #ifdef _WIN32
 #define strcasecmp _stricmp
@@ -186,9 +186,21 @@ static void initialize_modules_list(MemoryArena* arena) {
             .get_cli_options = nrsc5_get_cli_options,
             .requires_input_path = false,
             .requires_output_path = false, // It plays audio, doesn't write to file
-            .module_defines_format = true, // <--- The Fix
+            .module_defines_format = true,
         },
     #endif
+        {
+            .name = "wfm",
+            .type = MODULE_TYPE_OUTPUT,
+            .output_type = OUTPUT_TYPE_RAW,
+            .api = get_wfm_output_module_api(),
+            .is_sdr = false,
+            .set_default_config = NULL,
+            .get_cli_options = wfm_get_cli_options,
+            .requires_input_path = false,
+            .requires_output_path = false,
+            .module_defines_format = true,
+        },
     };
 
     num_all_modules = sizeof(temp_modules) / sizeof(temp_modules[0]);

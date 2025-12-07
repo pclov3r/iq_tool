@@ -15,24 +15,8 @@
 #include <unistd.h>
 #endif
 
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
-#pragma GCC diagnostic ignored "-Wshadow"
-#pragma GCC diagnostic ignored "-Wunused-function"
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-
-#define MINIAUDIO_IMPLEMENTATION
-#define MA_NO_DECODING
-#define MA_NO_ENCODING
-#include "miniaudio.h"
-
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
-
 #include "output_nrsc5.h"
+#include "miniaudio.h"
 #include "module.h"
 #include "app_context.h"
 #include "log.h"

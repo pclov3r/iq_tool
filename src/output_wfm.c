@@ -1,0 +1,567 @@
+/*
+ * Original Work Copyright (c) 2017-2022 windytan
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ * -----------------------------------------------------------------------------
+ *
+ * Modifications Copyright (C) 2025 iq_tool
+ *
+ * The modifications to this file are licensed under the GNU General Public License v3.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#include "output_wfm.h"
+#include "miniaudio.h"
+#include "module.h"
+#include "app_context.h"
+#include "log.h"
+#include "platform.h"
+#include "ring_buffer.h"
+#include "utils.h"
+#include "signal_handler.h"
+#include "queue.h"
+#include "sample_convert.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include <complex.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
+// --- Liquid DSP ---
+#ifdef _WIN32
+#include <liquid.h>
+#else
+#include <liquid/liquid.h>
+#endif
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+// --- Constants from demux.h ---
+#define WFM_BUFLEN              8192
+#define WFM_PILOT_HZ            19000.0f
+#define WFM_PLL_BW_HZ           10.0f
+#define WFM_PILOT_FIR_USEC      740.0f
+#define WFM_PILOT_FIR_HALFBAND  800.0f
+#define WFM_AUDIO_FIR_CUTOFF    16500.0f
+#define WFM_AUDIO_FIR_LEN_USEC  740.0f
+#define WFM_DEEMPH_ORDER        1
+#define WFM_STEREO_SEPARATION   1.2f
+
+// --- Gain Staging ---
+// Scaling factor applied to the MPX signal after demodulation.
+// Standard FM deviation (75kHz) maps to 1.0 in freqdem.
+// We scale this down (~ -16.5 dB) to create headroom for the Pilot tone, 
+// Stereo Matrix (Sum + Diff), and De-emphasis filters.
+#define WFM_MPX_SCALING_FACTOR  0.15f
+
+// --- Audio Config ---
+#define AUDIO_SAMPLE_RATE       48000
+#define AUDIO_CHANNELS          2
+#define AUDIO_BUFFER_SIZE       (512 * 1024)
+
+// --- MPX Rate Constraints ---
+#define WFM_MIN_MPX_RATE        192000.0
+#define WFM_MAX_MPX_RATE        384000.0
+#define WFM_DEFAULT_MPX_RATE    240000.0
+
+// --- Internal Structures ---
+
+typedef struct {
+    float buffer[WFM_BUFLEN];
+    float sum;
+    int idx;
+} RunningAverage;
+
+typedef struct {
+    float coeff_B[3 * ((WFM_DEEMPH_ORDER + 1) / 2)];
+    float coeff_A[3 * ((WFM_DEEMPH_ORDER + 1) / 2)];
+    iirfilt_rrrf iir_l;
+    iirfilt_rrrf iir_r;
+} DeEmphasis;
+
+typedef struct {
+    // Pipeline State
+    ma_device audio_device;
+    RingBuffer* audio_ring_buffer;
+    bool audio_device_initialized;
+
+    // DSP Objects (Liquid)
+    freqdem fm_demod;           // I/Q -> MPX
+    
+    nco_crcf nco_pilot_approx;
+    nco_crcf nco_pilot_exact;
+    nco_crcf nco_stereo_subcarrier;
+
+    firfilt_crcf fir_pilot;     // Complex FIR
+    firfilt_rrrf fir_sum;       // Real FIR
+    firfilt_rrrf fir_diff;      // Real FIR
+
+    DeEmphasis deemphasis;
+    RunningAverage pilotnoise;
+
+    // Output Resamplers (MPX Rate -> 48k)
+    msresamp_rrrf resamp_out_l;
+    msresamp_rrrf resamp_out_r;
+    float output_resample_ratio;
+
+    // Processing State
+    float input_samplerate;
+    float gain;
+
+    // Scratch Buffers
+    float* mpx_buffer;
+    float* audio_out_l;
+    float* audio_out_r;
+    int16_t* interleaved_pcm;
+
+} WfmContext;
+
+// --- CLI Config ---
+static struct {
+    float deemph_us;
+    float gain_val;
+    int force_stereo;
+    int force_mono;
+} s_wfm_config = {
+    .deemph_us = 75.0f,
+    .gain_val = 5.0f,
+    .force_stereo = 0,
+    .force_mono = 0
+};
+
+// --- Helpers ---
+
+static float angular_freq(float hertz, float samplerate) {
+    return hertz * 2.0f * (float)M_PI / samplerate;
+}
+
+static void running_average_init(RunningAverage* ra) {
+    memset(ra->buffer, 0, sizeof(ra->buffer));
+    ra->sum = 0.0f;
+    ra->idx = 0;
+    // Pre-fill as done in demux.cpp
+    for (int i = 0; i < WFM_BUFLEN; i++) {
+        ra->sum -= ra->buffer[ra->idx];
+        ra->buffer[ra->idx] = 9.0f;
+        ra->sum += ra->buffer[ra->idx];
+        ra->idx = (ra->idx + 1) % WFM_BUFLEN;
+    }
+}
+
+static void running_average_push(RunningAverage* ra, float val) {
+    ra->sum -= ra->buffer[ra->idx];
+    ra->buffer[ra->idx] = val;
+    ra->sum += ra->buffer[ra->idx];
+    ra->idx = (ra->idx + 1) % WFM_BUFLEN;
+}
+
+static float running_average_get(RunningAverage* ra) {
+    return ra->sum / (float)WFM_BUFLEN;
+}
+
+static void deemphasis_init(DeEmphasis* de, float time_constant_us, float samplerate) {
+    float cutoff = (1.0f / (2.0f * (float)M_PI * time_constant_us * 1e-6f)) / samplerate;
+    
+    liquid_iirdes(LIQUID_IIRDES_BUTTER, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 
+                  WFM_DEEMPH_ORDER, cutoff, 0.0f, 10.0f, 10.0f, 
+                  de->coeff_B, de->coeff_A);
+
+    int num_sections = (WFM_DEEMPH_ORDER + 1) / 2;
+    de->iir_l = iirfilt_rrrf_create_sos(de->coeff_B, de->coeff_A, num_sections);
+    de->iir_r = iirfilt_rrrf_create_sos(de->coeff_B, de->coeff_A, num_sections);
+}
+
+static void deemphasis_execute(DeEmphasis* de, float in_l, float in_r, float* out_l, float* out_r) {
+    iirfilt_rrrf_execute(de->iir_l, in_l, out_l);
+    iirfilt_rrrf_execute(de->iir_r, in_r, out_r);
+}
+
+static void deemphasis_destroy(DeEmphasis* de) {
+    if (de->iir_l) iirfilt_rrrf_destroy(de->iir_l);
+    if (de->iir_r) iirfilt_rrrf_destroy(de->iir_r);
+}
+
+// --- Miniaudio Callback ---
+static void miniaudio_data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
+    (void)pInput;
+    WfmContext* ctx = (WfmContext*)pDevice->pUserData;
+    if (frameCount == 0) return;
+
+    size_t bytes_needed = frameCount * AUDIO_CHANNELS * sizeof(int16_t);
+    size_t available = ring_buffer_get_size(ctx->audio_ring_buffer);
+
+    if (available < bytes_needed) {
+        memset(pOutput, 0, bytes_needed); // Underrun: Silence
+        return;
+    }
+    ring_buffer_read(ctx->audio_ring_buffer, pOutput, bytes_needed);
+}
+
+// --- Module Interface Implementation ---
+
+static bool wfm_validate_options(AppConfig* config) {
+    // 1. Force Pipeline Format to CF32
+    // We need high-precision float I/Q for the FM demodulator.
+    config->output.format = CF32; 
+
+    // 2. Validate/Enforce MPX Rate
+    if (config->output_rate.target_rate == 0.0) {
+        // Case A: User did not specify --output-rate.
+        // Force the default MPX rate.
+        config->output_rate.target_rate = WFM_DEFAULT_MPX_RATE;
+        config->output_rate.provided = true; // Mark as provided so setup.c respects it
+        log_info("WFM: No output rate specified. Defaulting to MPX rate %.0f Hz.", WFM_DEFAULT_MPX_RATE);
+    } else {
+        // Case B: User specified a rate. Validate range.
+        double rate = config->output_rate.target_rate;
+        if (rate < WFM_MIN_MPX_RATE || rate > WFM_MAX_MPX_RATE) {
+            log_fatal("WFM: Invalid MPX rate %.0f Hz.", rate);
+            log_fatal("Valid range is %.0f Hz to %.0f Hz.", WFM_MIN_MPX_RATE, WFM_MAX_MPX_RATE);
+            return false;
+        }
+    }
+
+    // 3. Check for conflicting forced modes
+    if (s_wfm_config.force_stereo && s_wfm_config.force_mono) {
+        log_fatal("WFM: Cannot force both Stereo and Mono simultaneously. Please choose one.");
+        return false;
+    }
+    
+    return true;
+}
+
+static bool wfm_initialize(ModuleContext* ctx) {
+    AppResources* res = ctx->resources;
+    
+    WfmContext* p = (WfmContext*)mem_arena_alloc(&res->setup_arena, sizeof(WfmContext), true);
+    if (!p) return false;
+    res->output_module_private_data = p;
+
+    // 1. Setup Audio Ring Buffer
+    p->audio_ring_buffer = ring_buffer_create(AUDIO_BUFFER_SIZE);
+    if (!p->audio_ring_buffer) return false;
+
+    // 2. Setup Miniaudio
+    ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
+    deviceConfig.playback.format   = ma_format_s16;
+    deviceConfig.playback.channels = AUDIO_CHANNELS;
+    deviceConfig.sampleRate        = AUDIO_SAMPLE_RATE;
+    deviceConfig.dataCallback      = miniaudio_data_callback;
+    deviceConfig.pUserData         = p;
+
+    if (ma_device_init(NULL, &deviceConfig, &p->audio_device) != MA_SUCCESS) {
+        log_fatal("WFM: Failed to initialize audio device.");
+        return false;
+    }
+    p->audio_device_initialized = true;
+
+    // 3. DSP Configuration
+    float mpx_rate = (float)ctx->config->output_rate.target_rate;
+    p->input_samplerate = mpx_rate;
+    p->gain = s_wfm_config.gain_val;
+
+    log_info("WFM: Configuring DSP for MPX Rate: %.0f Hz -> Audio: %d Hz (De-emphasis: %.0fus)", 
+             mpx_rate, AUDIO_SAMPLE_RATE, s_wfm_config.deemph_us);
+
+    // 4. Create Liquid Objects
+    
+    float deviation = 75000.0f;
+    // Engineering Note: We use the correct modulation index math here (deviation / rate).
+    // This results in a "hot" signal (75kHz = 1.0), so we apply WFM_MPX_SCALING_FACTOR
+    // in the writer loop to create headroom for stereo processing.
+    float kf = deviation / mpx_rate; 
+    p->fm_demod = freqdem_create(kf);
+
+    p->nco_pilot_approx = nco_crcf_create(LIQUID_VCO);
+    nco_crcf_set_frequency(p->nco_pilot_approx, angular_freq(WFM_PILOT_HZ, mpx_rate));
+
+    p->nco_pilot_exact = nco_crcf_create(LIQUID_VCO);
+    nco_crcf_set_frequency(p->nco_pilot_exact, angular_freq(WFM_PILOT_HZ, mpx_rate));
+    nco_crcf_pll_set_bandwidth(p->nco_pilot_exact, WFM_PLL_BW_HZ / mpx_rate);
+
+    p->nco_stereo_subcarrier = nco_crcf_create(LIQUID_VCO);
+    nco_crcf_set_frequency(p->nco_stereo_subcarrier, 2.0f * angular_freq(WFM_PILOT_HZ, mpx_rate));
+
+    // Filters
+    int pilot_fir_half_len = (int)(mpx_rate * 1e-6f * WFM_PILOT_FIR_USEC);
+    int pilot_fir_len = pilot_fir_half_len * 2 + 1;
+    p->fir_pilot = firfilt_crcf_create_kaiser(pilot_fir_len, WFM_PILOT_FIR_HALFBAND / mpx_rate, 60.0f, 0.0f);
+    firfilt_crcf_set_scale(p->fir_pilot, 2.0f * (WFM_PILOT_FIR_HALFBAND / mpx_rate));
+
+    int audio_fir_len = (int)(WFM_AUDIO_FIR_LEN_USEC * 1e-6f * mpx_rate);
+    if (audio_fir_len % 2 == 0) audio_fir_len++; 
+    float audio_fc = WFM_AUDIO_FIR_CUTOFF / mpx_rate;
+    
+    p->fir_sum = firfilt_rrrf_create_kaiser(audio_fir_len, audio_fc, 60.0f, 0.0f);
+    firfilt_rrrf_set_scale(p->fir_sum, 2.0f * audio_fc);
+
+    p->fir_diff = firfilt_rrrf_create_kaiser(audio_fir_len, audio_fc, 60.0f, 0.0f);
+    firfilt_rrrf_set_scale(p->fir_diff, 2.0f * audio_fc);
+
+    deemphasis_init(&p->deemphasis, s_wfm_config.deemph_us, mpx_rate);
+    running_average_init(&p->pilotnoise);
+
+    // Output Resamplers
+    p->output_resample_ratio = (float)AUDIO_SAMPLE_RATE / mpx_rate;
+    p->resamp_out_l = msresamp_rrrf_create(p->output_resample_ratio, 60.0f);
+    p->resamp_out_r = msresamp_rrrf_create(p->output_resample_ratio, 60.0f);
+
+    // 5. Scratch Buffers (Local Elastic Allocation)
+    // We calculate the maximum buffer size required for ANY stage of this specific module.
+    // If upsampling (e.g. 32k -> 48k), the output buffer needs more space than the input.
+    size_t buf_samples = res->pipeline_alloc_size_samples; 
+    size_t out_buf_samples = (size_t)ceil(buf_samples * p->output_resample_ratio) + 128;
+    size_t max_dsp_samples = (buf_samples > out_buf_samples) ? buf_samples : out_buf_samples;
+
+    p->mpx_buffer = mem_arena_alloc(&res->setup_arena, max_dsp_samples * sizeof(float), false);
+    p->audio_out_l = mem_arena_alloc(&res->setup_arena, max_dsp_samples * sizeof(float), false);
+    p->audio_out_r = mem_arena_alloc(&res->setup_arena, max_dsp_samples * sizeof(float), false);
+    
+    // Interleaved buffer is always sized for the output
+    p->interleaved_pcm = mem_arena_alloc(&res->setup_arena, out_buf_samples * 2 * sizeof(int16_t), false);
+
+    if (!p->mpx_buffer || !p->audio_out_l || !p->audio_out_r || !p->interleaved_pcm) return false;
+
+    // 6. Start Audio
+    if (ma_device_start(&p->audio_device) != MA_SUCCESS) {
+        log_error("WFM: Failed to start audio callback.");
+        return false;
+    }
+
+    return true;
+}
+
+static void* wfm_run_writer(ModuleContext* ctx) {
+    AppResources* res = ctx->resources;
+    WfmContext* p = (WfmContext*)res->output_module_private_data;
+
+    while (true) {
+        SampleChunk* item = (SampleChunk*)queue_dequeue(res->writer_input_queue);
+        if (!item) break;
+
+        if (item->stream_discontinuity_event) {
+            queue_enqueue(res->free_sample_chunk_queue, item);
+            continue;
+        }
+        if (item->is_last_chunk) {
+            queue_enqueue(res->free_sample_chunk_queue, item);
+            break;
+        }
+
+        if (item->frames_to_write > 0) {
+            complex_float_t* iq_in = (complex_float_t*)item->final_output_data;
+            unsigned int num_frames = item->frames_to_write;
+
+            // --- STAGE 1: I/Q to MPX ---
+            freqdem_demodulate_block(p->fm_demod, 
+                                     (liquid_float_complex*)iq_in, 
+                                     num_frames, 
+                                     p->mpx_buffer);
+
+            // --- STAGE 2: Stereo Decoding & Anti-Alias ---
+            for (unsigned int i = 0; i < num_frames; i++) {
+                // ENGINEERING FIX: Explicit Gain Staging
+                // Scale down the hot MPX signal to create headroom for stereo processing.
+                float insample = p->mpx_buffer[i] * WFM_MPX_SCALING_FACTOR;
+
+                // A. Pilot Bandpass
+                liquid_float_complex pilot_mix_down;
+                nco_crcf_mix_down(p->nco_pilot_approx, insample + 0.0f * I, &pilot_mix_down);
+                
+                firfilt_crcf_push(p->fir_pilot, pilot_mix_down);
+                liquid_float_complex fir_out;
+                firfilt_crcf_execute(p->fir_pilot, &fir_out);
+                
+                liquid_float_complex pilot;
+                nco_crcf_mix_up(p->nco_pilot_approx, fir_out, &pilot);
+                nco_crcf_step(p->nco_pilot_approx);
+
+                // B. Generate 38kHz Carrier
+                float pilot_phase = nco_crcf_get_phase(p->nco_pilot_exact);
+                nco_crcf_set_phase(p->nco_stereo_subcarrier, 2.0f * pilot_phase);
+
+                // C. Pilot PLL
+                liquid_float_complex pll_val;
+                nco_crcf_cexpf(p->nco_pilot_exact, &pll_val);
+                float phase_error = cargf(pilot * conjf(pll_val));
+                
+                if (i % 4 == 0) {
+                    nco_crcf_pll_step(p->nco_pilot_exact, phase_error);
+                }
+                nco_crcf_step(p->nco_pilot_exact);
+
+                // D. Stereo Gain / Mono Revert Logic
+                if (i % 4 == 0) {
+                    running_average_push(&p->pilotnoise, phase_error * phase_error);
+                }
+
+                float stereogain = 0.0f;
+
+                if (s_wfm_config.force_mono) {
+                    stereogain = 0.0f;
+                } else if (s_wfm_config.force_stereo) {
+                    stereogain = 1.0f;
+                } else {
+                    // Adaptive Mode
+                    float avg_noise = running_average_get(&p->pilotnoise);
+                    float val = WFM_STEREO_SEPARATION - avg_noise;
+                    if (val < 0.0f) val = 0.0f;
+                    if (val > 1.0f) val = 1.0f;
+                    stereogain = val;
+                }
+
+                // E. Decode Stereo & Anti-Alias
+                firfilt_rrrf_push(p->fir_sum, insample);
+                
+                liquid_float_complex sc_mix;
+                nco_crcf_mix_down(p->nco_stereo_subcarrier, insample + 0.0f * I, &sc_mix);
+                firfilt_rrrf_push(p->fir_diff, cimagf(sc_mix));
+
+                float sum, diff;
+                firfilt_rrrf_execute(p->fir_sum, &sum);
+                firfilt_rrrf_execute(p->fir_diff, &diff);
+                
+                diff = 2.0f * diff * stereogain;
+
+                float left = (sum + diff) * p->gain;
+                float right = (sum - diff) * p->gain;
+
+                // F. De-emphasis
+                deemphasis_execute(&p->deemphasis, left, right, &left, &right);
+
+                p->audio_out_l[i] = left;
+                p->audio_out_r[i] = right;
+            }
+
+            // --- STAGE 3: Resample to 48kHz ---
+            unsigned int num_resampled_l, num_resampled_r;
+            
+            // Use mpx_buffer as temporary output for Left (safe re-use due to max_dsp_samples).
+            msresamp_rrrf_execute(p->resamp_out_l, p->audio_out_l, num_frames, p->mpx_buffer, &num_resampled_l);
+            
+            // Use audio_out_l as temporary output for Right (safe re-use since read is done).
+            msresamp_rrrf_execute(p->resamp_out_r, p->audio_out_r, num_frames, p->audio_out_l, &num_resampled_r);
+
+            // --- STAGE 4: Interleave & Convert to S16 ---
+            // Note: Left audio is currently in mpx_buffer, Right is in audio_out_l.
+            sample_convert_interleave_f32_to_s16(
+                p->mpx_buffer,      // Left Plane
+                p->audio_out_l,     // Right Plane
+                p->interleaved_pcm, // Destination
+                num_resampled_l     // Count
+            );
+
+            // --- STAGE 5: Push to Audio Ring Buffer ---
+            size_t bytes_to_write = num_resampled_l * 2 * sizeof(int16_t);
+            while (ring_buffer_get_capacity(p->audio_ring_buffer) - ring_buffer_get_size(p->audio_ring_buffer) < bytes_to_write) {
+                if (is_shutdown_requested()) break;
+                SLEEP_MS(1);
+            }
+            ring_buffer_write(p->audio_ring_buffer, p->interleaved_pcm, bytes_to_write);
+        }
+
+        if (!queue_enqueue(res->free_sample_chunk_queue, item)) break;
+    }
+
+    log_debug("WFM writer thread exiting.");
+    return NULL;
+}
+
+static void wfm_finalize(ModuleContext* ctx) {
+    AppResources* res = ctx->resources;
+    if (!res->output_module_private_data) return;
+    WfmContext* p = (WfmContext*)res->output_module_private_data;
+
+    if (p->audio_device_initialized) {
+        ma_device_uninit(&p->audio_device);
+    }
+    if (p->audio_ring_buffer) {
+        ring_buffer_destroy(p->audio_ring_buffer);
+    }
+
+    if (p->fm_demod) freqdem_destroy(p->fm_demod);
+    if (p->nco_pilot_approx) nco_crcf_destroy(p->nco_pilot_approx);
+    if (p->nco_pilot_exact) nco_crcf_destroy(p->nco_pilot_exact);
+    if (p->nco_stereo_subcarrier) nco_crcf_destroy(p->nco_stereo_subcarrier);
+    if (p->fir_pilot) firfilt_crcf_destroy(p->fir_pilot);
+    if (p->fir_sum) firfilt_rrrf_destroy(p->fir_sum);
+    if (p->fir_diff) firfilt_rrrf_destroy(p->fir_diff);
+    deemphasis_destroy(&p->deemphasis);
+    if (p->resamp_out_l) msresamp_rrrf_destroy(p->resamp_out_l);
+    if (p->resamp_out_r) msresamp_rrrf_destroy(p->resamp_out_r);
+}
+
+static void wfm_get_summary(const ModuleContext* ctx, OutputSummaryInfo* info) {
+    (void)ctx;
+    add_summary_item(info, "Output Type", "WFM Stereo Audio");
+    add_summary_item(info, "Audio Rate", "%d Hz", AUDIO_SAMPLE_RATE);
+    add_summary_item(info, "De-emphasis", "%.0f us", s_wfm_config.deemph_us);
+
+    const char* mode = "Adaptive";
+    if (s_wfm_config.force_mono) mode = "Forced Mono";
+    if (s_wfm_config.force_stereo) mode = "Forced Stereo";
+    add_summary_item(info, "Stereo Mode", "%s", mode);
+}
+
+static const struct argparse_option wfm_cli_options[] = {
+    OPT_GROUP("WFM Output Options"),
+    OPT_FLOAT(0, "wfm-de-emphasis-time", &s_wfm_config.deemph_us, "Set FM de-emphasis time constant in microseconds (default: 75.0).", NULL, 0, 0),
+    OPT_FLOAT(0, "wfm-gain", &s_wfm_config.gain_val, "Set audio output gain (linear).", NULL, 0, 0),
+    OPT_BOOLEAN(0, "wfm-force-stereo", &s_wfm_config.force_stereo, "Force stereo decoding regardless of signal quality.", NULL, 0, 0),
+    OPT_BOOLEAN(0, "wfm-force-mono", &s_wfm_config.force_mono, "Force mono output.", NULL, 0, 0),
+};
+
+const struct argparse_option* wfm_get_cli_options(int* count) {
+    *count = sizeof(wfm_cli_options) / sizeof(wfm_cli_options[0]);
+    return wfm_cli_options;
+}
+
+static OutputModuleInterface wfm_api = {
+    .initialize = wfm_initialize,
+    .run_writer = wfm_run_writer,
+    .finalize_output = wfm_finalize,
+    .get_summary_info = wfm_get_summary,
+    .validate_options = wfm_validate_options,
+    .get_cli_options = wfm_get_cli_options,
+    .write_chunk = NULL
+};
+
+OutputModuleInterface* get_wfm_output_module_api(void) {
+    return &wfm_api;
+}

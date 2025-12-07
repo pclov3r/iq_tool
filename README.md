@@ -92,6 +92,7 @@ You'll need a pretty standard C development environment.
     cmake -DWITH_RTLSDR=ON -DWITH_SDRPLAY=ON -DWITH_HACKRF=ON -DWITH_BLADERF=ON -DWITH_NRSC5=ON ..
 
     make
+    ldconfig
     ```
 You'll find the `iq_tool` executable in the `build` directory.
 
@@ -218,14 +219,20 @@ NRSC5 Output Options
     --nrsc5-mode=<str>                    Set decoder mode {cs16-fm|cs16-am|cu8-fm|cu8-am}. (Default: cs16-fm)
     --nrsc5-program=<int>                 Select HD program/subchannel (0-7). (Required)
 
+WFM Output Options
+    --wfm-de-emphasis-time=<flt>          Set FM de-emphasis time constant in microseconds (default: 75.0).
+    --wfm-gain=<flt>                      Set audio output gain (linear).
+    --wfm-force-stereo                    Force stereo decoding regardless of signal quality.
+    --wfm-force-mono                      Force mono output.
+
 Available Presets
-    cu8-nrsc5                             Sets sample type to cu8, rate to 1488375.0 Hz for FM/AM NRSC5 decoding.
-    cu8-nrsc5-usb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates USB sideband (102-215kHz) (Hack) for FM NRSC5.
-    cu8-nrsc5-lsb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for FM NRSC5.
-    cs16-fm-nrsc5                         Sets sample type to cs16, rate to 744187.5 Hz for FM NRSC5 decoding.
-    cs16-fm-nrsc5-usb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates USB sideband (102-215kHz) (Hack) for FM NRSC5.
-    cs16-fm-nrsc5-lsb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for FM NRSC5.
-    cs16-am-nrsc5                         Sets sample type to cs16, rate to 46511.71875 Hz for AM NRSC5 decoding.
+    cu8-nrsc5                             Sets sample type to cu8, rate to 1488375.0 Hz for piping to nrsc5 (FM/AM).
+    cu8-nrsc5-usb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates USB sideband (102-215kHz) (Hack) for piping to nrsc5 (FM).
+    cu8-nrsc5-lsb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for piping to nrsc5 (FM).
+    cs16-fm-nrsc5                         Sets sample type to cs16, rate to 744187.5 Hz for piping to nrsc5 (FM).
+    cs16-fm-nrsc5-usb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates USB sideband (102-215kHz) (Hack) for piping to nrsc5 (FM).
+    cs16-fm-nrsc5-lsb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for piping to nrsc5 (FM).
+    cs16-am-nrsc5                         Sets sample type to cs16, rate to 46511.71875 Hz for piping to nrsc5 (AM).
 
 Help & Version
     -v, --version                         show program's version number and exit

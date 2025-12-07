@@ -50,7 +50,7 @@ bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* r
  */
 bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* restrict output_buffer, size_t num_frames, format_t output_format);
 
-// --- Interleaving Helpers ---
+// --- Interleaving Helpers (Input: Integer -> Integer) ---
 // These functions are used by Input Modules (e.g., SDRplay) that receive Planar data
 // (separate I and Q arrays) but must write Interleaved data to the RingBuffer.
 // The 'restrict' keyword is crucial here to allow auto-vectorization (SIMD).
@@ -74,5 +74,61 @@ void sample_convert_interleave_s16(const int16_t* restrict i_plane, const int16_
  * @brief Interleaves 16-bit unsigned planar data into an interleaved buffer.
  */
 void sample_convert_interleave_u16(const uint16_t* restrict i_plane, const uint16_t* restrict q_plane, uint16_t* restrict interleaved_out, size_t num_samples);
+
+
+// --- Float to Integer Interleavers (Output: Float -> Integer) ---
+// These functions are used by DSP modules (e.g., WFM) to pack internal floating-point
+// buffers into integer output formats. They perform hard clamping to [-1.0, 1.0]
+// before scaling to the target integer range.
+
+/**
+ * @brief Interleaves Planar F32 to Interleaved Signed 8-bit (S8).
+ * Scales input by 127.0.
+ */
+void sample_convert_interleave_f32_to_s8(const float* restrict left_plane, const float* restrict right_plane, int8_t* restrict interleaved_out, size_t num_samples);
+
+/**
+ * @brief Interleaves Planar F32 to Interleaved Unsigned 8-bit (U8).
+ * Scales input by 127.0 and adds 128.0 offset.
+ */
+void sample_convert_interleave_f32_to_u8(const float* restrict left_plane, const float* restrict right_plane, uint8_t* restrict interleaved_out, size_t num_samples);
+
+/**
+ * @brief Interleaves Planar F32 to Interleaved Signed 16-bit (S16).
+ * Scales input by 32767.0.
+ */
+void sample_convert_interleave_f32_to_s16(const float* restrict left_plane, const float* restrict right_plane, int16_t* restrict interleaved_out, size_t num_samples);
+
+/**
+ * @brief Interleaves Planar F32 to Interleaved Unsigned 16-bit (U16).
+ * Scales input by 32767.0 and adds 32768.0 offset.
+ */
+void sample_convert_interleave_f32_to_u16(const float* restrict left_plane, const float* restrict right_plane, uint16_t* restrict interleaved_out, size_t num_samples);
+
+/**
+ * @brief Interleaves Planar F32 to Interleaved Signed 24-bit (S24).
+ * Packs data into 3-byte chunks. Scales input by 8388607.0.
+ * @param interleaved_out Pointer to the destination buffer (treated as byte array).
+ */
+void sample_convert_interleave_f32_to_s24(const float* restrict left_plane, const float* restrict right_plane, uint8_t* restrict interleaved_out, size_t num_samples);
+
+/**
+ * @brief Interleaves Planar F32 to Interleaved Unsigned 24-bit (U24).
+ * Packs data into 3-byte chunks. Scales input by 8388607.0 and adds offset.
+ * @param interleaved_out Pointer to the destination buffer (treated as byte array).
+ */
+void sample_convert_interleave_f32_to_u24(const float* restrict left_plane, const float* restrict right_plane, uint8_t* restrict interleaved_out, size_t num_samples);
+
+/**
+ * @brief Interleaves Planar F32 to Interleaved Signed 32-bit (S32).
+ * Scales input by 2147483647.0.
+ */
+void sample_convert_interleave_f32_to_s32(const float* restrict left_plane, const float* restrict right_plane, int32_t* restrict interleaved_out, size_t num_samples);
+
+/**
+ * @brief Interleaves Planar F32 to Interleaved Unsigned 32-bit (U32).
+ * Scales input by 2147483647.0 and adds 2147483648.0 offset.
+ */
+void sample_convert_interleave_f32_to_u32(const float* restrict left_plane, const float* restrict right_plane, uint32_t* restrict interleaved_out, size_t num_samples);
 
 #endif // SAMPLE_CONVERT_H_

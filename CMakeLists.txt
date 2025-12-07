@@ -131,14 +131,15 @@ include_directories(${SndFile_INCLUDE_DIRS})
 include_directories(${LiquidDSP_INCLUDE_DIRS})
 include_directories(${Expat_INCLUDE_DIRS})
 
-set(DSP_SOURCES
+set(COMPILE_WITH_FFAST_MATH_SOURCES
     src/agc.c
-    src/resampler.c
-    src/sample_convert.c
-    src/iq_correct.c
     src/dc_block.c
     src/filter.c
     src/frequency_shift.c
+    src/iq_correct.c
+    src/output_wfm.c
+    src/resampler.c
+    src/sample_convert.c
 )
 
 set(NETWORK_SOURCES
@@ -154,26 +155,27 @@ set(OTHER_SOURCES
     src/log.c
     src/main.c
     src/memory_arena.c
+    src/miniaudio.c
     src/module_manager.c
     src/networking.c
     src/output_raw_file.c
     src/output_stdout.c
-    src/output_wav_common.c
     src/output_wav.c
+    src/output_wav_common.c
     src/output_wav_rf64.c
-    src/platform.c
     src/pipeline.c
-    src/presets_loader.c
-    src/pre_processor.c
+    src/platform.c
     src/post_processor.c
+    src/pre_processor.c
+    src/presets_loader.c
     src/queue.c
     src/ring_buffer.c
     src/sdr_packet_serializer.c
     src/setup.c
     src/signal_handler.c
     src/thread_manager.c
-    src/utils.c
     src/utility_threads.c
+    src/utils.c
 )
 
 if(WITH_RTLSDR)
@@ -200,7 +202,7 @@ endif()
 #=======================================================================
 # Target Creation
 #=======================================================================
-add_executable(iq_tool ${DSP_SOURCES} ${NETWORK_SOURCES} ${OTHER_SOURCES})
+add_executable(iq_tool ${COMPILE_WITH_FFAST_MATH_SOURCES} ${NETWORK_SOURCES} ${OTHER_SOURCES})
 
 #=======================================================================
 # System Checks & Configuration
@@ -248,7 +250,7 @@ target_compile_options(iq_tool PRIVATE
 )
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set_source_files_properties(${DSP_SOURCES} PROPERTIES COMPILE_OPTIONS "-ffast-math")
+    set_source_files_properties(${COMPILE_WITH_FFAST_MATH_SOURCES} PROPERTIES COMPILE_OPTIONS "-ffast-math")
 endif()
 
 set_source_files_properties(${NETWORK_SOURCES} PROPERTIES COMPILE_OPTIONS "-fstack-protector-strong;-U_FORTIFY_SOURCE;-D_FORTIFY_SOURCE=2")
