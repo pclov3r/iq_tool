@@ -302,6 +302,13 @@ void* reader_thread_func(void* arg) {
                 item->stream_discontinuity_event = is_reset;
                 item->is_last_chunk = false;
 
+                // In Buffered mode, the Pre-Processor is skipped during passthrough.
+                // We must manually copy data to the final buffer so the Writer can find it.
+                if (config->dsp.raw_passthrough && item->frames_read > 0) {
+                    size_t bytes = item->frames_read * item->input_bytes_per_sample_pair;
+                    memcpy(item->final_output_data, item->raw_input_data, bytes);
+                }
+
                 if (item->frames_read > 0) {
                     pthread_mutex_lock(&resources->progress_mutex);
                     resources->total_frames_read += item->frames_read;
