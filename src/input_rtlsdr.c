@@ -302,7 +302,7 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
             log_warn("Failed to enable Bias-T. The device may not support this feature.");
         }
     }
-    
+
     if (s_rtlsdr_config.direct_sampling_provided) {
         rtlsdr_set_direct_sampling(private_data->dev, s_rtlsdr_config.direct_sampling_mode);
     }
@@ -321,6 +321,12 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
         goto cleanup;
     }
 
+    // Force the pipeline into BUFFERED_SDR mode.
+    // This ensures we use the Async callback (rtlsdr_read_async) and the large RingBuffer.
+    // This decouples the USB read timing from the output pipe backpressure, preventing
+    // sample drops when piping to downstream tools.
+    resources->pipeline_mode = PIPELINE_MODE_BUFFERED_SDR;
+
     success = true; // All steps succeeded
 
 cleanup:
@@ -338,10 +344,10 @@ static void* rtlsdr_start_stream(ModuleContext* ctx) {
 
     switch (resources->pipeline_mode) {
         case PIPELINE_MODE_BUFFERED_SDR:
-            log_info("Starting RTL-SDR stream (Buffered Mode)...");
+            log_info("Starting RTL-SDR stream");
             // NOTE: rtlsdr_read_async BLOCKS until the stream stops or is cancelled.
             result = rtlsdr_read_async(private_data->dev, rtlsdr_stream_callback, resources, 0, 0);
-            
+
             if (result < 0) {
                 char error_buf[256];
                 snprintf(error_buf, sizeof(error_buf), "rtlsdr_read_async() failed: %s", strerror(-result));
@@ -351,105 +357,15 @@ static void* rtlsdr_start_stream(ModuleContext* ctx) {
             break;
 
         case PIPELINE_MODE_REALTIME_SDR:
-            log_info("Starting RTL-SDR stream (Real-Time Mode)...");
-            if (config->dsp.raw_passthrough) {
-                // Use persistent buffer from arena instead of stack
-                unsigned char *passthrough_buffer = private_data->passthrough_buffer;
-                
-                while (!is_shutdown_requested() && !resources->error_occurred) {
-                    int n_read = 0;
-                    result = rtlsdr_read_sync(private_data->dev, passthrough_buffer, RTLSDR_PASSTHROUGH_BUFFER_SIZE, &n_read);
-                    
-                    if (result >= 0) {
-                        // --- HEARTBEAT ---
-                        sdr_input_update_heartbeat(resources);
-                    }
+            // This path is now explicitly disabled for RTL-SDR to prevent data loss issues
+            // when piping output. The initialize function forces BUFFERED_SDR mode.
+            handle_fatal_thread_error("Internal configuration error: RTL-SDR attempted to start in synchronous mode which is disabled for this module.", resources);
+            return NULL;
 
-                    if (result < 0) {
-                        if (!is_shutdown_requested()) {
-                            char error_buf[256];
-                            snprintf(error_buf, sizeof(error_buf), "rtlsdr_read_sync() failed: %s", strerror(-result));
-                            handle_fatal_thread_error(error_buf, resources);
-                        }
-                        break;
-                    }
-                    if (n_read > 0) {
-                        size_t written = resources->selected_output_module_api->write_chunk(ctx, passthrough_buffer, n_read);
-                        if (written < (size_t)n_read) {
-                            log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
-                            request_shutdown();
-                            break;
-                        }
-                    }
-                }
-            } else {
-                while (!is_shutdown_requested() && !resources->error_occurred) {
-                    SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
-                    if (!item) break;
-
-                    int n_read = 0;
-
-                    // --- Use dynamic capacity instead of fixed constant ---
-                    // This allows the elastic sizing logic in setup.c to control the read size.
-                    size_t bytes_to_read = item->raw_input_capacity_bytes;
-
-                    // Round down to the nearest multiple of 512 to satisfy USB bulk transfer requirements.
-                    // 512 is the standard USB 2.0 High Speed packet size.
-                    bytes_to_read = bytes_to_read & ~511;
-
-                    if (bytes_to_read == 0) {
-                        log_warn("Buffer size too small for USB transfer alignment!");
-                        queue_enqueue(resources->free_sample_chunk_queue, item);
-                        continue;
-                    }
-
-                    result = rtlsdr_read_sync(private_data->dev, item->raw_input_data, bytes_to_read, &n_read);
-
-                    if (result >= 0) {
-                        // --- HEARTBEAT ---
-                        sdr_input_update_heartbeat(resources);
-                    }
-
-                    if (result < 0) {
-                        if (!is_shutdown_requested()) {
-                            char error_buf[256];
-                            snprintf(error_buf, sizeof(error_buf), "rtlsdr_read_sync() failed: %s", strerror(-result));
-                            handle_fatal_thread_error(error_buf, resources);
-                        }
-                        queue_enqueue(resources->free_sample_chunk_queue, item);
-                        break;
-                    }
-
-                    item->frames_read = n_read / resources->input_bytes_per_sample_pair;
-                    item->is_last_chunk = false;
-                    item->stream_discontinuity_event = false;
-		            item->packet_sample_format = resources->input_format;
-
-                    if (item->frames_read > 0) {
-                        pthread_mutex_lock(&resources->progress_mutex);
-                        resources->total_frames_read += item->frames_read;
-                        pthread_mutex_unlock(&resources->progress_mutex);
-                        if (!queue_enqueue(resources->reader_output_queue, item)) {
-                            queue_enqueue(resources->free_sample_chunk_queue, item);
-                            break;
-                        }
-                    } else {
-                        queue_enqueue(resources->free_sample_chunk_queue, item);
-                    }
-                }
-                SampleChunk *last_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
-                if (last_item) {
-                    last_item->is_last_chunk = true;
-                    last_item->frames_read = 0;
-                    queue_enqueue(resources->reader_output_queue, last_item);
-                }
-            }
-            break;
-        
         case PIPELINE_MODE_FILE_PROCESSING:
-            // This case is not applicable for SDRs, but included for completeness.
             break;
     }
+
     return NULL;
 }
 
@@ -481,11 +397,11 @@ static void rtlsdr_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* 
     const AppConfig *config = ctx->config;
     AppResources *resources = ctx->resources;
     RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)resources->input_module_private_data;
-    
+
     char source_name_buf[775];
-    snprintf(source_name_buf, sizeof(source_name_buf), "%s %s (S/N: %s)", 
-             private_data->manufact, 
-             private_data->product, 
+    snprintf(source_name_buf, sizeof(source_name_buf), "%s %s (S/N: %s)",
+             private_data->manufact,
+             private_data->product,
              private_data->serial);
 
     add_summary_item(info, "Input Source", "%s", source_name_buf);
