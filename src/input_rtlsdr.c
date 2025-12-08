@@ -235,10 +235,14 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
     if (s_rtlsdr_config.gain_provided) {
         rtlsdr_set_tuner_gain_mode(private_data->dev, 1);
         rtlsdr_set_tuner_gain(private_data->dev, s_rtlsdr_config.gain);
+        rtlsdr_set_tuner_gain(private_data->dev, s_rtlsdr_config.gain);
+        int actual_gain = rtlsdr_get_tuner_gain(private_data->dev);
+        log_info("Requested gain: %.1f dB, actual gain set: %.1f dB",
+                 s_rtlsdr_config.rtlsdr_gain_db_arg, actual_gain / 10.0f);
     } else {
         rtlsdr_set_tuner_gain_mode(private_data->dev, 0);
     }
-    
+
     if (s_rtlsdr_config.ppm_provided) {
         rtlsdr_set_freq_correction(private_data->dev, s_rtlsdr_config.ppm);
     }
