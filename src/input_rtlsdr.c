@@ -11,6 +11,7 @@
 #include "queue.h"
 #include "sdr_packet_serializer.h"
 #include "argparse.h"
+#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 
@@ -72,6 +73,37 @@ static void rtlsdr_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* 
 static bool rtlsdr_validate_options(AppConfig* config);
 static bool rtlsdr_validate_generic_options(const AppConfig* config);
 static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ctx);
+
+static int rtlsdr_find_nearest_gain(rtlsdr_dev_t *dev,
+                                    int requested_gain_tenths,
+                                    MemoryArena* arena)
+{
+    int n = rtlsdr_get_tuner_gains(dev, NULL);
+    if (n <= 0)
+        return requested_gain_tenths;
+
+    // Allocate gains[] array from the memory arena
+    int *gains = mem_arena_alloc(arena, sizeof(int) * n, false);
+    if (!gains) {
+        // Arena exhausted → fallback to no snapping
+        return requested_gain_tenths;
+    }
+
+    rtlsdr_get_tuner_gains(dev, gains);
+
+    int best_gain  = gains[0];
+    int best_delta = abs(requested_gain_tenths - best_gain);
+
+    for (int i = 1; i < n; i++) {
+        int delta = abs(requested_gain_tenths - gains[i]);
+        if (delta < best_delta) {
+            best_delta = delta;
+            best_gain  = gains[i];
+        }
+    }
+
+    return best_gain;
+}
 
 static const char* get_tuner_name_from_enum(enum rtlsdr_tuner tuner_type) {
     switch (tuner_type) {
@@ -212,7 +244,7 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
         private_data->dev = NULL; // Ensure dev is NULL on failure
         goto cleanup;
     }
-    
+
     enum rtlsdr_tuner tuner_type = rtlsdr_get_tuner_type(private_data->dev);
     const char* tuner_name = get_tuner_name_from_enum(tuner_type);
     log_info("Found RTL-SDR device with tuner: %s", tuner_name);
@@ -234,11 +266,27 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
 
     if (s_rtlsdr_config.gain_provided) {
         rtlsdr_set_tuner_gain_mode(private_data->dev, 1);
-        rtlsdr_set_tuner_gain(private_data->dev, s_rtlsdr_config.gain);
-        rtlsdr_set_tuner_gain(private_data->dev, s_rtlsdr_config.gain);
-        int actual_gain = rtlsdr_get_tuner_gain(private_data->dev);
-        log_info("Requested gain: %.1f dB, actual gain set: %.1f dB",
-                 s_rtlsdr_config.rtlsdr_gain_db_arg, actual_gain / 10.0f);
+
+        int requested = s_rtlsdr_config.gain;
+        int nearest = rtlsdr_find_nearest_gain(
+            private_data->dev,
+            requested,
+            &resources->setup_arena
+        );
+
+        result = rtlsdr_set_tuner_gain(private_data->dev, nearest);
+        if (result < 0) {
+            log_fatal("Failed to set tuner gain to %.1f dB.", nearest / 10.0f);
+            goto cleanup;
+        }
+
+        int actual = rtlsdr_get_tuner_gain(private_data->dev);
+
+        log_info(
+            "Requested gain: %.1f dB -> Actual gain set: %.1f dB",
+            requested / 10.0f,
+            actual    / 10.0f
+        );
     } else {
         rtlsdr_set_tuner_gain_mode(private_data->dev, 0);
     }
