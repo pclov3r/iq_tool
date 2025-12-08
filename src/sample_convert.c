@@ -436,6 +436,9 @@ void sample_convert_interleave_f32_to_##SUFFIX( \
         l = (l * scale_val) + offset_val; \
         r = (r * scale_val) + offset_val; \
         \
+        l = (l > 0.0f) ? l + 0.5f : l - 0.5f; \
+        r = (r > 0.0f) ? r + 0.5f : r - 0.5f; \
+        \
         interleaved_out[i * 2]     = (TYPE)l; \
         interleaved_out[i * 2 + 1] = (TYPE)r; \
     } \
@@ -459,8 +462,14 @@ void sample_convert_interleave_f32_to_##SUFFIX( \
         l = fminf(fmaxf(l, -1.0f), 1.0f); \
         r = fminf(fmaxf(r, -1.0f), 1.0f); \
         \
-        int32_t il = (int32_t)((l * scale_val) + offset_val); \
-        int32_t ir = (int32_t)((r * scale_val) + offset_val); \
+        l = (l * scale_val) + offset_val; \
+        r = (r * scale_val) + offset_val; \
+        \
+        l = (l > 0.0f) ? l + 0.5f : l - 0.5f; \
+        r = (r > 0.0f) ? r + 0.5f : r - 0.5f; \
+        \
+        int32_t il = (int32_t)l; \
+        int32_t ir = (int32_t)r; \
         \
         memcpy(interleaved_out + (i * 6),     &il, 4); \
         memcpy(interleaved_out + (i * 6) + 3, &ir, 4); \

@@ -478,8 +478,19 @@ static void* wfm_run_writer(ModuleContext* ctx) {
             // Use audio_out_l as temporary output for Right (safe re-use since read is done).
             msresamp_rrrf_execute(p->resamp_out_r, p->audio_out_r, num_frames, p->audio_out_l, &num_resampled_r);
 
-            // --- STAGE 4: Interleave & Convert to S16 ---
+            // --- STAGE 4: Apply Dither & Convert to S16 ---
+            // Apply TPDF dither before quantization to decorrelate quantization noise.
             // Note: Left audio is currently in mpx_buffer, Right is in audio_out_l.
+            for (unsigned int i = 0; i < num_resampled_l; i++) {
+                // TPDF: sum of two uniform random variables = triangular distribution
+                // Amplitude = 1 LSB peak-to-peak for 16-bit
+                float dither_l = ((float)rand() / RAND_MAX) - ((float)rand() / RAND_MAX);
+                float dither_r = ((float)rand() / RAND_MAX) - ((float)rand() / RAND_MAX);
+
+                p->mpx_buffer[i] += dither_l * (1.0f / 32768.0f);   // Left
+                p->audio_out_l[i] += dither_r * (1.0f / 32768.0f);  // Right
+            }
+
             sample_convert_interleave_f32_to_s16(
                 p->mpx_buffer,      // Left Plane
                 p->audio_out_l,     // Right Plane
