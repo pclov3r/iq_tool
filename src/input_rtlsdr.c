@@ -338,7 +338,6 @@ cleanup:
 
 static void* rtlsdr_start_stream(ModuleContext* ctx) {
     AppResources *resources = ctx->resources;
-    const AppConfig *config = ctx->config;
     RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)resources->input_module_private_data;
     int result;
 
