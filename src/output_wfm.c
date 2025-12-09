@@ -83,6 +83,9 @@
 #define WFM_DEEMPH_ORDER        1
 #define WFM_STEREO_SEPARATION   1.2f
 
+// --- Logging Config ---
+#define WFM_STATS_INTERVAL_SEC  1.0f
+
 // --- Gain Staging ---
 // Scaling factor applied to the MPX signal after demodulation.
 // Standard FM deviation (75kHz) maps to 1.0 in freqdem.
@@ -371,6 +374,21 @@ static void* wfm_run_writer(ModuleContext* ctx) {
     AppResources* res = ctx->resources;
     WfmContext* p = (WfmContext*)res->output_module_private_data;
 
+    // --- Statistics Accumulators ---
+    size_t stat_counter = 0;
+    // Log once per second (Signal Time)
+    size_t stat_rate_threshold = (size_t)(p->input_samplerate * WFM_STATS_INTERVAL_SEC); 
+    
+    // Using double for accumulators to prevent overflow
+    double accum_mag_sum = 0.0;       // For Mean Magnitude (SNR)
+    double accum_mag_sq_sum = 0.0;    // For Total Power (RSSI)
+    double accum_pilot_mag_sum = 0.0; // For Pilot Presence detection
+    
+    // Average accumulators for Stereo/Pilot stats
+    double accum_stereo_pct_sum = 0.0; 
+    double accum_pilot_err_sq_sum = 0.0;
+    size_t accum_pilot_count = 0;
+
     while (true) {
         SampleChunk* item = (SampleChunk*)queue_dequeue(res->writer_input_queue);
         if (!item) break;
@@ -388,9 +406,23 @@ static void* wfm_run_writer(ModuleContext* ctx) {
             complex_float_t* iq_in = (complex_float_t*)item->final_output_data;
             unsigned int num_frames = item->frames_to_write;
 
+            // --- STATS PRE-CALCULATION (Raw I/Q) ---
+            // Fix: Cast to liquid type to ensure compatibility with cabsf()
+            liquid_float_complex* iq_ptr = (liquid_float_complex*)iq_in;
+
+            // Calculate RSSI and SNR estimates based on Input I/Q Magnitude
+            for (unsigned int k = 0; k < num_frames; k++) {
+                // Calculate magnitude of complex sample: sqrt(I^2 + Q^2)
+                float mag = cabsf(iq_ptr[k]); 
+                accum_mag_sum += mag;
+                accum_mag_sq_sum += (mag * mag);
+            }
+            // Count frames towards the 1-second interval
+            stat_counter += num_frames;
+
             // --- STAGE 1: I/Q to MPX ---
             freqdem_demodulate_block(p->fm_demod, 
-                                     (liquid_float_complex*)iq_in, 
+                                     iq_ptr, 
                                      num_frames, 
                                      p->mpx_buffer);
 
@@ -408,6 +440,9 @@ static void* wfm_run_writer(ModuleContext* ctx) {
                 liquid_float_complex fir_out;
                 firfilt_crcf_execute(p->fir_pilot, &fir_out);
                 
+                // Track Pilot Magnitude for Mono Detection
+                accum_pilot_mag_sum += cabsf(fir_out);
+
                 liquid_float_complex pilot;
                 nco_crcf_mix_up(p->nco_pilot_approx, fir_out, &pilot);
                 nco_crcf_step(p->nco_pilot_approx);
@@ -423,14 +458,17 @@ static void* wfm_run_writer(ModuleContext* ctx) {
                 
                 if (i % 4 == 0) {
                     nco_crcf_pll_step(p->nco_pilot_exact, phase_error);
+                    
+                    // Accumulate stats for logging (independent of control loop)
+                    accum_pilot_err_sq_sum += (phase_error * phase_error);
+                    accum_pilot_count++;
+                    
+                    // Push to control loop logic
+                    running_average_push(&p->pilotnoise, phase_error * phase_error);
                 }
                 nco_crcf_step(p->nco_pilot_exact);
 
                 // D. Stereo Gain / Mono Revert Logic
-                if (i % 4 == 0) {
-                    running_average_push(&p->pilotnoise, phase_error * phase_error);
-                }
-
                 float stereogain = 0.0f;
 
                 if (s_wfm_config.force_mono) {
@@ -445,6 +483,9 @@ static void* wfm_run_writer(ModuleContext* ctx) {
                     if (val > 1.0f) val = 1.0f;
                     stereogain = val;
                 }
+
+                // Stats: Accumulate Stereo Percentage
+                accum_stereo_pct_sum += (stereogain * 100.0f);
 
                 // E. Decode Stereo & Anti-Alias
                 firfilt_rrrf_push(p->fir_sum, insample);
@@ -469,7 +510,61 @@ static void* wfm_run_writer(ModuleContext* ctx) {
                 p->audio_out_r[i] = right;
             }
 
-            // --- STAGE 3: Resample to 48kHz ---
+            // --- STAGE 3: Log Statistics (Every 1 second) ---
+            if (stat_counter >= stat_rate_threshold) {
+                
+                // 1. Calculate RSSI (Average Power)
+                double avg_power = accum_mag_sq_sum / (double)stat_counter;
+                float rssi_db = 10.0f * log10f((float)avg_power + 1e-10f); 
+
+                // 2. Calculate SNR
+                double mean_mag = accum_mag_sum / (double)stat_counter;
+                double signal_pwr = mean_mag * mean_mag;
+                double noise_pwr = avg_power - signal_pwr;
+                if (noise_pwr < 1e-10) noise_pwr = 1e-10; 
+                float snr_db = 10.0f * log10f((float)(signal_pwr / noise_pwr));
+
+                // 3. Calculate Pilot Error % First
+                float avg_pilot_mse = 0.0f;
+                if (accum_pilot_count > 0) {
+                    avg_pilot_mse = (float)(accum_pilot_err_sq_sum / (double)accum_pilot_count);
+                }
+                float pilot_pct = sqrtf(avg_pilot_mse) * 100.0f;
+
+                // 4. Detect Mono/Stereo status
+                // A. Check Pilot Magnitude (low threshold for weak stations)
+                double avg_pilot = accum_pilot_mag_sum / (double)stat_counter;
+                
+                // B. Determine Status:
+                // - Signal too weak (pilot magnitude < 0.001)
+                // - OR Pilot Error > 100% (PLL unlocked / random noise)
+                bool is_mono_station = (avg_pilot < 0.001) || (pilot_pct > 100.0f);
+                
+                // C. Sanity Check: If Stereo Separation is active (> 1%), force it to valid.
+                float avg_stereo_pct = (float)(accum_stereo_pct_sum / (double)stat_counter);
+                if (avg_stereo_pct > 1.0f) {
+                    is_mono_station = false; 
+                }
+
+                if (is_mono_station || s_wfm_config.force_mono) {
+                     log_info("RSSI: %.1f dB | SNR: %.1f dB | Stereo Separation: Mono | Pilot Phase Error: NA", 
+                         rssi_db, snr_db);
+                } else {
+                    log_info("RSSI: %.1f dB | SNR: %.1f dB | Stereo Separation: %.1f%% | Pilot Phase Error: %.1f%%", 
+                            rssi_db, snr_db, avg_stereo_pct, pilot_pct);
+                }
+
+                // Reset all counters
+                stat_counter = 0;
+                accum_mag_sum = 0.0;
+                accum_mag_sq_sum = 0.0;
+                accum_pilot_mag_sum = 0.0;
+                accum_stereo_pct_sum = 0.0;
+                accum_pilot_err_sq_sum = 0.0;
+                accum_pilot_count = 0;
+            }
+
+            // --- STAGE 4: Resample to 48kHz ---
             unsigned int num_resampled_l, num_resampled_r;
             
             // Use mpx_buffer as temporary output for Left (safe re-use due to max_dsp_samples).
@@ -478,7 +573,7 @@ static void* wfm_run_writer(ModuleContext* ctx) {
             // Use audio_out_l as temporary output for Right (safe re-use since read is done).
             msresamp_rrrf_execute(p->resamp_out_r, p->audio_out_r, num_frames, p->audio_out_l, &num_resampled_r);
 
-            // --- STAGE 4: Apply Dither & Convert to S16 ---
+            // --- STAGE 5: Apply Dither & Convert to S16 ---
             // Apply TPDF dither before quantization to decorrelate quantization noise.
             // Note: Left audio is currently in mpx_buffer, Right is in audio_out_l.
             for (unsigned int i = 0; i < num_resampled_l; i++) {
@@ -498,7 +593,7 @@ static void* wfm_run_writer(ModuleContext* ctx) {
                 num_resampled_l     // Count
             );
 
-            // --- STAGE 5: Push to Audio Ring Buffer ---
+            // --- STAGE 6: Push to Audio Ring Buffer ---
             size_t bytes_to_write = num_resampled_l * 2 * sizeof(int16_t);
             while (ring_buffer_get_capacity(p->audio_ring_buffer) - ring_buffer_get_size(p->audio_ring_buffer) < bytes_to_write) {
                 if (is_shutdown_requested()) break;
