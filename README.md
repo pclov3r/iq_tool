@@ -31,7 +31,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
 *   **Flexible Inputs:**
     *   **WAV Files:** Reads standard 8-bit and 16-bit complex (I/Q) WAV files.
     *   **Raw I/Q Files:** Just point it at a headerless file, but you have to tell it the sample rate and format.
-    *   **SDR Hardware:** Streams directly from **RTL-SDR**, **SDRplay**, **HackRF**, and **BladeRF** devices.
+    *   **SDR Hardware:** Streams directly from **RTL-SDR**, **SDRplay**, **HackRF**,**Airspy**, and **BladeRF** devices.
     *   **SpyServer Support:** Connect to networked SpyServer instances.
 *   **WAV Metadata Parsing:** Automatically reads metadata from SDR I/Q captures to make your life easier, especially for frequency correction.
     *   `auxi` chunks from **SDR Console, SDRconnect,** and **SDRuno**.
@@ -67,6 +67,7 @@ You'll need a pretty standard C development environment.
 *   **(Optional) RTL-SDR Library (librtlsdr):** For RTL-SDR support (e.g., `librtlsdr-dev`).
 *   **(Optional) BladeRF Library (libbladeRF):** For BladeRF support (e.g., `libbladerf-dev`). Windows installers found **[here](https://github.com/Nuand/bladeRF/releases)**.
 *   **(Optional) HackRF Library (libhackrf):** For HackRF support (e.g., `libhackrf-dev`).
+*   **(Optional) Airspy Library (libairspy):** For Airspy support (e.g., `libairspy-dev`).
 *   **(Optional) SDRplay API Library:** To build with SDRplay support, you must first download and install the official API from the **[SDRplay website](https://www.sdrplay.com/downloads/)**.
 *   **(Optional) NRSC5 Library (libnrsc5):** For NRSC5 (HD Radio) playback support. GitHub repo found **[here](https://github.com/theori-io/nrsc5)**.
 
@@ -75,7 +76,7 @@ You'll need a pretty standard C development environment.
 1.  **Install the boring stuff:**
     ```bash
     sudo apt-get update
-    sudo apt-get install build-essential cmake libsndfile1-dev libliquid-dev libexpat1-dev librtlsdr-dev libhackrf-dev libbladerf-dev libusb-1.0-0-dev libfftw3-dev
+    sudo apt-get install build-essential cmake libsndfile1-dev libliquid-dev libexpat1-dev librtlsdr-dev libhackrf-dev libairspy-dev libbladerf-dev libusb-1.0-0-dev libfftw3-dev
     ```
 
 2.  **Build the tool:**
@@ -89,10 +90,10 @@ You'll need a pretty standard C development environment.
     cmake ..
 
     # Or, build with everything enabled
-    cmake -DWITH_RTLSDR=ON -DWITH_SDRPLAY=ON -DWITH_HACKRF=ON -DWITH_BLADERF=ON -DWITH_NRSC5=ON ..
+    cmake -DWITH_RTLSDR=ON -DWITH_SDRPLAY=ON -DWITH_HACKRF=ON -DWITH_AIRSPY=ON -DWITH_BLADERF=ON -DWITH_NRSC5=ON ..
 
-    make
-    ldconfig
+    make or make -j N (Replace N with number of threads)
+    make install 
     ```
 You'll find the `iq_tool` executable in the `build` directory.
 
@@ -201,6 +202,16 @@ HackRF-Specific Options
     --hackrf-vga-gain=<int>               Set VGA (Baseband) gain in dB. (Optional, Default: 0)
     --hackrf-amp-enable                   Enable the front-end RF amplifier (+14 dB).
 
+Airspy-Specific Options
+    --airspy-gain-mode=<str>              Gain mode: 'linearity', 'sensitivity', or 'manual'. (Default: AGC)
+    --airspy-gain-value=<int>             Gain value for linearity/sensitivity modes (0-21). (Default: 10)
+    --airspy-lna-gain=<int>               Manual LNA gain (0-14). Only with manual mode. (Default: 5)
+    --airspy-mixer-gain=<int>             Manual Mixer gain (0-15). Only with manual mode. (Default: 5)
+    --airspy-vga-gain=<int>               Manual VGA gain (0-15). Only with manual mode. (Default: 5)
+    --airspy-sample-format=<str>          Sample format: 'cf32' or 'cs16'. (Default: cs16)
+    --airspy-serial=<int>                 Select device by serial number (hex, e.g., 0x123456789ABCDEF0).
+    --airspy-packing                      Enable bit-packing mode (12-bit samples).
+
 BladeRF-Specific Options
     --bladerf-device-idx=<int>            Select specific BladeRF device by index (0-indexed). (Default: 0)
     --bladerf-load-fpga=<str>             Load an FPGA bitstream from the specified file.
@@ -292,7 +303,10 @@ This tool is a work in progress.
     *   [x] Implement FFT-based filtering option.
     *   [x] SpyServer Support
     *   [x] Implement Output AGC (DX, Local, and Digital profiles).
-    *   [ ] Add Airspy & HydaSDR support
+    *   [x] Airspy Support
+    *   [ ] Airspy HF+ support
+    *   [x] SpyServer Support
+    *   [ ] Add HydraSDR support
     *   [ ] Improve I/Q correction algorithm stability.
     *   [ ] Refine and standardize log levels throughout the application.
     *   [ ] Add unit tests. 
