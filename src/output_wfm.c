@@ -422,43 +422,9 @@ static void* wfm_run_writer(ModuleContext* ctx) {
         // --- END OF STREAM HANDLING ---
         if (item->is_last_chunk) {
 
-            // Wait for the ring buffer to drain.
-            // We use a stall detector: if the buffer size stops decreasing (because
-            // the remainder is smaller than a callback request), we abort.
-            if (p->audio_ring_buffer) {
-                size_t last_size = (size_t)-1;
-                int stall_count = 0;
-
-                while (true) {
-                    size_t curr_size = ring_buffer_get_size(p->audio_ring_buffer);
-
-                    if (curr_size == 0) break; // Fully empty
-                    if (is_shutdown_requested()) break;
-
-                    // If size hasn't changed, increment stall counter
-                    if (curr_size == last_size) {
-                        stall_count++;
-                        // If stuck for ~200ms (20 * 10ms), assume remaining data is unplayable fragment
-                        if (stall_count > 20) break;
-                    } else {
-                        stall_count = 0;
-                        last_size = curr_size;
-                    }
-
-                    #ifdef _WIN32
-                    Sleep(10);
-                    #else
-                    usleep(10000);
-                    #endif
-                }
-
-                // Small padding sleep to ensure hardware buffer plays out
-                #ifdef _WIN32
-                Sleep(200);
-                #else
-                usleep(200000);
-                #endif
-            }
+            // Wait for the ring buffer to drain using the reusable utility.
+            // Poll every 10ms, timeout if stalled for 200ms, wait 200ms for hardware padding.
+            utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
 
             queue_enqueue(res->free_sample_chunk_queue, item);
             break;

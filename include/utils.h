@@ -16,6 +16,7 @@
 #include "app_context.h"
 #include "module.h"
 #include "memory_arena.h"
+#include "ring_buffer.h"
 
 // --- Function Declarations ---
 
@@ -102,5 +103,19 @@ bool utils_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz,
  * @return true if the file exists and can be opened for reading, false otherwise.
  */
 bool utils_check_file_exists(const char* full_path);
+
+/**
+ * @brief Waits for a ring buffer to empty, with stall detection and padding.
+ *
+ * This is used by audio output modules to prevent cutting off the end of the
+ * stream. It detects if the buffer consumption has stalled (size stops changing)
+ * and applies a hardware padding sleep.
+ *
+ * @param rb Pointer to the ring buffer.
+ * @param poll_interval_ms The interval in milliseconds to check the buffer size (e.g., 10).
+ * @param stall_timeout_ms Max time to wait (in ms) if the buffer size stops changing.
+ * @param hardware_padding_ms Time to sleep (in ms) after buffer is empty to let hardware finish.
+ */
+void utils_wait_for_ring_buffer_drain(RingBuffer* rb, int poll_interval_ms, int stall_timeout_ms, int hardware_padding_ms);
 
 #endif // UTILS_H_
