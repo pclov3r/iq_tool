@@ -374,6 +374,9 @@ static void* wfm_run_writer(ModuleContext* ctx) {
     AppResources* res = ctx->resources;
     WfmContext* p = (WfmContext*)res->output_module_private_data;
 
+    // Throttle if buffer is > 80% full
+    const size_t THROTTLE_THRESHOLD = (size_t)(AUDIO_BUFFER_SIZE * 0.8);
+
     // --- Statistics Accumulators ---
     size_t stat_counter = 0;
     // Log once per second (Signal Time)
@@ -385,11 +388,29 @@ static void* wfm_run_writer(ModuleContext* ctx) {
     double accum_pilot_mag_sum = 0.0; // For Pilot Presence detection
     
     // Average accumulators for Stereo/Pilot stats
-    double accum_stereo_pct_sum = 0.0; 
+    double accum_stereo_pct_sum = 0.0;
     double accum_pilot_err_sq_sum = 0.0;
     size_t accum_pilot_count = 0;
 
     while (true) {
+        // --- 1. BACKPRESSURE: Check Audio Buffer BEFORE Dequeue ---
+        if (p->audio_ring_buffer) {
+            // While the audio buffer is too full, we sleep.
+            // This leaves the SampleChunk in the upstream queue, preserving resources.
+            while (ring_buffer_get_size(p->audio_ring_buffer) > THROTTLE_THRESHOLD) {
+                #ifdef _WIN32
+                    Sleep(10);
+                #else
+                    usleep(10000);
+                #endif
+
+                if (is_shutdown_requested()) {
+                    goto cleanup;
+                }
+            }
+        }
+
+        // --- 2. Acquire Data ---
         SampleChunk* item = (SampleChunk*)queue_dequeue(res->writer_input_queue);
         if (!item) break;
 
@@ -397,7 +418,48 @@ static void* wfm_run_writer(ModuleContext* ctx) {
             queue_enqueue(res->free_sample_chunk_queue, item);
             continue;
         }
+
+        // --- END OF STREAM HANDLING ---
         if (item->is_last_chunk) {
+
+            // Wait for the ring buffer to drain.
+            // We use a stall detector: if the buffer size stops decreasing (because
+            // the remainder is smaller than a callback request), we abort.
+            if (p->audio_ring_buffer) {
+                size_t last_size = (size_t)-1;
+                int stall_count = 0;
+
+                while (true) {
+                    size_t curr_size = ring_buffer_get_size(p->audio_ring_buffer);
+
+                    if (curr_size == 0) break; // Fully empty
+                    if (is_shutdown_requested()) break;
+
+                    // If size hasn't changed, increment stall counter
+                    if (curr_size == last_size) {
+                        stall_count++;
+                        // If stuck for ~200ms (20 * 10ms), assume remaining data is unplayable fragment
+                        if (stall_count > 20) break;
+                    } else {
+                        stall_count = 0;
+                        last_size = curr_size;
+                    }
+
+                    #ifdef _WIN32
+                    Sleep(10);
+                    #else
+                    usleep(10000);
+                    #endif
+                }
+
+                // Small padding sleep to ensure hardware buffer plays out
+                #ifdef _WIN32
+                Sleep(200);
+                #else
+                usleep(200000);
+                #endif
+            }
+
             queue_enqueue(res->free_sample_chunk_queue, item);
             break;
         }
@@ -595,16 +657,16 @@ static void* wfm_run_writer(ModuleContext* ctx) {
 
             // --- STAGE 6: Push to Audio Ring Buffer ---
             size_t bytes_to_write = num_resampled_l * 2 * sizeof(int16_t);
-            while (ring_buffer_get_capacity(p->audio_ring_buffer) - ring_buffer_get_size(p->audio_ring_buffer) < bytes_to_write) {
-                if (is_shutdown_requested()) break;
-                SLEEP_MS(1);
-            }
+            
+            // Note: We do NOT loop/sleep here anymore. We rely on the throttle 
+            // at the start of the loop to ensure sufficient space exists.
             ring_buffer_write(p->audio_ring_buffer, p->interleaved_pcm, bytes_to_write);
         }
 
         if (!queue_enqueue(res->free_sample_chunk_queue, item)) break;
     }
 
+cleanup:
     log_debug("WFM writer thread exiting.");
     return NULL;
 }
