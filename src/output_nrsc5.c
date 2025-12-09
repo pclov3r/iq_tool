@@ -368,10 +368,6 @@ static bool nrsc5_initialize(ModuleContext* ctx) {
         return false;
     }
 
-    // Set Frequency
-    log_debug("NRSC5: Setting frequency to %.0f...", ctx->config->sdr_general.rf_freq_hz);
-    nrsc5_set_frequency(p->nrsc5_inst, (float)ctx->config->sdr_general.rf_freq_hz);
-
     // Set Callback
     p->active_program = (unsigned int)s_nrsc5_config.program_id;
     nrsc5_set_callback(p->nrsc5_inst, nrsc5_event_callback, p);
