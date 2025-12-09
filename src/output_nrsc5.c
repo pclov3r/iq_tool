@@ -424,6 +424,10 @@ static void* nrsc5_run_writer(ModuleContext* ctx) {
         }
 
         if (item->is_last_chunk) {
+            // Wait for the ring buffer to drain to prevent audio cutoff.
+            // Poll 10ms, stall timeout 200ms, hardware padding 200ms.
+            utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
+
             queue_enqueue(resources->free_sample_chunk_queue, item);
             break; // End of Stream
         }
