@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
+
+# Exit immediately if a command exits with a non-zero status.
 set -e
 
-# --- Dependency Paths (Easy to Modify) ---
+# ==============================================================================
+# Windows Cross-Compilation Build Script
+# ==============================================================================
+# This script configures, builds, and packages the iq_tool application for
+# Windows x64 using MinGW. It handles dependency paths, architecture overrides,
+# and optional hardware modules.
+# ==============================================================================
+
+# --- Dependency Path ---
 DEPS_BASE_PATH="/usr/local/src/windows_deps_files/src"
 
 # --- Automatically find the full paths to the MinGW runtime DLLs ---
@@ -9,41 +19,54 @@ host=x86_64-w64-mingw32
 MINGW_GCC_DLL=$(${host}-gcc -print-file-name=libgcc_s_seh-1.dll)
 MINGW_PTHREAD_DLL=$(${host}-gcc -print-file-name=libwinpthread-1.dll)
 
+# --- Library Paths ---
+
+# libsndfile
 SNDFILE_INCLUDE_DIR="${DEPS_BASE_PATH}/libsndfile/include"
 SNDFILE_LIBRARY="${DEPS_BASE_PATH}/libsndfile/build-win64/libsndfile.dll.a"
 SNDFILE_DLL="${DEPS_BASE_PATH}/libsndfile/build-win64/libsndfile.dll"
 
+# liquid-dsp
 LIQUID_INCLUDE_DIR="${DEPS_BASE_PATH}/liquid-dsp/include"
 LIQUID_LIB_BASE_PATH="${DEPS_BASE_PATH}/liquid-dsp"
 
+# FFTW
 FFTW_DLL="${DEPS_BASE_PATH}/libfftw/build-win64/bin/libfftw3f-3.dll"
 
+# libexpat
 EXPAT_INCLUDE_DIR="${DEPS_BASE_PATH}/libexpat/expat/lib"
 EXPAT_LIBRARY="${DEPS_BASE_PATH}/libexpat/expat/build-win64/libexpat.dll.a"
 EXPAT_DLL="${DEPS_BASE_PATH}/libexpat/expat/build-win64/libexpat-1.dll"
 
+# RTL-SDR
 RTLSDR_INCLUDE_DIR="${DEPS_BASE_PATH}/rtl-sdr/include"
 RTLSDR_LIBRARY="${DEPS_BASE_PATH}/rtl-sdr/build-win64/src/librtlsdr.dll.a"
 RTLSDR_DLL="${DEPS_BASE_PATH}/rtl-sdr/build-win64/src/librtlsdr.dll"
 
+# SDRplay
 SDRPLAY_INCLUDE_DIR="${DEPS_BASE_PATH}/sdrplay_api/include"
 SDRPLAY_LIBRARY="${DEPS_BASE_PATH}/sdrplay_api/x64/sdrplay_api.lib"
 
+# HackRF
 HACKRF_INCLUDE_DIR="${DEPS_BASE_PATH}/hackrf/host/libhackrf/src/"
 HACKRF_LIBRARY="${DEPS_BASE_PATH}/hackrf/host/build-win64/libhackrf/src/libhackrf.dll.a"
 HACKRF_DLL="${DEPS_BASE_PATH}/hackrf/host/build-win64/libhackrf/src/libhackrf.dll"
 
+# bladeRF
 BLADERF_INCLUDE_DIR="${DEPS_BASE_PATH}/bladeRF/include"
 BLADERF_LIBRARY="${DEPS_BASE_PATH}/bladeRF/x64/bladeRF.lib"
 
+# NRSC5
 NRSC5_INCLUDE_DIR="${DEPS_BASE_PATH}/nrsc5/include"
 NRSC5_LIBRARY="${DEPS_BASE_PATH}/nrsc5/build-win64/src/libnrsc5.dll.a"
 NRSC5_DLL="${DEPS_BASE_PATH}/nrsc5/build-win64/src/libnrsc5.dll"
 
+# LibUSB (Used by RTL-SDR, HackRF, bladeRF)
 LIBUSB_INCLUDE_DIR="${DEPS_BASE_PATH}/libusb/build-win64/include/libusb-1.0/"
 LIBUSB_LIBRARY="${DEPS_BASE_PATH}/libusb/build-win64/lib/libusb-1.0.dll.a"
 LIBUSB_DLL="${DEPS_BASE_PATH}/libusb/build-win64/bin/libusb-1.0.dll"
 
+# Airspy
 AIRSPY_INCLUDE_DIR="${DEPS_BASE_PATH}/airspyone_host/libairspy/src"
 AIRSPY_LIBRARY="${DEPS_BASE_PATH}/airspyone_host/build-win64/libairspy/src/libairspy.dll.a"
 AIRSPY_DLL="${DEPS_BASE_PATH}/airspyone_host/build-win64/airspy-tools/src/libairspy.dll"
@@ -53,22 +76,27 @@ usage() {
     echo "Usage: $0 [options] [make arguments]"
     echo
     echo "Required: liquid-dsp Library Version and Target CPU Architecture (choose one):"
-    echo "  --avx"
-    echo "  --avx2"
+    echo "  --avx              Link against the pre-compiled AVX version of liquid-dsp."
+    echo "  --avx2             Link against the pre-compiled AVX2 version of liquid-dsp."
     echo
     echo "Optional Build Options:"
-    echo "  --with-rtlsdr"
-    echo "  --with-sdrplay"
-    echo "  --with-hackrf"
-    echo "  --with-bladerf"
-    echo "  --with-nrsc5"
-    echo "  --with-airspy"
+    echo "  --with-rtlsdr      Enable and link RTL-SDR support."
+    echo "  --with-sdrplay     Enable and link SDRplay support."
+    echo "  --with-hackrf      Enable and link HackRF support."
+    echo "  --with-bladerf     Enable and link bladeRF support."
+    echo "  --with-nrsc5       Enable and link NRSC5 (HD Radio) support."
+    echo "  --with-airspy      Enable and link Airspy support."
     echo
     echo "Packaging:"
-    echo "  --package"
+    echo "  --package          Create a distributable .zip file after a successful build."
+    echo
+    echo "Argument Passthrough:"
+    echo "  --cmake-args \"...\" Pass additional quoted arguments to CMake."
     echo
     echo "Other:"
-    echo "  -h, --help"
+    echo "  -h, --help         Display this help and exit."
+    echo
+    echo "Any additional arguments are passed directly to 'make' (e.g., -j4)."
     exit 1
 }
 
@@ -83,7 +111,7 @@ while [[ "$#" -gt 0 ]]; do
         --with-hackrf) WITH_HACKRF="ON";;
         --with-bladerf) WITH_BLADERF="ON";;
         --with-nrsc5) WITH_NRSC5="ON";;
-        --with-airspy) WITH_AIRSPY="ON";;   ### <--- NEW
+        --with-airspy) WITH_AIRSPY="ON";;
         --package) DO_PACKAGE="YES";;
         --cmake-args) CMAKE_EXTRA_ARGS="$2"; shift;;
         -h|--help) usage;;
@@ -95,17 +123,21 @@ done
 
 # --- Validate Required Options ---
 if [ -z "$BUILD_TYPE" ]; then
-    echo "Error: Must specify CPU architecture."
-    usage
+    echo "Error: A liquid-dsp library version and corresponding CPU architecture must be specified."
+    echo "Please choose one of the following options:"
+    echo "  --avx  (for x86-64-v2 compatible CPUs)"
+    echo "  --avx2 (for x86-64-v3 compatible CPUs)"
+    exit 1
 fi
 
 # --- Determine CPU_TARGET_ARCHITECTURE ---
 case "$BUILD_TYPE" in
     avx) CPU_TARGET_ARCHITECTURE="x86-64-v2" ;;
     avx2) CPU_TARGET_ARCHITECTURE="x86-64-v3" ;;
+    *) echo "Warning: Unknown BUILD_TYPE '$BUILD_TYPE'. No specific CPU_TARGET_ARCHITECTURE will be set." ;;
 esac
 
-# --- Setup ---
+# --- Setup Build Directories and Names ---
 root=$(cd "$(dirname "$0")/.." && pwd)
 
 build_suffix="${BUILD_TYPE}"
@@ -114,10 +146,11 @@ if [ -n "$WITH_SDRPLAY" ]; then build_suffix+="-sdrplay"; fi
 if [ -n "$WITH_HACKRF" ]; then build_suffix+="-hackrf"; fi
 if [ -n "$WITH_BLADERF" ]; then build_suffix+="-bladerf"; fi
 if [ -n "$WITH_NRSC5" ]; then build_suffix+="-nrsc5"; fi
-if [ -n "$WITH_AIRSPY" ]; then build_suffix+="-airspy"; fi  ### <--- NEW
+if [ -n "$WITH_AIRSPY" ]; then build_suffix+="-airspy"; fi
 
 prefix=${root}/build-win64-${build_suffix}
 
+# --- Construct CMake Options Array ---
 cmake_opts=(
     -D CMAKE_SYSTEM_NAME=Windows
     -D CMAKE_C_COMPILER=${host}-gcc
@@ -126,12 +159,14 @@ cmake_opts=(
     -D LIQUID_INCLUDE_DIR=${LIQUID_INCLUDE_DIR}
     -D EXPAT_INCLUDE_DIR=${EXPAT_INCLUDE_DIR}
     -D EXPAT_LIBRARY=${EXPAT_LIBRARY}
+    -D CPU_TARGET_ARCHITECTURE=${CPU_TARGET_ARCHITECTURE}
 )
 
+# liquid-dsp library path based on selection
 liquid_library_path="${LIQUID_LIB_BASE_PATH}/build-win64-${BUILD_TYPE}/libliquid.dll.a"
 cmake_opts+=(-D LIQUID_LIBRARY=${liquid_library_path})
-cmake_opts+=(-D CPU_TARGET_ARCHITECTURE=${CPU_TARGET_ARCHITECTURE})
 
+# Optional Module: RTL-SDR
 if [ -n "$WITH_RTLSDR" ]; then
     cmake_opts+=( -D WITH_RTLSDR=ON
                   -D RTLSDR_INCLUDE_DIR=${RTLSDR_INCLUDE_DIR}
@@ -140,12 +175,14 @@ if [ -n "$WITH_RTLSDR" ]; then
                   -D LIBUSB_LIBRARY=${LIBUSB_LIBRARY} )
 fi
 
+# Optional Module: SDRplay
 if [ -n "$WITH_SDRPLAY" ]; then
     cmake_opts+=( -D WITH_SDRPLAY=ON
                   -D SDRPLAY_INCLUDE_DIR=${SDRPLAY_INCLUDE_DIR}
                   -D SDRPLAY_LIBRARY=${SDRPLAY_LIBRARY} )
 fi
 
+# Optional Module: HackRF
 if [ -n "$WITH_HACKRF" ]; then
     cmake_opts+=( -D WITH_HACKRF=ON
                   -D HACKRF_INCLUDE_DIR=${HACKRF_INCLUDE_DIR}
@@ -154,6 +191,7 @@ if [ -n "$WITH_HACKRF" ]; then
                   -D LIBUSB_LIBRARY=${LIBUSB_LIBRARY} )
 fi
 
+# Optional Module: bladeRF
 if [ -n "$WITH_BLADERF" ]; then
     cmake_opts+=( -D WITH_BLADERF=ON
                   -D BLADERF_INCLUDE_DIR=${BLADERF_INCLUDE_DIR}
@@ -162,24 +200,28 @@ if [ -n "$WITH_BLADERF" ]; then
                   -D LIBUSB_LIBRARY=${LIBUSB_LIBRARY} )
 fi
 
+# Optional Module: NRSC5
 if [ -n "$WITH_NRSC5" ]; then
     cmake_opts+=( -D WITH_NRSC5=ON
                   -D NRSC5_INCLUDE_DIR=${NRSC5_INCLUDE_DIR}
                   -D NRSC5_LIBRARY=${NRSC5_LIBRARY} )
 fi
 
-### --- NEW: Airspy cmake options ---
+# Optional Module: Airspy
 if [ -n "$WITH_AIRSPY" ]; then
     cmake_opts+=( -D WITH_AIRSPY=ON
                   -D AIRSPY_INCLUDE_DIR=${AIRSPY_INCLUDE_DIR}
                   -D AIRSPY_LIBRARY=${AIRSPY_LIBRARY} )
 fi
 
+# Pass through any extra arguments provided
 if [ -n "$CMAKE_EXTRA_ARGS" ]; then
     read -r -a CMAKE_EXTRA_ARGS_ARRAY <<< "$CMAKE_EXTRA_ARGS"
     cmake_opts+=("${CMAKE_EXTRA_ARGS_ARRAY[@]}")
 fi
 
+# --- Execute Build ---
+echo "--- Configuring and Building in ${prefix} ---"
 mkdir -p "${prefix}"
 cd "${prefix}"
 cmake "${cmake_opts[@]}" ..
@@ -187,13 +229,18 @@ make "${MAKE_ARGS[@]}"
 
 # --- Packaging ---
 if [ "$DO_PACKAGE" = "YES" ]; then
+    echo "--- Packaging distributable ZIP file ---"
+
     dist_dir="${prefix}/iq_tool_win64"
     zip_file_name="iq_tool_${build_suffix}_win64.zip"
 
     rm -rf "${dist_dir}"
     mkdir -p "${dist_dir}"
 
+    echo "Copying executable..."
     cp "${prefix}/iq_tool.exe" "${dist_dir}/"
+
+    echo "Copying license, documentation, and presets..."
     cp "${root}/LICENSE" "${dist_dir}/"
     cp "${root}/README.md" "${dist_dir}/"
 
@@ -203,19 +250,24 @@ if [ "$DO_PACKAGE" = "YES" ]; then
         touch "${dist_dir}/iq_tool_presets.conf"
     fi
 
+    echo "Copying required DLLs..."
     cp "${SNDFILE_DLL}" "${dist_dir}/"
     cp "${LIQUID_LIB_BASE_PATH}/build-win64-${BUILD_TYPE}/libliquid.dll" "${dist_dir}/"
     cp "${EXPAT_DLL}" "${dist_dir}/"
     cp "${FFTW_DLL}" "${dist_dir}/"
+
+    echo "Copying MinGW runtime DLLs..."
     cp "${MINGW_GCC_DLL}" "${dist_dir}/"
     cp "${MINGW_PTHREAD_DLL}" "${dist_dir}/"
 
     if [ -n "$WITH_RTLSDR" ]; then
+        echo "Copying RTL-SDR DLLs..."
         cp "${RTLSDR_DLL}" "${dist_dir}/"
         cp "${LIBUSB_DLL}" "${dist_dir}/"
     fi
 
     if [ -n "$WITH_HACKRF" ]; then
+        echo "Copying HackRF DLLs..."
         cp "${HACKRF_DLL}" "${dist_dir}/"
         if [ ! -f "${dist_dir}/libusb-1.0.dll" ]; then
             cp "${LIBUSB_DLL}" "${dist_dir}/"
@@ -223,15 +275,16 @@ if [ "$DO_PACKAGE" = "YES" ]; then
     fi
 
     if [ -n "$WITH_NRSC5" ]; then
+        echo "Copying NRSC5 DLLs..."
         cp "${NRSC5_DLL}" "${dist_dir}/"
     fi
 
-    ### --- NEW: Airspy packaging ---
     if [ -n "$WITH_AIRSPY" ]; then
-        echo "Copying Airspy DLL..."
+        echo "Copying Airspy DLLs..."
         cp "${AIRSPY_DLL}" "${dist_dir}/"
     fi
 
+    echo "Creating ZIP archive: ${zip_file_name}"
     cd "${dist_dir}"
     zip -r "../${zip_file_name}" *
 
