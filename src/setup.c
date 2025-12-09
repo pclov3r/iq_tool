@@ -119,7 +119,7 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *reso
     }
     else {
         resources->is_passthrough = false;
-        log_info("Resampling enabled: %.0f Hz -> %.0f Hz (Ratio: %.4f)",
+        log_info("Resampling enabled: %.10g Hz -> %.10g Hz (Ratio: %.10g)", ...
                  input_rate_d, config->output_rate.target_rate, r);
     }
 
