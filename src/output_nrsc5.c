@@ -147,7 +147,7 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
                 ctx->audio_packets++;
                 ctx->audio_bytes += evt->hdc.count;
                 if (ctx->audio_packets >= 32) {
-                    float kbps = (float)ctx->audio_bytes * 8.0f * NRSC5_SAMPLE_RATE_AUDIO / 
+                    float kbps = (float)ctx->audio_bytes * 8.0f * NRSC5_SAMPLE_RATE_AUDIO /
                                  NRSC5_AUDIO_FRAME_SAMPLES / ctx->audio_packets / 1000.0f;
                     log_info("NRSC5: Audio bit rate: %.1f kbps", kbps);
                     ctx->audio_packets = 0;
@@ -395,8 +395,30 @@ static void* nrsc5_run_writer(ModuleContext* ctx) {
     AppResources* resources = ctx->resources;
     Nrsc5Context* p = (Nrsc5Context*)resources->output_module_private_data;
 
+    // Throttle if buffer is > 80% full (approx 2.3 seconds of audio)
+    const size_t THROTTLE_THRESHOLD = (size_t)(NRSC5_AUDIO_BUFFER_SIZE * 0.8);
+
     while (true) {
-        // 1. Dequeue chunk from the QUEUE
+        // --- BACKPRESSURE ---
+        if (p->audio_ring_buffer) {
+            // While the audio buffer is too full, we sleep.
+            while (ring_buffer_get_size(p->audio_ring_buffer) > THROTTLE_THRESHOLD) {
+
+                // 1. Sleep: Use standard OS functions instead of miniaudio
+                #ifdef _WIN32
+                    Sleep(10);        // Windows: Sleep in milliseconds
+                #else
+                    usleep(10000);    // Linux/Unix: Sleep in microseconds (10ms = 10000us)
+                #endif
+
+                // 2. Check for shutdown signal (replaces queue_is_closed)
+                if (is_shutdown_requested()) {
+                    goto cleanup;
+                }
+            }
+        }
+
+        // 1. Dequeue chunk from the pipeline
         SampleChunk* item = (SampleChunk*)queue_dequeue(resources->writer_input_queue);
         if (!item) break; // Shutdown
 
@@ -410,30 +432,42 @@ static void* nrsc5_run_writer(ModuleContext* ctx) {
             break; // End of Stream
         }
 
-        // 2. Push to NRSC5
+        // 2. Push IQ data to NRSC5 decoder
         if (item->frames_to_write > 0) {
             int res = 0;
-            // The API expects 'length' to be the total number of scalar samples (I+Q)
+            // NRSC5 expects total scalar count (I+Q), so frames * 2
             unsigned int num_scalars = item->frames_to_write * 2;
 
-            if (s_nrsc5_config.active_mode == NRSC5_MODE_CU8_FM || s_nrsc5_config.active_mode == NRSC5_MODE_CU8_AM) {
-                res = nrsc5_pipe_samples_cu8(p->nrsc5_inst, (uint8_t*)item->final_output_data, num_scalars);
-            } else {
-                res = nrsc5_pipe_samples_cs16(p->nrsc5_inst, (int16_t*)item->final_output_data, num_scalars);
+            switch (s_nrsc5_config.active_mode) {
+                case NRSC5_MODE_CU8_FM:
+                case NRSC5_MODE_CU8_AM:
+                    // 8-bit Unsigned Samples
+                    res = nrsc5_pipe_samples_cu8(p->nrsc5_inst, (uint8_t*)item->final_output_data, num_scalars);
+                    break;
+
+                case NRSC5_MODE_CS16_FM:
+                case NRSC5_MODE_CS16_AM:
+                    // 16-bit Signed Samples
+                    res = nrsc5_pipe_samples_cs16(p->nrsc5_inst, (int16_t*)item->final_output_data, num_scalars);
+                    break;
+
+                default:
+                    log_error("NRSC5: Unknown mode encountered in writer.");
+                    break;
             }
 
             if (res != 0) {
                 log_error("NRSC5: Failed to pipe samples to decoder.");
-                // Don't break, just continue to keep pipeline alive
             }
         }
 
         // 3. Return chunk to pool
         if (!queue_enqueue(resources->free_sample_chunk_queue, item)) {
-            break; // Shutdown
+            break;
         }
     }
 
+cleanup:
     log_debug("NRSC5 writer thread exiting.");
     return NULL;
 }
