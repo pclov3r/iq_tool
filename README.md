@@ -85,6 +85,7 @@ You'll need a pretty standard C development environment.
     git clone https://github.com/theori-io/nrsc5
     cd nrsc5
     mkdir build
+    cd build
     cmake .. (Add -DUSE_SSE=ON for x86 or -DUSE_NEON=ON for ARM for higher performance)
     make or make -j N (Replace N with number of threads)
     make install
