@@ -21,6 +21,9 @@
 #if defined(WITH_AIRSPY)
 #include "input_airspy.h"
 #endif
+#if defined(WITH_AIRSPYHF)
+#include "input_airspyhf.h"
+#endif
 #if defined(WITH_BLADERF)
 #include "input_bladerf.h"
 #endif
@@ -119,6 +122,18 @@ static void initialize_modules_list(MemoryArena* arena) {
             .is_sdr = true,
             .set_default_config = airspy_set_default_config,
             .get_cli_options = airspy_get_cli_options,
+            .requires_input_path = false,
+            .requires_output_path = false,
+        },
+    #endif
+    #if defined(WITH_AIRSPYHF)
+        {
+            .name = "airspyhf",
+            .type = MODULE_TYPE_INPUT,
+            .api = get_airspyhf_input_module_api(),
+            .is_sdr = true,
+            .set_default_config = airspyhf_set_default_config,
+            .get_cli_options = airspyhf_get_cli_options,
             .requires_input_path = false,
             .requires_output_path = false,
         },

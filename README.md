@@ -31,7 +31,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
 *   **Flexible Inputs:**
     *   **WAV Files:** Reads standard 8-bit and 16-bit complex (I/Q) WAV files.
     *   **Raw I/Q Files:** Just point it at a headerless file, but you have to tell it the sample rate and format.
-    *   **SDR Hardware:** Streams directly from **RTL-SDR**, **SDRplay**, **HackRF**,**Airspy**, and **BladeRF** devices.
+    *   **SDR Hardware:** Streams directly from **RTL-SDR**, **SDRplay**, **HackRF**,**Airspy**,**Airspy HF+**, and **BladeRF** devices.
     *   **SpyServer Support:** Connect to networked SpyServer instances.
 *   **WAV Metadata Parsing:** Automatically reads metadata from SDR I/Q captures to make your life easier, especially for frequency correction.
     *   `auxi` chunks from **SDR Console, SDRconnect,** and **SDRuno**.
@@ -57,7 +57,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
 You'll need a pretty standard C development environment.
 
 **Dependencies:**
-*   A C99 compiler (GCC, Clang, MSVC)
+*   A C99 compiler (GCC, Clang)
 *   **CMake** (version 3.10 or higher)
 *   **libsndfile**
 *   **liquid-dsp**
@@ -68,29 +68,41 @@ You'll need a pretty standard C development environment.
 *   **(Optional) BladeRF Library (libbladeRF):** For BladeRF support (e.g., `libbladerf-dev`). Windows installers found **[here](https://github.com/Nuand/bladeRF/releases)**.
 *   **(Optional) HackRF Library (libhackrf):** For HackRF support (e.g., `libhackrf-dev`).
 *   **(Optional) Airspy Library (libairspy):** For Airspy support (e.g., `libairspy-dev`).
+*   **(Optional) Airspy HF+ Library (libairspyhf):** For Airspy HF+ support (e.g., `libairspyhf-dev`).
 *   **(Optional) SDRplay API Library:** To build with SDRplay support, you must first download and install the official API from the **[SDRplay website](https://www.sdrplay.com/downloads/)**.
 *   **(Optional) NRSC5 Library (libnrsc5):** For NRSC5 (HD Radio) playback support. GitHub repo found **[here](https://github.com/theori-io/nrsc5)**.
 
-#### On Linux (Debian/Ubuntu Example)
+#### On Linux (Debian/Ubuntu Example for all modules)
 
-1.  **Install the boring stuff:**
+1.  **Install the dependencies:**
     ```bash
     sudo apt-get update
-    sudo apt-get install build-essential cmake libsndfile1-dev libliquid-dev libexpat1-dev librtlsdr-dev libhackrf-dev libairspy-dev libbladerf-dev libusb-1.0-0-dev libfftw3-dev
+    sudo apt-get install build-essential cmake libsndfile1-dev libliquid-dev libexpat1-dev librtlsdr-dev libhackrf-dev libairspy-dev libairspyhf-dev libbladerf-dev libusb-1.0-0-dev libfftw3-dev
     ```
 
-2.  **Build the tool:**
+2.  **Build NRSC5 if enabling support:**
+    ```bash
+    git clone https://github.com/theori-io/nrsc5
+    cd nrsc5
+    mkdir build
+    cmake .. (Add -DUSE_SSE=ON for x86 or -DUSE_NEON=ON for ARM for higher performance)
+    make or make -j N (Replace N with number of threads)
+    make install
+    ldconfig
+    ```
+
+3.  **Build the tool:**
     ```bash
     git clone https://github.com/pclov3r/iq_tool.git
     cd iq_tool
     mkdir build
     cd build
 
-    # Build without any optional SDR support
+    # Build without any optional SDR support besides Spyserver support
     cmake ..
 
     # Or, build with everything enabled
-    cmake -DWITH_RTLSDR=ON -DWITH_SDRPLAY=ON -DWITH_HACKRF=ON -DWITH_AIRSPY=ON -DWITH_BLADERF=ON -DWITH_NRSC5=ON ..
+    cmake -DWITH_RTLSDR=ON -DWITH_SDRPLAY=ON -DWITH_HACKRF=ON -DWITH_AIRSPY=ON -DWITH_AIRSPYHF=ON -DWITH_BLADERF=ON -DWITH_NRSC5=ON ..
 
     make or make -j N (Replace N with number of threads)
     make install 
@@ -125,9 +137,6 @@ The best way to see all options is to run `iq_tool --help`.
 #### Command-Line Options
 
 ```text
-Usage: iq_tool -i <in_type> [in_file] -o <out_type> [out_file] [options]
-
-
 Required Input & Output
     -i, --input=<str>                     Specifies the input type {wav|raw-file|rtlsdr|sdrplay|hackrf|bladerf|spyserver-client}
     -o, --output=<str>                    Specifies the output type {wav|raw|stdout} and optional file path
@@ -211,6 +220,13 @@ Airspy-Specific Options
     --airspy-sample-format=<str>          Sample format: 'cf32' or 'cs16'. (Default: cs16)
     --airspy-serial=<int>                 Select device by serial number (hex, e.g., 0x123456789ABCDEF0).
     --airspy-packing                      Enable bit-packing mode (12-bit samples).
+
+Airspy HF+ Specific Options
+    --airspyhf-agc=<str>                  AGC mode: 'off', 'low', or 'high'. (Default: high)
+    --airspyhf-attn=<flt>                 Attenuation in dB (0.0 to 48.0). (Default: 0.0)
+    --airspyhf-preamp                     Enable LNA/PreAmp.
+    --airspyhf-serial=<int>               Select device by serial number (hex, e.g., 0x123456789ABCDEF0).
+    --airspyhf-no-lib-dsp                 Disable library DSP processing (IQ correction, DC removal, etc).
 
 BladeRF-Specific Options
     --bladerf-device-idx=<int>            Select specific BladeRF device by index (0-indexed). (Default: 0)
@@ -304,7 +320,7 @@ This tool is a work in progress.
     *   [x] SpyServer Support
     *   [x] Implement Output AGC (DX, Local, and Digital profiles).
     *   [x] Airspy Support
-    *   [ ] Airspy HF+ support
+    *   [x] Airspy HF+ support
     *   [x] SpyServer Support
     *   [ ] Add HydraSDR support
     *   [ ] Improve I/Q correction algorithm stability.

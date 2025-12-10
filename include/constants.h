@@ -269,6 +269,10 @@
 #define AIRSPY_DEFAULT_VGA_GAIN 5
 #endif
 
+#if defined(WITH_AIRSPYHF)
+#define AIRSPYHF_DEFAULT_SAMPLE_RATE 768000
+#endif
+
 // Default sample rate used during initialization
 #define SPYSERVER_DEFAULT_SAMPLE_RATE_HZ 600000.0
 

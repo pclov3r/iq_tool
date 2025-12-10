@@ -71,6 +71,11 @@ AIRSPY_INCLUDE_DIR="${DEPS_BASE_PATH}/airspyone_host/libairspy/src"
 AIRSPY_LIBRARY="${DEPS_BASE_PATH}/airspyone_host/build-win64/libairspy/src/libairspy.dll.a"
 AIRSPY_DLL="${DEPS_BASE_PATH}/airspyone_host/build-win64/airspy-tools/src/libairspy.dll"
 
+# Airspy HF+
+AIRSPYHF_INCLUDE_DIR="${DEPS_BASE_PATH}/airspyhf/libairspyhf/src"
+AIRSPYHF_LIBRARY="${DEPS_BASE_PATH}/airspyhf/build-win64/libairspyhf/src/libairspyhf.dll.a"
+AIRSPYHF_DLL="${DEPS_BASE_PATH}/airspyhf/build-win64/libairspyhf/src/libairspyhf.dll"
+
 # --- Function to Display Usage ---
 usage() {
     echo "Usage: $0 [options] [make arguments]"
@@ -86,6 +91,7 @@ usage() {
     echo "  --with-bladerf     Enable and link bladeRF support."
     echo "  --with-nrsc5       Enable and link NRSC5 (HD Radio) support."
     echo "  --with-airspy      Enable and link Airspy support."
+    echo "  --with-airspyhf    Enable and link Airspy HF+ support."
     echo
     echo "Packaging:"
     echo "  --package          Create a distributable .zip file after a successful build."
@@ -112,6 +118,7 @@ while [[ "$#" -gt 0 ]]; do
         --with-bladerf) WITH_BLADERF="ON";;
         --with-nrsc5) WITH_NRSC5="ON";;
         --with-airspy) WITH_AIRSPY="ON";;
+        --with-airspyhf) WITH_AIRSPYHF="ON";;
         --package) DO_PACKAGE="YES";;
         --cmake-args) CMAKE_EXTRA_ARGS="$2"; shift;;
         -h|--help) usage;;
@@ -147,6 +154,7 @@ if [ -n "$WITH_HACKRF" ]; then build_suffix+="-hackrf"; fi
 if [ -n "$WITH_BLADERF" ]; then build_suffix+="-bladerf"; fi
 if [ -n "$WITH_NRSC5" ]; then build_suffix+="-nrsc5"; fi
 if [ -n "$WITH_AIRSPY" ]; then build_suffix+="-airspy"; fi
+if [ -n "$WITH_AIRSPYHF" ]; then build_suffix+="-airspyhf"; fi
 
 prefix=${root}/build-win64-${build_suffix}
 
@@ -212,6 +220,13 @@ if [ -n "$WITH_AIRSPY" ]; then
     cmake_opts+=( -D WITH_AIRSPY=ON
                   -D AIRSPY_INCLUDE_DIR=${AIRSPY_INCLUDE_DIR}
                   -D AIRSPY_LIBRARY=${AIRSPY_LIBRARY} )
+fi
+
+# Optional Module: Airspy HF+
+if [ -n "$WITH_AIRSPYHF" ]; then
+    cmake_opts+=( -D WITH_AIRSPYHF=ON
+                  -D AIRSPYHF_INCLUDE_DIR=${AIRSPYHF_INCLUDE_DIR}
+                  -D AIRSPYHF_LIBRARY=${AIRSPYHF_LIBRARY} )
 fi
 
 # Pass through any extra arguments provided
@@ -282,6 +297,11 @@ if [ "$DO_PACKAGE" = "YES" ]; then
     if [ -n "$WITH_AIRSPY" ]; then
         echo "Copying Airspy DLLs..."
         cp "${AIRSPY_DLL}" "${dist_dir}/"
+    fi
+
+    if [ -n "$WITH_AIRSPYHF" ]; then
+        echo "Copying Airspy HF+ DLLs..."
+        cp "${AIRSPYHF_DLL}" "${dist_dir}/"
     fi
 
     echo "Creating ZIP archive: ${zip_file_name}"
