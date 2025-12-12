@@ -31,7 +31,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
 *   **Flexible Inputs:**
     *   **WAV Files:** Reads standard 8-bit and 16-bit complex (I/Q) WAV files.
     *   **Raw I/Q Files:** Just point it at a headerless file, but you have to tell it the sample rate and format.
-    *   **SDR Hardware:** Streams directly from **RTL-SDR**, **SDRplay**, **HackRF**,**Airspy**,**Airspy HF+**, and **BladeRF** devices.
+    *   **SDR Hardware:** Streams directly from **RTL-SDR**, **SDRplay**, **HackRF**, **Airspy**, **Airspy HF+**, and **BladeRF** devices.
     *   **SpyServer Support:** Connect to networked SpyServer instances.
 *   **WAV Metadata Parsing:** Automatically reads metadata from SDR I/Q captures to make your life easier, especially for frequency correction.
     *   `auxi` chunks from **SDR Console, SDRconnect,** and **SDRuno**.
@@ -39,6 +39,9 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
 *   **Processing Features:**
     *   **Resampling** to a new sample rate.
     *   **Frequency Shifting:** Apply shifts before or after resampling.
+    *   **Demodulation & Decoding:**
+        *   **Wideband FM (WFM):** Demodulates FM Broadcast signals to audio with optional Redsea RDS/RBDS decoding.
+        *   **NRSC5 (HD Radio):** Integrated support for demodulating and playing HD Radio streams (via `libnrsc5`).
     *   **Automatic Gain Control (AGC):** 
         *   **DX/Local:** RMS-based tracking for analog signals.
         *   **Digital:** Adaptive tracking with hysteresis to preserve MER for digital signals.
@@ -48,21 +51,21 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
     *   **Automatic I/Q Correction:** Can optionally find and fix I/Q imbalance on the fly. *This is very experimental and possibly could make it worse.*
     *   **DC Blocking:** A simple high-pass filter to remove the pesky DC offset.
 *   **Versatile Outputs:**
-    *   **Container Formats:** `raw` (for piping), standard `wav`, and `wav-rf64` (for files >4GB).
+    *   **Container Formats:** `stdout` (for piping), `raw-file` (headerless files), standard `wav`, and `wav-rf64` (for files >4GB).
     *   **Sample Formats:** Supports a variety of complex sample formats including `cs16`, `cu8`, `cs8`, and more.
     *   **Presets:** Define your favorite settings in a config file for quick access.
 
 ### Getting Started: Building from Source
 
-You'll need a pretty standard C development environment.
-
 **Dependencies:**
-*   A C99 compiler (GCC, Clang)
-*   **CMake** (version 3.10 or higher)
+*   **A C99 compiler:** (GCC, Clang)
+*   **CMake:** (version 3.10 or higher)
 *   **libsndfile**
 *   **liquid-dsp**
 *   **libexpat**
 *   **pthreads:** This is a standard system component on Linux/macOS. On Windows, a compatible version is typically included with the MinGW-w64 toolchain.
+*   **(Optional) C++17 Compliant Compiler:** (G++, Clang). For enabling Redsea RDS decoding within the WFM module.
+*   **(Optional) libiconv:** For enabling Redsea RDS decoding within the WFM module.
 *   **(Optional) libfftw3:** For a performance boost with FFT-based filtering, install (`libfftw3-dev`) **before** building or installing `liquid-dsp`.
 *   **(Optional) RTL-SDR Library (librtlsdr):** For RTL-SDR support (e.g., `librtlsdr-dev`).
 *   **(Optional) BladeRF Library (libbladeRF):** For BladeRF support (e.g., `libbladerf-dev`). Windows installers found **[here](https://github.com/Nuand/bladeRF/releases)**.
@@ -99,11 +102,11 @@ You'll need a pretty standard C development environment.
     mkdir build
     cd build
 
-    # Build without any optional SDR support besides Spyserver support
+    # Build without any optional SDR support besides Spyserver support and no RDS decoding support in the WFM module
     cmake ..
 
     # Or, build with everything enabled
-    cmake -DWITH_RTLSDR=ON -DWITH_SDRPLAY=ON -DWITH_HACKRF=ON -DWITH_AIRSPY=ON -DWITH_AIRSPYHF=ON -DWITH_BLADERF=ON -DWITH_NRSC5=ON ..
+    cmake -DWITH_RTLSDR=ON -DWITH_SDRPLAY=ON -DWITH_HACKRF=ON -DWITH_AIRSPY=ON -DWITH_AIRSPYHF=ON -DWITH_BLADERF=ON -DWITH_NRSC5=ON -DWITH_REDSEA=ON ..
 
     make or make -j N (Replace N with number of threads)
     make install 
@@ -138,6 +141,9 @@ The best way to see all options is to run `iq_tool --help`.
 #### Command-Line Options
 
 ```text
+Usage: iq_tool -i <in_type> [in_file] -o <out_type> [out_file] [options]
+
+
 Required Input & Output
     -i, --input=<str>                     Specifies the input type {wav|raw-file|rtlsdr|sdrplay|hackrf|bladerf|spyserver-client}
     -o, --output=<str>                    Specifies the output type {wav|raw|stdout} and optional file path
@@ -252,6 +258,10 @@ WFM Output Options
     --wfm-gain=<flt>                      Set audio output gain (linear).
     --wfm-force-stereo                    Force stereo decoding regardless of signal quality.
     --wfm-force-mono                      Force mono output.
+    --wfm-raw-mpx-stdout                  Pipe raw MPX data (S16 Mono) to stdout while playing audio.
+    --wfm-no-rds                          Disable RDS decoding (Enabled by default).
+    --wfm-rbds                            Enable US RBDS mode (Callsigns + US Program Types).
+    --wfm-rds-partial                     Show partial/noisy RDS text (PS/RT).
 
 Available Presets
     cu8-nrsc5                             Sets sample type to cu8, rate to 1488375.0 Hz for piping to nrsc5 (FM/AM).

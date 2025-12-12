@@ -18,6 +18,7 @@ DEPS_BASE_PATH="/usr/local/src/windows_deps_files/src"
 host=x86_64-w64-mingw32
 MINGW_GCC_DLL=$(${host}-gcc -print-file-name=libgcc_s_seh-1.dll)
 MINGW_PTHREAD_DLL=$(${host}-gcc -print-file-name=libwinpthread-1.dll)
+MINGW_STDCPP_DLL=$(${host}-gcc -print-file-name=libstdc++-6.dll)
 
 # --- Library Paths ---
 
@@ -37,6 +38,11 @@ FFTW_DLL="${DEPS_BASE_PATH}/libfftw/build-win64/bin/libfftw3f-3.dll"
 EXPAT_INCLUDE_DIR="${DEPS_BASE_PATH}/libexpat/expat/lib"
 EXPAT_LIBRARY="${DEPS_BASE_PATH}/libexpat/expat/build-win64/libexpat.dll.a"
 EXPAT_DLL="${DEPS_BASE_PATH}/libexpat/expat/build-win64/libexpat-1.dll"
+
+# libiconv (Required for Redsea)
+ICONV_INCLUDE_DIR="${DEPS_BASE_PATH}/win-iconv"
+ICONV_LIBRARY="${DEPS_BASE_PATH}/win-iconv/build-win64/libiconv.dll.a"
+ICONV_DLL="${DEPS_BASE_PATH}/win-iconv/build-win64/iconv.dll"
 
 # RTL-SDR
 RTLSDR_INCLUDE_DIR="${DEPS_BASE_PATH}/rtl-sdr/include"
@@ -92,6 +98,7 @@ usage() {
     echo "  --with-nrsc5       Enable and link NRSC5 (HD Radio) support."
     echo "  --with-airspy      Enable and link Airspy support."
     echo "  --with-airspyhf    Enable and link Airspy HF+ support."
+    echo "  --with-redsea      Enable and link Redsea RDS support."
     echo
     echo "Packaging:"
     echo "  --package          Create a distributable .zip file after a successful build."
@@ -119,6 +126,7 @@ while [[ "$#" -gt 0 ]]; do
         --with-nrsc5) WITH_NRSC5="ON";;
         --with-airspy) WITH_AIRSPY="ON";;
         --with-airspyhf) WITH_AIRSPYHF="ON";;
+        --with-redsea) WITH_REDSEA="ON";;
         --package) DO_PACKAGE="YES";;
         --cmake-args) CMAKE_EXTRA_ARGS="$2"; shift;;
         -h|--help) usage;;
@@ -155,6 +163,7 @@ if [ -n "$WITH_BLADERF" ]; then build_suffix+="-bladerf"; fi
 if [ -n "$WITH_NRSC5" ]; then build_suffix+="-nrsc5"; fi
 if [ -n "$WITH_AIRSPY" ]; then build_suffix+="-airspy"; fi
 if [ -n "$WITH_AIRSPYHF" ]; then build_suffix+="-airspyhf"; fi
+if [ -n "$WITH_REDSEA" ]; then build_suffix+="-redsea"; fi
 
 prefix=${root}/build-win64-${build_suffix}
 
@@ -162,6 +171,7 @@ prefix=${root}/build-win64-${build_suffix}
 cmake_opts=(
     -D CMAKE_SYSTEM_NAME=Windows
     -D CMAKE_C_COMPILER=${host}-gcc
+    -D CMAKE_CXX_COMPILER=${host}-g++
     -D SNDFILE_INCLUDE_DIR=${SNDFILE_INCLUDE_DIR}
     -D SNDFILE_LIBRARY=${SNDFILE_LIBRARY}
     -D LIQUID_INCLUDE_DIR=${LIQUID_INCLUDE_DIR}
@@ -173,6 +183,13 @@ cmake_opts=(
 # liquid-dsp library path based on selection
 liquid_library_path="${LIQUID_LIB_BASE_PATH}/build-win64-${BUILD_TYPE}/libliquid.dll.a"
 cmake_opts+=(-D LIQUID_LIBRARY=${liquid_library_path})
+
+# Optional Module: Redsea (RDS)
+if [ -n "$WITH_REDSEA" ]; then
+    cmake_opts+=( -D WITH_REDSEA=ON
+                  -D ICONV_INCLUDE_DIR=${ICONV_INCLUDE_DIR}
+                  -D ICONV_LIBRARY=${ICONV_LIBRARY} )
+fi
 
 # Optional Module: RTL-SDR
 if [ -n "$WITH_RTLSDR" ]; then
@@ -274,6 +291,13 @@ if [ "$DO_PACKAGE" = "YES" ]; then
     echo "Copying MinGW runtime DLLs..."
     cp "${MINGW_GCC_DLL}" "${dist_dir}/"
     cp "${MINGW_PTHREAD_DLL}" "${dist_dir}/"
+
+    if [ -n "$WITH_REDSEA" ]; then
+        echo "Copying Redsea dependencies..."
+        cp "${ICONV_DLL}" "${dist_dir}/"
+        # Only copy stdcpp if it's not already statically linked (safe to copy)
+        cp "${MINGW_STDCPP_DLL}" "${dist_dir}/"
+    fi
 
     if [ -n "$WITH_RTLSDR" ]; then
         echo "Copying RTL-SDR DLLs..."

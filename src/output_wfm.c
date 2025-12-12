@@ -49,6 +49,7 @@
 #include "signal_handler.h"
 #include "queue.h"
 #include "sample_convert.h"
+#include "redsea_wrapper.h" // <--- ADDED
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,6 +58,8 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <io.h>
+#include <fcntl.h>
 #else
 #include <unistd.h>
 #endif
@@ -153,6 +156,14 @@ typedef struct {
     float* audio_out_r;
     int16_t* interleaved_pcm;
 
+    // Optional Buffer for Raw MPX S16 conversion
+    int16_t* mpx_s16_buffer;
+
+    // RDS
+    RedseaHandle redsea;
+    rds_state_t last_rds_state;
+    size_t rds_display_counter;
+    size_t rds_display_threshold;
 } WfmContext;
 
 // --- CLI Config ---
@@ -161,11 +172,23 @@ static struct {
     float gain_val;
     int force_stereo;
     int force_mono;
+    int raw_mpx_stdout;
+#ifdef WITH_REDSEA
+    int rds_disable; // Default 0 (Enabled)
+    int rds_us_mode;
+    int rds_partial; // Default 0 (Disabled)
+#endif
 } s_wfm_config = {
     .deemph_us = 75.0f,
     .gain_val = 5.0f,
     .force_stereo = 0,
-    .force_mono = 0
+    .force_mono = 0,
+    .raw_mpx_stdout = 0,
+#ifdef WITH_REDSEA
+    .rds_disable = 0, // Enabled by default
+    .rds_us_mode = 0,
+    .rds_partial = 0
+#endif
 };
 
 // --- Helpers ---
@@ -272,6 +295,17 @@ static bool wfm_validate_options(AppConfig* config) {
 static bool wfm_initialize(ModuleContext* ctx) {
     AppResources* res = ctx->resources;
     
+    // Windows: stdout defaults to text mode (\n -> \r\n), which corrupts binary I/Q data.
+    // We must forcefully set it to binary if the user requested raw output.
+    if (s_wfm_config.raw_mpx_stdout) {
+        #ifdef _WIN32
+        if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
+            log_error("WFM: Failed to set stdout to binary mode.");
+            return false;
+        }
+        #endif
+    }
+
     WfmContext* p = (WfmContext*)mem_arena_alloc(&res->setup_arena, sizeof(WfmContext), true);
     if (!p) return false;
     res->output_module_private_data = p;
@@ -361,7 +395,29 @@ static bool wfm_initialize(ModuleContext* ctx) {
 
     if (!p->mpx_buffer || !p->audio_out_l || !p->audio_out_r || !p->interleaved_pcm) return false;
 
-    // 6. Start Audio
+    // Optional: Allocate S16 buffer for MPX stdout if requested
+    if (s_wfm_config.raw_mpx_stdout) {
+        p->mpx_s16_buffer = mem_arena_alloc(&res->setup_arena, max_dsp_samples * sizeof(int16_t), false);
+        if (!p->mpx_s16_buffer) return false;
+    }
+
+#ifdef WITH_REDSEA
+    // 6. Initialize RDS (Enabled unless disabled)
+    if (!s_wfm_config.rds_disable) {
+        p->redsea = redsea_init(p->input_samplerate, s_wfm_config.rds_us_mode, s_wfm_config.rds_partial);
+        memset(&p->last_rds_state, 0, sizeof(rds_state_t));
+
+        p->rds_display_counter = 0;
+        p->rds_display_threshold = (size_t)(p->input_samplerate * 1.0); // 1 second
+
+        log_info("WFM: RDS Decoder enabled (Mode: %s%s)", 
+                 s_wfm_config.rds_us_mode ? "RBDS/US" : "RDS/World",
+                 s_wfm_config.rds_partial ? ", Partial Text" : "");
+    } else {
+        p->redsea = NULL;
+    }
+#endif
+    // 7. Start Audio
     if (ma_device_start(&p->audio_device) != MA_SUCCESS) {
         log_error("WFM: Failed to start audio callback.");
         return false;
@@ -454,6 +510,85 @@ static void* wfm_run_writer(ModuleContext* ctx) {
                                      num_frames, 
                                      p->mpx_buffer);
 
+            // --- STAGE 1.5: Optional Raw MPX Output (S16 Mono) ---
+            if (s_wfm_config.raw_mpx_stdout && p->mpx_s16_buffer) {
+                for (unsigned int k = 0; k < num_frames; k++) {
+                    // Scale float MPX (-1.0 to 1.0 approx) to S16 range
+                    float sample = p->mpx_buffer[k] * 32767.0f;
+                    
+                    // Hard Clamp
+                    if (sample > 32767.0f) sample = 32767.0f;
+                    if (sample < -32768.0f) sample = -32768.0f;
+                    
+                    p->mpx_s16_buffer[k] = (int16_t)sample;
+                }
+                fwrite(p->mpx_s16_buffer, sizeof(int16_t), num_frames, stdout);
+            }
+
+#ifdef WITH_REDSEA
+            // --- STAGE 1.6: RDS Decoding ---
+            if (p->redsea) {
+                rds_state_t current;
+                redsea_process_mpx(p->redsea, p->mpx_buffer, num_frames, &current);
+                
+                // Increment counter
+                p->rds_display_counter += num_frames;
+
+                // Display every 1 second if valid data exists
+                if (p->rds_display_counter >= p->rds_display_threshold && current.valid) {
+                    
+                    // Reset counter
+                    p->rds_display_counter = 0;
+                    
+                    // Trim RadioText
+                    char clean_rt[65];
+                    strncpy(clean_rt, current.radiotext, 64);
+                    clean_rt[64] = '\0';
+                    size_t rt_len = strlen(clean_rt);
+                    while (rt_len > 0 && clean_rt[rt_len - 1] == ' ') {
+                        clean_rt[rt_len - 1] = '\0';
+                        rt_len--;
+                    }
+
+                    // Log Output - Always display
+                    if (s_wfm_config.rds_us_mode && current.callsign[0] != '\0') {
+                        log_info("RBDS PI: %04X | CALL: %s | PS: %s | PTY: %s | PTYN: %s | RT: %s | TP: %d | TA: %d | MS: %d | ST: %d | CMP: %d | DYN: %d", 
+                                 current.pi_code,
+                                 current.callsign,
+                                 current.ps_name, 
+                                 current.program_type,
+                                 current.pty_name,
+                                 clean_rt,
+                                 current.tp ? 1 : 0,
+                                 current.ta ? 1 : 0,
+                                 current.is_music ? 1 : 0,
+                                 current.stereo ? 1 : 0,
+                                 current.compressed ? 1 : 0,
+                                 current.dynamic ? 1 : 0);
+                    } else {
+                        log_info("RDS PI: %04X | PS: %s | PTY: %s | PTYN: %s | RT: %s | TP: %d | TA: %d | MS: %d | ST: %d | CMP: %d | DYN: %d", 
+                                 current.pi_code, 
+                                 current.ps_name, 
+                                 current.program_type,
+                                 current.pty_name,
+                                 clean_rt,
+                                 current.tp ? 1 : 0,
+                                 current.ta ? 1 : 0,
+                                 current.is_music ? 1 : 0,
+                                 current.stereo ? 1 : 0,
+                                 current.compressed ? 1 : 0,
+                                 current.dynamic ? 1 : 0);
+                    }
+                    
+                    // Clock Time display (if present and changed)
+                    if (current.clock_time[0] != '\0' && strcmp(current.clock_time, p->last_rds_state.clock_time) != 0) {
+                        log_info("RDS/RBDS CT: %s", current.clock_time);
+                    }
+                    
+                    p->last_rds_state = current;
+                }
+            }
+#endif
             // --- STAGE 2: Stereo Decoding & Anti-Alias ---
             for (unsigned int i = 0; i < num_frames; i++) {
                 // ENGINEERING FIX: Explicit Gain Staging
@@ -659,6 +794,13 @@ static void wfm_finalize(ModuleContext* ctx) {
     deemphasis_destroy(&p->deemphasis);
     if (p->resamp_out_l) msresamp_rrrf_destroy(p->resamp_out_l);
     if (p->resamp_out_r) msresamp_rrrf_destroy(p->resamp_out_r);
+
+#ifdef WITH_REDSEA
+    if (p->redsea) {
+        redsea_free(p->redsea);
+        p->redsea = NULL;
+    }
+#endif
 }
 
 static void wfm_get_summary(const ModuleContext* ctx, OutputSummaryInfo* info) {
@@ -679,6 +821,12 @@ static const struct argparse_option wfm_cli_options[] = {
     OPT_FLOAT(0, "wfm-gain", &s_wfm_config.gain_val, "Set audio output gain (linear).", NULL, 0, 0),
     OPT_BOOLEAN(0, "wfm-force-stereo", &s_wfm_config.force_stereo, "Force stereo decoding regardless of signal quality.", NULL, 0, 0),
     OPT_BOOLEAN(0, "wfm-force-mono", &s_wfm_config.force_mono, "Force mono output.", NULL, 0, 0),
+    OPT_BOOLEAN(0, "wfm-raw-mpx-stdout", &s_wfm_config.raw_mpx_stdout, "Pipe raw MPX data (S16 Mono) to stdout while playing audio.", NULL, 0, 0),
+#ifdef WITH_REDSEA
+    OPT_BOOLEAN(0, "wfm-no-rds", &s_wfm_config.rds_disable, "Disable RDS decoding (Enabled by default).", NULL, 0, 0),
+    OPT_BOOLEAN(0, "wfm-rbds", &s_wfm_config.rds_us_mode, "Enable US RBDS mode (Callsigns + US Program Types).", NULL, 0, 0),
+    OPT_BOOLEAN(0, "wfm-rds-partial", &s_wfm_config.rds_partial, "Show partial/noisy RDS text (PS/RT).", NULL, 0, 0),
+#endif
 };
 
 const struct argparse_option* wfm_get_cli_options(int* count) {
