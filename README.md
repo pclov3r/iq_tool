@@ -41,6 +41,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
     *   **Frequency Shifting:** Apply shifts before or after resampling.
     *   **Demodulation & Decoding:**
         *   **Wideband FM (WFM):** Demodulates FM Broadcast signals to audio with optional Redsea RDS/RBDS decoding.
+        *   **AM:** Demodulates AM signals using a Synchronous (PLL) detector, or standard Envelope detection.
         *   **NRSC5 (HD Radio):** Integrated support for demodulating and playing HD Radio streams (via `libnrsc5`).
     *   **Automatic Gain Control (AGC):** 
         *   **DX/Local:** RMS-based tracking for analog signals.

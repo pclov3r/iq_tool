@@ -37,6 +37,7 @@
 #include "output_nrsc5.h"
 #endif
 #include "output_wfm.h"
+#include "output_am.h"
 
 #ifdef _WIN32
 #define strcasecmp _stricmp
@@ -231,6 +232,19 @@ static void initialize_modules_list(MemoryArena* arena) {
             .requires_output_path = false,
             .module_defines_format = true,
         },
+        {
+            .name = "am",
+            .type = MODULE_TYPE_OUTPUT,
+            .output_type = OUTPUT_TYPE_RAW,
+            .api = get_am_output_module_api(),
+            .is_sdr = false,
+            .set_default_config = NULL,
+            .get_cli_options = am_get_cli_options,
+            .requires_input_path = false,
+            .requires_output_path = false,
+            .module_defines_format = true,
+        },
+
     };
 
     num_all_modules = sizeof(temp_modules) / sizeof(temp_modules[0]);
