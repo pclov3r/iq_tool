@@ -264,6 +264,11 @@ WFM Output Options
     --wfm-rbds                            Enable US RBDS mode (Callsigns + US Program Types).
     --wfm-rds-partial                     Show partial/noisy RDS text (PS/RT).
 
+AM Output Options
+    --am-gain=<flt>                       Set audio output gain (linear).
+    --am-cutoff=<flt>                     Set audio lowpass filter cutoff in Hz (default: 10000).
+    --am-envelope                         Disable Synchronous AM (PLL) and use Magnitude Envelope Detection.
+
 Available Presets
     cu8-nrsc5                             Sets sample type to cu8, rate to 1488375.0 Hz for piping to nrsc5 (FM/AM).
     cu8-nrsc5-usb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates USB sideband (102-215kHz) (Hack) for piping to nrsc5 (FM).
