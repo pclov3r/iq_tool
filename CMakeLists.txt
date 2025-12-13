@@ -276,7 +276,7 @@ endif()
 add_executable(iq_tool ${COMPILE_WITH_FFAST_MATH_SOURCES} ${NETWORK_SOURCES} ${OTHER_SOURCES} ${REDSEA_LIB_SOURCES})
 
 #=======================================================================
-# Target Properties (The Fix)
+# Target Properties
 #=======================================================================
 
 # Manually apply definitions to the target to ensure they aren't lost
@@ -328,9 +328,15 @@ endif()
 
 include(CheckIPOSupported)
 check_ipo_supported(RESULT LTO_SUPPORTED)
+
+# Do not enable LTO in Debug mode. It breaks debugging and sanitizers.
 if(LTO_SUPPORTED)
-    set_property(TARGET iq_tool PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-    message(STATUS "Link-Time Optimization (LTO) enabled for target.")
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set_property(TARGET iq_tool PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+        message(STATUS "Link-Time Optimization (LTO) enabled for target.")
+    else()
+        message(STATUS "Link-Time Optimization (LTO) disabled for Debug build.")
+    endif()
 endif()
 
 # Git Versioning
@@ -362,10 +368,12 @@ target_compile_options(iq_tool PRIVATE
     $<IF:$<CONFIG:Release>,${RELEASE_COMPILE_OPTIONS},>
 )
 
+# Ensure Sanitizers are passed to the Linker as well (Critical for ASan)
+target_link_options(iq_tool PRIVATE
+    $<$<CONFIG:Debug>:-fsanitize=address -fsanitize=undefined>
+)
+
 # Suppress LTO type mismatch warnings for Redsea C++/liquid-dsp interop
-# This warning occurs because liquid-dsp (C library) uses float _Complex while
-# C++ code sees std::complex<float>. The types are binary compatible but LTO
-# detects the signature mismatch. This is safe to suppress.
 if(WITH_REDSEA)
     target_link_options(iq_tool PRIVATE -Wno-lto-type-mismatch)
 endif()
@@ -461,7 +469,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 else()
     message(STATUS "  Build Target:        ${CMAKE_SYSTEM_NAME}")
 endif()
-if(LTO_SUPPORTED)
+if(LTO_SUPPORTED AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     message(STATUS "  Link-Time Opt:       ENABLED")
 else()
     message(STATUS "  Link-Time Opt:       DISABLED")
