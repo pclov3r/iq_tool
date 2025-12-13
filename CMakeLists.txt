@@ -82,7 +82,7 @@ add_compile_options($<$<COMPILE_LANGUAGE:C>:-Wmissing-prototypes>)
 add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-unknown-pragmas>)
 
 # Optimization Flags
-set(RELEASE_COMPILE_OPTIONS -O3 -ftree-vectorize)
+set(RELEASE_COMPILE_OPTIONS -O3 -ftree-vectorize -Wno-deprecated-declarations)
 if(NOT CPU_TARGET_ARCHITECTURE STREQUAL "")
     list(APPEND RELEASE_COMPILE_OPTIONS "-march=${CPU_TARGET_ARCHITECTURE}")
 endif()
