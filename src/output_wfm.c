@@ -129,7 +129,7 @@ typedef struct {
 
     // DSP Objects (Liquid)
     freqdem fm_demod;           // I/Q -> MPX
-    
+
     nco_crcf nco_pilot_approx;
     nco_crcf nco_pilot_exact;
     nco_crcf nco_stereo_subcarrier;
@@ -223,9 +223,9 @@ static float running_average_get(RunningAverage* ra) {
 
 static void deemphasis_init(DeEmphasis* de, float time_constant_us, float samplerate) {
     float cutoff = (1.0f / (2.0f * (float)M_PI * time_constant_us * 1e-6f)) / samplerate;
-    
-    liquid_iirdes(LIQUID_IIRDES_BUTTER, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 
-                  WFM_DEEMPH_ORDER, cutoff, 0.0f, 10.0f, 10.0f, 
+
+    liquid_iirdes(LIQUID_IIRDES_BUTTER, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS,
+                  WFM_DEEMPH_ORDER, cutoff, 0.0f, 10.0f, 10.0f,
                   de->coeff_B, de->coeff_A);
 
     int num_sections = (WFM_DEEMPH_ORDER + 1) / 2;
@@ -288,13 +288,13 @@ static bool wfm_validate_options(AppConfig* config) {
         log_fatal("WFM: Cannot force both Stereo and Mono simultaneously. Please choose one.");
         return false;
     }
-    
+
     return true;
 }
 
 static bool wfm_initialize(ModuleContext* ctx) {
     AppResources* res = ctx->resources;
-    
+
     // Windows: stdout defaults to text mode (\n -> \r\n), which corrupts binary I/Q data.
     // We must forcefully set it to binary if the user requested raw output.
     if (s_wfm_config.raw_mpx_stdout) {
@@ -333,16 +333,16 @@ static bool wfm_initialize(ModuleContext* ctx) {
     p->input_samplerate = mpx_rate;
     p->gain = s_wfm_config.gain_val;
 
-    log_info("WFM: Configuring DSP for MPX Rate: %.0f Hz -> Audio: %d Hz (De-emphasis: %.0fus)", 
+    log_info("WFM: Configuring DSP for MPX Rate: %.0f Hz -> Audio: %d Hz (De-emphasis: %.0fus)",
              mpx_rate, AUDIO_SAMPLE_RATE, s_wfm_config.deemph_us);
 
     // 4. Create Liquid Objects
-    
+
     float deviation = 75000.0f;
     // Engineering Note: We use the correct modulation index math here (deviation / rate).
     // This results in a "hot" signal (75kHz = 1.0), so we apply WFM_MPX_SCALING_FACTOR
     // in the writer loop to create headroom for stereo processing.
-    float kf = deviation / mpx_rate; 
+    float kf = deviation / mpx_rate;
     p->fm_demod = freqdem_create(kf);
 
     p->nco_pilot_approx = nco_crcf_create(LIQUID_VCO);
@@ -362,9 +362,9 @@ static bool wfm_initialize(ModuleContext* ctx) {
     firfilt_crcf_set_scale(p->fir_pilot, 2.0f * (WFM_PILOT_FIR_HALFBAND / mpx_rate));
 
     int audio_fir_len = (int)(WFM_AUDIO_FIR_LEN_USEC * 1e-6f * mpx_rate);
-    if (audio_fir_len % 2 == 0) audio_fir_len++; 
+    if (audio_fir_len % 2 == 0) audio_fir_len++;
     float audio_fc = WFM_AUDIO_FIR_CUTOFF / mpx_rate;
-    
+
     p->fir_sum = firfilt_rrrf_create_kaiser(audio_fir_len, audio_fc, 60.0f, 0.0f);
     firfilt_rrrf_set_scale(p->fir_sum, 2.0f * audio_fc);
 
@@ -382,14 +382,14 @@ static bool wfm_initialize(ModuleContext* ctx) {
     // 5. Scratch Buffers (Local Elastic Allocation)
     // We calculate the maximum buffer size required for ANY stage of this specific module.
     // If upsampling (e.g. 32k -> 48k), the output buffer needs more space than the input.
-    size_t buf_samples = res->pipeline_alloc_size_samples; 
+    size_t buf_samples = res->pipeline_alloc_size_samples;
     size_t out_buf_samples = (size_t)ceil(buf_samples * p->output_resample_ratio) + 128;
     size_t max_dsp_samples = (buf_samples > out_buf_samples) ? buf_samples : out_buf_samples;
 
     p->mpx_buffer = mem_arena_alloc(&res->setup_arena, max_dsp_samples * sizeof(float), false);
     p->audio_out_l = mem_arena_alloc(&res->setup_arena, max_dsp_samples * sizeof(float), false);
     p->audio_out_r = mem_arena_alloc(&res->setup_arena, max_dsp_samples * sizeof(float), false);
-    
+
     // Interleaved buffer is always sized for the output
     p->interleaved_pcm = mem_arena_alloc(&res->setup_arena, out_buf_samples * 2 * sizeof(int16_t), false);
 
@@ -410,7 +410,7 @@ static bool wfm_initialize(ModuleContext* ctx) {
         p->rds_display_counter = 0;
         p->rds_display_threshold = (size_t)(p->input_samplerate * 1.0); // 1 second
 
-        log_info("WFM: RDS Decoder enabled (Mode: %s%s)", 
+        log_info("WFM: RDS Decoder enabled (Mode: %s%s)",
                  s_wfm_config.rds_us_mode ? "RBDS/US" : "RDS/World",
                  s_wfm_config.rds_partial ? ", Partial Text" : "");
     } else {
@@ -436,13 +436,13 @@ static void* wfm_run_writer(ModuleContext* ctx) {
     // --- Statistics Accumulators ---
     size_t stat_counter = 0;
     // Log once per second (Signal Time)
-    size_t stat_rate_threshold = (size_t)(p->input_samplerate * WFM_STATS_INTERVAL_SEC); 
-    
+    size_t stat_rate_threshold = (size_t)(p->input_samplerate * WFM_STATS_INTERVAL_SEC);
+
     // Using double for accumulators to prevent overflow
     double accum_mag_sum = 0.0;       // For Mean Magnitude (SNR)
     double accum_mag_sq_sum = 0.0;    // For Total Power (RSSI)
     double accum_pilot_mag_sum = 0.0; // For Pilot Presence detection
-    
+
     // Average accumulators for Stereo/Pilot stats
     double accum_stereo_pct_sum = 0.0;
     double accum_pilot_err_sq_sum = 0.0;
@@ -497,7 +497,7 @@ static void* wfm_run_writer(ModuleContext* ctx) {
             // Calculate RSSI and SNR estimates based on Input I/Q Magnitude
             for (unsigned int k = 0; k < num_frames; k++) {
                 // Calculate magnitude of complex sample: sqrt(I^2 + Q^2)
-                float mag = cabsf(iq_ptr[k]); 
+                float mag = cabsf(iq_ptr[k]);
                 accum_mag_sum += mag;
                 accum_mag_sq_sum += (mag * mag);
             }
@@ -505,9 +505,9 @@ static void* wfm_run_writer(ModuleContext* ctx) {
             stat_counter += num_frames;
 
             // --- STAGE 1: I/Q to MPX ---
-            freqdem_demodulate_block(p->fm_demod, 
-                                     iq_ptr, 
-                                     num_frames, 
+            freqdem_demodulate_block(p->fm_demod,
+                                     iq_ptr,
+                                     num_frames,
                                      p->mpx_buffer);
 
             // --- STAGE 1.5: Optional Raw MPX Output (S16 Mono) ---
@@ -515,11 +515,11 @@ static void* wfm_run_writer(ModuleContext* ctx) {
                 for (unsigned int k = 0; k < num_frames; k++) {
                     // Scale float MPX (-1.0 to 1.0 approx) to S16 range
                     float sample = p->mpx_buffer[k] * 32767.0f;
-                    
+
                     // Hard Clamp
                     if (sample > 32767.0f) sample = 32767.0f;
                     if (sample < -32768.0f) sample = -32768.0f;
-                    
+
                     p->mpx_s16_buffer[k] = (int16_t)sample;
                 }
                 fwrite(p->mpx_s16_buffer, sizeof(int16_t), num_frames, stdout);
@@ -530,16 +530,16 @@ static void* wfm_run_writer(ModuleContext* ctx) {
             if (p->redsea) {
                 rds_state_t current;
                 redsea_process_mpx(p->redsea, p->mpx_buffer, num_frames, &current);
-                
+
                 // Increment counter
                 p->rds_display_counter += num_frames;
 
                 // Display every 1 second if valid data exists
                 if (p->rds_display_counter >= p->rds_display_threshold && current.valid) {
-                    
+
                     // Reset counter
                     p->rds_display_counter = 0;
-                    
+
                     // Trim RadioText
                     char clean_rt[65];
                     strncpy(clean_rt, current.radiotext, 64);
@@ -555,7 +555,7 @@ static void* wfm_run_writer(ModuleContext* ctx) {
                         log_info("RBDS PI: %04X | CALL: %s | PS: %s | PTY: %s | PTYN: %s | RT: %s | TP: %d | TA: %d | MS: %d | ST: %d | CMP: %d | DYN: %d", 
                                  current.pi_code,
                                  current.callsign,
-                                 current.ps_name, 
+                                 current.ps_name,
                                  current.program_type,
                                  current.pty_name,
                                  clean_rt,
@@ -567,8 +567,8 @@ static void* wfm_run_writer(ModuleContext* ctx) {
                                  current.dynamic ? 1 : 0);
                     } else {
                         log_info("RDS PI: %04X | PS: %s | PTY: %s | PTYN: %s | RT: %s | TP: %d | TA: %d | MS: %d | ST: %d | CMP: %d | DYN: %d", 
-                                 current.pi_code, 
-                                 current.ps_name, 
+                                 current.pi_code,
+                                 current.ps_name,
                                  current.program_type,
                                  current.pty_name,
                                  clean_rt,
@@ -579,12 +579,12 @@ static void* wfm_run_writer(ModuleContext* ctx) {
                                  current.compressed ? 1 : 0,
                                  current.dynamic ? 1 : 0);
                     }
-                    
+
                     // Clock Time display (if present and changed)
                     if (current.clock_time[0] != '\0' && strcmp(current.clock_time, p->last_rds_state.clock_time) != 0) {
                         log_info("RDS/RBDS CT: %s", current.clock_time);
                     }
-                    
+
                     p->last_rds_state = current;
                 }
             }
@@ -598,11 +598,11 @@ static void* wfm_run_writer(ModuleContext* ctx) {
                 // A. Pilot Bandpass
                 liquid_float_complex pilot_mix_down;
                 nco_crcf_mix_down(p->nco_pilot_approx, insample + 0.0f * I, &pilot_mix_down);
-                
+
                 firfilt_crcf_push(p->fir_pilot, pilot_mix_down);
                 liquid_float_complex fir_out;
                 firfilt_crcf_execute(p->fir_pilot, &fir_out);
-                
+
                 // Track Pilot Magnitude for Mono Detection
                 accum_pilot_mag_sum += cabsf(fir_out);
 
@@ -618,14 +618,14 @@ static void* wfm_run_writer(ModuleContext* ctx) {
                 liquid_float_complex pll_val;
                 nco_crcf_cexpf(p->nco_pilot_exact, &pll_val);
                 float phase_error = cargf(pilot * conjf(pll_val));
-                
+
                 if (i % 4 == 0) {
                     nco_crcf_pll_step(p->nco_pilot_exact, phase_error);
-                    
+
                     // Accumulate stats for logging (independent of control loop)
                     accum_pilot_err_sq_sum += (phase_error * phase_error);
                     accum_pilot_count++;
-                    
+
                     // Push to control loop logic
                     running_average_push(&p->pilotnoise, phase_error * phase_error);
                 }
@@ -652,7 +652,7 @@ static void* wfm_run_writer(ModuleContext* ctx) {
 
                 // E. Decode Stereo & Anti-Alias
                 firfilt_rrrf_push(p->fir_sum, insample);
-                
+
                 liquid_float_complex sc_mix;
                 nco_crcf_mix_down(p->nco_stereo_subcarrier, insample + 0.0f * I, &sc_mix);
                 firfilt_rrrf_push(p->fir_diff, cimagf(sc_mix));
@@ -660,7 +660,7 @@ static void* wfm_run_writer(ModuleContext* ctx) {
                 float sum, diff;
                 firfilt_rrrf_execute(p->fir_sum, &sum);
                 firfilt_rrrf_execute(p->fir_diff, &diff);
-                
+
                 diff = 2.0f * diff * stereogain;
 
                 float left = (sum + diff) * p->gain;
@@ -675,16 +675,16 @@ static void* wfm_run_writer(ModuleContext* ctx) {
 
             // --- STAGE 3: Log Statistics (Every 1 second) ---
             if (stat_counter >= stat_rate_threshold) {
-                
+
                 // 1. Calculate RSSI (Average Power)
                 double avg_power = accum_mag_sq_sum / (double)stat_counter;
-                float rssi_db = 10.0f * log10f((float)avg_power + 1e-10f); 
+                float rssi_db = 10.0f * log10f((float)avg_power + 1e-10f);
 
                 // 2. Calculate SNR
                 double mean_mag = accum_mag_sum / (double)stat_counter;
                 double signal_pwr = mean_mag * mean_mag;
                 double noise_pwr = avg_power - signal_pwr;
-                if (noise_pwr < 1e-10) noise_pwr = 1e-10; 
+                if (noise_pwr < 1e-10) noise_pwr = 1e-10;
                 float snr_db = 10.0f * log10f((float)(signal_pwr / noise_pwr));
 
                 // 3. Calculate Pilot Error % First
@@ -697,20 +697,20 @@ static void* wfm_run_writer(ModuleContext* ctx) {
                 // 4. Detect Mono/Stereo status
                 // A. Check Pilot Magnitude (low threshold for weak stations)
                 double avg_pilot = accum_pilot_mag_sum / (double)stat_counter;
-                
+
                 // B. Determine Status:
                 // - Signal too weak (pilot magnitude < 0.001)
                 // - OR Pilot Error > 100% (PLL unlocked / random noise)
                 bool is_mono_station = (avg_pilot < 0.001) || (pilot_pct > 100.0f);
-                
+
                 // C. Sanity Check: If Stereo Separation is active (> 1%), force it to valid.
                 float avg_stereo_pct = (float)(accum_stereo_pct_sum / (double)stat_counter);
                 if (avg_stereo_pct > 1.0f) {
-                    is_mono_station = false; 
+                    is_mono_station = false;
                 }
 
                 if (is_mono_station || s_wfm_config.force_mono) {
-                     log_info("RSSI: %.1f dB | SNR: %.1f dB | Stereo Separation: Mono | Pilot Phase Error: NA", 
+                     log_info("RSSI: %.1f dB | SNR: %.1f dB | Stereo Separation: Mono | Pilot Phase Error: NA",
                          rssi_db, snr_db);
                 } else {
                     log_info("RSSI: %.1f dB | SNR: %.1f dB | Stereo Separation: %.1f%% | Pilot Phase Error: %.1f%%", 
@@ -729,26 +729,15 @@ static void* wfm_run_writer(ModuleContext* ctx) {
 
             // --- STAGE 4: Resample to 48kHz ---
             unsigned int num_resampled_l, num_resampled_r;
-            
+
             // Use mpx_buffer as temporary output for Left (safe re-use due to max_dsp_samples).
             msresamp_rrrf_execute(p->resamp_out_l, p->audio_out_l, num_frames, p->mpx_buffer, &num_resampled_l);
-            
+
             // Use audio_out_l as temporary output for Right (safe re-use since read is done).
             msresamp_rrrf_execute(p->resamp_out_r, p->audio_out_r, num_frames, p->audio_out_l, &num_resampled_r);
 
-            // --- STAGE 5: Apply Dither & Convert to S16 ---
-            // Apply TPDF dither before quantization to decorrelate quantization noise.
+            // --- STAGE 5: Convert to S16 ---
             // Note: Left audio is currently in mpx_buffer, Right is in audio_out_l.
-            for (unsigned int i = 0; i < num_resampled_l; i++) {
-                // TPDF: sum of two uniform random variables = triangular distribution
-                // Amplitude = 1 LSB peak-to-peak for 16-bit
-                float dither_l = ((float)rand() / RAND_MAX) - ((float)rand() / RAND_MAX);
-                float dither_r = ((float)rand() / RAND_MAX) - ((float)rand() / RAND_MAX);
-
-                p->mpx_buffer[i] += dither_l * (1.0f / 32768.0f);   // Left
-                p->audio_out_l[i] += dither_r * (1.0f / 32768.0f);  // Right
-            }
-
             sample_convert_interleave_f32_to_s16(
                 p->mpx_buffer,      // Left Plane
                 p->audio_out_l,     // Right Plane
@@ -758,8 +747,8 @@ static void* wfm_run_writer(ModuleContext* ctx) {
 
             // --- STAGE 6: Push to Audio Ring Buffer ---
             size_t bytes_to_write = num_resampled_l * 2 * sizeof(int16_t);
-            
-            // Note: We do NOT loop/sleep here anymore. We rely on the throttle 
+
+            // Note: We do NOT loop/sleep here anymore. We rely on the throttle
             // at the start of the loop to ensure sufficient space exists.
             ring_buffer_write(p->audio_ring_buffer, p->interleaved_pcm, bytes_to_write);
         }

@@ -85,9 +85,6 @@ typedef struct {
     float* mono_buffer;
     float* resamp_buffer;
     int16_t* interleaved_pcm;
-
-    // Dither state
-    uint32_t dither_seed;
 } AmContext;
 
 // --- CLI Config ---
@@ -237,8 +234,6 @@ static bool am_initialize(ModuleContext* ctx) {
     p->agc_decay_bw = 1e-4f;
     agc_rrrf_set_bandwidth(p->agc, p->agc_attack_bw);
 
-    p->dither_seed = 12345;
-
     // 5. Scratch Buffers
     size_t buf_samples = res->pipeline_alloc_size_samples;
     size_t out_buf_samples = (size_t)ceil(buf_samples * p->output_resample_ratio) + 128;
@@ -279,7 +274,6 @@ static void* am_run_writer(ModuleContext* ctx) {
     p->pll_tracking_mode = false;
     p->pll_lock_counter = 0;
 
-    const float dither_scale = 1.0f / 32768.0f;
     const float pcm_scale = 32767.0f;
 
     while (true) {
@@ -404,12 +398,8 @@ static void* am_run_writer(ModuleContext* ctx) {
                 }
                 agc_rrrf_execute(p->agc, sample, &sample);
 
-                // C. Manual Gain & Dither
+                // C. Manual Gain
                 sample *= p->manual_gain;
-
-                p->dither_seed = p->dither_seed * 1103515245 + 12345;
-                float dither = ((float)(p->dither_seed >> 16) / 32768.0f - 1.0f) * dither_scale;
-                sample += dither;
 
                 if (sample > 1.0f) sample = 1.0f;
                 if (sample < -1.0f) sample = -1.0f;
