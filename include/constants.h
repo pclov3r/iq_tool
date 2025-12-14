@@ -146,6 +146,7 @@
 
 // --- Filter Design & Analysis Tuning ---
 #define FILTER_MINIMUM_TAPS 21
+#define FILTER_SAFETY_DEFAULT_TAPS 4096
 #define FILTER_GAIN_ZERO_THRESHOLD 1e-9f
 #define FILTER_FREQ_RESPONSE_POINTS 2048
 

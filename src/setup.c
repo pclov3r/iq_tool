@@ -208,16 +208,13 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     size_t target_block_samples = PIPELINE_TARGET_BLOCK_SAMPLES; // 12,288 samples (~192KB)
 
     // 2. Adjust target for FFT requirements if necessary
-    // CRITICAL FIX: The filter object does not exist yet. We must estimate requirements based on CONFIG.
+    // The filter object does not exist yet. We must estimate requirements based on CONFIG.
     size_t estimated_taps = 0;
     if (config->dsp.filter.args.taps > 0) {
         estimated_taps = config->dsp.filter.args.taps;
     } else if (config->dsp.filter.count > 0) {
-        // If taps aren't explicit, assume a worst-case default for sizing (e.g. 4096)
-        // This is safe because if the actual filter is smaller, we just have extra room.
-        // If the actual filter calculates to be huge (e.g. sharp transition), we might still be tight,
-        // but explicit taps is the main trigger for massive buffers.
-        estimated_taps = 4096;
+        // If taps aren't explicit, assume a worst-case default for sizing
+        estimated_taps = FILTER_SAFETY_DEFAULT_TAPS;
     }
 
     if (estimated_taps > 0) {
