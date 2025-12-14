@@ -41,6 +41,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
     *   **Frequency Shifting:** Apply shifts before or after resampling.
     *   **Demodulation & Decoding:**
         *   **Wideband FM (WFM):** Demodulates FM Broadcast signals to audio with optional Redsea RDS/RBDS decoding.
+        *   **Narrowband FM (NFM):** Demodulates voice signals with adjustable squelch and standard/narrow bandwidths
         *   **AM:** Demodulates AM signals using a Synchronous (PLL) detector, or standard Envelope detection.
         *   **NRSC5 (HD Radio):** Integrated support for demodulating and playing HD Radio streams (via `libnrsc5`).
     *   **Automatic Gain Control (AGC):** 
@@ -263,6 +264,13 @@ WFM Output Options
     --wfm-no-rds                          Disable RDS decoding (Enabled by default).
     --wfm-rbds                            Enable US RBDS mode (Callsigns + US Program Types).
     --wfm-rds-partial                     Show partial/noisy RDS text (PS/RT).
+
+NFM Output Options
+    --nfm-gain=<flt>                      Audio gain (default: 1.0)
+    --nfm-squelch=<flt>                   Squelch threshold in dB (default: -50.0)
+    --nfm-narrow                          Enable Narrow mode (2.5kHz dev). Default is Standard (5kHz dev).
+    --nfm-no-squelch                      Disable squelch (force open audio)
+    --nfm-no-discriminator-filter         Disable the discriminator filter.
 
 AM Output Options
     --am-gain=<flt>                       Set audio output gain (linear).

@@ -192,6 +192,7 @@ set(COMPILE_WITH_FFAST_MATH_SOURCES
     src/frequency_shift.c
     src/iq_correct.c
     src/output_wfm.c
+    src/output_nfm.c
     src/resampler.c
     src/sample_convert.c
 )
