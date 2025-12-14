@@ -347,7 +347,26 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
             PREPARE_AND_CREATE_CRCF_FILTER(fftfilt, resources->user_filter_block_size);
             resources->user_filter_type_actual = FILTER_IMPL_FFT_SYMMETRIC;
         }
-    } else { 
+
+        // --- ALLOCATION FIX FOR HIGH TAPS ---
+        // Allocate a dedicated scratch buffer.
+        // It must hold the "Overlap" (approx master_taps_len) + the "Max Incoming Data Chunk".
+        // The incoming data comes from the pipeline, so we use pipeline_alloc_size_samples.
+        // We add a small safety pad (+64) just to be safe.
+        size_t scratch_needed = resources->pipeline_alloc_size_samples + master_taps_len + 64;
+
+        resources->fft_scratch_buffer = (complex_float_t*)mem_arena_alloc(
+            arena,
+            scratch_needed * sizeof(complex_float_t),
+            true // Zero initialize
+        );
+
+        if (!resources->fft_scratch_buffer) {
+            log_fatal("Failed to allocate FFT scratch buffer.");
+            goto cleanup;
+        }
+
+    } else {
         log_info("Preparing FIR (time-domain) filter object...");
         if (is_final_filter_complex) {
             resources->user_filter_object = (void*)firfilt_cccf_create(master_taps, master_taps_len);
@@ -481,7 +500,7 @@ unsigned int filter_apply(AppResources* resources, SampleChunk* item, bool is_po
                 remainder_buffer,
                 remainder_len_ptr,
                 resources->user_filter_block_size,
-                item->current_output_buffer
+                resources->fft_scratch_buffer // <--- USE DEDICATED SCRATCH BUFFER (Fixed)
             );
 
             return output_frames;

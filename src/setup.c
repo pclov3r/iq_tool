@@ -1,3 +1,8 @@
+/**
+ * @file setup.c
+ * @brief Declares the high-level functions for application initialization and cleanup.
+ */
+
 #include "setup.h"
 #include "sample_convert.h"
 #include "constants.h"
@@ -203,12 +208,32 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     size_t target_block_samples = PIPELINE_TARGET_BLOCK_SAMPLES; // 12,288 samples (~192KB)
 
     // 2. Adjust target for FFT requirements if necessary
-    if (resources->user_filter_object) {
-        // If the user has an FFT filter, the block size MUST be at least the FFT block size.
-        // We prioritize functional correctness over L2 cache optimization here.
-        if (resources->user_filter_block_size > target_block_samples) {
-            log_debug("Adjusting pipeline block size to %u to accommodate FFT filter requirements.", resources->user_filter_block_size);
-            target_block_samples = resources->user_filter_block_size;
+    // CRITICAL FIX: The filter object does not exist yet. We must estimate requirements based on CONFIG.
+    size_t estimated_taps = 0;
+    if (config->dsp.filter.args.taps > 0) {
+        estimated_taps = config->dsp.filter.args.taps;
+    } else if (config->dsp.filter.count > 0) {
+        // If taps aren't explicit, assume a worst-case default for sizing (e.g. 4096)
+        // This is safe because if the actual filter is smaller, we just have extra room.
+        // If the actual filter calculates to be huge (e.g. sharp transition), we might still be tight,
+        // but explicit taps is the main trigger for massive buffers.
+        estimated_taps = 4096;
+    }
+
+    if (estimated_taps > 0) {
+        // Calculate the FFT block size logic used by liquid-dsp/filter.c
+        size_t req_block_size = 1;
+        while (req_block_size < estimated_taps) {
+            req_block_size *= 2;
+        }
+        // Heuristic from filter.c: double it for efficiency
+        if (req_block_size < estimated_taps * 2) {
+            req_block_size *= 2;
+        }
+
+        // If the filter needs huge blocks (e.g. 32k for 15k taps), expand the pipeline chunks.
+        if (req_block_size > target_block_samples) {
+            target_block_samples = req_block_size;
         }
     }
 
@@ -248,7 +273,7 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
 
     // 3. FFT Limit Safety Check
     if (resources->pipeline_alloc_size_samples > MAX_ALLOWED_FFT_BLOCK_SIZE) {
-        log_fatal("Calculated pipeline buffer size (%zu) exceeds maximum allowed FFT size (%d).", 
+        log_fatal("Calculated pipeline buffer size (%zu) exceeds maximum allowed FFT size (%d).",
                   resources->pipeline_alloc_size_samples, MAX_ALLOWED_FFT_BLOCK_SIZE);
         return false;
     }
@@ -280,7 +305,7 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
 
     resources->pipeline_num_chunks = calculated_chunks;
 
-    log_info("Pipeline Sizing: Read=%zu samples, Alloc=%zu samples, Depth=%zu chunks (%.2f sec buffer at %.0f Hz)", 
+    log_info("Pipeline Sizing: Read=%zu samples, Alloc=%zu samples, Depth=%zu chunks (%.2f sec buffer at %.0f Hz)",
               resources->pipeline_read_chunk_size,
               resources->pipeline_alloc_size_samples,
               resources->pipeline_num_chunks,
@@ -383,7 +408,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 
     // Check our dynamic items if offset is active to ensure alignment
     bool use_offset_display = (fabs(config->sdr_general.frequency_offset_hz) > 1e-9);
-    
+
     if (use_offset_display) {
         const char* offset_labels[] = { "Actual Frequency", "Frequency Offset", "Tuned Frequency" };
         for (int i = 0; i < 3; i++) {
@@ -406,10 +431,10 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     fprintf(stderr, "\n--- Input Details ---\n");
     if (summary_info.count > 0) {
         for (int i = 0; i < summary_info.count; i++) {
-            
+
             // Intercept "RF Frequency" ONLY if we are using an offset
             if (use_offset_display && strcmp(summary_info.items[i].label, "RF Frequency") == 0) {
-                
+
                 // MATH: User Target = Hardware - Offset
                 double user_target_hz = config->sdr_general.rf_freq_hz - config->sdr_general.frequency_offset_hz;
 
@@ -421,14 +446,14 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 
                 // 3. Result (The Hardware Reality)
                 fprintf(stderr, " %-*s : %s\n", max_label_len, "Tuned Frequency", summary_info.items[i].value);
-                
+
             } else {
                 // Standard Print
                 fprintf(stderr, " %-*s : %s\n", max_label_len, summary_info.items[i].label, summary_info.items[i].value);
             }
         }
     }
-    
+
     fprintf(stderr, " %-*s : %s\n", max_label_len, "I/Q Correction", config->dsp.iq_correction.enable ? "Enabled" : "Disabled");
     fprintf(stderr, " %-*s : %s\n", max_label_len, "DC Block", config->dsp.dc_block.enable ? "Enabled" : "Disabled");
 
@@ -447,7 +472,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Sample Type", sample_type_str);
 
     fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Output Rate", config->output_rate.target_rate);
-    
+
     fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Input Gain", config->dsp.input_gain);
 
     if (config->dsp.output_gain != 1.0f) {
@@ -477,7 +502,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
                 filter_label = "Filter";
                 break;
         }
-        
+
         char filter_buf[256] = {0};
         const char* stage = config->dsp.filter.apply_post_resample ? " (Post-Resample)" : "";
         strncat(filter_buf, "Enabled: ", sizeof(filter_buf) - strlen(filter_buf) - 1);
@@ -507,7 +532,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
             case AGC_PROFILE_DIGITAL: profile_name = "Digital"; break;
             default: break;
         }
-        
+
         snprintf(agc_buf, sizeof(agc_buf), "Enabled (Profile: %s, Target: %.2f)", profile_name, config->dsp.agc.target_level);
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Output AGC", agc_buf);
     } else {
@@ -524,9 +549,9 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
     output_path_for_messages = config->output.effective_path;
 #endif
     fprintf(stderr, " %-*s : %s\n", max_label_len, is_file_output ? "Output File" : "Output Target", is_file_output ? output_path_for_messages : "<stdout>");
-    
+
     // Log the calculated elastic buffer sizes for verification
-    log_debug("Pipeline Config: Read Size = %zu samples, Chunk Alloc = %zu samples.", 
+    log_debug("Pipeline Config: Read Size = %zu samples, Chunk Alloc = %zu samples.",
               resources->pipeline_read_chunk_size, resources->pipeline_alloc_size_samples);
 }
 
@@ -592,7 +617,7 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
 
     if (resources->pacing_is_required) {
         print_configuration_summary(config, resources);
-        fprintf(stderr, "\n"); 
+        fprintf(stderr, "\n");
     }
 
     if (resources->pacing_is_required) {
@@ -623,7 +648,7 @@ void cleanup_application(AppConfig *config, AppResources *resources) {
 #endif
         resources->pipeline_chunk_data_pool = NULL;
     }
- 
+
     if (resources->selected_input_module_api && resources->selected_input_module_api->cleanup) {
         resources->selected_input_module_api->cleanup(&ctx);
     }

@@ -250,6 +250,7 @@ typedef struct AppResources {
     unsigned int     pre_fft_remainder_len;
     complex_float_t* post_fft_remainder_buffer;
     unsigned int     post_fft_remainder_len;
+    complex_float_t* fft_scratch_buffer;
 
     // --- Output AGC State ---
     void*           output_agc_object;
