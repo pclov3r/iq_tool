@@ -1,50 +1,48 @@
 name: Codacy Security Scan
 
+# Trigger conditions for this workflow
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main" ]        # Runs when code is pushed to main branch
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main" ]        # Runs on pull requests targeting main
   schedule:
-    - cron: '19 18 * * 6'
+    - cron: '19 18 * * 6'       # Runs weekly on Saturdays at 18:19 UTC
 
+# Top-level permissions for the workflow
 permissions:
-  contents: read
+  contents: read                # Allows reading repository contents
 
 jobs:
   codacy-security-scan:
+    # Job-specific permissions (these override top-level permissions)
     permissions:
-      contents: read # for actions/checkout to fetch code
-      security-events: write # for github/codeql-action/upload-sarif to upload SARIF results
-      actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
+      contents: read            # Required to checkout code
+      security-events: write    # Required to upload SARIF results to GitHub Code Scanning
+      actions: read             # Required for private repos to check Action run status
+    
     name: Codacy Security Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest      # Use Ubuntu runner
+    
     steps:
-      # Checkout the repository to the GitHub Actions runner
+      # STEP 1: Checkout your repository code
       - name: Checkout code
         uses: actions/checkout@v4
-
-      # Execute Codacy Analysis CLI and generate a SARIF output with the security issues identified during the analysis
+      
+      # STEP 2: Run Codacy analysis and generate SARIF file
       - name: Run Codacy Analysis CLI
         uses: codacy/codacy-analysis-cli-action@d840f886c4bd4edc059706d09c6a1586111c540b
         with:
-          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
-          verbose: true
-          output: results.sarif
-          format: sarif
-          gh-code-scanning-compat: true
-          max-allowed-issues: 2147483647
-
-      # Upload Codacy SARIF results file with a custom category to prevent collision with other scans
+          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}  # Your Codacy project token from GitHub secrets
+          verbose: true                                        # Enable detailed logging
+          output: results.sarif                                # Output file name
+          format: sarif                                        # Output format (SARIF for GitHub Code Scanning)
+          gh-code-scanning-compat: true                        # Make SARIF compatible with GitHub Code Scanning
+          max-allowed-issues: 2147483647                       # Maximum number of issues to report (basically unlimited)
+      
+      # STEP 3: Upload the SARIF results to GitHub Code Scanning
       - name: Upload Codacy SARIF results file
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: results.sarif
-          category: codacy-security-scan
-
-      # Upload GitHub CodeQL SARIF results (if you're using CodeQL as well)
-      - name: Upload CodeQL SARIF results file
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: ${{ github.workspace }}/codeql-results.sarif
-          category: codeql-security-scan
+          sarif_file: results.sarif                            # The SARIF file generated in step 2
+          category: codacy-security-scan                       # Unique category to avoid collisions with other scans
