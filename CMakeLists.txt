@@ -191,8 +191,9 @@ set(COMPILE_WITH_FFAST_MATH_SOURCES
     src/filter.c
     src/frequency_shift.c
     src/iq_correct.c
-    src/output_wfm.c
+    src/output_am.c
     src/output_nfm.c
+    src/output_wfm.c
     src/resampler.c
     src/sample_convert.c
 )
@@ -213,7 +214,6 @@ set(OTHER_SOURCES
     src/miniaudio.c
     src/module_manager.c
     src/networking.c
-    src/output_am.c
     src/output_rawfile.c
     src/output_stdout.c
     src/output_wav.c
