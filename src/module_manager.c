@@ -29,7 +29,7 @@
 #endif
 
 // --- Include the headers for ALL concrete output source implementations ---
-#include "output_raw_file.h"
+#include "output_rawfile.h"
 #include "output_wav.h"
 #include "output_wav_rf64.h"
 #include "output_stdout.h"

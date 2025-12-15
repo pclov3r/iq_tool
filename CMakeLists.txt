@@ -214,7 +214,7 @@ set(OTHER_SOURCES
     src/module_manager.c
     src/networking.c
     src/output_am.c
-    src/output_raw_file.c
+    src/output_rawfile.c
     src/output_stdout.c
     src/output_wav.c
     src/output_wav_common.c

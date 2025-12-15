@@ -1,4 +1,4 @@
-#include "output_raw_file.h"
+#include "output_rawfile.h"
 #include "module.h"
 #include "app_context.h"
 #include "log.h"
