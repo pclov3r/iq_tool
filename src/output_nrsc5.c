@@ -329,7 +329,7 @@ static bool nrsc5_initialize(ModuleContext* ctx) {
     // Direct API call
     const char* ver_str = NULL;
     nrsc5_get_version(&ver_str);
-    log_info("NRSC5: Linked library version %s", SAFE_STR(ver_str));
+    log_info("NRSC5: Library version %s", SAFE_STR(ver_str));
 
     // Initialize Ring Buffer
     p->audio_ring_buffer = ring_buffer_create(NRSC5_AUDIO_BUFFER_SIZE);
@@ -383,7 +383,6 @@ static bool nrsc5_initialize(ModuleContext* ctx) {
         return false;
     }
 
-    log_info("NRSC5: Initialization complete.");
     return true;
 }
 
