@@ -7,8 +7,8 @@
 #include "signal_handler.h"
 #include "log.h"
 
-void pre_processor_apply_chain(AppResources* resources, SampleChunk* item) {
-    AppConfig* config = (AppConfig*)resources->config;
+void pre_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
+    AppConfig* config = (AppConfig*)dsp->config;
 
     // --- Stage Setup ---
     // For the pre-processor, all operations happen in the first buffer.
@@ -21,42 +21,42 @@ void pre_processor_apply_chain(AppResources* resources, SampleChunk* item) {
     // UPDATED: Use input_gain instead of gain
     if (!convert_block_to_cf32(item->raw_input_data, item->current_output_buffer,
                                item->frames_read, item->packet_sample_format, config->dsp.input_gain)) {
-        handle_fatal_thread_error("Pre-Processor: Failed to convert samples.", resources);
+        log_fatal("Pre-Processor: Failed to convert samples.");
         item->frames_read = 0;
         return;
     }
 
     // Step 2: DC Blocking (if enabled)
     if (config->dsp.dc_block.enable) {
-        dc_block_apply(resources, item->current_output_buffer, item->frames_read);
+        dc_block_apply(dsp, item->current_output_buffer, item->frames_read);
     }
 
     // Step 3: I/Q Imbalance Correction (if enabled)
     if (config->dsp.iq_correction.enable) {
-        iq_correct_apply(resources, item->current_output_buffer, item->frames_read);
+        iq_correct_apply(dsp, item->current_output_buffer, item->frames_read);
     }
 
     // Step 4: Pre-Resample Frequency Shifting (if enabled)
-    if (resources->pre_resample_nco) {
+    if (dsp->pre_resample_nco) {
         // This is an in-place operation.
-        freq_shift_apply(resources->pre_resample_nco,
-                         resources->nco_shift_hz,
+        freq_shift_apply(dsp->pre_resample_nco,
+                         dsp->nco_shift_hz,
                          item->current_output_buffer,
                          item->current_output_buffer,
                          item->frames_read);
     }
 
     // Step 5: Pre-Resample Filtering (if enabled)
-    if (resources->user_filter_object && !config->dsp.filter.apply_post_resample) {
+    if (dsp->filter.object && !config->dsp.filter.apply_post_resample) {
         // filter_apply will now correctly handle its internal state, whether
         // it's an in-place FIR or an out-of-place FFT. The thread function
         // is responsible for the final ping-pong swap if needed.
-        item->frames_read = filter_apply(resources, item, false);
+        item->frames_read = filter_apply(dsp, item, false);
     }
 }
 
-void pre_processor_reset(AppResources* resources) {
-    dc_block_reset(resources);
-    freq_shift_reset_nco(resources->pre_resample_nco);
-    filter_reset(resources);
+void pre_processor_reset(DspContext* dsp) {
+    dc_block_reset(dsp);
+    freq_shift_reset_nco(dsp->pre_resample_nco);
+    filter_reset(dsp);
 }

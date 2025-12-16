@@ -287,7 +287,7 @@ static bool wfm_validate_options(AppConfig* config) {
 }
 
 static bool wfm_initialize(ModuleContext* ctx) {
-    AppResources* res = ctx->resources;
+    AppContext* res = ctx->app;
 
     // Windows: stdout defaults to text mode (\n -> \r\n), which corrupts binary I/Q data.
     // We must forcefully set it to binary if the user requested raw output.
@@ -300,9 +300,9 @@ static bool wfm_initialize(ModuleContext* ctx) {
         #endif
     }
 
-    WfmContext* p = (WfmContext*)mem_arena_alloc(&res->setup_arena, sizeof(WfmContext), true);
+    WfmContext* p = (WfmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(WfmContext), true);
     if (!p) return false;
-    res->output_module_private_data = p;
+    res->modules.output_private_data = p;
 
     // 1. Setup Audio Ring Buffer
     p->audio_ring_buffer = ring_buffer_create(AUDIO_BUFFER_SIZE);
@@ -376,22 +376,22 @@ static bool wfm_initialize(ModuleContext* ctx) {
     // 5. Scratch Buffers (Local Elastic Allocation)
     // We calculate the maximum buffer size required for ANY stage of this specific module.
     // If upsampling (e.g. 32k -> 48k), the output buffer needs more space than the input.
-    size_t buf_samples = res->pipeline_alloc_size_samples;
+    size_t buf_samples = res->pipeline.alloc_size_samples;
     size_t out_buf_samples = (size_t)ceil(buf_samples * p->output_resample_ratio) + 128;
     size_t max_dsp_samples = (buf_samples > out_buf_samples) ? buf_samples : out_buf_samples;
 
-    p->mpx_buffer = mem_arena_alloc(&res->setup_arena, max_dsp_samples * sizeof(float), false);
-    p->audio_out_l = mem_arena_alloc(&res->setup_arena, max_dsp_samples * sizeof(float), false);
-    p->audio_out_r = mem_arena_alloc(&res->setup_arena, max_dsp_samples * sizeof(float), false);
+    p->mpx_buffer = mem_arena_alloc(&res->pipeline.setup_arena, max_dsp_samples * sizeof(float), false);
+    p->audio_out_l = mem_arena_alloc(&res->pipeline.setup_arena, max_dsp_samples * sizeof(float), false);
+    p->audio_out_r = mem_arena_alloc(&res->pipeline.setup_arena, max_dsp_samples * sizeof(float), false);
 
     // Interleaved buffer is always sized for the output
-    p->interleaved_pcm = mem_arena_alloc(&res->setup_arena, out_buf_samples * 2 * sizeof(int16_t), false);
+    p->interleaved_pcm = mem_arena_alloc(&res->pipeline.setup_arena, out_buf_samples * 2 * sizeof(int16_t), false);
 
     if (!p->mpx_buffer || !p->audio_out_l || !p->audio_out_r || !p->interleaved_pcm) return false;
 
     // Optional: Allocate S16 buffer for MPX stdout if requested
     if (s_wfm_config.raw_mpx_stdout) {
-        p->mpx_s16_buffer = mem_arena_alloc(&res->setup_arena, max_dsp_samples * sizeof(int16_t), false);
+        p->mpx_s16_buffer = mem_arena_alloc(&res->pipeline.setup_arena, max_dsp_samples * sizeof(int16_t), false);
         if (!p->mpx_s16_buffer) return false;
     }
 
@@ -421,8 +421,8 @@ static bool wfm_initialize(ModuleContext* ctx) {
 }
 
 static void* wfm_run_writer(ModuleContext* ctx) {
-    AppResources* res = ctx->resources;
-    WfmContext* p = (WfmContext*)res->output_module_private_data;
+    AppContext* res = ctx->app;
+    WfmContext* p = (WfmContext*)res->modules.output_private_data;
 
     // Throttle if buffer is > 80% full
     const size_t THROTTLE_THRESHOLD = (size_t)(AUDIO_BUFFER_SIZE * 0.8);
@@ -446,7 +446,7 @@ static void* wfm_run_writer(ModuleContext* ctx) {
         // --- 1. BACKPRESSURE: Check Audio Buffer BEFORE Dequeue ---
         if (p->audio_ring_buffer) {
             // While the audio buffer is too full, we sleep.
-            // This leaves the SampleChunk in the upstream queue, preserving resources.
+            // This leaves the SampleChunk in the upstream queue, preserving app.
             while (ring_buffer_get_size(p->audio_ring_buffer) > THROTTLE_THRESHOLD) {
                 #ifdef _WIN32
                     Sleep(10);
@@ -461,11 +461,11 @@ static void* wfm_run_writer(ModuleContext* ctx) {
         }
 
         // --- 2. Acquire Data ---
-        SampleChunk* item = (SampleChunk*)queue_dequeue(res->writer_input_queue);
+        SampleChunk* item = (SampleChunk*)queue_dequeue(res->pipeline.writer_input_queue);
         if (!item) break;
 
         if (item->stream_discontinuity_event) {
-            queue_enqueue(res->free_sample_chunk_queue, item);
+            queue_enqueue(res->pipeline.free_sample_chunk_queue, item);
             continue;
         }
 
@@ -476,7 +476,7 @@ static void* wfm_run_writer(ModuleContext* ctx) {
             // Poll every 10ms, timeout if stalled for 200ms, wait 200ms for hardware padding.
             utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
 
-            queue_enqueue(res->free_sample_chunk_queue, item);
+            queue_enqueue(res->pipeline.free_sample_chunk_queue, item);
             break;
         }
 
@@ -747,7 +747,7 @@ static void* wfm_run_writer(ModuleContext* ctx) {
             ring_buffer_write(p->audio_ring_buffer, p->interleaved_pcm, bytes_to_write);
         }
 
-        if (!queue_enqueue(res->free_sample_chunk_queue, item)) break;
+        if (!queue_enqueue(res->pipeline.free_sample_chunk_queue, item)) break;
     }
 
 cleanup:
@@ -756,9 +756,9 @@ cleanup:
 }
 
 static void wfm_finalize(ModuleContext* ctx) {
-    AppResources* res = ctx->resources;
-    if (!res->output_module_private_data) return;
-    WfmContext* p = (WfmContext*)res->output_module_private_data;
+    AppContext* res = ctx->app;
+    if (!res->modules.output_private_data) return;
+    WfmContext* p = (WfmContext*)res->modules.output_private_data;
 
     if (p->audio_device_initialized) {
         ma_device_uninit(&p->audio_device);

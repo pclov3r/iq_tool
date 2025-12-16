@@ -4,7 +4,7 @@
 #define INPUT_COMMON_H_
 
 #include <stdbool.h>
-#include "app_context.h" // Needed for AppResources
+#include "app_context.h" // Needed for AppContext
 #include "utils.h"       // Needed for get_monotonic_time_sec
 
 // --- Common Implementations for the InputModuleInterface Interface ---
@@ -32,12 +32,12 @@ static inline bool _input_source_has_known_length_false(void) {
  * successfully receives data from the hardware. This signals to the watchdog
  * thread that the SDR is alive and not deadlocked.
  *
- * @param resources A pointer to the application's resources.
+ * @param app A pointer to the application's app.
  */
-static inline void sdr_input_update_heartbeat(AppResources* resources) {
-    pthread_mutex_lock(&resources->progress_mutex);
-    resources->last_sdr_heartbeat_time = get_monotonic_time_sec();
-    pthread_mutex_unlock(&resources->progress_mutex);
+static inline void sdr_input_update_heartbeat(AppContext* app) {
+    pthread_mutex_lock(&app->stats.mutex);
+    app->stats.last_sdr_heartbeat_time = get_monotonic_time_sec();
+    pthread_mutex_unlock(&app->stats.mutex);
 }
 
 #endif // INPUT_COMMON_H_

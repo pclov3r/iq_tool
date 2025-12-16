@@ -25,7 +25,7 @@
         for (int i = 0; i < master_taps_len; i++) { \
             final_real_taps[i] = crealf(master_taps[i]); \
         } \
-        resources->user_filter_object = (void*)prefix##_crcf_create(final_real_taps, master_taps_len, ##__VA_ARGS__); \
+        app->dsp.filter.object = (void*)prefix##_crcf_create(final_real_taps, master_taps_len, ##__VA_ARGS__); \
     } while (0)
 
 
@@ -37,17 +37,17 @@
  * passband is within the Nyquist frequency of the *output* rate. If so, it's
  * more efficient to filter after resampling. This function modifies the config.
  * @param config The application configuration.
- * @param resources The application resources.
+ * @param app The application app.
  * @return true on success, false if the filter configuration is invalid for the output rate.
  */
-static bool _configure_filter_stage(AppConfig *config, AppResources *resources) {
+static bool _configure_filter_stage(AppConfig *config, AppContext* app) {
     config->dsp.filter.apply_post_resample = false;
 
-    if (config->dsp.filter.count == 0 || resources->is_passthrough || config->dsp.raw_passthrough) {
+    if (config->dsp.filter.count == 0 || app->dsp.is_passthrough || config->dsp.raw_passthrough) {
         return true;
     }
 
-    double input_rate = (double)resources->source_info.samplerate;
+    double input_rate = (double)app->modules.source_info.samplerate;
     double output_rate = config->output_rate.target_rate;
 
     // This optimization is only relevant if we are downsampling.
@@ -135,20 +135,20 @@ static liquid_float_complex* convolve_complex_taps(
     return result;
 }
 
-bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* arena) {
+bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
     bool success = false;
     liquid_float_complex* master_taps = NULL;
 
-    resources->user_filter_object = NULL;
-    resources->user_filter_type_actual = FILTER_IMPL_NONE;
-    resources->user_filter_block_size = 0;
+    app->dsp.filter.object = NULL;
+    app->dsp.filter.type_actual = FILTER_IMPL_NONE;
+    app->dsp.filter.block_size = 0;
 
     if (config->dsp.filter.count == 0) {
         return true;
     }
 
     // First, determine the optimal stage for the filter (pre/post resample).
-    if (!_configure_filter_stage(config, resources)) {
+    if (!_configure_filter_stage(config, app)) {
         goto cleanup;
     }
 
@@ -159,7 +159,7 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
 
     double sample_rate_for_design = config->dsp.filter.apply_post_resample
                                       ? config->output_rate.target_rate
-                                      : (double)resources->source_info.samplerate;
+                                      : (double)app->modules.source_info.samplerate;
 
     bool is_final_filter_complex = false;
     bool normalize_by_peak = false;
@@ -333,14 +333,14 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
             }
             log_info("Using automatically calculated block size of %u (FFT size: %u) for filter.", block_size, block_size * 2);
         }
-        resources->user_filter_block_size = block_size;
+        app->dsp.filter.block_size = block_size;
 
         if (is_final_filter_complex) {
-            resources->user_filter_object = (void*)fftfilt_cccf_create(master_taps, master_taps_len, resources->user_filter_block_size);
-            resources->user_filter_type_actual = FILTER_IMPL_FFT_ASYMMETRIC;
+            app->dsp.filter.object = (void*)fftfilt_cccf_create(master_taps, master_taps_len, app->dsp.filter.block_size);
+            app->dsp.filter.type_actual = FILTER_IMPL_FFT_ASYMMETRIC;
         } else {
-            PREPARE_AND_CREATE_CRCF_FILTER(fftfilt, resources->user_filter_block_size);
-            resources->user_filter_type_actual = FILTER_IMPL_FFT_SYMMETRIC;
+            PREPARE_AND_CREATE_CRCF_FILTER(fftfilt, app->dsp.filter.block_size);
+            app->dsp.filter.type_actual = FILTER_IMPL_FFT_SYMMETRIC;
         }
 
         // --- ALLOCATION FIX FOR HIGH TAPS ---
@@ -348,15 +348,15 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
         // It must hold the "Overlap" (approx master_taps_len) + the "Max Incoming Data Chunk".
         // The incoming data comes from the pipeline, so we use pipeline_alloc_size_samples.
         // We add a small safety pad (+64) just to be safe.
-        size_t scratch_needed = resources->pipeline_alloc_size_samples + master_taps_len + 64;
+        size_t scratch_needed = app->pipeline.alloc_size_samples + master_taps_len + 64;
 
-        resources->fft_scratch_buffer = (complex_float_t*)mem_arena_alloc(
+        app->dsp.filter.fft_scratch_buffer = (complex_float_t*)mem_arena_alloc(
             arena,
             scratch_needed * sizeof(complex_float_t),
             true // Zero initialize
         );
 
-        if (!resources->fft_scratch_buffer) {
+        if (!app->dsp.filter.fft_scratch_buffer) {
             log_fatal("Failed to allocate FFT scratch buffer.");
             goto cleanup;
         }
@@ -364,42 +364,42 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
     } else {
         log_info("Preparing FIR (time-domain) filter object...");
         if (is_final_filter_complex) {
-            resources->user_filter_object = (void*)firfilt_cccf_create(master_taps, master_taps_len);
-            resources->user_filter_type_actual = FILTER_IMPL_FIR_ASYMMETRIC;
+            app->dsp.filter.object = (void*)firfilt_cccf_create(master_taps, master_taps_len);
+            app->dsp.filter.type_actual = FILTER_IMPL_FIR_ASYMMETRIC;
         } else {
             PREPARE_AND_CREATE_CRCF_FILTER(firfilt);
-            resources->user_filter_type_actual = FILTER_IMPL_FIR_SYMMETRIC;
+            app->dsp.filter.type_actual = FILTER_IMPL_FIR_SYMMETRIC;
         }
     }
 
-    if (!resources->user_filter_object) {
+    if (!app->dsp.filter.object) {
         log_fatal("Failed to create final combined filter object.");
         goto cleanup;
     }
 
-    // Now that the filter object is created, allocate its dependent resources (e.g., remainder buffer)
-    if (resources->user_filter_object &&
-       (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
-        resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC))
+    // Now that the filter object is created, allocate its dependent app (e.g., remainder buffer)
+    if (app->dsp.filter.object &&
+       (app->dsp.filter.type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
+        app->dsp.filter.type_actual == FILTER_IMPL_FFT_ASYMMETRIC))
     {
         if (config->dsp.filter.apply_post_resample) {
-            resources->post_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
+            app->dsp.filter.post_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
                 arena,
-                resources->user_filter_block_size * sizeof(complex_float_t),
+                app->dsp.filter.block_size * sizeof(complex_float_t),
                 true
             );
-            resources->post_fft_remainder_len = 0;
-            if (!resources->post_fft_remainder_buffer) {
+            app->dsp.filter.post_fft_remainder_len = 0;
+            if (!app->dsp.filter.post_fft_remainder_buffer) {
                 goto cleanup;
             }
         } else {
-            resources->pre_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
+            app->dsp.filter.pre_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
                 arena,
-                resources->user_filter_block_size * sizeof(complex_float_t),
+                app->dsp.filter.block_size * sizeof(complex_float_t),
                 true
             );
-            resources->pre_fft_remainder_len = 0;
-            if (!resources->pre_fft_remainder_buffer) {
+            app->dsp.filter.pre_fft_remainder_len = 0;
+            if (!app->dsp.filter.pre_fft_remainder_buffer) {
                 goto cleanup;
             }
         }
@@ -411,42 +411,42 @@ cleanup:
     return success;
 }
 
-void filter_destroy(AppResources* resources) {
-    if (resources->user_filter_object) {
-        switch (resources->user_filter_type_actual) {
+void filter_destroy(AppContext* app) {
+    if (app->dsp.filter.object) {
+        switch (app->dsp.filter.type_actual) {
             case FILTER_IMPL_FIR_SYMMETRIC:
-                firfilt_crcf_destroy((firfilt_crcf)resources->user_filter_object);
+                firfilt_crcf_destroy((firfilt_crcf)app->dsp.filter.object);
                 break;
             case FILTER_IMPL_FIR_ASYMMETRIC:
-                firfilt_cccf_destroy((firfilt_cccf)resources->user_filter_object);
+                firfilt_cccf_destroy((firfilt_cccf)app->dsp.filter.object);
                 break;
             case FILTER_IMPL_FFT_SYMMETRIC:
-                fftfilt_crcf_destroy((fftfilt_crcf)resources->user_filter_object);
+                fftfilt_crcf_destroy((fftfilt_crcf)app->dsp.filter.object);
                 break;
             case FILTER_IMPL_FFT_ASYMMETRIC:
-                fftfilt_cccf_destroy((fftfilt_cccf)resources->user_filter_object);
+                fftfilt_cccf_destroy((fftfilt_cccf)app->dsp.filter.object);
                 break;
             default:
                 break;
         }
-        resources->user_filter_object = NULL;
+        app->dsp.filter.object = NULL;
     }
 }
 
-void filter_reset(AppResources* resources) {
-    if (resources->user_filter_object) {
-        switch (resources->user_filter_type_actual) {
+void filter_reset(DspContext* dsp) {
+    if (dsp->filter.object) {
+        switch (dsp->filter.type_actual) {
             case FILTER_IMPL_FIR_SYMMETRIC:
-                firfilt_crcf_reset((firfilt_crcf)resources->user_filter_object);
+                firfilt_crcf_reset((firfilt_crcf)dsp->filter.object);
                 break;
             case FILTER_IMPL_FIR_ASYMMETRIC:
-                firfilt_cccf_reset((firfilt_cccf)resources->user_filter_object);
+                firfilt_cccf_reset((firfilt_cccf)dsp->filter.object);
                 break;
             case FILTER_IMPL_FFT_SYMMETRIC:
-                fftfilt_crcf_reset((fftfilt_crcf)resources->user_filter_object);
+                fftfilt_crcf_reset((fftfilt_crcf)dsp->filter.object);
                 break;
             case FILTER_IMPL_FFT_ASYMMETRIC:
-                fftfilt_cccf_reset((fftfilt_cccf)resources->user_filter_object);
+                fftfilt_cccf_reset((fftfilt_cccf)dsp->filter.object);
                 break;
             default:
                 break;
@@ -454,8 +454,8 @@ void filter_reset(AppResources* resources) {
     }
 }
 
-unsigned int filter_apply(AppResources* resources, SampleChunk* item, bool is_post_resample) {
-    if (!resources->user_filter_object) {
+unsigned int filter_apply(DspContext* dsp, SampleChunk* item, bool is_post_resample) {
+    if (!dsp->filter.object) {
         return is_post_resample ? item->frames_to_write : item->frames_read;
     }
 
@@ -464,16 +464,16 @@ unsigned int filter_apply(AppResources* resources, SampleChunk* item, bool is_po
         return 0;
     }
 
-    switch (resources->user_filter_type_actual) {
+    switch (dsp->filter.type_actual) {
         case FILTER_IMPL_FIR_SYMMETRIC:
         case FILTER_IMPL_FIR_ASYMMETRIC:
-            if (resources->user_filter_type_actual == FILTER_IMPL_FIR_SYMMETRIC) {
-                firfilt_crcf_execute_block((firfilt_crcf)resources->user_filter_object,
+            if (dsp->filter.type_actual == FILTER_IMPL_FIR_SYMMETRIC) {
+                firfilt_crcf_execute_block((firfilt_crcf)dsp->filter.object,
                                            (liquid_float_complex*)item->current_input_buffer,
                                            frames_in,
                                            (liquid_float_complex*)item->current_input_buffer);
             } else {
-                firfilt_cccf_execute_block((firfilt_cccf)resources->user_filter_object,
+                firfilt_cccf_execute_block((firfilt_cccf)dsp->filter.object,
                                            (liquid_float_complex*)item->current_input_buffer,
                                            frames_in,
                                            (liquid_float_complex*)item->current_input_buffer);
@@ -483,19 +483,19 @@ unsigned int filter_apply(AppResources* resources, SampleChunk* item, bool is_po
         case FILTER_IMPL_FFT_SYMMETRIC:
         case FILTER_IMPL_FFT_ASYMMETRIC:
         {
-            complex_float_t* remainder_buffer = is_post_resample ? resources->post_fft_remainder_buffer : resources->pre_fft_remainder_buffer;
-            unsigned int* remainder_len_ptr = is_post_resample ? &resources->post_fft_remainder_len : &resources->pre_fft_remainder_len;
+            complex_float_t* remainder_buffer = is_post_resample ? dsp->filter.post_fft_remainder_buffer : dsp->filter.pre_fft_remainder_buffer;
+            unsigned int* remainder_len_ptr = is_post_resample ? &dsp->filter.post_fft_remainder_len : &dsp->filter.pre_fft_remainder_len;
             
             unsigned int output_frames = _execute_fft_filter_pass(
-                resources->user_filter_object,
-                resources->user_filter_type_actual,
+                dsp->filter.object,
+                dsp->filter.type_actual,
                 item->current_input_buffer,
                 frames_in,
                 item->current_output_buffer,
                 remainder_buffer,
                 remainder_len_ptr,
-                resources->user_filter_block_size,
-                resources->fft_scratch_buffer // <--- USE DEDICATED SCRATCH BUFFER (Fixed)
+                dsp->filter.block_size,
+                dsp->filter.fft_scratch_buffer // <--- USE DEDICATED SCRATCH BUFFER (Fixed)
             );
 
             return output_frames;

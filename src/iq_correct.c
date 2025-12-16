@@ -141,13 +141,13 @@ static void estimate_imbalance(IqState *st, const complex float* restrict iq, in
 // == Public API Implementation
 // ============================================================================
 
-bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* arena) {
+bool iq_correct_init(AppConfig* config, AppContext* app, MemoryArena* arena) {
     if (!config->dsp.iq_correction.enable) {
-        resources->iq_correction.internal_state = NULL;
+        app->dsp.iq_correct.internal_state = NULL;
         return true;
     }
 
-    if (pthread_mutex_init(&resources->iq_correction.iq_factors_mutex, NULL) != 0) {
+    if (pthread_mutex_init(&app->dsp.iq_correct.iq_factors_mutex, NULL) != 0) {
         log_fatal("Failed to initialize I/Q correction mutex.");
         return false;
     }
@@ -174,7 +174,7 @@ bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* ar
     st->boost = (float*)mem_arena_alloc(arena, FFTBins * sizeof(float), true);
     st->power_flag = (int*)mem_arena_alloc(arena, st->fft_integration * sizeof(int), true);
 
-    // Allocate resources for Liquid-DSP FFT
+    // Allocate app for Liquid-DSP FFT
     st->fft_buffer = (complex float*)mem_arena_alloc(arena, FFTBins * sizeof(complex float), false);
     st->window_func = (float*)mem_arena_alloc(arena, FFTBins * sizeof(float), false);
 
@@ -205,30 +205,30 @@ bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* ar
         return false;
     }
 
-    resources->iq_correction.internal_state = st;
-    resources->iq_correction.last_optimization_time = 0.0;
+    app->dsp.iq_correct.internal_state = st;
+    app->dsp.iq_correct.last_optimization_time = 0.0;
 
     log_info("I/Q Correction Enabled");
     return true;
 }
 
-void iq_correct_apply(AppResources* resources, complex_float_t* samples, int num_samples) {
-    if (!resources->config->dsp.iq_correction.enable || !resources->iq_correction.internal_state) return;
+void iq_correct_apply(DspContext* dsp, complex_float_t* samples, int num_samples) {
+    if (!dsp->config->dsp.iq_correction.enable || !dsp->iq_correct.internal_state) return;
 
-    IqState* st = (IqState*)resources->iq_correction.internal_state;
+    IqState* st = (IqState*)dsp->iq_correct.internal_state;
 
     // Thread Safety: Try to lock to update interpolation targets.
     // If locked (optimizer running), proceed with current values to avoid stalling audio.
-    if (pthread_mutex_trylock(&resources->iq_correction.iq_factors_mutex) == 0) {
+    if (pthread_mutex_trylock(&dsp->iq_correct.iq_factors_mutex) == 0) {
         adjust_phase_amplitude(st, samples, num_samples);
-        pthread_mutex_unlock(&resources->iq_correction.iq_factors_mutex);
+        pthread_mutex_unlock(&dsp->iq_correct.iq_factors_mutex);
     } else {
         adjust_phase_amplitude(st, samples, num_samples);
     }
 }
 
-void iq_correct_run_optimization(AppResources* resources, const complex_float_t* optimization_data) {
-    if (!resources->config->dsp.iq_correction.enable || !resources->iq_correction.internal_state) return;
+void iq_correct_run_optimization(DspContext* dsp, const complex_float_t* optimization_data) {
+    if (!dsp->config->dsp.iq_correction.enable || !dsp->iq_correct.internal_state) return;
 
     // RATE LIMITER REMOVED:
     // We want the optimizer to process every chunk available in the queue to ensure
@@ -236,13 +236,13 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
 
     // Update timestamp just for logging purposes
     double current_time = get_monotonic_time_sec();
-    resources->iq_correction.last_optimization_time = current_time;
+    dsp->iq_correct.last_optimization_time = current_time;
 
-    IqState* st = (IqState*)resources->iq_correction.internal_state;
+    IqState* st = (IqState*)dsp->iq_correct.internal_state;
 
     // The algorithm requires at least one FFT frame.
     // The pipeline chunk is typically larger (~12k samples), so this is safe.
-    pthread_mutex_lock(&resources->iq_correction.iq_factors_mutex);
+    pthread_mutex_lock(&dsp->iq_correct.iq_factors_mutex);
     estimate_imbalance(st, optimization_data, FFTBins);
 
     // --- DEBUG LOGGING ---
@@ -261,21 +261,21 @@ void iq_correct_run_optimization(AppResources* resources, const complex_float_t*
     }
     // -----------------------------------------
 
-    pthread_mutex_unlock(&resources->iq_correction.iq_factors_mutex);
+    pthread_mutex_unlock(&dsp->iq_correct.iq_factors_mutex);
 }
 
-void iq_correct_destroy(AppResources* resources) {
-    if (resources->iq_correction.internal_state) {
-        IqState* st = (IqState*)resources->iq_correction.internal_state;
+void iq_correct_destroy(AppContext* app) {
+    if (app->dsp.iq_correct.internal_state) {
+        IqState* st = (IqState*)app->dsp.iq_correct.internal_state;
         if (st->fft_plan) fft_destroy_plan(st->fft_plan);
         // Arena handles memory free
-        resources->iq_correction.internal_state = NULL;
+        app->dsp.iq_correct.internal_state = NULL;
     }
-    pthread_mutex_destroy(&resources->iq_correction.iq_factors_mutex);
+    pthread_mutex_destroy(&app->dsp.iq_correct.iq_factors_mutex);
 }
 
 bool iq_correct_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile) {
-    AppResources* resources = ctx->resources;
+    AppContext* app = ctx->app;
 
     if (!infile) {
         log_warn("Cannot perform initial I/Q correction without a valid file handle.");
@@ -284,15 +284,15 @@ bool iq_correct_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile) {
 
     log_info("Performing initial I/Q calibration for file input...");
 
-    if (resources->source_info.frames < FFTBins) {
+    if (app->modules.source_info.frames < FFTBins) {
         log_warn("Input file is too short for I/Q calibration. Skipping.");
         return true;
     }
 
     // Allocate temporary buffers from the setup arena.
-    size_t raw_buffer_size = FFTBins * resources->input_bytes_per_sample_pair;
-    void* raw_buffer = mem_arena_alloc(&resources->setup_arena, raw_buffer_size, false);
-    complex_float_t* cf32_buffer = (complex_float_t*)mem_arena_alloc(&resources->setup_arena, FFTBins * sizeof(complex_float_t), false);
+    size_t raw_buffer_size = FFTBins * app->modules.input_bytes_per_sample_pair;
+    void* raw_buffer = mem_arena_alloc(&app->pipeline.setup_arena, raw_buffer_size, false);
+    complex_float_t* cf32_buffer = (complex_float_t*)mem_arena_alloc(&app->pipeline.setup_arena, FFTBins * sizeof(complex_float_t), false);
 
     if (!raw_buffer || !cf32_buffer) {
         log_fatal("Failed to allocate temporary buffers for I/Q calibration.");
@@ -312,19 +312,19 @@ bool iq_correct_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile) {
     memset(&temp_chunk, 0, sizeof(SampleChunk));
     temp_chunk.raw_input_data = raw_buffer;
     temp_chunk.frames_read = FFTBins;
-    temp_chunk.packet_sample_format = resources->input_format;
+    temp_chunk.packet_sample_format = app->modules.input_format;
     temp_chunk.complex_sample_buffer_a = cf32_buffer;
     temp_chunk.current_output_buffer = temp_chunk.complex_sample_buffer_a;
 
     // Run the pre-processor (Format conversion + DC Block + IQ Apply)
     // NOTE: This applies current (0,0) correction, but importantly removes DC.
-    pre_processor_apply_chain(resources, &temp_chunk);
+    pre_processor_apply_chain(&app->dsp, &temp_chunk);
 
     // Run the optimization algorithm synchronously on the processed data multiple times to converge
     for(int i=0; i<64; i++) {
-        iq_correct_run_optimization(resources, temp_chunk.current_output_buffer);
+        iq_correct_run_optimization(&app->dsp, temp_chunk.current_output_buffer);
         // Force timestamp update so the loop doesn't get rate-limited internally
-        resources->iq_correction.last_optimization_time = 0.0;
+        app->dsp.iq_correct.last_optimization_time = 0.0;
     }
 
     // Rewind the file so the main reader thread can process the file from the start.

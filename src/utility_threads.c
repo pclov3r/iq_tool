@@ -34,13 +34,13 @@
  */
 void* iq_optimization_thread_func(void* arg) {
     PipelineContext* args = (PipelineContext*)arg;
-    AppResources* resources = args->resources;
+    AppContext* app = args->app;
 
     SampleChunk* item;
-    while ((item = (SampleChunk*)queue_dequeue(resources->iq_optimization_data_queue)) != NULL) {
-        iq_correct_run_optimization(resources, item->complex_sample_buffer_a);
+    while ((item = (SampleChunk*)queue_dequeue(app->pipeline.iq_optimization_data_queue)) != NULL) {
+        iq_correct_run_optimization(&app->dsp, item->complex_sample_buffer_a);
         // Return the chunk to the free pool for reuse
-        queue_enqueue(resources->free_sample_chunk_queue, item);
+        queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
     }
     log_debug("I/Q optimization thread is exiting.");
     return NULL;
@@ -57,7 +57,7 @@ void* iq_optimization_thread_func(void* arg) {
  */
 void* watchdog_thread_func(void* arg) {
     PipelineContext* args = (PipelineContext*)arg;
-    AppResources* resources = args->resources;
+    AppContext* app = args->app;
     AppConfig* config = args->config;
 
     // Give the SDR a moment to start up before we start checking
@@ -77,12 +77,12 @@ void* watchdog_thread_func(void* arg) {
         double current_time = get_monotonic_time_sec();
         bool timed_out = false;
 
-        pthread_mutex_lock(&resources->progress_mutex);
-        double last_heartbeat = resources->last_sdr_heartbeat_time;
+        pthread_mutex_lock(&app->stats.mutex);
+        double last_heartbeat = app->stats.last_sdr_heartbeat_time;
         if (last_heartbeat > 0 && (current_time - last_heartbeat) > (WATCHDOG_TIMEOUT_MS / 1000.0)) {
             timed_out = true;
         }
-        pthread_mutex_unlock(&resources->progress_mutex);
+        pthread_mutex_unlock(&app->stats.mutex);
 
         if (timed_out) {
             const char* input_device_name = config->input.type_name ? config->input.type_name : "SDR";

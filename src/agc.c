@@ -2,7 +2,7 @@
  * @file agc.c
  * @brief Implements the Output Automatic Gain Control module.
  *
- * This module provides functionality to initialize, apply, and release resources
+ * This module provides functionality to initialize, apply, and release app
  * for an automatic gain control (AGC) object. It supports three distinct profiles:
  * 1. DX: Slow RMS tracking for weak/fading analog signals (liquid-dsp).
  * 2. Local: Fast RMS tracking for strong analog signals (liquid-dsp).
@@ -21,17 +21,17 @@
 #include <string.h>
 #include <liquid.h>
 
-bool agc_create(AppConfig* config, AppResources* resources) {
+bool agc_create(AppConfig* config, AppContext* app) {
     if (!config->dsp.agc.enable) {
-        resources->output_agc_object = NULL;
+        app->dsp.agc.object = NULL;
         return true;
     }
 
     // Initialize Common State
-    resources->agc_is_locked = false;
-    resources->agc_current_gain = 1.0f;
-    resources->agc_samples_seen = 0;
-    resources->agc_last_strong_peak_time = get_monotonic_time_sec();
+    app->dsp.agc.is_locked = false;
+    app->dsp.agc.current_gain = 1.0f;
+    app->dsp.agc.samples_seen = 0;
+    app->dsp.agc.last_strong_peak_time = get_monotonic_time_sec();
 
     // ---------------------------------------------------------
     // STRATEGY 1: DX / LOCAL (RMS Tracking via liquid-dsp)
@@ -60,21 +60,20 @@ bool agc_create(AppConfig* config, AppResources* resources) {
         agc_crcf_set_signal_level(q, final_target);
         agc_crcf_set_gain(q, 1.0f); // Will be snapped on first apply
 
-        resources->output_agc_object = (void*)q;
+        app->dsp.agc.object = (void*)q;
         
         // Peak memory not used in this mode, but safe to init
-        resources->agc_peak_memory = 0.001f; 
+        app->dsp.agc.peak_memory = 0.001f; 
     }
     // ---------------------------------------------------------
     // STRATEGY 2: DIGITAL (Adaptive Tracking)
     // ---------------------------------------------------------
     else {
-        // No liquid object needed for Digital mode; state is managed in AppResources
-        resources->output_agc_object = NULL;
+        // No liquid object needed for Digital mode; state is managed in AppContext app->dsp.agc.object = NULL;
 
         // Initialize peak memory to a safe non-zero value to prevent divide-by-zero
         // before the first block is processed.
-        resources->agc_peak_memory = 0.05f; 
+        app->dsp.agc.peak_memory = 0.05f; 
     }
 
     const char* profile_name = "Unknown";
@@ -89,8 +88,8 @@ bool agc_create(AppConfig* config, AppResources* resources) {
     return true;
 }
 
-void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int num_samples) {
-    if (!resources->config->dsp.agc.enable || num_samples == 0) return;
+void agc_apply(DspContext* dsp, complex_float_t* samples, unsigned int num_samples) {
+    if (!dsp->config->dsp.agc.enable || num_samples == 0) return;
 
     // 1. Common Analysis: Find Peak AND Average Energy of the current block
     float block_peak = 0.0f;
@@ -109,11 +108,11 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
     // We also detect outliers (transients) here to avoid setting the gain too low.
     bool skip_safety_check = false;
 
-    if (resources->agc_samples_seen == 0 && block_peak > 1e-9f) {
+    if (dsp->agc.samples_seen == 0 && block_peak > 1e-9f) {
         
         float target = 0.5f; // Default safe fallback
 
-        switch (resources->config->dsp.agc.profile) {
+        switch (dsp->config->dsp.agc.profile) {
             case AGC_PROFILE_DIGITAL:
                 target = AGC_DIGITAL_PEAK_TARGET;
                 break;
@@ -126,8 +125,8 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
             default: break;
         }
 
-        if (resources->config->dsp.agc.target_level_arg > 0) {
-            target = resources->config->dsp.agc.target_level_arg;
+        if (dsp->config->dsp.agc.target_level_arg > 0) {
+            target = dsp->config->dsp.agc.target_level_arg;
         }
 
         // --- Outlier Rejection Logic (Two-Pass Robust Average) ---
@@ -164,12 +163,12 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
         float startup_gain = target / reference_level;
 
         // Apply the calculated gain
-        if (resources->config->dsp.agc.profile == AGC_PROFILE_DIGITAL) {
-            resources->agc_current_gain = startup_gain;
-            resources->agc_peak_memory = target; 
+        if (dsp->config->dsp.agc.profile == AGC_PROFILE_DIGITAL) {
+            dsp->agc.current_gain = startup_gain;
+            dsp->agc.peak_memory = target; 
         } else {
-            if (resources->output_agc_object) {
-                agc_crcf_set_gain((agc_crcf)resources->output_agc_object, startup_gain);
+            if (dsp->agc.object) {
+                agc_crcf_set_gain((agc_crcf)dsp->agc.object, startup_gain);
             }
         }
 
@@ -187,35 +186,35 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
     // 3. Runtime Logic (Profile Specific)
 
     // --- A. ANALOG PROFILES (DX / Local) ---
-    if (resources->config->dsp.agc.profile != AGC_PROFILE_DIGITAL) {
-        if (resources->output_agc_object) {
+    if (dsp->config->dsp.agc.profile != AGC_PROFILE_DIGITAL) {
+        if (dsp->agc.object) {
             agc_crcf_execute_block(
-                (agc_crcf)resources->output_agc_object,
+                (agc_crcf)dsp->agc.object,
                 (liquid_float_complex*)samples,
                 num_samples,
                 (liquid_float_complex*)samples
             );
         }
-        resources->agc_samples_seen += num_samples;
+        dsp->agc.samples_seen += num_samples;
         return;
     }
 
     // --- B. DIGITAL PROFILE (Adaptive Tracking) ---
     
-    float target_high = (resources->config->dsp.agc.target_level_arg > 0) 
-                         ? resources->config->dsp.agc.target_level 
+    float target_high = (dsp->config->dsp.agc.target_level_arg > 0) 
+                         ? dsp->config->dsp.agc.target_level 
                          : AGC_DIGITAL_PEAK_TARGET;
     float target_low = target_high * AGC_DIGITAL_STABILITY_WINDOW; 
     float noise_floor_threshold = target_high * AGC_DIGITAL_NOISE_THRESHOLD; 
 
-    float current_gain = resources->agc_current_gain;
+    float current_gain = dsp->agc.current_gain;
     float projected_peak = block_peak * current_gain;
 
     if (!skip_safety_check) {
         // --- TIME-BASED ADJUSTMENT CALCULATION ---
         // Calculate the duration of this block in seconds to ensure consistent
         // attack/decay rates regardless of sample rate or buffer size.
-        float sample_rate = (float)resources->config->output_rate.target_rate;
+        float sample_rate = (float)dsp->config->output_rate.target_rate;
         if (sample_rate < 1.0f) sample_rate = 48000.0f; // Sanity check
         float block_duration = (float)num_samples / sample_rate;
 
@@ -223,8 +222,8 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
         // RELAXED SAFETY: Allow peaks up to SAFETY_CLAMP (e.g. 3.0) before triggering a cut.
         if (projected_peak > AGC_DIGITAL_SAFETY_CLAMP) {
             float safe_gain = target_high / block_peak;
-            resources->agc_current_gain = safe_gain;
-            resources->agc_last_strong_peak_time = get_monotonic_time_sec();
+            dsp->agc.current_gain = safe_gain;
+            dsp->agc.last_strong_peak_time = get_monotonic_time_sec();
         }
         // --- CONDITION B: SLOW DECAY (Recovery) ---
         else if (projected_peak < target_low) {
@@ -239,44 +238,44 @@ void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int n
 
                 float step = 1.0f + ((error_ratio - 1.0f) * adjustment_speed); 
                 
-                resources->agc_current_gain *= step;
-                resources->agc_last_strong_peak_time = get_monotonic_time_sec();
+                dsp->agc.current_gain *= step;
+                dsp->agc.last_strong_peak_time = get_monotonic_time_sec();
             }
         }
         // --- CONDITION C: STABILITY WINDOW (Hold) ---
         else {
-            resources->agc_last_strong_peak_time = get_monotonic_time_sec();
+            dsp->agc.last_strong_peak_time = get_monotonic_time_sec();
         }
     }
 
     // 4. Apply Final Gain
-    float g = resources->agc_current_gain;
+    float g = dsp->agc.current_gain;
     for (unsigned int i = 0; i < num_samples; i++) {
         samples[i] *= g;
     }
 
-    resources->agc_samples_seen += num_samples;
+    dsp->agc.samples_seen += num_samples;
 }
 
-void agc_reset(AppResources* resources) {
+void agc_reset(DspContext* dsp) {
     // Reset DX/Local state
-    if (resources->output_agc_object) {
-        agc_crcf_reset((agc_crcf)resources->output_agc_object);
-        agc_crcf_set_gain((agc_crcf)resources->output_agc_object, 1.0f);
+    if (dsp->agc.object) {
+        agc_crcf_reset((agc_crcf)dsp->agc.object);
+        agc_crcf_set_gain((agc_crcf)dsp->agc.object, 1.0f);
     }
 
     // Reset Digital state
-    resources->agc_is_locked = false;
-    resources->agc_samples_seen = 0;
-    resources->agc_peak_memory = 0.05f; // Reset to safe startup floor
-    resources->agc_current_gain = 1.0f;
-    resources->agc_last_strong_peak_time = get_monotonic_time_sec();
+    dsp->agc.is_locked = false;
+    dsp->agc.samples_seen = 0;
+    dsp->agc.peak_memory = 0.05f; // Reset to safe startup floor
+    dsp->agc.current_gain = 1.0f;
+    dsp->agc.last_strong_peak_time = get_monotonic_time_sec();
 }
 
-void agc_destroy(AppResources* resources) {
-    if (resources->output_agc_object) {
-        agc_crcf_destroy((agc_crcf)resources->output_agc_object);
-        resources->output_agc_object = NULL;
+void agc_destroy(AppContext* app) {
+    if (app->dsp.agc.object) {
+        agc_crcf_destroy((agc_crcf)app->dsp.agc.object);
+        app->dsp.agc.object = NULL;
     }
 }
 

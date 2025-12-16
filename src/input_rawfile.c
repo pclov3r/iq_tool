@@ -105,22 +105,22 @@ static bool rawfile_validate_options(AppConfig* config) {
 
 static bool rawfile_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
-    AppResources *resources = ctx->resources;
+    AppContext* app = ctx->app;
 
-    RawfilePrivateData* private_data = (RawfilePrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(RawfilePrivateData), true);
+    RawfilePrivateData* private_data = (RawfilePrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RawfilePrivateData), true);
     if (!private_data) {
         return false;
     }
-    resources->input_module_private_data = private_data;
+    app->modules.input_private_data = private_data;
 
-    resources->input_format = utils_get_format_from_string(s_rawfile_config.format_str);
-    if (resources->input_format == FORMAT_UNKNOWN) {
+    app->modules.input_format = utils_get_format_from_string(s_rawfile_config.format_str);
+    if (app->modules.input_format == FORMAT_UNKNOWN) {
         log_fatal("Invalid RAW input format '%s'. See --help for valid formats.", s_rawfile_config.format_str);
         return false;
     }
 
-    resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
-    if (resources->input_bytes_per_sample_pair == 0) {
+    app->modules.input_bytes_per_sample_pair = get_bytes_per_sample(app->modules.input_format);
+    if (app->modules.input_bytes_per_sample_pair == 0) {
         log_fatal("Internal error: could not determine sample size for format '%s'.", s_rawfile_config.format_str);
         return false;
     }
@@ -130,7 +130,7 @@ static bool rawfile_initialize(ModuleContext* ctx) {
     sfinfo.samplerate = (int)s_rawfile_config.sample_rate_hz;
     sfinfo.channels = 2;
     int format_code = SF_FORMAT_RAW;
-    switch (resources->input_format) {
+    switch (app->modules.input_format) {
         case SC16Q11:
         case CS16: format_code |= SF_FORMAT_PCM_16; break;
         case CU16: format_code |= SF_FORMAT_PCM_16; break;
@@ -160,38 +160,38 @@ static bool rawfile_initialize(ModuleContext* ctx) {
     }
 
     sf_command(private_data->infile, SFC_GET_CURRENT_SF_INFO, &sfinfo, sizeof(sfinfo));
-    resources->source_info.samplerate = sfinfo.samplerate;
-    resources->source_info.frames = sfinfo.frames;
+    app->modules.source_info.samplerate = sfinfo.samplerate;
+    app->modules.source_info.frames = sfinfo.frames;
 
     return true;
 }
 
 static void* rawfile_start_stream(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
+    AppContext* app = ctx->app;
     const AppConfig *config = ctx->config;
-    RawfilePrivateData* private_data = (RawfilePrivateData*)resources->input_module_private_data;
+    RawfilePrivateData* private_data = (RawfilePrivateData*)app->modules.input_private_data;
 
-    if (config->dsp.raw_passthrough && resources->input_format != config->output.format) {
+    if (config->dsp.raw_passthrough && app->modules.input_format != config->output.format) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf),
                  "Option --raw-passthrough requires input and output formats to be identical. Input format is '%s', output format is '%s'.",
                  s_rawfile_config.format_str, config->output.format_name);
-        handle_fatal_thread_error(error_buf, resources);
+        handle_fatal_thread_error(error_buf, app);
         return NULL;
     }
 
-    bool pacing_required = resources->pacing_is_required;
+    bool pacing_required = app->modules.pacing_is_required;
 
     // Pre-calculate the back-pressure threshold in bytes for efficiency.
-    const size_t writer_buffer_capacity = pacing_required ? ring_buffer_get_capacity(resources->writer_input_buffer) : 0;
+    const size_t writer_buffer_capacity = pacing_required ? ring_buffer_get_capacity(app->pipeline.writer_input_buffer) : 0;
     const size_t writer_buffer_threshold = (size_t)(writer_buffer_capacity * IO_WRITER_BUFFER_HIGH_WATER_MARK);
 
-    while (!is_shutdown_requested() && !resources->error_occurred) {
-        if (pacing_required && (ring_buffer_get_size(resources->writer_input_buffer) > writer_buffer_threshold)) {
-            ring_buffer_wait_for_threshold(resources->writer_input_buffer, writer_buffer_threshold);
+    while (!is_shutdown_requested() && !app->stats.error_occurred) {
+        if (pacing_required && (ring_buffer_get_size(app->pipeline.writer_input_buffer) > writer_buffer_threshold)) {
+            ring_buffer_wait_for_threshold(app->pipeline.writer_input_buffer, writer_buffer_threshold);
         }
 
-        SampleChunk *current_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+        SampleChunk *current_item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
         if (!current_item) {
             break; // Shutdown or error signaled
         }
@@ -200,10 +200,10 @@ static void* rawfile_start_stream(ModuleContext* ctx) {
 
         // --- CHANGED: Use elastic chunk size ---
         // Request the optimal number of samples for the pipeline.
-        size_t samples_to_read = resources->pipeline_read_chunk_size;
+        size_t samples_to_read = app->pipeline.read_chunk_size;
         
         // Ensure we don't overflow the buffer (sanity check)
-        size_t capacity_samples = current_item->raw_input_capacity_bytes / resources->input_bytes_per_sample_pair;
+        size_t capacity_samples = current_item->raw_input_capacity_bytes / app->modules.input_bytes_per_sample_pair;
         if (samples_to_read > capacity_samples) {
             samples_to_read = capacity_samples;
         }
@@ -215,20 +215,20 @@ static void* rawfile_start_stream(ModuleContext* ctx) {
             target_buffer = current_item->raw_input_data;
         }
 
-        int64_t bytes_read = sf_read_raw(private_data->infile, target_buffer, samples_to_read * resources->input_bytes_per_sample_pair);
+        int64_t bytes_read = sf_read_raw(private_data->infile, target_buffer, samples_to_read * app->modules.input_bytes_per_sample_pair);
 
         if (bytes_read < 0) {
             log_fatal("libsndfile read error: %s", sf_strerror(private_data->infile));
-            pthread_mutex_lock(&resources->progress_mutex);
-            resources->error_occurred = true;
-            pthread_mutex_unlock(&resources->progress_mutex);
+            pthread_mutex_lock(&app->stats.mutex);
+            app->stats.error_occurred = true;
+            pthread_mutex_unlock(&app->stats.mutex);
             request_shutdown();
-            queue_enqueue(resources->free_sample_chunk_queue, current_item);
+            queue_enqueue(app->pipeline.free_sample_chunk_queue, current_item);
             break;
         }
 
-        current_item->frames_read = bytes_read / resources->input_bytes_per_sample_pair;
-        current_item->packet_sample_format = resources->input_format;
+        current_item->frames_read = bytes_read / app->modules.input_bytes_per_sample_pair;
+        current_item->packet_sample_format = app->modules.input_format;
         current_item->frames_to_write = (unsigned int)current_item->frames_read;
 
         // If we read fewer bytes than requested (and it wasn't 0), it's the last chunk.
@@ -242,13 +242,13 @@ static void* rawfile_start_stream(ModuleContext* ctx) {
 
 
         if (current_item->frames_read > 0) {
-            pthread_mutex_lock(&resources->progress_mutex);
-            resources->total_frames_read += current_item->frames_read;
-            pthread_mutex_unlock(&resources->progress_mutex);
+            pthread_mutex_lock(&app->stats.mutex);
+            app->stats.total_frames_read += current_item->frames_read;
+            pthread_mutex_unlock(&app->stats.mutex);
         }
 
-        if (!queue_enqueue(resources->reader_output_queue, current_item)) {
-            queue_enqueue(resources->free_sample_chunk_queue, current_item);
+        if (!queue_enqueue(app->pipeline.reader_output_queue, current_item)) {
+            queue_enqueue(app->pipeline.free_sample_chunk_queue, current_item);
             break;
         }
 
@@ -265,21 +265,21 @@ static void rawfile_stop_stream(ModuleContext* ctx) {
 }
 
 static void rawfile_cleanup(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    if (resources->input_module_private_data) {
-        RawfilePrivateData* private_data = (RawfilePrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    if (app->modules.input_private_data) {
+        RawfilePrivateData* private_data = (RawfilePrivateData*)app->modules.input_private_data;
         if (private_data->infile) {
             log_info("Closing RAW input file.");
             sf_close(private_data->infile);
             private_data->infile = NULL;
         }
-        resources->input_module_private_data = NULL;
+        app->modules.input_private_data = NULL;
     }
 }
 
 static void rawfile_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
-    const AppResources *resources = ctx->resources;
+    const AppContext* app = ctx->app;
     const char* display_path = config->input.path_arg;
 #ifdef _WIN32
     if (config->input.effective_path_utf8[0] != '\0') {
@@ -293,13 +293,13 @@ static void rawfile_get_summary_info(const ModuleContext* ctx, InputSummaryInfo*
     add_summary_item(info, "Input Rate", "%.0f Hz", s_rawfile_config.sample_rate_hz);
 
     char size_buf[40];
-    long long file_size_bytes = resources->source_info.frames * resources->input_bytes_per_sample_pair;
+    long long file_size_bytes = app->modules.source_info.frames * app->modules.input_bytes_per_sample_pair;
     add_summary_item(info, "Input File Size", "%s", format_file_size(file_size_bytes, size_buf, sizeof(size_buf)));
 }
 
 static bool rawfile_pre_stream_iq_correction(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
-    RawfilePrivateData* private_data = (RawfilePrivateData*)ctx->resources->input_module_private_data;
+    RawfilePrivateData* private_data = (RawfilePrivateData*)ctx->app->modules.input_private_data;
 
     // This routine is only necessary if I/Q correction is enabled.
     if (!config->dsp.iq_correction.enable) {

@@ -27,14 +27,14 @@
  * This function designs the complete user-specified filter chain. All temporary
  * memory required during the filter design process (e.g., for individual stage
  * taps) is allocated from the provided memory arena. The final, combined filter
- * object is stored in the AppResources struct.
+ * object is stored in the AppContext struct.
  *
  * @param config The application configuration struct containing filter requests.
- * @param resources The application resources struct where the final filter object will be stored.
+ * @param app The application app struct where the final filter object will be stored.
  * @param arena The memory arena to use for all temporary allocations during design.
  * @return true on success, false on failure.
  */
-bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* arena);
+bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena);
 
 /**
  * @brief Resets the internal state of the user-defined filter object.
@@ -43,16 +43,16 @@ bool filter_create(AppConfig* config, AppResources* resources, MemoryArena* aren
  * to clear any old data from the filter's internal buffers. This prevents
  * stale samples from corrupting the new, incoming signal.
  *
- * @param resources The application resources struct containing the filter object to reset.
+ * @param app The application app struct containing the filter object to reset.
  */
-void filter_reset(AppResources* resources);
+void filter_reset(DspContext* dsp);
 
 /**
  * @brief Destroys the user-defined filter object and frees associated memory.
  *
- * @param resources The application resources struct containing the filter object to destroy.
+ * @param app The application app struct containing the filter object to destroy.
  */
-void filter_destroy(AppResources* resources);
+void filter_destroy(AppContext* app);
 
 /**
  * @brief Applies the configured filter to a chunk of samples.
@@ -62,12 +62,12 @@ void filter_destroy(AppResources* resources);
  * and state (remainders) internally. The operation may be in-place or
  * out-of-place depending on the filter type.
  *
- * @param resources The application resources, containing filter objects and state.
+ * @param app The application app, containing filter objects and state.
  * @param item The SampleChunk containing the data to be processed.
  * @param is_post_resample A flag indicating if this is being called from the post-processor.
  * @return The number of valid output frames produced by the filter.
  */
-unsigned int filter_apply(AppResources* resources, SampleChunk* item, bool is_post_resample);
+unsigned int filter_apply(DspContext* dsp, SampleChunk* item, bool is_post_resample);
 
 /**
  * @brief Populates the CLI options specific to the Filter module.

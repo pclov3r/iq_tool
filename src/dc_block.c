@@ -13,9 +13,9 @@
 #endif
 
 
-bool dc_block_create(AppConfig* config, AppResources* resources) {
+bool dc_block_create(AppConfig* config, AppContext* app) {
     if (!config->dsp.dc_block.enable) {
-        resources->dc_block.dc_block_filter = NULL; // Ensure no filter if disabled
+        app->dsp.dc_block.dc_block_filter = NULL; // Ensure no filter if disabled
         return true;
     }
 
@@ -25,7 +25,7 @@ bool dc_block_create(AppConfig* config, AppResources* resources) {
     // where alpha = 2 * pi * fc / Fs.
     // The documentation for iirfilt_crcf_create_dc_blocker states it creates a first-order
     // DC-blocking filter with transfer function H(z) = (1 - z^-1) / (1 - (1-alpha)z^-1).
-    float normalized_alpha = (float)(2.0 * M_PI * DC_BLOCK_CUTOFF_HZ / resources->source_info.samplerate);
+    float normalized_alpha = (float)(2.0 * M_PI * DC_BLOCK_CUTOFF_HZ / app->modules.source_info.samplerate);
 
     // Ensure alpha is within a reasonable range (e.g., small positive value)
     // A very small alpha means a very narrow notch at DC, a larger alpha means wider.
@@ -47,9 +47,9 @@ bool dc_block_create(AppConfig* config, AppResources* resources) {
     // If a higher-order DC block were needed, a more general filter design
     // function (e.g., iirfilt_crcf_create_prototype with LIQUID_IIRDES_HIGHPASS)
     // would be required. For typical DC removal, 1st order is often sufficient.
-    resources->dc_block.dc_block_filter = iirfilt_crcf_create_dc_blocker(normalized_alpha);
+    app->dsp.dc_block.dc_block_filter = iirfilt_crcf_create_dc_blocker(normalized_alpha);
 
-    if (!resources->dc_block.dc_block_filter) {
+    if (!app->dsp.dc_block.dc_block_filter) {
         log_fatal("Failed to create liquid-dsp DC block filter.");
         return false;
     }
@@ -61,29 +61,29 @@ bool dc_block_create(AppConfig* config, AppResources* resources) {
     return true;
 }
 
-void dc_block_reset(AppResources* resources) {
-    if (!resources->config->dsp.dc_block.enable || !resources->dc_block.dc_block_filter) {
+void dc_block_reset(DspContext* dsp) {
+    if (!dsp->config->dsp.dc_block.enable || !dsp->dc_block.dc_block_filter) {
         return; // DC block is disabled or not initialized
     }
     log_debug("DC block filter reset due to stream discontinuity.");
-    iirfilt_crcf_reset((iirfilt_crcf)resources->dc_block.dc_block_filter);
+    iirfilt_crcf_reset((iirfilt_crcf)dsp->dc_block.dc_block_filter);
 }
 
-void dc_block_apply(AppResources* resources, complex_float_t* samples, int num_samples) {
-    if (!resources->config->dsp.dc_block.enable || !resources->dc_block.dc_block_filter) {
+void dc_block_apply(DspContext* dsp, complex_float_t* samples, int num_samples) {
+    if (!dsp->config->dsp.dc_block.enable || !dsp->dc_block.dc_block_filter) {
         return; // DC block is disabled or not initialized
     }
 
     // Apply the filter in-place
-    iirfilt_crcf_execute_block((iirfilt_crcf)resources->dc_block.dc_block_filter,
+    iirfilt_crcf_execute_block((iirfilt_crcf)dsp->dc_block.dc_block_filter,
                                (liquid_float_complex*)samples,
                                num_samples,
                                (liquid_float_complex*)samples);
 }
 
-void dc_block_destroy(AppResources* resources) {
-    if (resources->dc_block.dc_block_filter) {
-        iirfilt_crcf_destroy((iirfilt_crcf)resources->dc_block.dc_block_filter);
-        resources->dc_block.dc_block_filter = NULL;
+void dc_block_destroy(AppContext* app) {
+    if (app->dsp.dc_block.dc_block_filter) {
+        iirfilt_crcf_destroy((iirfilt_crcf)app->dsp.dc_block.dc_block_filter);
+        app->dsp.dc_block.dc_block_filter = NULL;
     }
 }

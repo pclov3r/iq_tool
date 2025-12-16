@@ -171,12 +171,12 @@ static bool rtlsdr_validate_options(AppConfig* config) {
 }
 
 static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ctx) {
-    AppResources *resources = (AppResources*)cb_ctx;
+    AppContext* app = (AppContext*)cb_ctx;
 
     // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(resources);
+    sdr_input_update_heartbeat(app);
 
-    if (is_shutdown_requested() || resources->error_occurred) {
+    if (is_shutdown_requested() || app->stats.error_occurred) {
         return;
     }
 
@@ -186,7 +186,7 @@ static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ct
     uint32_t num_samples = len / 2;
 
     if (!sdr_packet_serializer_write_block(
-            resources->sdr_input_buffer,
+            app->pipeline.sdr_input_buffer,
             num_samples,
             buf,
             CU8))
@@ -197,7 +197,7 @@ static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ct
 
 static bool rtlsdr_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
-    AppResources *resources = ctx->resources;
+    AppContext* app = ctx->app;
     int result;
     uint32_t device_count;
     uint32_t device_index = s_rtlsdr_config.device_index;
@@ -205,19 +205,19 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
 
     log_info("Attempting to initialize RTL-SDR device...");
 
-    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(RtlSdrPrivateData), true);
+    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RtlSdrPrivateData), true);
     if (!private_data) {
         return false;
     }
 
     // Allocate persistent buffer for realtime passthrough (16KB)
-    private_data->passthrough_buffer = (unsigned char*)mem_arena_alloc(&resources->setup_arena, RTLSDR_PASSTHROUGH_BUFFER_SIZE, false);
+    private_data->passthrough_buffer = (unsigned char*)mem_arena_alloc(&app->pipeline.setup_arena, RTLSDR_PASSTHROUGH_BUFFER_SIZE, false);
     if (!private_data->passthrough_buffer) {
         return false;
     }
 
     private_data->dev = NULL; // Initialize resource state
-    resources->input_module_private_data = private_data;
+    app->modules.input_private_data = private_data;
 
     device_count = rtlsdr_get_device_count();
     if (device_count == 0) {
@@ -256,7 +256,7 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
     }
     uint32_t actual_rate = rtlsdr_get_sample_rate(private_data->dev);
     log_info("RTL-SDR: Requested sample rate %.0f Hz, actual rate set to %u Hz.", config->sdr_general.sample_rate_hz, actual_rate);
-    resources->source_info.samplerate = actual_rate;
+    app->modules.source_info.samplerate = actual_rate;
 
     result = rtlsdr_set_center_freq(private_data->dev, (uint32_t)config->sdr_general.rf_freq_hz);
     if (result < 0) {
@@ -271,7 +271,7 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
         int nearest = rtlsdr_find_nearest_gain(
             private_data->dev,
             requested,
-            &resources->setup_arena
+            &app->pipeline.setup_arena
         );
 
         result = rtlsdr_set_tuner_gain(private_data->dev, nearest);
@@ -312,11 +312,11 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
         log_warn("Failed to reset RTL-SDR buffer.");
     }
 
-    resources->input_format = CU8;
-    resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
-    resources->source_info.frames = -1;
+    app->modules.input_format = CU8;
+    app->modules.input_bytes_per_sample_pair = get_bytes_per_sample(app->modules.input_format);
+    app->modules.source_info.frames = -1;
 
-    if (config->dsp.raw_passthrough && resources->input_format != config->output.format) {
+    if (config->dsp.raw_passthrough && app->modules.input_format != config->output.format) {
         log_fatal("Option --raw-passthrough requires input and output formats to be identical. RTL-SDR input is 'cu8', but output was set to '%s'.", config->output.format_name);
         goto cleanup;
     }
@@ -325,7 +325,7 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
     // This ensures we use the Async callback (rtlsdr_read_async) and the large RingBuffer.
     // This decouples the USB read timing from the output pipe backpressure, preventing
     // sample drops when piping to downstream tools.
-    resources->pipeline_mode = PIPELINE_MODE_BUFFERED_SDR;
+    app->pipeline_mode = PIPELINE_MODE_BUFFERED_SDR;
 
     success = true; // All steps succeeded
 
@@ -337,20 +337,20 @@ cleanup:
 }
 
 static void* rtlsdr_start_stream(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)app->modules.input_private_data;
     int result;
 
-    switch (resources->pipeline_mode) {
+    switch (app->pipeline_mode) {
         case PIPELINE_MODE_BUFFERED_SDR:
             log_info("Starting RTL-SDR stream");
             // NOTE: rtlsdr_read_async BLOCKS until the stream stops or is cancelled.
-            result = rtlsdr_read_async(private_data->dev, rtlsdr_stream_callback, resources, 0, 0);
+            result = rtlsdr_read_async(private_data->dev, rtlsdr_stream_callback, app, 0, 0);
 
             if (result < 0) {
                 char error_buf[256];
                 snprintf(error_buf, sizeof(error_buf), "rtlsdr_read_async() failed: %s", strerror(-result));
-                handle_fatal_thread_error(error_buf, resources);
+                handle_fatal_thread_error(error_buf, app);
                 return NULL;
             }
             break;
@@ -358,7 +358,7 @@ static void* rtlsdr_start_stream(ModuleContext* ctx) {
         case PIPELINE_MODE_REALTIME_SDR:
             // This path is now explicitly disabled for RTL-SDR to prevent data loss issues
             // when piping output. The initialize function forces BUFFERED_SDR mode.
-            handle_fatal_thread_error("Internal configuration error: RTL-SDR attempted to start in synchronous mode which is disabled for this module.", resources);
+            handle_fatal_thread_error("Internal configuration error: RTL-SDR attempted to start in synchronous mode which is disabled for this module.", app);
             return NULL;
 
         case PIPELINE_MODE_FILE_PROCESSING:
@@ -369,8 +369,8 @@ static void* rtlsdr_start_stream(ModuleContext* ctx) {
 }
 
 static void rtlsdr_stop_stream(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)app->modules.input_private_data;
     if (private_data && private_data->dev) {
         log_info("Stopping RTL-SDR stream...");
         rtlsdr_cancel_async(private_data->dev);
@@ -378,9 +378,9 @@ static void rtlsdr_stop_stream(ModuleContext* ctx) {
 }
 
 static void rtlsdr_cleanup(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    if (resources->input_module_private_data) {
-        RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    if (app->modules.input_private_data) {
+        RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)app->modules.input_private_data;
         if (private_data->dev) {
             log_info("Closing RTL-SDR device...");
             // Reset buffer to clear USB stalls before closing; prevents I2C errors
@@ -388,14 +388,14 @@ static void rtlsdr_cleanup(ModuleContext* ctx) {
             rtlsdr_close(private_data->dev);
             private_data->dev = NULL;
         }
-        resources->input_module_private_data = NULL;
+        app->modules.input_private_data = NULL;
     }
 }
 
 static void rtlsdr_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
-    AppResources *resources = ctx->resources;
-    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)app->modules.input_private_data;
 
     char source_name_buf[775];
     snprintf(source_name_buf, sizeof(source_name_buf), "%s %s (S/N: %s)",
@@ -405,7 +405,7 @@ static void rtlsdr_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* 
 
     add_summary_item(info, "Input Source", "%s", source_name_buf);
     add_summary_item(info, "Input Format", "8-bit Unsigned Complex (cu8)");
-    add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
+    add_summary_item(info, "Input Rate", "%d Hz", app->modules.source_info.samplerate);
     add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
     if (s_rtlsdr_config.gain_provided) {
         add_summary_item(info, "Gain", "%.1f dB (Manual)", (float)s_rtlsdr_config.gain / 10.0f);

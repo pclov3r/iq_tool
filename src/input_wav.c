@@ -471,8 +471,8 @@ InputModuleInterface* get_wav_input_module_api(void) {
 
 static void wav_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
-    const AppResources *resources = ctx->resources;
-    WavPrivateData* private_data = (WavPrivateData*)resources->input_module_private_data;
+    const AppContext* app = ctx->app;
+    WavPrivateData* private_data = (WavPrivateData*)app->modules.input_private_data;
 
     const char* display_path = config->input.path_arg;
 #ifdef _WIN32
@@ -484,13 +484,13 @@ static void wav_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* inf
     add_summary_item(info, "Input File", "%s", display_path);
 
     const char *format_str;
-    switch (resources->input_format) {
+    switch (app->modules.input_format) {
         case CS16: format_str = "16-bit Signed Complex PCM (cs16)"; break;
         case CU8:  format_str = "8-bit Unsigned Complex PCM (cu8)"; break;
         default:   format_str = "Unknown PCM"; break;
     }
     add_summary_item(info, "Input Format", "%s", format_str);
-    add_summary_item(info, "Input Rate", "%.0f Hz", (double)resources->source_info.samplerate);
+    add_summary_item(info, "Input Rate", "%.0f Hz", (double)app->modules.source_info.samplerate);
 
     long long input_file_size = -1LL;
 #ifdef _WIN32
@@ -541,13 +541,13 @@ static void wav_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* inf
 
 static bool wav_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
-    AppResources *resources = ctx->resources;
+    AppContext* app = ctx->app;
 
-    WavPrivateData* private_data = (WavPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(WavPrivateData), true);
+    WavPrivateData* private_data = (WavPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(WavPrivateData), true);
     if (!private_data) {
         return false;
     }
-    resources->input_module_private_data = private_data;
+    app->modules.input_private_data = private_data;
 
 #ifdef _WIN32
     log_info("Opening WAV input file: %s", config->input.effective_path_utf8);
@@ -575,8 +575,8 @@ static bool wav_initialize(ModuleContext* ctx) {
 
     int sf_subtype = (sfinfo.format & SF_FORMAT_SUBMASK);
     switch (sf_subtype) {
-        case SF_FORMAT_PCM_16: resources->input_format = CS16; break;
-        case SF_FORMAT_PCM_U8: resources->input_format = CU8; break;
+        case SF_FORMAT_PCM_16: app->modules.input_format = CS16; break;
+        case SF_FORMAT_PCM_U8: app->modules.input_format = CU8; break;
         default:
             log_fatal("Error: Input WAV file uses an unsupported PCM subtype (0x%04X). "
                       "Supported WAV PCM subtypes are 16-bit Signed (cs16) and 8-bit Unsigned (cu8).", sf_subtype);
@@ -585,7 +585,7 @@ static bool wav_initialize(ModuleContext* ctx) {
             return false;
     }
 
-    resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
+    app->modules.input_bytes_per_sample_pair = get_bytes_per_sample(app->modules.input_format);
 
     if (sfinfo.samplerate <= 0) {
         log_fatal("Error: Invalid input sample rate (%d Hz).", sfinfo.samplerate);
@@ -598,14 +598,14 @@ static bool wav_initialize(ModuleContext* ctx) {
         log_warn("Warning: Input file appears to be empty (0 frames).");
     }
 
-    resources->source_info.samplerate = sfinfo.samplerate;
-    resources->source_info.frames = sfinfo.frames;
+    app->modules.source_info.samplerate = sfinfo.samplerate;
+    app->modules.source_info.frames = sfinfo.frames;
 
     init_sdr_metadata(&private_data->sdr_info);
-    private_data->sdr_info_present = parse_sdr_metadata_chunks(private_data->infile, &sfinfo, &private_data->sdr_info, &resources->setup_arena);
+    private_data->sdr_info_present = parse_sdr_metadata_chunks(private_data->infile, &sfinfo, &private_data->sdr_info, &app->pipeline.setup_arena);
 
     char basename_buffer[MAX_PATH_BUFFER];
-    const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer), &resources->setup_arena);
+    const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer), &app->pipeline.setup_arena);
     if (base_filename) {
         bool filename_parsed = parse_sdr_metadata_from_filename(base_filename, &private_data->sdr_info);
         private_data->sdr_info_present = private_data->sdr_info_present || filename_parsed;
@@ -625,30 +625,30 @@ static bool wav_initialize(ModuleContext* ctx) {
         }
 
         double target_freq = (double)s_wav_config.center_target_hz_arg;
-        resources->nco_shift_hz = private_data->sdr_info.center_freq_hz - target_freq;
+        app->dsp.nco_shift_hz = private_data->sdr_info.center_freq_hz - target_freq;
     }
 
     return true;
 }
 
 static void* wav_start_stream(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    WavPrivateData* private_data = (WavPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    WavPrivateData* private_data = (WavPrivateData*)app->modules.input_private_data;
     const AppConfig *config = ctx->config;
 
     // This is now a clean, high-level check.
-    bool pacing_required = resources->pacing_is_required;
+    bool pacing_required = app->modules.pacing_is_required;
 
     // Pre-calculate the back-pressure threshold in bytes for efficiency.
-    const size_t writer_buffer_capacity = pacing_required ? ring_buffer_get_capacity(resources->writer_input_buffer) : 0;
+    const size_t writer_buffer_capacity = pacing_required ? ring_buffer_get_capacity(app->pipeline.writer_input_buffer) : 0;
     const size_t writer_buffer_threshold = (size_t)(writer_buffer_capacity * IO_WRITER_BUFFER_HIGH_WATER_MARK);
 
-    while (!is_shutdown_requested() && !resources->error_occurred) {
-        if (pacing_required && (ring_buffer_get_size(resources->writer_input_buffer) > writer_buffer_threshold)) {
-            ring_buffer_wait_for_threshold(resources->writer_input_buffer, writer_buffer_threshold);
+    while (!is_shutdown_requested() && !app->stats.error_occurred) {
+        if (pacing_required && (ring_buffer_get_size(app->pipeline.writer_input_buffer) > writer_buffer_threshold)) {
+            ring_buffer_wait_for_threshold(app->pipeline.writer_input_buffer, writer_buffer_threshold);
         }
 
-        SampleChunk *current_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+        SampleChunk *current_item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
         if (!current_item) {
             break; // Shutdown or error signaled
         }
@@ -657,10 +657,10 @@ static void* wav_start_stream(ModuleContext* ctx) {
 
         // --- CHANGED: Use elastic chunk size ---
         // Request the optimal number of samples for the pipeline, not the max buffer capacity.
-        size_t samples_to_read = resources->pipeline_read_chunk_size;
+        size_t samples_to_read = app->pipeline.read_chunk_size;
         
         // Ensure we don't overflow the buffer (sanity check)
-        size_t capacity_samples = current_item->raw_input_capacity_bytes / resources->input_bytes_per_sample_pair;
+        size_t capacity_samples = current_item->raw_input_capacity_bytes / app->modules.input_bytes_per_sample_pair;
         if (samples_to_read > capacity_samples) {
             samples_to_read = capacity_samples;
         }
@@ -672,20 +672,20 @@ static void* wav_start_stream(ModuleContext* ctx) {
             target_buffer = current_item->raw_input_data;
         }
 
-        int64_t bytes_read = sf_read_raw(private_data->infile, target_buffer, samples_to_read * resources->input_bytes_per_sample_pair);
+        int64_t bytes_read = sf_read_raw(private_data->infile, target_buffer, samples_to_read * app->modules.input_bytes_per_sample_pair);
 
         if (bytes_read < 0) {
             log_fatal("libsndfile read error: %s", sf_strerror(private_data->infile));
-            pthread_mutex_lock(&resources->progress_mutex);
-            resources->error_occurred = true;
-            pthread_mutex_unlock(&resources->progress_mutex);
+            pthread_mutex_lock(&app->stats.mutex);
+            app->stats.error_occurred = true;
+            pthread_mutex_unlock(&app->stats.mutex);
             request_shutdown();
-            queue_enqueue(resources->free_sample_chunk_queue, current_item);
+            queue_enqueue(app->pipeline.free_sample_chunk_queue, current_item);
             break;
         }
 
-        current_item->frames_read = bytes_read / resources->input_bytes_per_sample_pair;
-        current_item->packet_sample_format = resources->input_format;
+        current_item->frames_read = bytes_read / app->modules.input_bytes_per_sample_pair;
+        current_item->packet_sample_format = app->modules.input_format;
         current_item->frames_to_write = (unsigned int)current_item->frames_read;
 
         // If we read fewer bytes than requested (and it wasn't 0), it's the last chunk.
@@ -697,13 +697,13 @@ static void* wav_start_stream(ModuleContext* ctx) {
         }
 
         if (current_item->frames_read > 0) {
-            pthread_mutex_lock(&resources->progress_mutex);
-            resources->total_frames_read += current_item->frames_read;
-            pthread_mutex_unlock(&resources->progress_mutex);
+            pthread_mutex_lock(&app->stats.mutex);
+            app->stats.total_frames_read += current_item->frames_read;
+            pthread_mutex_unlock(&app->stats.mutex);
         }
 
-        if (!queue_enqueue(resources->reader_output_queue, current_item)) {
-            queue_enqueue(resources->free_sample_chunk_queue, current_item);
+        if (!queue_enqueue(app->pipeline.reader_output_queue, current_item)) {
+            queue_enqueue(app->pipeline.free_sample_chunk_queue, current_item);
             break;
         }
 
@@ -722,21 +722,21 @@ static void wav_stop_stream(ModuleContext* ctx) {
 }
 
 static void wav_cleanup(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    if (resources->input_module_private_data) {
-        WavPrivateData* private_data = (WavPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    if (app->modules.input_private_data) {
+        WavPrivateData* private_data = (WavPrivateData*)app->modules.input_private_data;
         if (private_data->infile) {
             log_info("Closing WAV input file.");
             sf_close(private_data->infile);
             private_data->infile = NULL;
         }
-        resources->input_module_private_data = NULL;
+        app->modules.input_private_data = NULL;
     }
 }
 
 static bool wav_pre_stream_iq_correction(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
-    WavPrivateData* private_data = (WavPrivateData*)ctx->resources->input_module_private_data;
+    WavPrivateData* private_data = (WavPrivateData*)ctx->app->modules.input_private_data;
 
     // This routine is only necessary if I/Q correction is enabled.
     if (!config->dsp.iq_correction.enable) {

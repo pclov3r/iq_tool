@@ -398,23 +398,23 @@ static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz) {
 
 static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext) {
     (void)params;
-    AppResources *resources = (AppResources*)cbContext;
-    const AppConfig *config = resources->config;
+    AppContext* app = (AppContext*)cbContext;
+    const AppConfig *config = app->config;
 
     // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(resources);
+    sdr_input_update_heartbeat(app);
 
-    if (is_shutdown_requested() || resources->error_occurred) return;
+    if (is_shutdown_requested() || app->stats.error_occurred) return;
 
     if (reset) {
         log_info("SDRplay stream reset detected. Sending reset command to pipeline.");
-        SampleChunk* reset_item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+        SampleChunk* reset_item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
         if (reset_item) {
             reset_item->stream_discontinuity_event = true;
             reset_item->is_last_chunk = false;
             reset_item->frames_read = 0;
-            if (!queue_enqueue(resources->reader_output_queue, reset_item)) {
-                queue_enqueue(resources->free_sample_chunk_queue, reset_item);
+            if (!queue_enqueue(app->pipeline.reader_output_queue, reset_item)) {
+                queue_enqueue(app->pipeline.free_sample_chunk_queue, reset_item);
             }
         }
     }
@@ -422,7 +422,7 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
     if (numSamples == 0) return;
 
     if (config->dsp.raw_passthrough) {
-        SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
+        SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->modules.input_private_data;
         int16_t* interleaved_data = private_data->interleave_buffer;
 
         unsigned int samples_processed = 0;
@@ -440,9 +440,9 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
                 samples_this_chunk
             );
 
-            size_t bytes_to_write = samples_this_chunk * resources->input_bytes_per_sample_pair;
-            ModuleContext ctx = { .config = config, .resources = resources };
-                        size_t written = resources->selected_output_module_api->write_chunk(&ctx, interleaved_data, bytes_to_write);
+            size_t bytes_to_write = samples_this_chunk * app->modules.input_bytes_per_sample_pair;
+            ModuleContext ctx = { .config = config, .app = app };
+                        size_t written = app->modules.output_api->write_chunk(&ctx, interleaved_data, bytes_to_write);
             if (written < bytes_to_write) {
                 log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
                 request_shutdown();
@@ -451,7 +451,7 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
             samples_processed += samples_this_chunk;
         }
     } else {
-        SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+        SampleChunk *item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
         if (!item) {
             log_warn("Real-time pipeline stalled. Dropping %u samples.", numSamples);
             return;
@@ -473,34 +473,34 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
 
         item->frames_read = samples_to_copy;
         item->is_last_chunk = false;
-	    item->packet_sample_format = resources->input_format;
+	    item->packet_sample_format = app->modules.input_format;
 
         if (samples_to_copy > 0) {
-            pthread_mutex_lock(&resources->progress_mutex);
-            resources->total_frames_read += samples_to_copy;
-            pthread_mutex_unlock(&resources->progress_mutex);
+            pthread_mutex_lock(&app->stats.mutex);
+            app->stats.total_frames_read += samples_to_copy;
+            pthread_mutex_unlock(&app->stats.mutex);
         }
-        if (!queue_enqueue(resources->reader_output_queue, item)) {
-            queue_enqueue(resources->free_sample_chunk_queue, item);
+        if (!queue_enqueue(app->pipeline.reader_output_queue, item)) {
+            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
         }
     }
 }
 
 static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext) {
     (void)params;
-    AppResources *resources = (AppResources*)cbContext;
-    SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
+    AppContext* app = (AppContext*)cbContext;
+    SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->modules.input_private_data;
 
     // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(resources);
+    sdr_input_update_heartbeat(app);
 
-    if (is_shutdown_requested() || resources->error_occurred) {
+    if (is_shutdown_requested() || app->stats.error_occurred) {
         return;
     }
 
     if (reset) {
         log_info("SDRplay stream reset detected (buffered mode), sending event.");
-        sdr_packet_serializer_write_reset_event(resources->sdr_input_buffer);
+        sdr_packet_serializer_write_reset_event(app->pipeline.sdr_input_buffer);
     }
 
     if (numSamples > 0) {
@@ -516,7 +516,7 @@ static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_S
 
         // 3. Write single Interleaved block to RingBuffer
         if (!sdr_packet_serializer_write_block(
-                resources->sdr_input_buffer,
+                app->pipeline.sdr_input_buffer,
                 numSamples,
                 interleaved_data,
                 CS16))
@@ -527,19 +527,19 @@ static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_S
 }
 
 static void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext) {
-    AppResources *resources = (AppResources*)cbContext;
-    SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
+    AppContext* app = (AppContext*)cbContext;
+    SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->modules.input_private_data;
 
-    if (is_shutdown_requested() || resources->error_occurred) {
+    if (is_shutdown_requested() || app->stats.error_occurred) {
         return;
     }
 
     switch (eventId) {
         case sdrplay_api_DeviceRemoved:
-            handle_fatal_thread_error("SDRplay device has been removed.", resources);
+            handle_fatal_thread_error("SDRplay device has been removed.", app);
             break;
         case sdrplay_api_DeviceFailure:
-            handle_fatal_thread_error("A generic SDRplay device failure has occurred.", resources);
+            handle_fatal_thread_error("A generic SDRplay device failure has occurred.", app);
             break;
         case sdrplay_api_PowerOverloadChange: {
             sdrplay_api_PowerOverloadCbEventIdT overload_state = params->powerOverloadParams.powerOverloadChangeType;
@@ -574,8 +574,8 @@ static void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_Tuner
 
 static void sdrplay_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
-    AppResources *resources = ctx->resources;
-    SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->modules.input_private_data;
     if (!private_data || !private_data->sdr_device) return;
 
     char source_name_buf[128];
@@ -583,7 +583,7 @@ static void sdrplay_get_summary_info(const ModuleContext* ctx, InputSummaryInfo*
              get_sdrplay_device_name(private_data->sdr_device->hwVer), private_data->sdr_device->SerNo);
     add_summary_item(info, "Input Source", "%s", source_name_buf);
     add_summary_item(info, "Input Format", "16-bit Signed Complex (cs16)");
-    add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
+    add_summary_item(info, "Input Rate", "%d Hz", app->modules.source_info.samplerate);
 
     add_summary_item(info, "Bandwidth", "%.0f Hz", s_sdrplay_config.bandwidth_hz);
     add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
@@ -623,22 +623,22 @@ static void sdrplay_get_summary_info(const ModuleContext* ctx, InputSummaryInfo*
 
 static bool sdrplay_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
-    AppResources *resources = ctx->resources;
+    AppContext* app = ctx->app;
     sdrplay_api_ErrT err;
     bool success = false;
 
-    SdrplayPrivateData* private_data = (SdrplayPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(SdrplayPrivateData), true);
+    SdrplayPrivateData* private_data = (SdrplayPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(SdrplayPrivateData), true);
     if (!private_data) return false;
 
     // Allocate persistent scratch buffer for interleaving (64KB)
     size_t conversion_buf_size = MAX_SDRPLAY_CONVERSION_SAMPLES * 2 * sizeof(int16_t);
-    private_data->interleave_buffer = (int16_t*)mem_arena_alloc(&resources->setup_arena, conversion_buf_size, false);
+    private_data->interleave_buffer = (int16_t*)mem_arena_alloc(&app->pipeline.setup_arena, conversion_buf_size, false);
     if (!private_data->interleave_buffer) return false;
 
     private_data->sdr_device = NULL;
     private_data->sdr_api_is_open = false;
     private_data->is_streaming = false;
-    resources->input_module_private_data = private_data;
+    app->modules.input_private_data = private_data;
 
 #if defined(_WIN32)
     if (!sdrplay_load_api()) goto cleanup;
@@ -687,7 +687,7 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
         goto cleanup;
     }
 
-    private_data->sdr_device = (sdrplay_api_DeviceT *)mem_arena_alloc(&resources->setup_arena, sizeof(sdrplay_api_DeviceT), true);
+    private_data->sdr_device = (sdrplay_api_DeviceT *)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(sdrplay_api_DeviceT), true);
     if (!private_data->sdr_device) {
         sdrplay_api_UnlockDeviceApi(); // Early unlock
         goto cleanup;
@@ -897,12 +897,12 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
         chParams->tunerParams.gain.LNAstate = lna_state_for_api;
     }
 
-    resources->input_format = CS16;
-    resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
-    resources->source_info.samplerate = (int)config->sdr_general.sample_rate_hz;
-    resources->source_info.frames = -1;
+    app->modules.input_format = CS16;
+    app->modules.input_bytes_per_sample_pair = get_bytes_per_sample(app->modules.input_format);
+    app->modules.source_info.samplerate = (int)config->sdr_general.sample_rate_hz;
+    app->modules.source_info.frames = -1;
 
-    if (config->dsp.raw_passthrough && resources->input_format != config->output.format) {
+    if (config->dsp.raw_passthrough && app->modules.input_format != config->output.format) {
         log_error("Option --raw-passthrough requires input and output formats to be identical. SDRplay input is 'cs16', but output was set to '%s'.", config->output.format_name);
         goto cleanup;
     }
@@ -925,13 +925,13 @@ cleanup:
 }
 
 static void* sdrplay_start_stream(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->modules.input_private_data;
     sdrplay_api_CallbackFnsT cbFns;
     cbFns.StreamBCbFn = NULL;
     cbFns.EventCbFn = sdrplay_event_callback;
 
-    if (resources->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
+    if (app->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
         log_info("Starting SDRplay stream (Buffered File Mode)...");
         cbFns.StreamACbFn = sdrplay_buffered_stream_callback;
     } else { // PIPELINE_MODE_REALTIME_SDR
@@ -939,11 +939,11 @@ static void* sdrplay_start_stream(ModuleContext* ctx) {
         cbFns.StreamACbFn = sdrplay_realtime_stream_callback;
     }
 
-    sdrplay_api_ErrT err = sdrplay_api_Init(private_data->sdr_device->dev, &cbFns, resources);
+    sdrplay_api_ErrT err = sdrplay_api_Init(private_data->sdr_device->dev, &cbFns, app);
     if (err == sdrplay_api_Success) private_data->is_streaming = true;
 
     // After a successful Init, explicitly apply the Bias-T setting if requested.
-    if (err == sdrplay_api_Success && resources->config->sdr_general.bias_t_enable) {
+    if (err == sdrplay_api_Success && app->config->sdr_general.bias_t_enable) {
         log_info("Enabling Bias-T");
         sdrplay_api_ReasonForUpdateT reasonForUpdate = sdrplay_api_Update_None;
         sdrplay_api_ReasonForUpdateExtension1T reasonForUpdateExt1 = sdrplay_api_Update_Ext1_None;
@@ -985,9 +985,9 @@ static void* sdrplay_start_stream(ModuleContext* ctx) {
         if (errorInfo && strlen(errorInfo->message) > 0) {
             snprintf(error_buf + strlen(error_buf), sizeof(error_buf) - strlen(error_buf), " - API Message: %s", errorInfo->message);
         }
-        handle_fatal_thread_error(error_buf, resources);
+        handle_fatal_thread_error(error_buf, app);
     } else {
-        while (!is_shutdown_requested() && !resources->error_occurred) {
+        while (!is_shutdown_requested() && !app->stats.error_occurred) {
 #ifdef _WIN32
             Sleep(100);
 #else
@@ -1003,8 +1003,8 @@ static void* sdrplay_start_stream(ModuleContext* ctx) {
 }
 
 static void sdrplay_stop_stream(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->modules.input_private_data;
     if (private_data && private_data->sdr_device && private_data->is_streaming) {
         log_info("Stopping SDRplay stream...");
         private_data->is_streaming = false;
@@ -1016,9 +1016,9 @@ static void sdrplay_stop_stream(ModuleContext* ctx) {
 }
 
 static void sdrplay_cleanup(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    if (resources->input_module_private_data) {
-        SdrplayPrivateData* private_data = (SdrplayPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    if (app->modules.input_private_data) {
+        SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->modules.input_private_data;
         if (private_data->sdr_device) {
             log_debug("Releasing SDRplay device handle...");
             sdrplay_api_ReleaseDevice(private_data->sdr_device);
@@ -1034,7 +1034,7 @@ static void sdrplay_cleanup(ModuleContext* ctx) {
             sdrplay_api_Close();
             private_data->sdr_api_is_open = false;
         }
-        resources->input_module_private_data = NULL;
+        app->modules.input_private_data = NULL;
     }
 #if defined(_WIN32)
     sdrplay_unload_api();

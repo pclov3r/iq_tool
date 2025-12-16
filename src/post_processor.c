@@ -6,8 +6,8 @@
 #include "signal_handler.h"
 #include "log.h"
 
-void post_processor_apply_chain(AppResources* resources, SampleChunk* item) {
-    AppConfig* config = (AppConfig*)resources->config;
+void post_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
+    AppConfig* config = (AppConfig*)dsp->config;
 
     if (item->frames_to_write > 0) {
         // --- Stage Setup ---
@@ -19,12 +19,12 @@ void post_processor_apply_chain(AppResources* resources, SampleChunk* item) {
         complex_float_t* current_data_ptr = item->current_input_buffer;
 
         // Step 1: Post-Resample Filtering (if enabled)
-        if (resources->user_filter_object && config->dsp.filter.apply_post_resample) {
+        if (dsp->filter.object && config->dsp.filter.apply_post_resample) {
             // Determine if the filter that will run is an out-of-place FFT filter.
-            bool is_fft_filter = (resources->user_filter_type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
-                                  resources->user_filter_type_actual == FILTER_IMPL_FFT_ASYMMETRIC);
+            bool is_fft_filter = (dsp->filter.type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
+                                  dsp->filter.type_actual == FILTER_IMPL_FFT_ASYMMETRIC);
 
-            item->frames_to_write = filter_apply(resources, item, true);
+            item->frames_to_write = filter_apply(dsp, item, true);
 
             // --- CRITICAL FIX ---
             // If an out-of-place filter ran, its output is now in the 'output' buffer.
@@ -35,15 +35,15 @@ void post_processor_apply_chain(AppResources* resources, SampleChunk* item) {
         }
 
         // Step 2: Post-Resample Frequency Shifting (if enabled)
-        if (resources->post_resample_nco) {
+        if (dsp->post_resample_nco) {
             // This is always an out-of-place operation. It reads from where the
             // valid data currently is (current_data_ptr) and writes to the other buffer.
             complex_float_t* destination_buffer = (current_data_ptr == item->complex_sample_buffer_a)
                                                 ? item->complex_sample_buffer_b
                                                 : item->complex_sample_buffer_a;
 
-            freq_shift_apply(resources->post_resample_nco,
-                             resources->nco_shift_hz,
+            freq_shift_apply(dsp->post_resample_nco,
+                             dsp->nco_shift_hz,
                              current_data_ptr,       // Input is the current valid data
                              destination_buffer,     // Output is the other buffer
                              item->frames_to_write);
@@ -54,7 +54,7 @@ void post_processor_apply_chain(AppResources* resources, SampleChunk* item) {
 
         // Step 3: Output Automatic Gain Control (if enabled)
         // This runs in-place on the current data pointer.
-        agc_apply(resources, current_data_ptr, item->frames_to_write);
+        agc_apply(dsp, current_data_ptr, item->frames_to_write);
 
         // Step 3.5: Manual Output Gain (if configured)
         // Validation ensures this is mutually exclusive with AGC.
@@ -71,15 +71,15 @@ void post_processor_apply_chain(AppResources* resources, SampleChunk* item) {
                                    item->final_output_data,
                                    item->frames_to_write,
                                    config->output.format)) {
-            handle_fatal_thread_error("Post-Processor: Failed to convert samples.", resources);
+            log_fatal("Post-Processor: Failed to convert samples.");
             // Mark the chunk as having zero frames to prevent writing bad data
             item->frames_to_write = 0;
         }
     }
 }
 
-void post_processor_reset(AppResources* resources) {
-    freq_shift_reset_nco(resources->post_resample_nco);
-    filter_reset(resources); // Filter reset is applicable to both stages
-    agc_reset(resources);    // Reset AGC state
+void post_processor_reset(DspContext* dsp) {
+    freq_shift_reset_nco(dsp->post_resample_nco);
+    filter_reset(dsp); // Filter reset is applicable to both stages
+    agc_reset(dsp);    // Reset AGC state
 }

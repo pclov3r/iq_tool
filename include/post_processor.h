@@ -15,13 +15,13 @@
  * which may include user-defined filtering, frequency shifting, and final sample
  * format conversion.
  *
- * @param resources A pointer to the main application resources.
+ * @param app A pointer to the main application app.
  * @param item The SampleChunk containing the data to be processed. The operation
  *             is performed on the complex_resampled_data buffer, and the final
  *             results are placed in the final_output_data buffer. The
  *             frames_to_write field may be modified by filtering.
  */
-void post_processor_apply_chain(AppResources* resources, SampleChunk* item);
+void post_processor_apply_chain(DspContext* dsp, SampleChunk* item);
 
 /**
  * @brief Resets the state of all stateful DSP modules in the post-processing chain.
@@ -29,8 +29,8 @@ void post_processor_apply_chain(AppResources* resources, SampleChunk* item);
  * This should be called upon a stream discontinuity to prevent stale data from
  * corrupting new samples.
  *
- * @param resources A pointer to the main application resources.
+ * @param app A pointer to the main application app.
  */
-void post_processor_reset(AppResources* resources);
+void post_processor_reset(DspContext* dsp);
 
 #endif // POST_PROCESSOR_H_

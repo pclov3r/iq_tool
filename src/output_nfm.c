@@ -129,9 +129,9 @@ static bool nfm_validate_options(AppConfig* config) {
 }
 
 static bool nfm_initialize(ModuleContext* ctx) {
-    AppResources* res = ctx->resources;
-    NfmContext* p = (NfmContext*)mem_arena_alloc(&res->setup_arena, sizeof(NfmContext), true);
-    res->output_module_private_data = p;
+    AppContext* res = ctx->app;
+    NfmContext* p = (NfmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(NfmContext), true);
+    res->modules.output_private_data = p;
 
     // 1. Audio Buffer
     p->audio_ring_buffer = ring_buffer_create(NFM_BUFFER_SIZE);
@@ -179,12 +179,12 @@ static bool nfm_initialize(ModuleContext* ctx) {
              s_nfm_config.disable_discriminator_filter ? "Disabled (Raw)" : "Enabled (Voice)");
 
     // 4. Buffers
-    size_t in_samples = res->pipeline_alloc_size_samples;
+    size_t in_samples = res->pipeline.alloc_size_samples;
     size_t out_samples = (size_t)ceil(in_samples * p->output_ratio) + 64;
 
-    p->mono_buffer   = mem_arena_alloc(&res->setup_arena, in_samples * sizeof(float), false);
-    p->resamp_buffer = mem_arena_alloc(&res->setup_arena, out_samples * sizeof(float), false);
-    p->pcm_out       = mem_arena_alloc(&res->setup_arena, out_samples * 2 * sizeof(int16_t), false);
+    p->mono_buffer   = mem_arena_alloc(&res->pipeline.setup_arena, in_samples * sizeof(float), false);
+    p->resamp_buffer = mem_arena_alloc(&res->pipeline.setup_arena, out_samples * sizeof(float), false);
+    p->pcm_out       = mem_arena_alloc(&res->pipeline.setup_arena, out_samples * 2 * sizeof(int16_t), false);
 
     if (ma_device_start(&p->audio_device) != MA_SUCCESS) return false;
 
@@ -192,8 +192,8 @@ static bool nfm_initialize(ModuleContext* ctx) {
 }
 
 static void* nfm_run_writer(ModuleContext* ctx) {
-    AppResources* res = ctx->resources;
-    NfmContext* p = (NfmContext*)res->output_module_private_data;
+    AppContext* res = ctx->app;
+    NfmContext* p = (NfmContext*)res->modules.output_private_data;
 
     // Use a threshold of 80% to trigger backpressure
     const size_t THROTTLE_THRESHOLD = (size_t)(NFM_BUFFER_SIZE * 0.8);
@@ -220,12 +220,12 @@ static void* nfm_run_writer(ModuleContext* ctx) {
             }
         }
 
-        SampleChunk* item = (SampleChunk*)queue_dequeue(res->writer_input_queue);
+        SampleChunk* item = (SampleChunk*)queue_dequeue(res->pipeline.writer_input_queue);
         if (!item) break;
 
         if (item->is_last_chunk) {
             utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
-            queue_enqueue(res->free_sample_chunk_queue, item);
+            queue_enqueue(res->pipeline.free_sample_chunk_queue, item);
             break;
         }
 
@@ -342,7 +342,7 @@ static void* nfm_run_writer(ModuleContext* ctx) {
             ring_buffer_write(p->audio_ring_buffer, p->pcm_out, num_resampled * 2 * sizeof(int16_t));
         }
 
-        queue_enqueue(res->free_sample_chunk_queue, item);
+        queue_enqueue(res->pipeline.free_sample_chunk_queue, item);
     }
 
 cleanup:
@@ -351,9 +351,9 @@ cleanup:
 }
 
 static void nfm_finalize(ModuleContext* ctx) {
-    AppResources* res = ctx->resources;
-    if (!res->output_module_private_data) return;
-    NfmContext* p = (NfmContext*)res->output_module_private_data;
+    AppContext* res = ctx->app;
+    if (!res->modules.output_private_data) return;
+    NfmContext* p = (NfmContext*)res->modules.output_private_data;
 
     if (p->audio_device_initialized) ma_device_uninit(&p->audio_device);
     if (p->audio_ring_buffer) ring_buffer_destroy(p->audio_ring_buffer);

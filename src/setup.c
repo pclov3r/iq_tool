@@ -41,8 +41,8 @@
 #define ALIGN_UP(size, align) (((size) + (align) - 1) & ~((align) - 1))
 
 
-bool resolve_file_paths(AppConfig *config, AppResources *resources) {
-    if (!config || !resources) return false;
+bool resolve_file_paths(AppConfig *config, AppContext* app) {
+    if (!config || !app) return false;
 
 #ifdef _WIN32
     if (config->input.path_arg) {
@@ -66,14 +66,14 @@ bool resolve_file_paths(AppConfig *config, AppResources *resources) {
             log_fatal("Input file not found or path is invalid: %s (%s)", config->input.path_arg, strerror(errno));
             return false;
         }
-        config->input.effective_path = mem_arena_alloc(&resources->setup_arena, strlen(resolved_input_path) + 1, false);
+        config->input.effective_path = mem_arena_alloc(&app->pipeline.setup_arena, strlen(resolved_input_path) + 1, false);
         if (!config->input.effective_path) return false;
         strcpy(config->input.effective_path, resolved_input_path);
     }
 
     if (config->output.path_arg) {
-        char* path_copy_for_dirname = mem_arena_alloc(&resources->setup_arena, strlen(config->output.path_arg) + 1, false);
-        char* path_copy_for_basename = mem_arena_alloc(&resources->setup_arena, strlen(config->output.path_arg) + 1, false);
+        char* path_copy_for_dirname = mem_arena_alloc(&app->pipeline.setup_arena, strlen(config->output.path_arg) + 1, false);
+        char* path_copy_for_basename = mem_arena_alloc(&app->pipeline.setup_arena, strlen(config->output.path_arg) + 1, false);
         if (!path_copy_for_dirname || !path_copy_for_basename) return false;
 
         strcpy(path_copy_for_dirname, config->output.path_arg);
@@ -89,7 +89,7 @@ bool resolve_file_paths(AppConfig *config, AppResources *resources) {
         }
 
         size_t final_len = strlen(resolved_dir_path) + 1 + strlen(base) + 1;
-        config->output.effective_path = mem_arena_alloc(&resources->setup_arena, final_len, false);
+        config->output.effective_path = mem_arena_alloc(&app->pipeline.setup_arena, final_len, false);
         if (!config->output.effective_path) return false;
 
         snprintf(config->output.effective_path, final_len, "%s/%s", resolved_dir_path, base);
@@ -98,32 +98,32 @@ bool resolve_file_paths(AppConfig *config, AppResources *resources) {
     return true;
 }
 
-bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *resources, float *out_ratio) {
-    if (!config || !resources || !out_ratio) return false;
+bool calculate_and_validate_resample_ratio(AppConfig *config, AppContext* app, float *out_ratio) {
+    if (!config || !app || !out_ratio) return false;
 
     // --- Step 1: Handle Smart Default (Missing Rate) ---
     // If the user didn't specify a rate (0), use the hardware/file input rate.
     if (config->output_rate.target_rate <= 0.0) {
-        config->output_rate.target_rate = (double)resources->source_info.samplerate;
+        config->output_rate.target_rate = (double)app->modules.source_info.samplerate;
         log_info("No output rate specified. Defaulting to native input rate: %.0f Hz", config->output_rate.target_rate);
     }
 
     // --- Step 2: Calculate Ratio ---
-    double input_rate_d = (double)resources->source_info.samplerate;
+    double input_rate_d = (double)app->modules.source_info.samplerate;
     float r = (float)(config->output_rate.target_rate / input_rate_d);
 
     // --- Step 3: Check for Passthrough Conditions ---
     if (config->dsp.raw_passthrough) {
         log_info("Raw Passthrough mode enabled: Bypassing all DSP blocks.");
-        resources->is_passthrough = true;
+        app->dsp.is_passthrough = true;
         r = 1.0f; // Force ratio to 1.0 for buffer calcs
     }
     else if (fabs(r - 1.0f) < 1e-6) {
-        resources->is_passthrough = true;
+        app->dsp.is_passthrough = true;
         r = 1.0f; // Snap to exact 1.0
     }
     else {
-        resources->is_passthrough = false;
+        app->dsp.is_passthrough = false;
         log_info("Resampling enabled: %.10g Hz -> %.10g Hz (Ratio: %.10g)",
                  input_rate_d, config->output_rate.target_rate, r);
     }
@@ -135,24 +135,24 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppResources *reso
     }
     *out_ratio = r;
 
-    if (resources->source_info.frames > 0) {
-        resources->expected_total_output_frames = (long long)round((double)resources->source_info.frames * (double)r);
+    if (app->modules.source_info.frames > 0) {
+        app->stats.expected_total_output_frames = (long long)round((double)app->modules.source_info.frames * (double)r);
     } else {
-        resources->expected_total_output_frames = -1;
+        app->stats.expected_total_output_frames = -1;
     }
 
     return true;
 }
 
-bool validate_and_configure_filter_stage(struct AppConfig *config, struct AppResources *resources) {
+bool validate_and_configure_filter_stage(struct AppConfig *config, struct AppContext* app) {
     config->dsp.filter.apply_post_resample = false;
 
     // If resampling is disabled (is_passthrough), we don't need to check for post-resample filtering.
-    if (config->dsp.filter.count == 0 || resources->is_passthrough || config->dsp.raw_passthrough) {
+    if (config->dsp.filter.count == 0 || app->dsp.is_passthrough || config->dsp.raw_passthrough) {
         return true;
     }
 
-    double input_rate = (double)resources->source_info.samplerate;
+    double input_rate = (double)app->modules.source_info.samplerate;
     double output_rate = config->output_rate.target_rate;
 
     // Optimization: If downsampling, filtering AFTER resampling might be more efficient
@@ -197,8 +197,8 @@ bool validate_and_configure_filter_stage(struct AppConfig *config, struct AppRes
 }
 
 // --- ELASTIC BUFFER ALLOCATION LOGIC ---
-bool allocate_processing_buffers(AppConfig *config, AppResources *resources, float resample_ratio) {
-    if (!config || !resources) return false;
+bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resample_ratio) {
+    if (!config || !app) return false;
 
     // 1. Determine the "Fat Pipe" (highest data rate side)
     //    Upsampling (Ratio > 1.0): Output is the Fat Pipe.
@@ -265,23 +265,23 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     }
 
     // Store the results for runtime usage
-    resources->pipeline_read_chunk_size = calculated_input_samples;
-    resources->pipeline_alloc_size_samples = sample_allocation_count;
+    app->pipeline.read_chunk_size = calculated_input_samples;
+    app->pipeline.alloc_size_samples = sample_allocation_count;
 
     // 3. FFT Limit Safety Check
-    if (resources->pipeline_alloc_size_samples > MAX_ALLOWED_FFT_BLOCK_SIZE) {
+    if (app->pipeline.alloc_size_samples > MAX_ALLOWED_FFT_BLOCK_SIZE) {
         log_fatal("Calculated pipeline buffer size (%zu) exceeds maximum allowed FFT size (%d).",
-                  resources->pipeline_alloc_size_samples, MAX_ALLOWED_FFT_BLOCK_SIZE);
+                  app->pipeline.alloc_size_samples, MAX_ALLOWED_FFT_BLOCK_SIZE);
         return false;
     }
 
     // Update legacy field used by some filters
-    resources->max_out_samples = (unsigned int)resources->pipeline_alloc_size_samples;
+    app->pipeline.max_out_samples = (unsigned int)app->pipeline.alloc_size_samples;
 
     // -------------------------------------------------------------------------
     // 4. Calculate Dynamic Pipeline Depth ("Trays")
     // -------------------------------------------------------------------------
-    double input_rate = (double)resources->source_info.samplerate;
+    double input_rate = (double)app->modules.source_info.samplerate;
 
     // FAIL FAST: If the input rate is unknown or invalid, we cannot safely configure the pipeline.
     if (input_rate <= 0.0) {
@@ -291,7 +291,7 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     }
 
     // How much time does one chunk represent?
-    double seconds_per_chunk = (double)resources->pipeline_read_chunk_size / input_rate;
+    double seconds_per_chunk = (double)app->pipeline.read_chunk_size / input_rate;
 
     // How many chunks do we need to hit the target duration?
     size_t calculated_chunks = (size_t)(PIPELINE_TARGET_BUFFER_DURATION_SEC / seconds_per_chunk);
@@ -300,22 +300,22 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
     if (calculated_chunks < PIPELINE_MIN_CHUNKS) calculated_chunks = PIPELINE_MIN_CHUNKS;
     if (calculated_chunks > PIPELINE_MAX_CHUNKS) calculated_chunks = PIPELINE_MAX_CHUNKS;
 
-    resources->pipeline_num_chunks = calculated_chunks;
+    app->pipeline.num_chunks = calculated_chunks;
 
     log_info("Pipeline Sizing: Read=%zu samples, Alloc=%zu samples, Depth=%zu chunks (%.2f sec buffer at %.0f Hz)",
-              resources->pipeline_read_chunk_size,
-              resources->pipeline_alloc_size_samples,
-              resources->pipeline_num_chunks,
-              resources->pipeline_num_chunks * seconds_per_chunk,
+              app->pipeline.read_chunk_size,
+              app->pipeline.alloc_size_samples,
+              app->pipeline.num_chunks,
+              app->pipeline.num_chunks * seconds_per_chunk,
               input_rate);
 
     // --- MEMORY ALLOCATION WITH ALIGNMENT ---
 
     // Calculate raw byte sizes
-    size_t raw_input_bytes = resources->pipeline_alloc_size_samples * resources->input_bytes_per_sample_pair;
-    size_t complex_bytes = resources->pipeline_alloc_size_samples * sizeof(complex_float_t);
-    resources->output_bytes_per_sample_pair = get_bytes_per_sample(config->output.format);
-    size_t final_output_bytes = resources->pipeline_alloc_size_samples * resources->output_bytes_per_sample_pair;
+    size_t raw_input_bytes = app->pipeline.alloc_size_samples * app->modules.input_bytes_per_sample_pair;
+    size_t complex_bytes = app->pipeline.alloc_size_samples * sizeof(complex_float_t);
+    app->modules.output_bytes_per_sample_pair = get_bytes_per_sample(config->output.format);
+    size_t final_output_bytes = app->pipeline.alloc_size_samples * app->modules.output_bytes_per_sample_pair;
 
     // Calculate Strides (Aligned to 32 bytes)
     size_t raw_stride = ALIGN_UP(raw_input_bytes, MEM_ARENA_ALIGNMENT);
@@ -327,31 +327,31 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
 
     // Allocate the Big Pool using OS-specific aligned allocation
     // CRITICAL: We now use the dynamically calculated pipeline_num_chunks
-    size_t pool_total_size = resources->pipeline_num_chunks * total_bytes_per_chunk;
+    size_t pool_total_size = app->pipeline.num_chunks * total_bytes_per_chunk;
 
 #ifdef _WIN32
-    resources->pipeline_chunk_data_pool = _aligned_malloc(pool_total_size, MEM_ARENA_ALIGNMENT);
+    app->pipeline.chunk_data_pool = _aligned_malloc(pool_total_size, MEM_ARENA_ALIGNMENT);
 #else
-    int align_ret = posix_memalign(&resources->pipeline_chunk_data_pool, MEM_ARENA_ALIGNMENT, pool_total_size);
+    int align_ret = posix_memalign(&app->pipeline.chunk_data_pool, MEM_ARENA_ALIGNMENT, pool_total_size);
     if (align_ret != 0) {
-        resources->pipeline_chunk_data_pool = NULL; // Mark as failed
+        app->pipeline.chunk_data_pool = NULL; // Mark as failed
         log_fatal("posix_memalign failed with error: %d", align_ret);
     }
 #endif
 
-    if (!resources->pipeline_chunk_data_pool) {
+    if (!app->pipeline.chunk_data_pool) {
         log_fatal("Error: Failed to allocate aligned pipeline chunk data pool (%zu bytes).", pool_total_size);
         return false;
     }
 
     // Allocate metadata structures from the Arena (small objects)
-    resources->sample_chunk_pool = (SampleChunk*)mem_arena_alloc(&resources->setup_arena, resources->pipeline_num_chunks * sizeof(SampleChunk), true);
-    if (!resources->sample_chunk_pool) return false;
+    app->pipeline.sample_chunk_pool = (SampleChunk*)mem_arena_alloc(&app->pipeline.setup_arena, app->pipeline.num_chunks * sizeof(SampleChunk), true);
+    if (!app->pipeline.sample_chunk_pool) return false;
 
     // Assign pointers within the monolithic pool
-    for (size_t i = 0; i < resources->pipeline_num_chunks; ++i) {
-        SampleChunk* item = &resources->sample_chunk_pool[i];
-        char* chunk_base = (char*)resources->pipeline_chunk_data_pool + (i * total_bytes_per_chunk);
+    for (size_t i = 0; i < app->pipeline.num_chunks; ++i) {
+        SampleChunk* item = &app->pipeline.sample_chunk_pool[i];
+        char* chunk_base = (char*)app->pipeline.chunk_data_pool + (i * total_bytes_per_chunk);
 
         // Set pointers using the aligned strides
         item->raw_input_data = chunk_base;
@@ -361,37 +361,37 @@ bool allocate_processing_buffers(AppConfig *config, AppResources *resources, flo
 
         // Set capacities (using the actual usable byte count, not the stride padding)
         item->raw_input_capacity_bytes = raw_input_bytes;
-        item->complex_buffer_capacity_samples = resources->pipeline_alloc_size_samples;
+        item->complex_buffer_capacity_samples = app->pipeline.alloc_size_samples;
         item->final_output_capacity_bytes = final_output_bytes;
-        item->input_bytes_per_sample_pair = resources->input_bytes_per_sample_pair;
+        item->input_bytes_per_sample_pair = app->modules.input_bytes_per_sample_pair;
     }
 
     // Allocate aux buffers
-    resources->sdr_deserializer_buffer_size = PIPELINE_TARGET_BLOCK_SAMPLES * sizeof(short) * COMPLEX_SAMPLE_COMPONENTS * 2; // Double size for safety
-    resources->sdr_deserializer_temp_buffer = mem_arena_alloc(&resources->setup_arena, resources->sdr_deserializer_buffer_size, false);
-    if (!resources->sdr_deserializer_temp_buffer) return false;
+    app->pipeline.sdr_deserializer_buffer_size = PIPELINE_TARGET_BLOCK_SAMPLES * sizeof(short) * COMPLEX_SAMPLE_COMPONENTS * 2; // Double size for safety
+    app->pipeline.sdr_deserializer_temp_buffer = mem_arena_alloc(&app->pipeline.setup_arena, app->pipeline.sdr_deserializer_buffer_size, false);
+    if (!app->pipeline.sdr_deserializer_temp_buffer) return false;
 
-    resources->writer_local_buffer = mem_arena_alloc(&resources->setup_arena, IO_OUTPUT_WRITER_CHUNK_SIZE, false);
-    if (!resources->writer_local_buffer) return false;
+    app->pipeline.writer_local_buffer = mem_arena_alloc(&app->pipeline.setup_arena, IO_OUTPUT_WRITER_CHUNK_SIZE, false);
+    if (!app->pipeline.writer_local_buffer) return false;
 
     return true;
 }
 
-bool create_threading_components(AppConfig *config, AppResources *resources) {
+bool create_threading_components(AppConfig *config, AppContext* app) {
     (void)config;
-    if (pthread_mutex_init(&resources->progress_mutex, NULL) != 0) {
+    if (pthread_mutex_init(&app->stats.mutex, NULL) != 0) {
         return false;
     }
     return true;
 }
 
-void print_configuration_summary(const AppConfig *config, const AppResources *resources) {
-    if (!config || !resources || !resources->selected_input_module_api) return;
+void print_configuration_summary(const AppConfig *config, const AppContext* app) {
+    if (!config || !app || !app->modules.input_api) return;
 
     InputSummaryInfo summary_info;
     memset(&summary_info, 0, sizeof(InputSummaryInfo));
-    const ModuleContext ctx = { .config = config, .resources = (AppResources*)resources };
-    resources->selected_input_module_api->get_summary_info(&ctx, &summary_info);
+    const ModuleContext ctx = { .config = config, .app = (AppContext*)app };
+    app->modules.input_api->get_summary_info(&ctx, &summary_info);
 
     int max_label_len = 0;
     if (summary_info.count > 0) {
@@ -456,10 +456,10 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 
 
     fprintf(stderr, "--- Output Details ---\n");
-    if (resources->selected_output_module_api && resources->selected_output_module_api->get_summary_info) {
+    if (app->modules.output_api && app->modules.output_api->get_summary_info) {
         OutputSummaryInfo output_summary;
         memset(&output_summary, 0, sizeof(output_summary));
-        resources->selected_output_module_api->get_summary_info(&ctx, &output_summary);
+        app->modules.output_api->get_summary_info(&ctx, &output_summary);
         for (int i = 0; i < output_summary.count; i++) {
             fprintf(stderr, " %-*s : %s\n", max_label_len, output_summary.items[i].label, output_summary.items[i].value);
         }
@@ -476,9 +476,9 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
         fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Output Gain", config->dsp.output_gain);
     }
 
-    if (fabs(resources->nco_shift_hz) > 1e-9) {
+    if (fabs(app->dsp.nco_shift_hz) > 1e-9) {
         char shift_buf[64];
-        snprintf(shift_buf, sizeof(shift_buf), "%+.2f Hz%s", resources->nco_shift_hz, config->dsp.shift_after_resample ? " (Post-Resample)" : "");
+        snprintf(shift_buf, sizeof(shift_buf), "%+.2f Hz%s", app->dsp.nco_shift_hz, config->dsp.shift_after_resample ? " (Post-Resample)" : "");
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Frequency Shift", shift_buf);
     }
 
@@ -486,7 +486,7 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Filter", "Disabled");
     } else {
         const char* filter_label;
-        switch (resources->user_filter_type_actual) {
+        switch (app->dsp.filter.type_actual) {
             case FILTER_IMPL_FIR_SYMMETRIC:
             case FILTER_IMPL_FIR_ASYMMETRIC:
                 filter_label = "FIR Filter";
@@ -536,9 +536,9 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Output AGC", "Disabled");
     }
 
-    fprintf(stderr, " %-*s : %s\n", max_label_len, "Resampling", resources->is_passthrough ? "Disabled (Passthrough Mode)" : "Enabled");
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "Resampling", app->dsp.is_passthrough ? "Disabled (Passthrough Mode)" : "Enabled");
 
-    bool is_file_output = resources->pacing_is_required;
+    bool is_file_output = app->modules.pacing_is_required;
     const char* output_path_for_messages;
 #ifdef _WIN32
     output_path_for_messages = config->output.effective_path_utf8;
@@ -549,76 +549,77 @@ void print_configuration_summary(const AppConfig *config, const AppResources *re
 
     // Log the calculated elastic buffer sizes for verification
     log_debug("Pipeline Config: Read Size = %zu samples, Chunk Alloc = %zu samples.",
-              resources->pipeline_read_chunk_size, resources->pipeline_alloc_size_samples);
+              app->pipeline.read_chunk_size, app->pipeline.alloc_size_samples);
 }
 
-bool prepare_output_stream(struct AppConfig *config, struct AppResources *resources) {
-    if (!resources->selected_output_module_api) return false;
-    ModuleContext ctx = { .config = config, .resources = resources };
-    return resources->selected_output_module_api->initialize(&ctx);
+bool prepare_output_stream(struct AppConfig *config, struct AppContext* app) {
+    if (!app->modules.output_api) return false;
+    ModuleContext ctx = { .config = config, .app = app };
+    return app->modules.output_api->initialize(&ctx);
 }
 
-bool initialize_application(AppConfig *config, AppResources *resources) {
-    resources->config = config;
-    ModuleContext ctx = { .config = config, .resources = resources };
+bool initialize_application(AppConfig *config, AppContext* app) {
+    app->config = config;
+    app->dsp.config = config;
+    ModuleContext ctx = { .config = config, .app = app };
 
     // --- STEP 1: Look up the selected output module ---
-    const Module* selected_output_module = module_manager_get_output_module_by_name(config->output.module_name, &resources->setup_arena);
+    const Module* selected_output_module = module_manager_get_output_module_by_name(config->output.module_name, &app->pipeline.setup_arena);
     if (!selected_output_module) {
         log_fatal("Internal error: Could not retrieve selected output module '%s'.", config->output.module_name);
         return false;
     }
-    resources->selected_output_module_api = (OutputModuleInterface*)selected_output_module->api;
+    app->modules.output_api = (OutputModuleInterface*)selected_output_module->api;
 
     // --- STEP 2: SET THE BEHAVIORAL FLAG ---
-    resources->pacing_is_required = selected_output_module->requires_output_path;
+    app->modules.pacing_is_required = selected_output_module->requires_output_path;
 
     log_info("Attempting to initialize the '%s' input module...", config->input.type_name);
 
-    if (!resolve_file_paths(config, resources)) {
+    if (!resolve_file_paths(config, app)) {
         return false;
     }
 
-    if (!resources->selected_input_module_api->initialize(&ctx)) {
+    if (!app->modules.input_api->initialize(&ctx)) {
         return false;
     }
 
     // --- REMOVED: Output Option Validation (Moved to cli.c) ---
     // This ensures validation happens before expensive input initialization.
 
-    if (!calculate_and_validate_resample_ratio(config, resources, &resources->resample_ratio)) {
+    if (!calculate_and_validate_resample_ratio(config, app, &app->dsp.resample_ratio)) {
         return false;
     }
 
-    if (!validate_and_configure_filter_stage(config, resources)) {
+    if (!validate_and_configure_filter_stage(config, app)) {
         return false;
     }
 
-    if (resources->selected_input_module_api->pre_stream_iq_correction) {
-        if (!resources->selected_input_module_api->pre_stream_iq_correction(&ctx)) {
+    if (app->modules.input_api->pre_stream_iq_correction) {
+        if (!app->modules.input_api->pre_stream_iq_correction(&ctx)) {
             return false;
         }
     }
 
-    if (!allocate_processing_buffers(config, resources, resources->resample_ratio)) {
+    if (!allocate_processing_buffers(config, app, app->dsp.resample_ratio)) {
         return false;
     }
 
-    if (!create_threading_components(config, resources)) {
+    if (!create_threading_components(config, app)) {
         return false;
     }
 
-    if (!prepare_output_stream(config, resources)) {
+    if (!prepare_output_stream(config, app)) {
         return false;
     }
 
-    if (resources->pacing_is_required) {
-        print_configuration_summary(config, resources);
+    if (app->modules.pacing_is_required) {
+        print_configuration_summary(config, app);
         fprintf(stderr, "\n");
     }
 
-    if (resources->pacing_is_required) {
-        bool source_has_known_length = resources->selected_input_module_api->has_known_length();
+    if (app->modules.pacing_is_required) {
+        bool source_has_known_length = app->modules.input_api->has_known_length();
         if (!source_has_known_length) {
             log_info("Starting SDR capture...");
         } else {
@@ -629,24 +630,24 @@ bool initialize_application(AppConfig *config, AppResources *resources) {
     return true;
 }
 
-void cleanup_application(AppConfig *config, AppResources *resources) {
-    if (!resources) return;
-    ModuleContext ctx = { .config = config, .resources = resources };
+void cleanup_application(AppConfig *config, AppContext* app) {
+    if (!app) return;
+    ModuleContext ctx = { .config = config, .app = app };
 
-    if (resources->selected_output_module_api && resources->selected_output_module_api->finalize_output) {
-        resources->selected_output_module_api->finalize_output(&ctx);
+    if (app->modules.output_api && app->modules.output_api->finalize_output) {
+        app->modules.output_api->finalize_output(&ctx);
     }
 
-    if (resources->pipeline_chunk_data_pool) {
+    if (app->pipeline.chunk_data_pool) {
 #ifdef _WIN32
-        _aligned_free(resources->pipeline_chunk_data_pool);
+        _aligned_free(app->pipeline.chunk_data_pool);
 #else
-        free(resources->pipeline_chunk_data_pool);
+        free(app->pipeline.chunk_data_pool);
 #endif
-        resources->pipeline_chunk_data_pool = NULL;
+        app->pipeline.chunk_data_pool = NULL;
     }
 
-    if (resources->selected_input_module_api && resources->selected_input_module_api->cleanup) {
-        resources->selected_input_module_api->cleanup(&ctx);
+    if (app->modules.input_api && app->modules.input_api->cleanup) {
+        app->modules.input_api->cleanup(&ctx);
     }
 }

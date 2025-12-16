@@ -16,7 +16,7 @@
 
 // --- Forward Declarations ---
 struct AppConfig;
-struct AppResources;
+struct AppContext;
 
 // --- Opaque Type Definition ---
 // By forward-declaring the struct and using a typedef, we hide the
@@ -30,7 +30,7 @@ typedef struct resampler_s resampler_t;
 /**
  * @brief Creates and initializes a resampler object.
  */
-resampler_t* create_resampler(const struct AppConfig *config, struct AppResources *resources, float resample_ratio);
+resampler_t* create_resampler(const struct AppConfig *config, struct AppContext* app, float resample_ratio);
 
 /**
  * @brief Destroys a resampler object and frees all associated memory.

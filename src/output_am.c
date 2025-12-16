@@ -148,11 +148,11 @@ static bool am_validate_options(AppConfig* config) {
 }
 
 static bool am_initialize(ModuleContext* ctx) {
-    AppResources* res = ctx->resources;
+    AppContext* res = ctx->app;
 
-    AmContext* p = (AmContext*)mem_arena_alloc(&res->setup_arena, sizeof(AmContext), true);
+    AmContext* p = (AmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(AmContext), true);
     if (!p) return false;
-    res->output_module_private_data = p;
+    res->modules.output_private_data = p;
 
     // 1. Setup Audio Ring Buffer
     p->audio_ring_buffer = ring_buffer_create(AUDIO_BUFFER_SIZE);
@@ -229,13 +229,13 @@ static bool am_initialize(ModuleContext* ctx) {
     agc_rrrf_set_bandwidth(p->agc, p->agc_attack_bw);
 
     // 5. Scratch Buffers
-    size_t buf_samples = res->pipeline_alloc_size_samples;
+    size_t buf_samples = res->pipeline.alloc_size_samples;
     size_t out_buf_samples = (size_t)ceil(buf_samples * p->output_resample_ratio) + 128;
     size_t max_dsp_samples = (buf_samples > out_buf_samples) ? buf_samples : out_buf_samples;
 
-    p->mono_buffer = mem_arena_alloc(&res->setup_arena, max_dsp_samples * sizeof(float), false);
-    p->resamp_buffer = mem_arena_alloc(&res->setup_arena, max_dsp_samples * sizeof(float), false);
-    p->interleaved_pcm = mem_arena_alloc(&res->setup_arena, out_buf_samples * 2 * sizeof(int16_t), false);
+    p->mono_buffer = mem_arena_alloc(&res->pipeline.setup_arena, max_dsp_samples * sizeof(float), false);
+    p->resamp_buffer = mem_arena_alloc(&res->pipeline.setup_arena, max_dsp_samples * sizeof(float), false);
+    p->interleaved_pcm = mem_arena_alloc(&res->pipeline.setup_arena, out_buf_samples * 2 * sizeof(int16_t), false);
 
     if (!p->mono_buffer || !p->resamp_buffer || !p->interleaved_pcm) return false;
 
@@ -249,8 +249,8 @@ static bool am_initialize(ModuleContext* ctx) {
 }
 
 static void* am_run_writer(ModuleContext* ctx) {
-    AppResources* res = ctx->resources;
-    AmContext* p = (AmContext*)res->output_module_private_data;
+    AppContext* res = ctx->app;
+    AmContext* p = (AmContext*)res->modules.output_private_data;
 
     const size_t THROTTLE_THRESHOLD = (size_t)(AUDIO_BUFFER_SIZE * 0.8);
 
@@ -282,17 +282,17 @@ static void* am_run_writer(ModuleContext* ctx) {
             }
         }
 
-        SampleChunk* item = (SampleChunk*)queue_dequeue(res->writer_input_queue);
+        SampleChunk* item = (SampleChunk*)queue_dequeue(res->pipeline.writer_input_queue);
         if (!item) break;
 
         if (item->stream_discontinuity_event) {
-            queue_enqueue(res->free_sample_chunk_queue, item);
+            queue_enqueue(res->pipeline.free_sample_chunk_queue, item);
             continue;
         }
 
         if (item->is_last_chunk) {
             utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
-            queue_enqueue(res->free_sample_chunk_queue, item);
+            queue_enqueue(res->pipeline.free_sample_chunk_queue, item);
             break;
         }
 
@@ -406,7 +406,7 @@ static void* am_run_writer(ModuleContext* ctx) {
             ring_buffer_write(p->audio_ring_buffer, p->interleaved_pcm, num_resampled * 2 * sizeof(int16_t));
         }
 
-        if (!queue_enqueue(res->free_sample_chunk_queue, item)) break;
+        if (!queue_enqueue(res->pipeline.free_sample_chunk_queue, item)) break;
     }
 
 cleanup:
@@ -415,9 +415,9 @@ cleanup:
 }
 
 static void am_finalize(ModuleContext* ctx) {
-    AppResources* res = ctx->resources;
-    if (!res->output_module_private_data) return;
-    AmContext* p = (AmContext*)res->output_module_private_data;
+    AppContext* res = ctx->app;
+    if (!res->modules.output_private_data) return;
+    AmContext* p = (AmContext*)res->modules.output_private_data;
 
     if (p->audio_device_initialized) ma_device_uninit(&p->audio_device);
     if (p->audio_ring_buffer) ring_buffer_destroy(p->audio_ring_buffer);

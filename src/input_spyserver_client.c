@@ -322,17 +322,17 @@ static bool spyserver_client_validate_options(AppConfig* config) {
 // --- Main Module Implementations ---
 static bool spyserver_client_initialize(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
-    AppResources* resources = ctx->resources;
+    AppContext* app = ctx->app;
 
-    SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(SpyServerClientPrivateData), true);
+    SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(SpyServerClientPrivateData), true);
     if (!p) return false;
-    resources->input_module_private_data = p;
+    app->modules.input_private_data = p;
     p->net_ctx = NULL;
 
     // Allocate receive scratch buffer
     // 256KB is large enough for typical SpyServer chunks. Large payloads will be split.
     p->rx_buffer_size = 256 * 1024;
-    p->rx_buffer = (unsigned char*)mem_arena_alloc(&resources->setup_arena, p->rx_buffer_size, false);
+    p->rx_buffer = (unsigned char*)mem_arena_alloc(&app->pipeline.setup_arena, p->rx_buffer_size, false);
     if (!p->rx_buffer) return false;
 
     // This module now takes responsibility for initializing its dependency.
@@ -343,7 +343,7 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
 
     log_info("Connecting to SpyServer at %s:%d...", s_spyserver_client_config.hostname, s_spyserver_client_config.port);
 
-    p->net_ctx = networking_connect(s_spyserver_client_config.hostname, s_spyserver_client_config.port, &resources->setup_arena);
+    p->net_ctx = networking_connect(s_spyserver_client_config.hostname, s_spyserver_client_config.port, &app->pipeline.setup_arena);
     if (!p->net_ctx) {
         networking_cleanup_module(); // Release our reference on failure.
         return false;
@@ -357,7 +357,7 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
     size_t user_agent_len = strlen(user_agent);
     size_t payload_size = sizeof(uint32_t) + user_agent_len;
 
-    unsigned char* payload_buffer = (unsigned char*)mem_arena_alloc(&resources->setup_arena, payload_size, false);
+    unsigned char* payload_buffer = (unsigned char*)mem_arena_alloc(&app->pipeline.setup_arena, payload_size, false);
     if (!payload_buffer) {
         networking_disconnect(p->net_ctx);
         networking_cleanup_module();
@@ -482,8 +482,8 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
 
     // Set the final, negotiated format for use by the rest of the application.
     p->active_format = final_format;
-    resources->input_format = final_format;
-    resources->input_bytes_per_sample_pair = get_bytes_per_sample(final_format);
+    app->modules.input_format = final_format;
+    app->modules.input_bytes_per_sample_pair = get_bytes_per_sample(final_format);
 
     uint32_t max_sr = p->device_info.MaximumSampleRate;
     uint32_t min_dec = p->device_info.MinimumIQDecimation;
@@ -513,7 +513,7 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
         log_info("Requested sample rate %.0f Hz. Using closest available rate: %.0f Hz.", user_rate, actual_rate);
     }
 
-    resources->source_info.samplerate = (int)actual_rate;
+    app->modules.source_info.samplerate = (int)actual_rate;
 
     int format_to_request_int = get_spyserver_enum_from_internal_format(final_format);
 
@@ -573,7 +573,7 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
     // -------------------------------------------------------------------------
     // NEW: Dynamic Ring Buffer Sizing
     // -------------------------------------------------------------------------
-    double bytes_per_sec = (double)actual_rate * (double)resources->input_bytes_per_sample_pair;
+    double bytes_per_sec = (double)actual_rate * (double)app->modules.input_bytes_per_sample_pair;
 
     // Calculate total capacity based on the pre-buffer target and the headroom factor.
     // e.g. 2.5s * 4.0 = 10.0s of total capacity.
@@ -605,8 +605,8 @@ static void* spyserver_client_producer_thread(void* arg) {
     platform_set_thread_priority(PRIORITY_REALTIME, "SpyServer Producer");
 
     ModuleContext* ctx = (ModuleContext*)arg;
-    AppResources* resources = ctx->resources;
-    SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->modules.input_private_data;
 
 
     while (!is_shutdown_requested()) {
@@ -615,7 +615,7 @@ static void* spyserver_client_producer_thread(void* arg) {
         // Block waiting for a protocol header
         if (!networking_recv_all(p->net_ctx, &header, sizeof(header))) {
             if (!is_shutdown_requested()) {
-                 handle_fatal_thread_error("Connection to spyserver lost (header recv failed).", resources);
+                 handle_fatal_thread_error("Connection to spyserver lost (header recv failed).", app);
             }
             break;
         }
@@ -645,7 +645,7 @@ static void* spyserver_client_producer_thread(void* arg) {
 
                 // 1. Read Payload Chunk from Network
                 if (!networking_recv_all(p->net_ctx, p->rx_buffer, to_read)) {
-                    if (!is_shutdown_requested()) handle_fatal_thread_error("Connection lost reading payload.", resources);
+                    if (!is_shutdown_requested()) handle_fatal_thread_error("Connection lost reading payload.", app);
                     goto end_loop;
                 }
 
@@ -662,7 +662,7 @@ static void* spyserver_client_producer_thread(void* arg) {
                 bytes_remaining -= to_read;
 
                 // --- HEARTBEAT ---
-                sdr_input_update_heartbeat(resources);
+                sdr_input_update_heartbeat(app);
             }
         }
         else {
@@ -674,7 +674,7 @@ static void* spyserver_client_producer_thread(void* arg) {
             while (bytes_to_discard > 0) {
                 size_t to_read = (bytes_to_discard > sizeof(discard_buffer)) ? sizeof(discard_buffer) : bytes_to_discard;
                 if (!networking_recv_all(p->net_ctx, discard_buffer, to_read)) {
-                    if (!is_shutdown_requested()) handle_fatal_thread_error("Connection lost discarding packet.", resources);
+                    if (!is_shutdown_requested()) handle_fatal_thread_error("Connection lost discarding packet.", app);
                     goto end_loop;
                 }
                 bytes_to_discard -= to_read;
@@ -689,22 +689,22 @@ end_loop:;
 }
 
 static void* spyserver_client_start_stream(ModuleContext* ctx) {
-    AppResources* resources = ctx->resources;
-    SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->modules.input_private_data;
 
     if (!send_setting(p, SPYSERVER_SETTING_STREAMING_ENABLED, 1)) {
-        handle_fatal_thread_error("Failed to start spyserver stream.", resources);
+        handle_fatal_thread_error("Failed to start spyserver stream.", app);
         return NULL;
     }
 
     pthread_t producer_thread_id;
     if (pthread_create(&producer_thread_id, NULL, spyserver_client_producer_thread, ctx) != 0) {
-        handle_fatal_thread_error("Failed to create spyserver producer thread.", resources);
+        handle_fatal_thread_error("Failed to create spyserver producer thread.", app);
         return NULL;
     }
 
     size_t buffer_capacity = ring_buffer_get_capacity(p->stream_buffer);
-    double bytes_per_second = (double)resources->source_info.samplerate * (double)resources->input_bytes_per_sample_pair;
+    double bytes_per_second = (double)app->modules.source_info.samplerate * (double)app->modules.input_bytes_per_sample_pair;
     size_t high_water_mark = (size_t)(bytes_per_second * SPYSERVER_PREBUFFER_TARGET_SECONDS);
 
     // Sanity Cap
@@ -715,7 +715,7 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
     log_info("Pre-buffering SpyServer data...");
 
     while (!is_shutdown_requested() && ring_buffer_get_size(p->stream_buffer) < high_water_mark) {
-        if (resources->error_occurred) break;
+        if (app->stats.error_occurred) break;
         #ifdef _WIN32
             Sleep(100);
         #else
@@ -723,7 +723,7 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
         #endif
     }
 
-    if (is_shutdown_requested() || resources->error_occurred) {
+    if (is_shutdown_requested() || app->stats.error_occurred) {
         log_warn("Shutdown requested during pre-buffering phase.");
     } else {
         log_info("Pre-buffering complete.");
@@ -733,7 +733,7 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
     memset(&state, 0, sizeof(state));
 
     while (!is_shutdown_requested()) {
-        SampleChunk* item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+        SampleChunk* item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
         if (!item) break;
 
         bool is_reset = false;
@@ -744,12 +744,12 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
             item,
             &state,
             &is_reset,
-            resources->pipeline_read_chunk_size
+            app->pipeline.read_chunk_size
         );
 
         if (frames_read < 0) {
-            handle_fatal_thread_error("SpyServer Client: Fatal error parsing internal buffer stream.", resources);
-            queue_enqueue(resources->free_sample_chunk_queue, item);
+            handle_fatal_thread_error("SpyServer Client: Fatal error parsing internal buffer stream.", app);
+            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
             break;
         }
 
@@ -757,7 +757,7 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
             // End of Stream (Producer closed buffer)
             item->is_last_chunk = true;
             item->frames_read = 0;
-            queue_enqueue(resources->reader_output_queue, item);
+            queue_enqueue(app->pipeline.reader_output_queue, item);
             break;
         }
 
@@ -771,13 +771,13 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
         item->input_bytes_per_sample_pair = get_bytes_per_sample(item->packet_sample_format);
 
         if (item->frames_read > 0) {
-            pthread_mutex_lock(&resources->progress_mutex);
-            resources->total_frames_read += item->frames_read;
-            pthread_mutex_unlock(&resources->progress_mutex);
+            pthread_mutex_lock(&app->stats.mutex);
+            app->stats.total_frames_read += item->frames_read;
+            pthread_mutex_unlock(&app->stats.mutex);
         }
 
-        if (!queue_enqueue(resources->reader_output_queue, item)) {
-            queue_enqueue(resources->free_sample_chunk_queue, item);
+        if (!queue_enqueue(app->pipeline.reader_output_queue, item)) {
+            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
             break;
         }
     }
@@ -792,9 +792,9 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
 }
 
 static void spyserver_client_stop_stream(ModuleContext* ctx) {
-    AppResources* resources = ctx->resources;
-    if (resources->input_module_private_data) {
-        SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    if (app->modules.input_private_data) {
+        SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->modules.input_private_data;
         if (p->stream_buffer) {
             ring_buffer_signal_shutdown(p->stream_buffer);
         }
@@ -802,9 +802,9 @@ static void spyserver_client_stop_stream(ModuleContext* ctx) {
 }
 
 static void spyserver_client_cleanup(ModuleContext* ctx) {
-    AppResources* resources = ctx->resources;
-    if (resources->input_module_private_data) {
-        SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    if (app->modules.input_private_data) {
+        SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->modules.input_private_data;
         if (p->stream_buffer) {
             ring_buffer_destroy(p->stream_buffer);
             p->stream_buffer = NULL;
@@ -820,8 +820,8 @@ static void spyserver_client_cleanup(ModuleContext* ctx) {
 }
 
 static void spyserver_client_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
-    const SpyServerClientPrivateData* p = (const SpyServerClientPrivateData*)ctx->resources->input_module_private_data;
-    const AppResources* resources = ctx->resources;
+    const SpyServerClientPrivateData* p = (const SpyServerClientPrivateData*)ctx->app->modules.input_private_data;
+    const AppContext* app = ctx->app;
     const AppConfig* config = ctx->config;
     char server_addr[256];
     snprintf(server_addr, sizeof(server_addr), "%s:%d", s_spyserver_client_config.hostname, s_spyserver_client_config.port);
@@ -838,8 +838,8 @@ static void spyserver_client_get_summary_info(const ModuleContext* ctx, InputSum
         char dev_info_str[128];
         snprintf(dev_info_str, sizeof(dev_info_str), "%s (S/N: %08X)", dev_type_str, p->device_info.DeviceSerial);
         add_summary_item(info, "Remote Device", dev_info_str);
-        add_summary_item(info, "Input Format", utils_get_format_description_string(resources->input_format));
-        add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
+        add_summary_item(info, "Input Format", utils_get_format_description_string(app->modules.input_format));
+        add_summary_item(info, "Input Rate", "%d Hz", app->modules.source_info.samplerate);
         add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
         if (s_spyserver_client_config.gain_provided) {

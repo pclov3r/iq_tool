@@ -22,9 +22,9 @@ struct PipelineContext;
  * This is the main high-level function that encapsulates the entire pipeline lifecycle.
  * It handles the creation of all DSP objects and queues, spawns all necessary threads
  * using the thread manager, waits for them to finish, and then cleans up all
- * pipeline-specific resources.
+ * pipeline-specific app.
  *
- * @param context A pointer to the PipelineContext, containing the application config and resources.
+ * @param context A pointer to the PipelineContext, containing the application config and app.
  * @return true if the pipeline ran and shut down cleanly, false if there was a setup or execution error.
  */
 bool pipeline_run(struct PipelineContext* context);

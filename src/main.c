@@ -71,9 +71,9 @@ pthread_mutex_t g_console_mutex;
 
 
 // --- Forward Declarations for Static Helper Functions ---
-static void initialize_resource_struct(AppConfig *config, AppResources *resources);
-static bool validate_configuration(AppConfig *config, const AppResources *resources);
-static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success);
+static void initialize_resource_struct(AppConfig *config, AppContext* app);
+static bool validate_configuration(AppConfig *config, const AppContext* app);
+static void print_final_summary(const AppConfig *config, const AppContext* app, bool success);
 static void console_lock_function(bool lock, void *udata);
 static void application_progress_callback(unsigned long long current_output_frames, long long total_output_frames, unsigned long long current_bytes_written, void* udata);
 static const char* find_input_type_arg(int argc, char *argv[]);
@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
 #endif
 
     int exit_status = EXIT_FAILURE;
-    AppResources resources;
+    AppContext app;
     bool resources_initialized = false;
     bool arena_initialized = false;
 
@@ -117,11 +117,11 @@ int main(int argc, char *argv[]) {
 
     memset(&config, 0, sizeof(AppConfig));
 
-    initialize_resource_struct(&config, &resources);
+    initialize_resource_struct(&config, &app);
     reset_shutdown_flag();
-    setup_signal_handlers(&resources);
+    setup_signal_handlers(&app);
 
-    if (!mem_arena_init(&resources.setup_arena, MEM_ARENA_SIZE_BYTES)) {
+    if (!mem_arena_init(&app.pipeline.setup_arena, MEM_ARENA_SIZE_BYTES)) {
         goto cleanup;
     }
     arena_initialized = true;
@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
     if (input_type) {
         config.input.type_name = (char*)input_type;
         int num_modules = 0;
-        const Module* modules = module_manager_get_all_modules(&num_modules, &resources.setup_arena);
+        const Module* modules = module_manager_get_all_modules(&num_modules, &app.pipeline.setup_arena);
         for (int i = 0; i < num_modules; ++i) {
             if (strcasecmp(input_type, modules[i].name) == 0) {
                 if (modules[i].set_default_config) {
@@ -157,7 +157,7 @@ int main(int argc, char *argv[]) {
         pthread_attr_destroy(&sig_thread_attr);
         goto cleanup;
     }
-    if (pthread_create(&sig_thread_id, &sig_thread_attr, signal_handler_thread, &resources) != 0) {
+    if (pthread_create(&sig_thread_id, &sig_thread_attr, signal_handler_thread, &app) != 0) {
         log_fatal("Failed to create detached signal handler thread.");
         pthread_attr_destroy(&sig_thread_attr);
         goto cleanup;
@@ -165,44 +165,44 @@ int main(int argc, char *argv[]) {
     pthread_attr_destroy(&sig_thread_attr);
 #endif
 
-    if (!presets_load_from_file(&config, &resources.setup_arena)) {
+    if (!presets_load_from_file(&config, &app.pipeline.setup_arena)) {
         goto cleanup;
     }
 
     if (argc <= 1) {
-        print_usage(argv[0], &config, &resources.setup_arena);
+        print_usage(argv[0], &config, &app.pipeline.setup_arena);
         exit_status = EXIT_SUCCESS;
         goto cleanup;
     }
 
     // Phase 2: Call the main parser.
-    if (!parse_arguments(argc, argv, &config, &resources.setup_arena)) {
+    if (!parse_arguments(argc, argv, &config, &app.pipeline.setup_arena)) {
         goto cleanup;
     }
 
-    resources.selected_input_module_api = module_manager_get_input_interface_by_name(config.input.type_name, &resources.setup_arena);
-    if (!resources.selected_input_module_api) {
+    app.modules.input_api = module_manager_get_input_interface_by_name(config.input.type_name, &app.pipeline.setup_arena);
+    if (!app.modules.input_api) {
         log_fatal("Input type '%s' is not supported or not enabled in this build.", config.input.type_name);
         goto cleanup;
     }
 
-    if (!validate_configuration(&config, &resources)) {
+    if (!validate_configuration(&config, &app)) {
         goto cleanup;
     }
 
-    if (!initialize_application(&config, &resources)) {
+    if (!initialize_application(&config, &app)) {
         goto cleanup;
     }
     resources_initialized = true;
 
-    resources.progress_callback = application_progress_callback;
-    resources.progress_callback_udata = &g_console_mutex;
+    app.stats.progress_callback = application_progress_callback;
+    app.stats.progress_callback_udata = &g_console_mutex;
 
-    resources.start_time = time(NULL);
+    app.stats.start_time = time(NULL);
 
 
     // The entire concurrent operation is now encapsulated in this single call.
-    PipelineContext pipeline_context = { .config = &config, .resources = &resources };
+    PipelineContext pipeline_context = { .config = &config, .app = &app };
     if (!pipeline_run(&pipeline_context)) {
         // pipeline_run handles its own internal cleanup. If it fails, we
         // just need to proceed to the main application cleanup.
@@ -210,24 +210,24 @@ int main(int argc, char *argv[]) {
     }
 
 
-    bool processing_ok = !resources.error_occurred;
+    bool processing_ok = !app.stats.error_occurred;
     exit_status = (processing_ok || is_shutdown_requested()) ? EXIT_SUCCESS : EXIT_FAILURE;
 
 cleanup:
     pthread_mutex_lock(&g_console_mutex);
 
-    bool final_ok = !resources.error_occurred;
+    bool final_ok = !app.stats.error_occurred;
 
-    cleanup_application(&config, &resources);
+    cleanup_application(&config, &app);
 
     if (resources_initialized) {
-        print_final_summary(&config, &resources, final_ok);
+        print_final_summary(&config, &app, final_ok);
     }
 
     pthread_mutex_unlock(&g_console_mutex);
 
     if (arena_initialized) {
-        mem_arena_destroy(&resources.setup_arena);
+        mem_arena_destroy(&app.pipeline.setup_arena);
     }
 
     pthread_mutex_destroy(&g_console_mutex);
@@ -253,23 +253,23 @@ static const char* find_input_type_arg(int argc, char *argv[]) {
     return NULL;
 }
 
-static void initialize_resource_struct(AppConfig *config, AppResources *resources) {
-    memset(resources, 0, sizeof(AppResources));
+static void initialize_resource_struct(AppConfig *config, AppContext* app) {
+    memset(app, 0, sizeof(AppContext));
     config->dsp.iq_correction.enable = false;
     config->dsp.dc_block.enable = false;
 }
 
-static bool validate_configuration(AppConfig *config, const AppResources *resources) {
+static bool validate_configuration(AppConfig *config, const AppContext* app) {
     (void)config;
-    (void)resources;
+    (void)app;
     return true;
 }
 
-static void print_final_summary(const AppConfig *config, const AppResources *resources, bool success) {
+static void print_final_summary(const AppConfig *config, const AppContext* app, bool success) {
     (void)config;
 
     // If the output target is not a file (e.g., stdout), don't print a summary.
-    if (!resources->pacing_is_required) {
+    if (!app->modules.pacing_is_required) {
         return;
     }
 
@@ -277,36 +277,36 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
     char size_buf[40];
     char duration_buf[40];
 
-    format_file_size(resources->final_output_size_bytes, size_buf, sizeof(size_buf));
-    double duration_secs = difftime(time(NULL), resources->start_time);
+    format_file_size(app->stats.final_output_size_bytes, size_buf, sizeof(size_buf));
+    double duration_secs = difftime(time(NULL), app->stats.start_time);
     format_duration(duration_secs, duration_buf, sizeof(duration_buf));
 
-    unsigned long long total_input_samples = resources->total_frames_read * 2;
-    unsigned long long total_output_samples = resources->total_output_frames * 2;
+    unsigned long long total_input_samples = app->stats.total_frames_read * 2;
+    unsigned long long total_output_samples = app->stats.total_output_frames * 2;
 
     double avg_write_speed_mbps = 0.0;
     if (duration_secs > 0.001) {
-        avg_write_speed_mbps = (double)resources->final_output_size_bytes / (1024.0 * 1024.0) / duration_secs;
+        avg_write_speed_mbps = (double)app->stats.final_output_size_bytes / (1024.0 * 1024.0) / duration_secs;
     }
 
     fprintf(stderr, "\n--- Final Summary ---\n");
     if (!success) {
         fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Stopped Due to Error");
-        if (resources->total_frames_read > 0) {
-            log_error("Processing stopped after %llu input frames.", resources->total_frames_read);
+        if (app->stats.total_frames_read > 0) {
+            log_error("Processing stopped after %llu input frames.", app->stats.total_frames_read);
         }
         fprintf(stderr, "%-*s %s (possibly incomplete)\n", label_width, "Output File Size:", size_buf);
-    } else if (resources->end_of_stream_reached) {
+    } else if (app->stats.end_of_stream_reached) {
         fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Completed Successfully");
         fprintf(stderr, "%-*s %s\n", label_width, "Processing Duration:", duration_buf);
-        fprintf(stderr, "%-*s %llu / %lld (100.0%%)\n", label_width, "Input Frames Read:", resources->total_frames_read, (long long)resources->source_info.frames);
+        fprintf(stderr, "%-*s %llu / %lld (100.0%%)\n", label_width, "Input Frames Read:", app->stats.total_frames_read, (long long)app->modules.source_info.frames);
         fprintf(stderr, "%-*s %llu\n", label_width, "Input Samples Read:", total_input_samples);
-        fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", resources->total_output_frames);
+        fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", app->stats.total_output_frames);
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Written:", total_output_samples);
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
         fprintf(stderr, "%-*s %.2f MB/s\n", label_width, "Average Write Speed:", avg_write_speed_mbps);
     } else if (is_shutdown_requested()) {
-        bool source_has_known_length = resources->selected_input_module_api->has_known_length();
+        bool source_has_known_length = app->modules.input_api->has_known_length();
         if (!source_has_known_length) {
             fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Capture Stopped by User");
         } else {
@@ -315,17 +315,17 @@ static void print_final_summary(const AppConfig *config, const AppResources *res
         const char* duration_label = !source_has_known_length ? "Capture Duration:" : "Processing Duration:";
         fprintf(stderr, "%-*s %s\n", label_width, duration_label, duration_buf);
         if (!source_has_known_length) {
-            fprintf(stderr, "%-*s %llu\n", label_width, "Input Frames Read:", resources->total_frames_read);
+            fprintf(stderr, "%-*s %llu\n", label_width, "Input Frames Read:", app->stats.total_frames_read);
             fprintf(stderr, "%-*s %llu\n", label_width, "Input Samples Read:", total_input_samples);
         } else {
             double percentage = 0.0;
-            if (resources->source_info.frames > 0) {
-                percentage = ((double)resources->total_frames_read / (double)resources->source_info.frames) * 100.0;
+            if (app->modules.source_info.frames > 0) {
+                percentage = ((double)app->stats.total_frames_read / (double)app->modules.source_info.frames) * 100.0;
             }
-            fprintf(stderr, "%-*s %llu / %lld (%.1f%%)\n", label_width, "Input Frames Read:", resources->total_frames_read, (long long)resources->source_info.frames, percentage);
+            fprintf(stderr, "%-*s %llu / %lld (%.1f%%)\n", label_width, "Input Frames Read:", app->stats.total_frames_read, (long long)app->modules.source_info.frames, percentage);
             fprintf(stderr, "%-*s %llu\n", label_width, "Input Samples Read:", total_input_samples);
         }
-        fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", resources->total_output_frames);
+        fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", app->stats.total_output_frames);
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Written:", total_output_samples);
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
         fprintf(stderr, "%-*s %.2f MB/s\n", label_width, "Average Write Speed:", avg_write_speed_mbps);

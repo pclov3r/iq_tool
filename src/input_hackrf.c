@@ -136,12 +136,12 @@ static bool hackrf_validate_options(AppConfig* config) {
 }
 
 static int hackrf_buffered_stream_callback(hackrf_transfer* transfer) {
-    AppResources *resources = (AppResources*)transfer->rx_ctx;
+    AppContext* app = (AppContext*)transfer->rx_ctx;
 
     // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(resources);
+    sdr_input_update_heartbeat(app);
 
-    if (is_shutdown_requested() || resources->error_occurred) {
+    if (is_shutdown_requested() || app->stats.error_occurred) {
         return -1;
     }
 
@@ -149,7 +149,7 @@ static int hackrf_buffered_stream_callback(hackrf_transfer* transfer) {
     // HackRF provides interleaved CS8 (2 bytes per sample).
     // valid_length is in bytes.
     if (!sdr_packet_serializer_write_block(
-            resources->sdr_input_buffer, 
+            app->pipeline.sdr_input_buffer, 
             transfer->valid_length / 2, // num_samples
             transfer->buffer, 
             CS8)) 
@@ -161,13 +161,13 @@ static int hackrf_buffered_stream_callback(hackrf_transfer* transfer) {
 }
 
 static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
-    AppResources *resources = (AppResources*)transfer->rx_ctx;
-    const AppConfig *config = resources->config;
+    AppContext* app = (AppContext*)transfer->rx_ctx;
+    const AppConfig *config = app->config;
 
     // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(resources);
+    sdr_input_update_heartbeat(app);
 
-    if (is_shutdown_requested() || resources->error_occurred) {
+    if (is_shutdown_requested() || app->stats.error_occurred) {
         return -1;
     }
 
@@ -176,8 +176,8 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
     }
 
     if (config->dsp.raw_passthrough) {
-        ModuleContext ctx = { .config = config, .resources = resources };
-                        size_t written = resources->selected_output_module_api->write_chunk(&ctx, transfer->buffer, transfer->valid_length);
+        ModuleContext ctx = { .config = config, .app = app };
+                        size_t written = app->modules.output_api->write_chunk(&ctx, transfer->buffer, transfer->valid_length);
         if (written < (size_t)transfer->valid_length) {
             log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
             request_shutdown();
@@ -188,7 +188,7 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
 
     size_t bytes_processed = 0;
     while (bytes_processed < (size_t)transfer->valid_length) {
-        SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+        SampleChunk *item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
         if (!item) {
             log_warn("Real-time pipeline stalled. Dropping %zu bytes.", (size_t)transfer->valid_length - bytes_processed);
             return 0;
@@ -204,18 +204,18 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
         }
 
         memcpy(item->raw_input_data, transfer->buffer + bytes_processed, chunk_size);
-        item->frames_read = chunk_size / resources->input_bytes_per_sample_pair;
+        item->frames_read = chunk_size / app->modules.input_bytes_per_sample_pair;
         item->is_last_chunk = false;
-	    item->packet_sample_format = resources->input_format;
+	    item->packet_sample_format = app->modules.input_format;
 
         if (item->frames_read > 0) {
-            pthread_mutex_lock(&resources->progress_mutex);
-            resources->total_frames_read += item->frames_read;
-            pthread_mutex_unlock(&resources->progress_mutex);
+            pthread_mutex_lock(&app->stats.mutex);
+            app->stats.total_frames_read += item->frames_read;
+            pthread_mutex_unlock(&app->stats.mutex);
         }
 
-        if (!queue_enqueue(resources->reader_output_queue, item)) {
-            queue_enqueue(resources->free_sample_chunk_queue, item);
+        if (!queue_enqueue(app->pipeline.reader_output_queue, item)) {
+            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
             return -1;
         }
         bytes_processed += chunk_size;
@@ -226,10 +226,10 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
 
 static void hackrf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
-    const AppResources *resources = ctx->resources;
+    const AppContext* app = ctx->app;
     add_summary_item(info, "Input Source", "HackRF One");
     add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
-    add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
+    add_summary_item(info, "Input Rate", "%d Hz", app->modules.source_info.samplerate);
     add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
     // as HackRF does not have a true hardware AGC. The gain is always fixed.
@@ -241,16 +241,16 @@ static void hackrf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* 
 
 static bool hackrf_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
-    AppResources *resources = ctx->resources;
+    AppContext* app = ctx->app;
     int result;
     bool success = false; // Assume failure until the very end
 
-    HackrfPrivateData* private_data = (HackrfPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(HackrfPrivateData), true);
+    HackrfPrivateData* private_data = (HackrfPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(HackrfPrivateData), true);
     if (!private_data) {
-        return false; // mem_arena_alloc logs error, no resources to clean up yet
+        return false; // mem_arena_alloc logs error, no app to clean up yet
     }
     private_data->dev = NULL; // Initialize resource state
-    resources->input_module_private_data = private_data;
+    app->modules.input_private_data = private_data;
 
     result = hackrf_init();
     if (result != HACKRF_SUCCESS) {
@@ -304,12 +304,12 @@ static bool hackrf_initialize(ModuleContext* ctx) {
         }
     }
 
-    resources->input_format = CS8;
-    resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
-    resources->source_info.samplerate = (int)config->sdr_general.sample_rate_hz;
-    resources->source_info.frames = -1;
+    app->modules.input_format = CS8;
+    app->modules.input_bytes_per_sample_pair = get_bytes_per_sample(app->modules.input_format);
+    app->modules.source_info.samplerate = (int)config->sdr_general.sample_rate_hz;
+    app->modules.source_info.frames = -1;
 
-    if (config->dsp.raw_passthrough && resources->input_format != config->output.format) {
+    if (config->dsp.raw_passthrough && app->modules.input_format != config->output.format) {
         log_fatal("Option --raw-passthrough requires input and output formats to be identical. HackRF input is 'cs8', but output was set to '%s'.", config->output.format_name);
         goto cleanup;
     }
@@ -324,12 +324,12 @@ cleanup:
 }
 
 static void* hackrf_start_stream(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    HackrfPrivateData* private_data = (HackrfPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    HackrfPrivateData* private_data = (HackrfPrivateData*)app->modules.input_private_data;
     int result;
     hackrf_sample_block_cb_fn callback_fn;
 
-    if (resources->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
+    if (app->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
         log_info("Starting HackRF stream (Buffered Mode)...");
         callback_fn = hackrf_buffered_stream_callback;
     } else { // PIPELINE_MODE_REALTIME_SDR
@@ -337,15 +337,15 @@ static void* hackrf_start_stream(ModuleContext* ctx) {
         callback_fn = hackrf_realtime_stream_callback;
     }
 
-    result = hackrf_start_rx(private_data->dev, callback_fn, resources);
+    result = hackrf_start_rx(private_data->dev, callback_fn, app);
     if (result != HACKRF_SUCCESS) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "hackrf_start_rx() failed: %s (%d)", hackrf_error_name(result), result);
-        handle_fatal_thread_error(error_buf, resources);
+        handle_fatal_thread_error(error_buf, app);
         return NULL;
     }
 
-    while (!is_shutdown_requested() && !resources->error_occurred && hackrf_is_streaming(private_data->dev) == HACKRF_TRUE) {
+    while (!is_shutdown_requested() && !app->stats.error_occurred && hackrf_is_streaming(private_data->dev) == HACKRF_TRUE) {
 #ifdef _WIN32
         Sleep(100);
 #else
@@ -360,8 +360,8 @@ static void* hackrf_start_stream(ModuleContext* ctx) {
 }
 
 static void hackrf_stop_stream(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    HackrfPrivateData* private_data = (HackrfPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    HackrfPrivateData* private_data = (HackrfPrivateData*)app->modules.input_private_data;
     if (private_data && private_data->dev && hackrf_is_streaming(private_data->dev) == HACKRF_TRUE) {
         log_info("Stopping HackRF stream...");
         int result = hackrf_stop_rx(private_data->dev);
@@ -372,15 +372,15 @@ static void hackrf_stop_stream(ModuleContext* ctx) {
 }
 
 static void hackrf_cleanup(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    if (resources->input_module_private_data) {
-        HackrfPrivateData* private_data = (HackrfPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    if (app->modules.input_private_data) {
+        HackrfPrivateData* private_data = (HackrfPrivateData*)app->modules.input_private_data;
         if (private_data->dev) {
             log_info("Closing HackRF device...");
             hackrf_close(private_data->dev);
             private_data->dev = NULL;
         }
-        resources->input_module_private_data = NULL;
+        app->modules.input_private_data = NULL;
     }
     log_info("Exiting HackRF library...");
     hackrf_exit();

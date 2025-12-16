@@ -15,13 +15,13 @@
  * which includes sample format conversion, DC blocking, I/Q correction, frequency
  * shifting, and pre-resample filtering.
  *
- * @param resources A pointer to the main application resources.
+ * @param app A pointer to the main application app.
  * @param item The SampleChunk containing the data to be processed. The operation
  *             is performed on the raw_input_data buffer, and the results are
  *             placed in the complex_pre_resample_data buffer. The frames_read
  *             field may be modified by filtering.
  */
-void pre_processor_apply_chain(AppResources* resources, SampleChunk* item);
+void pre_processor_apply_chain(DspContext* dsp, SampleChunk* item);
 
 /**
  * @brief Resets the state of all stateful DSP modules in the pre-processing chain.
@@ -29,8 +29,8 @@ void pre_processor_apply_chain(AppResources* resources, SampleChunk* item);
  * This should be called upon a stream discontinuity to prevent stale data from
  * corrupting new samples.
  *
- * @param resources A pointer to the main application resources.
+ * @param app A pointer to the main application app.
  */
-void pre_processor_reset(AppResources* resources);
+void pre_processor_reset(DspContext* dsp);
 
 #endif // PRE_PROCESSOR_H_

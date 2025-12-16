@@ -176,12 +176,12 @@ static bool airspyhf_validate_options(AppConfig* config) {
 }
 
 static int airspyhf_buffered_stream_callback(airspyhf_transfer_t* transfer) {
-    AppResources *resources = (AppResources*)transfer->ctx;
+    AppContext* app = (AppContext*)transfer->ctx;
 
     // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(resources);
+    sdr_input_update_heartbeat(app);
 
-    if (is_shutdown_requested() || resources->error_occurred) {
+    if (is_shutdown_requested() || app->stats.error_occurred) {
         return -1;
     }
 
@@ -191,7 +191,7 @@ static int airspyhf_buffered_stream_callback(airspyhf_transfer_t* transfer) {
 
     // Airspy HF+ always outputs CF32
     if (!sdr_packet_serializer_write_block(
-            resources->sdr_input_buffer,
+            app->pipeline.sdr_input_buffer,
             transfer->sample_count,
             transfer->samples,
             CF32)) {
@@ -202,13 +202,13 @@ static int airspyhf_buffered_stream_callback(airspyhf_transfer_t* transfer) {
 }
 
 static int airspyhf_realtime_stream_callback(airspyhf_transfer_t* transfer) {
-    AppResources *resources = (AppResources*)transfer->ctx;
-    const AppConfig *config = resources->config;
+    AppContext* app = (AppContext*)transfer->ctx;
+    const AppConfig *config = app->config;
 
     // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(resources);
+    sdr_input_update_heartbeat(app);
 
-    if (is_shutdown_requested() || resources->error_occurred) {
+    if (is_shutdown_requested() || app->stats.error_occurred) {
         return -1;
     }
 
@@ -221,8 +221,8 @@ static int airspyhf_realtime_stream_callback(airspyhf_transfer_t* transfer) {
 
     if (config->dsp.raw_passthrough) {
         size_t total_bytes = transfer->sample_count * bytes_per_sample;
-        ModuleContext ctx = { .config = config, .resources = resources };
-        size_t written = resources->selected_output_module_api->write_chunk(&ctx, transfer->samples, total_bytes);
+        ModuleContext ctx = { .config = config, .app = app };
+        size_t written = app->modules.output_api->write_chunk(&ctx, transfer->samples, total_bytes);
         if (written < total_bytes) {
             log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
             request_shutdown();
@@ -233,7 +233,7 @@ static int airspyhf_realtime_stream_callback(airspyhf_transfer_t* transfer) {
 
     size_t samples_processed = 0;
     while (samples_processed < (size_t)transfer->sample_count) {
-        SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+        SampleChunk *item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
         if (!item) {
             log_warn("Real-time pipeline stalled. Dropping %zu samples.", (size_t)transfer->sample_count - samples_processed);
             return 0;
@@ -254,13 +254,13 @@ static int airspyhf_realtime_stream_callback(airspyhf_transfer_t* transfer) {
         item->packet_sample_format = CF32;
 
         if (samples_to_copy > 0) {
-            pthread_mutex_lock(&resources->progress_mutex);
-            resources->total_frames_read += samples_to_copy;
-            pthread_mutex_unlock(&resources->progress_mutex);
+            pthread_mutex_lock(&app->stats.mutex);
+            app->stats.total_frames_read += samples_to_copy;
+            pthread_mutex_unlock(&app->stats.mutex);
         }
 
-        if (!queue_enqueue(resources->reader_output_queue, item)) {
-            queue_enqueue(resources->free_sample_chunk_queue, item);
+        if (!queue_enqueue(app->pipeline.reader_output_queue, item)) {
+            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
             return -1;
         }
         samples_processed += samples_to_copy;
@@ -271,11 +271,11 @@ static int airspyhf_realtime_stream_callback(airspyhf_transfer_t* transfer) {
 
 static void airspyhf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
-    const AppResources *resources = ctx->resources;
+    const AppContext* app = ctx->app;
 
     add_summary_item(info, "Input Source", "Airspy HF+");
     add_summary_item(info, "Input Format", "32-bit Float Complex (cf32)");
-    add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
+    add_summary_item(info, "Input Rate", "%d Hz", app->modules.source_info.samplerate);
     add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
     // Gain reporting
@@ -305,17 +305,17 @@ static void airspyhf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo
 
 static bool airspyhf_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
-    AppResources *resources = ctx->resources;
+    AppContext* app = ctx->app;
     int result;
     bool success = false;
 
-    AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(AirspyHFPrivateData), true);
+    AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(AirspyHFPrivateData), true);
     if (!private_data) {
         return false;
     }
     private_data->dev = NULL;
 
-    resources->input_module_private_data = private_data;
+    app->modules.input_private_data = private_data;
 
     // Open device
     if (s_airspyhf_config.serial_provided) {
@@ -345,7 +345,7 @@ static bool airspyhf_initialize(ModuleContext* ctx) {
         goto cleanup;
     }
 
-    uint32_t* rates = (uint32_t*)mem_arena_alloc(&resources->setup_arena, num_rates * sizeof(uint32_t), false);
+    uint32_t* rates = (uint32_t*)mem_arena_alloc(&app->pipeline.setup_arena, num_rates * sizeof(uint32_t), false);
     if (!rates) {
         goto cleanup;
     }
@@ -390,7 +390,7 @@ static bool airspyhf_initialize(ModuleContext* ctx) {
     }
 
     // Airspy HF+ always outputs CF32
-    resources->input_format = CF32;
+    app->modules.input_format = CF32;
 
     // Configure AGC
     if (s_airspyhf_config.agc_mode_provided) {
@@ -481,11 +481,11 @@ static bool airspyhf_initialize(ModuleContext* ctx) {
         }
     }
 
-    resources->input_bytes_per_sample_pair = get_bytes_per_sample(CF32);
-    resources->source_info.samplerate = (int)config->sdr_general.sample_rate_hz;
-    resources->source_info.frames = -1;
+    app->modules.input_bytes_per_sample_pair = get_bytes_per_sample(CF32);
+    app->modules.source_info.samplerate = (int)config->sdr_general.sample_rate_hz;
+    app->modules.source_info.frames = -1;
 
-    if (config->dsp.raw_passthrough && resources->input_format != config->output.format) {
+    if (config->dsp.raw_passthrough && app->modules.input_format != config->output.format) {
         log_error("Option --raw-passthrough requires input and output formats to be identical. Airspy HF+ input is 'cf32', but output was set to '%s'.",
                   config->output.format_name);
         goto cleanup;
@@ -501,12 +501,12 @@ cleanup:
 }
 
 static void* airspyhf_start_stream(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)app->modules.input_private_data;
     int result;
     airspyhf_sample_block_cb_fn callback_fn;
 
-    if (resources->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
+    if (app->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
         log_info("Starting Airspy HF+ stream (Buffered Mode)...");
         callback_fn = airspyhf_buffered_stream_callback;
     } else { // PIPELINE_MODE_REALTIME_SDR
@@ -514,15 +514,15 @@ static void* airspyhf_start_stream(ModuleContext* ctx) {
         callback_fn = airspyhf_realtime_stream_callback;
     }
 
-    result = airspyhf_start(private_data->dev, callback_fn, resources);
+    result = airspyhf_start(private_data->dev, callback_fn, app);
     if (result != AIRSPYHF_SUCCESS) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "airspyhf_start() failed: %d", result);
-        handle_fatal_thread_error(error_buf, resources);
+        handle_fatal_thread_error(error_buf, app);
         return NULL;
     }
 
-    while (!is_shutdown_requested() && !resources->error_occurred && airspyhf_is_streaming(private_data->dev)) {
+    while (!is_shutdown_requested() && !app->stats.error_occurred && airspyhf_is_streaming(private_data->dev)) {
 #ifdef _WIN32
         Sleep(100);
 #else
@@ -537,8 +537,8 @@ static void* airspyhf_start_stream(ModuleContext* ctx) {
 }
 
 static void airspyhf_stop_stream(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)app->modules.input_private_data;
     if (private_data && private_data->dev && airspyhf_is_streaming(private_data->dev)) {
         log_info("Stopping Airspy HF+ stream...");
         int result = airspyhf_stop(private_data->dev);
@@ -549,14 +549,14 @@ static void airspyhf_stop_stream(ModuleContext* ctx) {
 }
 
 static void airspyhf_cleanup(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    if (resources->input_module_private_data) {
-        AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    if (app->modules.input_private_data) {
+        AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)app->modules.input_private_data;
         if (private_data->dev) {
             log_info("Closing Airspy HF+ device...");
             airspyhf_close(private_data->dev);
             private_data->dev = NULL;
         }
-        resources->input_module_private_data = NULL;
+        app->modules.input_private_data = NULL;
     }
 }

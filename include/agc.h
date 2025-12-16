@@ -13,7 +13,7 @@
 #define AGC_H_
 
 #include <stdbool.h>
-#include "app_context.h" // Provides AppConfig, AppResources, and complex_float_t
+#include "app_context.h" // Provides AppConfig, AppContext, and complex_float_t
 #include "argparse.h"    // Provides struct argparse_option
 
 // --- Function Declarations ---
@@ -26,10 +26,10 @@
  * Peak-Lock logic (for Digital).
  *
  * @param config Pointer to the application configuration.
- * @param resources Pointer to the application resources.
+ * @param app Pointer to the application app.
  * @return true on success or if disabled, false on failure.
  */
-bool agc_create(AppConfig* config, AppResources* resources);
+bool agc_create(AppConfig* config, AppContext* app);
 
 /**
  * @brief Applies the AGC to a block of complex samples.
@@ -39,27 +39,27 @@ bool agc_create(AppConfig* config, AppResources* resources);
  * - For Digital: It scans for peaks and applies provisional gain (if unlocking) 
  *   or applies a static gain (if locked).
  *
- * @param resources Pointer to the application resources.
+ * @param app Pointer to the application app.
  * @param samples Pointer to the complex float samples (modified in-place).
  * @param num_samples The number of complex samples in the block.
  */
-void agc_apply(AppResources* resources, complex_float_t* samples, unsigned int num_samples);
+void agc_apply(DspContext* dsp, complex_float_t* samples, unsigned int num_samples);
 
 /**
  * @brief Resets the internal state of the AGC.
  *
  * Resets gain to unity, clears peak memory, and resets locking timers.
  *
- * @param resources Pointer to the application resources.
+ * @param app Pointer to the application app.
  */
-void agc_reset(AppResources* resources);
+void agc_reset(DspContext* dsp);
 
 /**
- * @brief Cleans up resources allocated by the AGC module.
+ * @brief Cleans up app allocated by the AGC module.
  *
- * @param resources Pointer to the application resources.
+ * @param app Pointer to the application app.
  */
-void agc_destroy(AppResources* resources);
+void agc_destroy(AppContext* app);
 
 /**
  * @brief Populates the CLI options specific to the AGC module.

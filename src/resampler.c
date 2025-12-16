@@ -11,9 +11,9 @@ struct resampler_s {
     msresamp_crcf liquid_object;
 };
 
-resampler_t* create_resampler(const AppConfig *config, AppResources *resources, float resample_ratio) {
+resampler_t* create_resampler(const AppConfig *config, AppContext* app, float resample_ratio) {
     (void)config; // config is not used here but kept for API consistency
-    if (resources->is_passthrough) {
+    if (app->dsp.is_passthrough) {
         return NULL; // No resampler needed in passthrough mode.
     }
 

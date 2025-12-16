@@ -320,11 +320,11 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
 // --- Module Interface Implementation ---
 
 static bool nrsc5_initialize(ModuleContext* ctx) {
-    AppResources* resources = ctx->resources;
+    AppContext* app = ctx->app;
 
-    Nrsc5Context* p = (Nrsc5Context*)mem_arena_alloc(&resources->setup_arena, sizeof(Nrsc5Context), true);
+    Nrsc5Context* p = (Nrsc5Context*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(Nrsc5Context), true);
     if (!p) return false;
-    resources->output_module_private_data = p;
+    app->modules.output_private_data = p;
 
     // Direct API call
     const char* ver_str = NULL;
@@ -387,8 +387,8 @@ static bool nrsc5_initialize(ModuleContext* ctx) {
 }
 
 static void* nrsc5_run_writer(ModuleContext* ctx) {
-    AppResources* resources = ctx->resources;
-    Nrsc5Context* p = (Nrsc5Context*)resources->output_module_private_data;
+    AppContext* app = ctx->app;
+    Nrsc5Context* p = (Nrsc5Context*)app->modules.output_private_data;
 
     // Throttle if buffer is > 80% full (approx 2.3 seconds of audio)
     const size_t THROTTLE_THRESHOLD = (size_t)(NRSC5_AUDIO_BUFFER_SIZE * 0.8);
@@ -414,11 +414,11 @@ static void* nrsc5_run_writer(ModuleContext* ctx) {
         }
 
         // 1. Dequeue chunk from the pipeline
-        SampleChunk* item = (SampleChunk*)queue_dequeue(resources->writer_input_queue);
+        SampleChunk* item = (SampleChunk*)queue_dequeue(app->pipeline.writer_input_queue);
         if (!item) break; // Shutdown
 
         if (item->stream_discontinuity_event) {
-            queue_enqueue(resources->free_sample_chunk_queue, item);
+            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
             continue;
         }
 
@@ -427,7 +427,7 @@ static void* nrsc5_run_writer(ModuleContext* ctx) {
             // Poll 10ms, stall timeout 200ms, hardware padding 200ms.
             utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
 
-            queue_enqueue(resources->free_sample_chunk_queue, item);
+            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
             break; // End of Stream
         }
 
@@ -461,7 +461,7 @@ static void* nrsc5_run_writer(ModuleContext* ctx) {
         }
 
         // 3. Return chunk to pool
-        if (!queue_enqueue(resources->free_sample_chunk_queue, item)) {
+        if (!queue_enqueue(app->pipeline.free_sample_chunk_queue, item)) {
             break;
         }
     }
@@ -472,9 +472,9 @@ cleanup:
 }
 
 static void nrsc5_finalize_output(ModuleContext* ctx) {
-    AppResources* resources = ctx->resources;
-    if (!resources->output_module_private_data) return;
-    Nrsc5Context* p = (Nrsc5Context*)resources->output_module_private_data;
+    AppContext* app = ctx->app;
+    if (!app->modules.output_private_data) return;
+    Nrsc5Context* p = (Nrsc5Context*)app->modules.output_private_data;
 
     if (p->audio_device_initialized) {
         ma_device_uninit(&p->audio_device);

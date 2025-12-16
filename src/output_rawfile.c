@@ -120,9 +120,9 @@ static FILE* _secure_open_for_write(const char* out_path_utf8) {
 
 static bool raw_out_initialize(ModuleContext* ctx) {
     const AppConfig* config = ctx->config;
-    AppResources* resources = ctx->resources;
+    AppContext* app = ctx->app;
 
-    RawOutData* data = (RawOutData*)mem_arena_alloc(&resources->setup_arena, sizeof(RawOutData), true);
+    RawOutData* data = (RawOutData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RawOutData), true);
     if (!data) {
         return false;
     }
@@ -139,22 +139,22 @@ static bool raw_out_initialize(ModuleContext* ctx) {
         return false;
     }
 
-    resources->output_module_private_data = data;
+    app->modules.output_private_data = data;
     return true;
 }
 
 static void* raw_out_run_writer(ModuleContext* ctx) {
-    AppResources* resources = ctx->resources;
-    RawOutData* data = (RawOutData*)resources->output_module_private_data;
+    AppContext* app = ctx->app;
+    RawOutData* data = (RawOutData*)app->modules.output_private_data;
 
-    unsigned char* local_write_buffer = (unsigned char*)resources->writer_local_buffer;
+    unsigned char* local_write_buffer = (unsigned char*)app->pipeline.writer_local_buffer;
     if (!local_write_buffer) {
-        handle_fatal_thread_error("Writer (raw-file): Local write buffer is NULL.", resources);
+        handle_fatal_thread_error("Writer (raw-file): Local write buffer is NULL.", app);
         return NULL;
     }
 
     while (true) {
-        size_t bytes_read = ring_buffer_read(resources->writer_input_buffer, local_write_buffer, IO_OUTPUT_WRITER_CHUNK_SIZE);
+        size_t bytes_read = ring_buffer_read(app->pipeline.writer_input_buffer, local_write_buffer, IO_OUTPUT_WRITER_CHUNK_SIZE);
         if (bytes_read == 0) {
             break; // End of stream
         }
@@ -167,16 +167,16 @@ static void* raw_out_run_writer(ModuleContext* ctx) {
         if (written_bytes != bytes_read) {
             char error_buf[256];
             snprintf(error_buf, sizeof(error_buf), "Writer (raw-file): File write error: %s", strerror(errno));
-            handle_fatal_thread_error(error_buf, resources);
+            handle_fatal_thread_error(error_buf, app);
             break;
         }
 
-        if (resources->progress_callback) {
-            unsigned long long current_frames = data->total_bytes_written / resources->output_bytes_per_sample_pair;
-            pthread_mutex_lock(&resources->progress_mutex);
-            resources->total_output_frames = current_frames;
-            pthread_mutex_unlock(&resources->progress_mutex);
-            resources->progress_callback(current_frames, resources->expected_total_output_frames, data->total_bytes_written, resources->progress_callback_udata);
+        if (app->stats.progress_callback) {
+            unsigned long long current_frames = data->total_bytes_written / app->modules.output_bytes_per_sample_pair;
+            pthread_mutex_lock(&app->stats.mutex);
+            app->stats.total_output_frames = current_frames;
+            pthread_mutex_unlock(&app->stats.mutex);
+            app->stats.progress_callback(current_frames, app->stats.expected_total_output_frames, data->total_bytes_written, app->stats.progress_callback_udata);
         }
     }
     log_debug("Raw-file output writer thread is exiting.");
@@ -184,8 +184,8 @@ static void* raw_out_run_writer(ModuleContext* ctx) {
 }
 
 static size_t raw_out_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
-    AppResources* resources = ctx->resources;
-    RawOutData* data = (RawOutData*)resources->output_module_private_data;
+    AppContext* app = ctx->app;
+    RawOutData* data = (RawOutData*)app->modules.output_private_data;
     if (!data || !data->handle) return 0;
 
     size_t written = fwrite(buffer, 1, bytes_to_write, data->handle);
@@ -196,15 +196,15 @@ static size_t raw_out_write_chunk(ModuleContext* ctx, const void* buffer, size_t
 }
 
 static void raw_out_finalize_output(ModuleContext* ctx) {
-    AppResources* resources = ctx->resources;
-    if (!resources->output_module_private_data) return;
-    RawOutData* data = (RawOutData*)resources->output_module_private_data;
+    AppContext* app = ctx->app;
+    if (!app->modules.output_private_data) return;
+    RawOutData* data = (RawOutData*)app->modules.output_private_data;
 
     if (data->handle) {
         fclose(data->handle);
         data->handle = NULL;
     }
-    resources->final_output_size_bytes = data->total_bytes_written;
+    app->stats.final_output_size_bytes = data->total_bytes_written;
 }
 
 static void raw_out_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {

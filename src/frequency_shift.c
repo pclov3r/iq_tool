@@ -16,60 +16,60 @@
 /**
  * @brief Creates and configures the NCOs (frequency shifters) based on user arguments.
  */
-bool freq_shift_create(AppConfig *config, AppResources *resources) {
-    if (!config || !resources) return false;
+bool freq_shift_create(AppConfig *config, AppContext* app) {
+    if (!config || !app) return false;
 
-    resources->pre_resample_nco = NULL;
-    resources->post_resample_nco = NULL;
+    app->dsp.pre_resample_nco = NULL;
+    app->dsp.post_resample_nco = NULL;
 
     // First, resolve the final shift value. If a module (like WAV) hasn't already
     // calculated a shift, check for the generic manual shift option from the CLI.
-    if (resources->nco_shift_hz == 0.0 && config->dsp.freq_shift_hz != 0.0f) {
-        resources->nco_shift_hz = (double)config->dsp.freq_shift_hz;
+    if (app->dsp.nco_shift_hz == 0.0 && config->dsp.freq_shift_hz != 0.0f) {
+        app->dsp.nco_shift_hz = (double)config->dsp.freq_shift_hz;
     }
 
     // Now that the final shift value is resolved, validate dependent options.
-    if (config->dsp.shift_after_resample && fabs(resources->nco_shift_hz) < 1e-9) {
+    if (config->dsp.shift_after_resample && fabs(app->dsp.nco_shift_hz) < 1e-9) {
         log_fatal("Option --shift-after-resample was used, but no effective frequency shift was requested or calculated.");
         return false;
     }
 
     // If no shift is needed, we're done.
-    if (fabs(resources->nco_shift_hz) < 1e-9) {
+    if (fabs(app->dsp.nco_shift_hz) < 1e-9) {
         return true;
     }
 
     // --- Create Pre-Resample NCO ---
     if (!config->dsp.shift_after_resample) {
-        double rate_for_nco = (double)resources->source_info.samplerate;
-        if (fabs(resources->nco_shift_hz) > (SHIFT_FACTOR_LIMIT * rate_for_nco)) {
-            log_error("Requested frequency shift %.2f Hz exceeds sanity limit for the pre-resample rate of %.1f Hz.", resources->nco_shift_hz, rate_for_nco);
+        double rate_for_nco = (double)app->modules.source_info.samplerate;
+        if (fabs(app->dsp.nco_shift_hz) > (SHIFT_FACTOR_LIMIT * rate_for_nco)) {
+            log_error("Requested frequency shift %.2f Hz exceeds sanity limit for the pre-resample rate of %.1f Hz.", app->dsp.nco_shift_hz, rate_for_nco);
             return false;
         }
-        resources->pre_resample_nco = nco_crcf_create(LIQUID_NCO);
-        if (!resources->pre_resample_nco) {
+        app->dsp.pre_resample_nco = nco_crcf_create(LIQUID_NCO);
+        if (!app->dsp.pre_resample_nco) {
             log_error("Failed to create pre-resample NCO (frequency shifter).");
             return false;
         }
-        float nco_freq_rad_per_sample = (float)(2.0 * M_PI * fabs(resources->nco_shift_hz) / rate_for_nco);
-        nco_crcf_set_frequency((nco_crcf)resources->pre_resample_nco, nco_freq_rad_per_sample);
+        float nco_freq_rad_per_sample = (float)(2.0 * M_PI * fabs(app->dsp.nco_shift_hz) / rate_for_nco);
+        nco_crcf_set_frequency((nco_crcf)app->dsp.pre_resample_nco, nco_freq_rad_per_sample);
     }
 
     // --- Create Post-Resample NCO ---
     if (config->dsp.shift_after_resample) {
         double rate_for_nco = config->output_rate.target_rate;
-         if (fabs(resources->nco_shift_hz) > (SHIFT_FACTOR_LIMIT * rate_for_nco)) {
-            log_error("Requested frequency shift %.2f Hz exceeds sanity limit for the post-resample rate of %.1f Hz.", resources->nco_shift_hz, rate_for_nco);
+         if (fabs(app->dsp.nco_shift_hz) > (SHIFT_FACTOR_LIMIT * rate_for_nco)) {
+            log_error("Requested frequency shift %.2f Hz exceeds sanity limit for the post-resample rate of %.1f Hz.", app->dsp.nco_shift_hz, rate_for_nco);
             return false;
         }
-        resources->post_resample_nco = nco_crcf_create(LIQUID_NCO);
-        if (!resources->post_resample_nco) {
+        app->dsp.post_resample_nco = nco_crcf_create(LIQUID_NCO);
+        if (!app->dsp.post_resample_nco) {
             log_error("Failed to create post-resample NCO (frequency shifter).");
-            freq_shift_destroy_ncos(resources); // Clean up pre-resample NCO if it was created
+            freq_shift_destroy_ncos(app); // Clean up pre-resample NCO if it was created
             return false;
         }
-        float nco_freq_rad_per_sample = (float)(2.0 * M_PI * fabs(resources->nco_shift_hz) / rate_for_nco);
-        nco_crcf_set_frequency((nco_crcf)resources->post_resample_nco, nco_freq_rad_per_sample);
+        float nco_freq_rad_per_sample = (float)(2.0 * M_PI * fabs(app->dsp.nco_shift_hz) / rate_for_nco);
+        nco_crcf_set_frequency((nco_crcf)app->dsp.post_resample_nco, nco_freq_rad_per_sample);
     }
 
     return true;
@@ -104,15 +104,15 @@ void freq_shift_reset_nco(void* nco) {
 /**
  * @brief Destroys the NCO objects if they were created.
  */
-void freq_shift_destroy_ncos(AppResources *resources) {
-    if (resources) {
-        if (resources->pre_resample_nco) {
-            nco_crcf_destroy((nco_crcf)resources->pre_resample_nco);
-            resources->pre_resample_nco = NULL;
+void freq_shift_destroy_ncos(AppContext* app) {
+    if (app) {
+        if (app->dsp.pre_resample_nco) {
+            nco_crcf_destroy((nco_crcf)app->dsp.pre_resample_nco);
+            app->dsp.pre_resample_nco = NULL;
         }
-        if (resources->post_resample_nco) {
-            nco_crcf_destroy((nco_crcf)resources->post_resample_nco);
-            resources->post_resample_nco = NULL;
+        if (app->dsp.post_resample_nco) {
+            nco_crcf_destroy((nco_crcf)app->dsp.post_resample_nco);
+            app->dsp.post_resample_nco = NULL;
         }
     }
 }

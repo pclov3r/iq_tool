@@ -24,9 +24,9 @@ typedef struct {
 // --- Module Implementation ---
 
 static bool stdout_out_initialize(ModuleContext* ctx) {
-    AppResources* resources = ctx->resources;
+    AppContext* app = ctx->app;
 
-    StdoutData* data = (StdoutData*)mem_arena_alloc(&resources->setup_arena, sizeof(StdoutData), true);
+    StdoutData* data = (StdoutData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(StdoutData), true);
     if (!data) {
         return false;
     }
@@ -40,29 +40,29 @@ static bool stdout_out_initialize(ModuleContext* ctx) {
     }
 #endif
 
-    resources->output_module_private_data = data;
+    app->modules.output_private_data = data;
     return true;
 }
 
 static void* stdout_out_run_writer(ModuleContext* ctx) {
-    AppResources* resources = ctx->resources;
-    StdoutData* data = (StdoutData*)resources->output_module_private_data;
+    AppContext* app = ctx->app;
+    StdoutData* data = (StdoutData*)app->modules.output_private_data;
 
     while (true) {
-        SampleChunk* item = (SampleChunk*)queue_dequeue(resources->writer_input_queue);
+        SampleChunk* item = (SampleChunk*)queue_dequeue(app->pipeline.writer_input_queue);
         if (!item) break; // Shutdown
 
         if (item->stream_discontinuity_event) {
-            queue_enqueue(resources->free_sample_chunk_queue, item);
+            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
             continue;
         }
 
         if (item->is_last_chunk) {
-            queue_enqueue(resources->free_sample_chunk_queue, item);
+            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
             break; // End of stream
         }
 
-        size_t output_bytes_this_chunk = item->frames_to_write * resources->output_bytes_per_sample_pair;
+        size_t output_bytes_this_chunk = item->frames_to_write * app->modules.output_bytes_per_sample_pair;
         if (output_bytes_this_chunk > 0) {
             size_t written_bytes = fwrite(item->final_output_data, 1, output_bytes_this_chunk, stdout);
             if (written_bytes > 0) {
@@ -73,12 +73,12 @@ static void* stdout_out_run_writer(ModuleContext* ctx) {
                     log_debug("Writer (stdout): write error, consumer likely closed pipe: %s", strerror(errno));
                     request_shutdown();
                 }
-                queue_enqueue(resources->free_sample_chunk_queue, item);
+                queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
                 break;
             }
         }
 
-        if (!queue_enqueue(resources->free_sample_chunk_queue, item)) {
+        if (!queue_enqueue(app->pipeline.free_sample_chunk_queue, item)) {
             break; // Shutdown
         }
     }
@@ -87,8 +87,8 @@ static void* stdout_out_run_writer(ModuleContext* ctx) {
 }
 
 static size_t stdout_out_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
-    AppResources* resources = ctx->resources;
-    StdoutData* data = (StdoutData*)resources->output_module_private_data;
+    AppContext* app = ctx->app;
+    StdoutData* data = (StdoutData*)app->modules.output_private_data;
     if (!data) return 0;
 
     size_t written = fwrite(buffer, 1, bytes_to_write, stdout);
@@ -99,12 +99,12 @@ static size_t stdout_out_write_chunk(ModuleContext* ctx, const void* buffer, siz
 }
 
 static void stdout_out_finalize_output(ModuleContext* ctx) {
-    AppResources* resources = ctx->resources;
-    if (!resources->output_module_private_data) return;
-    StdoutData* data = (StdoutData*)resources->output_module_private_data;
+    AppContext* app = ctx->app;
+    if (!app->modules.output_private_data) return;
+    StdoutData* data = (StdoutData*)app->modules.output_private_data;
 
     fflush(stdout);
-    resources->final_output_size_bytes = data->total_bytes_written;
+    app->stats.final_output_size_bytes = data->total_bytes_written;
 }
 
 static void stdout_out_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {

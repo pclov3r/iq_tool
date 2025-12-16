@@ -1,6 +1,6 @@
 #include "signal_handler.h"
 #include "log.h"
-#include "app_context.h"       // Provides AppResources
+#include "app_context.h"       // Provides AppContext
 #include "module.h"            // Provides ModuleContext
 #include "queue.h"             // Provides queue_signal_shutdown
 #include "ring_buffer.h"       // Provides ring_buffer_signal_shutdown
@@ -21,7 +21,7 @@
 
 extern pthread_mutex_t g_console_mutex;
 
-static AppResources *g_resources_for_signal_handler = NULL;
+static AppContext *g_resources_for_signal_handler = NULL;
 static volatile sig_atomic_t g_shutdown_flag = 0;
 
 #ifdef _WIN32
@@ -87,8 +87,8 @@ void* signal_handler_thread(void *arg) {
 }
 #endif
 
-void setup_signal_handlers(AppResources *resources) {
-    g_resources_for_signal_handler = resources;
+void setup_signal_handlers(AppContext* app) {
+    g_resources_for_signal_handler = app;
 #ifdef _WIN32
     if (!SetConsoleCtrlHandler(console_ctrl_handler, TRUE)) {
         log_warn("Failed to register console control handler.");
@@ -121,46 +121,46 @@ void request_shutdown(void) {
     g_shutdown_flag = 1;
 
     if (g_resources_for_signal_handler) {
-        AppResources* r = g_resources_for_signal_handler;
+        AppContext* r = g_resources_for_signal_handler;
 
         // Generic shutdown: If the active input module has a stop function, call it.
         // This handles blocking SDR drivers (like RTL-SDR) and background threads.
-        if (r->selected_input_module_api && r->selected_input_module_api->stop_stream) {
-            ModuleContext ctx = { .config = r->config, .resources = r };
-            r->selected_input_module_api->stop_stream(&ctx);
+        if (r->modules.input_api && r->modules.input_api->stop_stream) {
+            ModuleContext ctx = { .config = r->config, .app = r };
+            r->modules.input_api->stop_stream(&ctx);
         }
 
         // Signal all queues to wake up any waiting threads.
-        if (r->free_sample_chunk_queue)
-            queue_signal_shutdown(r->free_sample_chunk_queue);
-        if (r->reader_output_queue)
-            queue_signal_shutdown(r->reader_output_queue);
-        if (r->pre_processor_output_queue)
-            queue_signal_shutdown(r->pre_processor_output_queue);
-        if (r->resampler_output_queue)
-            queue_signal_shutdown(r->resampler_output_queue);
-        if (r->post_processor_output_queue)
-            queue_signal_shutdown(r->post_processor_output_queue);
-        if (r->iq_optimization_data_queue)
-            queue_signal_shutdown(r->iq_optimization_data_queue);
+        if (r->pipeline.free_sample_chunk_queue)
+            queue_signal_shutdown(r->pipeline.free_sample_chunk_queue);
+        if (r->pipeline.reader_output_queue)
+            queue_signal_shutdown(r->pipeline.reader_output_queue);
+        if (r->pipeline.pre_processor_output_queue)
+            queue_signal_shutdown(r->pipeline.pre_processor_output_queue);
+        if (r->pipeline.resampler_output_queue)
+            queue_signal_shutdown(r->pipeline.resampler_output_queue);
+        if (r->pipeline.post_processor_output_queue)
+            queue_signal_shutdown(r->pipeline.post_processor_output_queue);
+        if (r->pipeline.iq_optimization_data_queue)
+            queue_signal_shutdown(r->pipeline.iq_optimization_data_queue);
         
         // Signal all ring buffers to wake up any waiting threads
-        if (r->writer_input_buffer)
-            ring_buffer_signal_shutdown(r->writer_input_buffer);
+        if (r->pipeline.writer_input_buffer)
+            ring_buffer_signal_shutdown(r->pipeline.writer_input_buffer);
         
-        if (r->sdr_input_buffer)
-            ring_buffer_signal_shutdown(r->sdr_input_buffer);
+        if (r->pipeline.sdr_input_buffer)
+            ring_buffer_signal_shutdown(r->pipeline.sdr_input_buffer);
     }
 }
 
-void handle_fatal_thread_error(const char* context_msg, AppResources* resources) {
-    pthread_mutex_lock(&resources->progress_mutex);
-    if (resources->error_occurred) {
-        pthread_mutex_unlock(&resources->progress_mutex);
+void handle_fatal_thread_error(const char* context_msg, AppContext* app) {
+    pthread_mutex_lock(&app->stats.mutex);
+    if (app->stats.error_occurred) {
+        pthread_mutex_unlock(&app->stats.mutex);
         return;
     }
-    resources->error_occurred = true;
-    pthread_mutex_unlock(&resources->progress_mutex);
+    app->stats.error_occurred = true;
+    pthread_mutex_unlock(&app->stats.mutex);
 
     log_fatal("%s", context_msg);
     request_shutdown();

@@ -29,7 +29,7 @@ typedef enum {
 // These break circular dependencies and allow us to use pointers to these
 // structs without needing their full definitions in this header.
 struct AppConfig;
-struct AppResources;
+struct AppContext;
 struct InputSummaryInfo;
 struct ModuleContext;
 
@@ -72,7 +72,7 @@ typedef struct InputSummaryInfo OutputSummaryInfo;
  */
 typedef struct ModuleContext {
     const struct AppConfig* config;
-    struct AppResources*    resources;
+    struct AppContext*      app;
 } ModuleContext;
 
 
@@ -104,7 +104,7 @@ typedef struct InputModuleInterface {
     void (*stop_stream)(struct ModuleContext* ctx);
 
     /**
-     * @brief Releases all resources allocated by the input source.
+     * @brief Releases all app allocated by the input source.
      * @param ctx The application context.
      */
     void (*cleanup)(struct ModuleContext* ctx);

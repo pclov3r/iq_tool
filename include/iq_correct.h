@@ -45,11 +45,11 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
  * Allocates internal state buffers and FFT plans required by the SM5BSZ algorithm.
  *
  * @param config Pointer to the application configuration.
- * @param resources Pointer to the application resources where correction state will be stored.
+ * @param app Pointer to the application app where correction state will be stored.
  * @param arena The memory arena to use for all buffer allocations.
  * @return true on success or if disabled, false on failure.
  */
-bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* arena);
+bool iq_correct_init(AppConfig* config, AppContext* app, MemoryArena* arena);
 
 /**
  * @brief Applies the current I/Q imbalance correction to a block of samples.
@@ -58,11 +58,11 @@ bool iq_correct_init(AppConfig* config, AppResources* resources, MemoryArena* ar
  * 1. Interpolates phase/amplitude correction factors.
  * 2. Applies the correction matrix to the samples in-place.
  *
- * @param resources Pointer to the application resources.
+ * @param app Pointer to the application app.
  * @param samples Pointer to the complex float samples (modified in-place).
  * @param num_samples The number of complex samples in the block.
  */
-void iq_correct_apply(AppResources* resources, complex_float_t* samples, int num_samples);
+void iq_correct_apply(DspContext* dsp, complex_float_t* samples, int num_samples);
 
 /**
  * @brief Runs the I/Q imbalance optimization/estimation algorithm.
@@ -72,17 +72,17 @@ void iq_correct_apply(AppResources* resources, complex_float_t* samples, int num
  * 2. Calculates correlation between signal and image.
  * 3. Updates the global phase/amplitude correction targets.
  *
- * @param resources Pointer to the application resources.
+ * @param app Pointer to the application app.
  * @param optimization_data Pointer to the block of complex float samples to analyze.
  */
-void iq_correct_run_optimization(AppResources* resources, const complex_float_t* optimization_data);
+void iq_correct_run_optimization(DspContext* dsp, const complex_float_t* optimization_data);
 
 /**
- * @brief Cleans up resources allocated by the I/Q correction module.
+ * @brief Cleans up app allocated by the I/Q correction module.
  *
- * @param resources Pointer to the application resources.
+ * @param app Pointer to the application app.
  */
-void iq_correct_destroy(AppResources* resources);
+void iq_correct_destroy(AppContext* app);
 
 /**
  * @brief Performs a synchronous, one-shot I/Q calibration pass for file-based inputs.

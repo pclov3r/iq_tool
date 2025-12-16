@@ -3,7 +3,7 @@
  * @brief Defines the context structure passed to all pipeline thread functions.
  *
  * This is a simple container struct that bundles pointers to the main application
- * configuration (`AppConfig`) and resources (`AppResources`). It provides a clean
+ * configuration (`AppConfig`) and app (`AppContext`). It provides a clean
  * and consistent way to pass the entire application state to the entry point of
  * each processing thread.
  */
@@ -13,10 +13,10 @@
 
 // --- Forward Declarations ---
 // We use forward declarations here to avoid including the full, large headers
-// for AppConfig and AppResources. This keeps this header lightweight and
+// for AppConfig and AppContext. This keeps this header lightweight and
 // dependency-free.
 struct AppConfig;
-struct AppResources;
+struct AppContext;
 
 // --- Struct Definition ---
 
@@ -26,7 +26,7 @@ struct AppResources;
  */
 typedef struct PipelineContext {
     struct AppConfig*   config;     ///< Pointer to the application's configuration settings.
-    struct AppResources* resources;   ///< Pointer to the application's allocated resources.
+    struct AppContext* app;   ///< Pointer to the application's allocated app.
 } PipelineContext;
 
 #endif // PIPELINE_CONTEXT_H_

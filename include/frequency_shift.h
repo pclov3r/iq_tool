@@ -22,13 +22,13 @@
  *
  * This function reads the frequency shift settings from the AppConfig struct,
  * calculates the required shift, and creates the liquid-dsp NCO objects if a
- * shift is necessary. The created objects are stored in the AppResources struct.
+ * shift is necessary. The created objects are stored in the AppContext struct.
  *
  * @param config Pointer to the application configuration.
- * @param resources Pointer to the application resources where the NCOs will be stored.
+ * @param app Pointer to the application app where the NCOs will be stored.
  * @return true on success or if no shift is needed, false on failure.
  */
-bool freq_shift_create(AppConfig *config, AppResources *resources);
+bool freq_shift_create(AppConfig *config, AppContext* app);
 
 /**
  * @brief Applies the frequency shift to a block of complex samples using a specific NCO.
@@ -53,9 +53,9 @@ void freq_shift_reset_nco(void* nco);
 
 /**
  * @brief Destroys the NCO objects if they were created.
- * @param resources Pointer to the application resources containing the NCOs.
+ * @param app Pointer to the application app containing the NCOs.
  */
-void freq_shift_destroy_ncos(AppResources *resources);
+void freq_shift_destroy_ncos(AppContext* app);
 
 
 #endif // FREQUENCY_SHIFT_H_

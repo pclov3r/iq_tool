@@ -12,7 +12,7 @@
 #define SIGNAL_HANDLER_H_
 
 #include <stdbool.h>
-#include "app_context.h" // Provides the full definition for AppResources
+#include "app_context.h" // Provides the full definition for AppContext
 
 // --- Function Declarations ---
 
@@ -22,10 +22,10 @@
  * This is platform-aware and will use the correct mechanism for the OS
  * (SetConsoleCtrlHandler on Windows, sigwait in a dedicated thread on POSIX).
  *
- * @param resources A pointer to the main AppResources struct, which is needed
+ * @param app A pointer to the main AppContext struct, which is needed
  *                  by the handler to perform shutdown actions on queues and buffers.
  */
-void setup_signal_handlers(AppResources *resources);
+void setup_signal_handlers(AppContext* app);
 
 /**
  * @brief The dedicated signal handling thread function (POSIX-only).
@@ -69,9 +69,9 @@ void request_shutdown(void);
  * and a graceful shutdown is initiated via request_shutdown().
  *
  * @param context_msg A descriptive error message string.
- * @param resources A pointer to the main AppResources struct.
+ * @param app A pointer to the main AppContext struct.
  */
-void handle_fatal_thread_error(const char* context_msg, AppResources* resources);
+void handle_fatal_thread_error(const char* context_msg, AppContext* app);
 
 
 #endif // SIGNAL_HANDLER_H_

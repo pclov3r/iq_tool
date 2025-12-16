@@ -1,6 +1,6 @@
 /**
  * @file app_context.h
- * @brief Defines the primary application state and resource management structures.
+ * @brief Defines the primary application state, broken down into logical sub-contexts.
  */
 
 #ifndef APP_CONTEXT_H_
@@ -12,47 +12,31 @@
 #include "memory_arena.h"
 #include "presets_loader.h"
 #include "constants.h"
-#include "resampler.h" // For resampler_t
+#include "resampler.h"
 
 // --- Forward Declarations ---
 struct RingBuffer;
 
-// --- Type Definitions ---
+// =========================================================
+// == PART 1: CONFIGURATION (Static Settings)
+// =========================================================
 
-/**
- * @struct IqCorrectionConfig
- * @brief Configuration for the I/Q imbalance corrector.
- */
 typedef struct {
     bool enable;
 } IqCorrectionConfig;
 
-/**
- * @struct DcBlockConfig
- * @brief Configuration for the DC offset blocking filter.
- */
 typedef struct {
     bool enable;
 } DcBlockConfig;
 
-/**
- * @struct OutputAgcConfig
- * @brief Configuration for the post-processing Automatic Gain Control.
- */
 typedef struct {
     bool       enable;
     AgcProfile profile;
     float      target_level;
-
-    // Internal storage for CLI parsing
     char*      profile_str_arg;
     float      target_level_arg;
 } OutputAgcConfig;
 
-/**
- * @struct FilterRequest
- * @brief Holds the parameters for a single user-requested filter stage.
- */
 typedef struct {
     FilterType type;
     float freq1_hz;
@@ -61,15 +45,13 @@ typedef struct {
 
 /**
  * @struct AppConfig
- * @brief Stores all user-defined configuration settings for the application.
+ * @brief Stores all user-defined configuration settings.
  */
 typedef struct AppConfig {
     // --- Input Configuration ---
     struct {
-        char* type_name;      // CLI: --input (was input_type_str)
-        char* path_arg;       // CLI: [in_file] (was input_filename_arg)
-
-        // Platform-Specific Resolved Paths
+        char* type_name;
+        char* path_arg;
     #ifdef _WIN32
         wchar_t effective_path_w[MAX_PATH_BUFFER];
         char    effective_path_utf8[MAX_PATH_BUFFER];
@@ -80,17 +62,13 @@ typedef struct AppConfig {
 
     // --- Output Configuration ---
     struct {
-        char* module_name;    // CLI: --output (was output_module_str)
-        char* path_arg;       // CLI: [out_file] (was output_filename_arg)
-        char* format_name;    // CLI: --output-sample-format
-        char* type_name;      // (was output_type_name)
-        bool  type_provided;  // (was output_type_provided)
-
-        // Resolved State
+        char* module_name;
+        char* path_arg;
+        char* format_name;
+        char* type_name;
+        bool  type_provided;
         OutputType type;
         format_t   format;
-
-        // Platform-Specific Resolved Paths
     #ifdef _WIN32
         wchar_t effective_path_w[MAX_PATH_BUFFER];
         char    effective_path_utf8[MAX_PATH_BUFFER];
@@ -99,40 +77,32 @@ typedef struct AppConfig {
     #endif
     } output;
 
-    // --- Output Sample Rate Configuration ---
+    // --- Output Sample Rate ---
     struct {
-        double target_rate;   // The final rate used by the pipeline (Hz)
-        float  user_arg;      // CLI: --output-rate (was user_defined_target_rate_arg)
-        bool   provided;      // Was --output-rate explicitly set? (was user_rate_provided)
+        double target_rate;
+        float  user_arg;
+        bool   provided;
     } output_rate;
 
-    // --- General DSP Configuration ---
+    // --- DSP Configuration ---
     struct {
-        float input_gain;           // CLI: --input-gain-multiplier
+        float input_gain;
         bool  input_gain_provided;
-
-        float output_gain;          // CLI: --output-gain-multiplier
+        float output_gain;
         bool  output_gain_provided;
-
-        float freq_shift_hz;  // CLI: --freq-shift (was freq_shift_hz_arg)
+        float freq_shift_hz;
         int   shift_after_resample;
-
         int   raw_passthrough;
 
-        // Sub-module configurations
         IqCorrectionConfig iq_correction;
         DcBlockConfig      dc_block;
-        OutputAgcConfig    agc; // (was output_agc)
+        OutputAgcConfig    agc;
 
-        // --- Filter Configuration ---
         struct {
-            // Resolved Logic
             FilterRequest requests[MAX_FILTER_CHAIN];
-            int           count; // (was num_filter_requests)
-            bool          apply_post_resample; // (was apply_user_filter_post_resample)
-            FilterTypeRequest type_req; // (was filter_type_request)
-
-            // Raw CLI Arguments (Arrays for chainable options)
+            int           count;
+            bool          apply_post_resample;
+            FilterTypeRequest type_req;
             struct {
                 float       lowpass[MAX_FILTER_CHAIN];
                 float       highpass[MAX_FILTER_CHAIN];
@@ -147,8 +117,7 @@ typedef struct AppConfig {
         } filter;
     } dsp;
 
-    // --- SDR General Configuration ---
-    // Settings shared by all SDR hardware (RTL, HackRF, SDRplay, etc.)
+    // --- SDR General ---
     struct {
         double rf_freq_hz;
         float  rf_freq_hz_arg;
@@ -164,152 +133,149 @@ typedef struct AppConfig {
     // --- Global / Misc ---
     char* preset_name;
     bool  help_requested;
-
-    // --- Presets Data ---
     PresetDefinition* presets;
     int               num_presets;
-
 } AppConfig;
 
 
-// --- Resource Management Structs ---
+// =========================================================
+// == PART 2: RUNTIME CONTEXTS (Dynamic State)
+// =========================================================
 
-/**
- * @typedef ProgressUpdateFn
- * @brief A function pointer type for progress update callbacks.
- */
-typedef void (*ProgressUpdateFn)(unsigned long long current_output_frames, long long total_output_frames, unsigned long long current_bytes_written, void* udata);
+// --- 1. Infrastructure Context (The Plumbing) ---
+typedef struct PipelineInfrastructure {
+    MemoryArena  setup_arena;
+    void*        chunk_data_pool;
+    struct SampleChunk* sample_chunk_pool;
 
-/**
- * @struct IqCorrectionFactors
- * @brief Holds the current gain and phase correction factors for I/Q imbalance.
- */
-typedef struct {
-    float mag;
-    float phase;
-} IqCorrectionFactors;
+    size_t       alloc_size_samples;
+    size_t       read_chunk_size;
+    size_t       num_chunks;
+    unsigned int max_out_samples;
 
-/**
- * @struct IqCorrectionResources
- * @brief Holds all allocated objects and state for the I/Q correction module.
- */
-typedef struct {
-    pthread_mutex_t iq_factors_mutex;       ///< Protects shared state updates.
-    void*           internal_state;         ///< Opaque pointer to the algorithm's internal state struct.
-    double          last_optimization_time; ///< Timestamp to throttle the optimizer thread.
-} IqCorrectionResources;
+    void*  sdr_deserializer_temp_buffer;
+    size_t sdr_deserializer_buffer_size;
+    void*  writer_local_buffer;
 
-/**
- * @struct DcBlockResources
- * @brief Holds the filter object for the DC blocking module.
- */
-typedef struct {
-    void* dc_block_filter; // Opaque pointer
-} DcBlockResources;
+    Queue* free_sample_chunk_queue;
+    Queue* reader_output_queue;
+    Queue* pre_processor_input_queue;
+    Queue* pre_processor_output_queue;
+    Queue* resampler_input_queue;
+    Queue* resampler_output_queue;
+    Queue* post_processor_input_queue;
+    Queue* post_processor_output_queue;
+    Queue* writer_input_queue;
+    Queue* iq_optimization_data_queue;
 
-/**
- * @typedef ThreadFlags
- * @brief Flags to determine which pipeline threads should be created at startup.
- */
-typedef struct {
-    bool reader;
-    bool pre_processor;
-    bool resampler;
-    bool post_processor;
-    bool writer;
-    bool iq_optimizer;
-    bool sdr_capture;
-    bool sdr_watchdog;
-} ThreadFlags;
+    struct RingBuffer* sdr_input_buffer;
+    struct RingBuffer* writer_input_buffer;
+} PipelineInfrastructure;
 
-/**
- * @struct AppResources
- * @brief The master struct holding all runtime state and allocated resources for the application.
- */
-typedef struct AppResources {
-    const AppConfig* config;
+// --- 2. Module Context (Drivers & IO) ---
+typedef struct ModuleState {
+    InputModuleInterface*  input_api;
+    void*                  input_private_data;
+    InputSourceInfo        source_info;
+    format_t               input_format;
+    size_t                 input_bytes_per_sample_pair;
 
-    // --- Dynamic Pipeline Sizing ---
-    size_t          pipeline_alloc_size_samples; // Max samples per chunk (for malloc)
-    size_t          pipeline_read_chunk_size;    // Size requested by the reader (Input)
-    size_t          pipeline_num_chunks;         // Total number of chunks in the pool (calculated at runtime)
+    OutputModuleInterface* output_api;
+    void*                  output_private_data;
+    size_t                 output_bytes_per_sample_pair;
+    bool                   pacing_is_required;
+} ModuleState;
 
-    // --- DSP Objects ---
-    resampler_t*    resampler;
-    float           resample_ratio;
-    void*           pre_resample_nco; // Opaque pointer
-    void*           post_resample_nco; // Opaque pointer
-    double          nco_shift_hz;
-    bool            is_passthrough;
-    IqCorrectionResources iq_correction;
-    DcBlockResources      dc_block;
-    FilterImplementationType user_filter_type_actual;
-    void*           user_filter_object; // Opaque pointer to the final filter (FIR or FFT)
-    unsigned int    user_filter_block_size;
+// --- 3. DSP Context (Math & Signal Processing) ---
+
+typedef struct AgcContext {
+    void*    object;
+    bool     is_locked;
+    float    current_gain;
+    float    peak_memory;
+    uint64_t samples_seen;
+    double   last_strong_peak_time;
+} AgcContext;
+
+typedef struct FilterContext {
+    void*            object;
+    int              type_actual;
+    unsigned int     block_size;
     complex_float_t* pre_fft_remainder_buffer;
     unsigned int     pre_fft_remainder_len;
     complex_float_t* post_fft_remainder_buffer;
     unsigned int     post_fft_remainder_len;
     complex_float_t* fft_scratch_buffer;
+} FilterContext;
 
-    // --- Output AGC State ---
-    void*           output_agc_object;
-    bool            agc_is_locked;
-    float           agc_current_gain;
-    float           agc_peak_memory;
-    uint64_t        agc_samples_seen;
-    double          agc_last_strong_peak_time;
+typedef struct IqCorrectionResources {
+    pthread_mutex_t iq_factors_mutex;
+    void*           internal_state;
+    double          last_optimization_time;
+} IqCorrectionResources;
 
-    // --- Input/Output State ---
-    InputModuleInterface*  selected_input_module_api;
-    OutputModuleInterface* selected_output_module_api;
-    InputSourceInfo source_info;
-    format_t        input_format;
-    size_t          input_bytes_per_sample_pair;
-    size_t          output_bytes_per_sample_pair;
-    void*           input_module_private_data;
-    void*           output_module_private_data;
-    bool            pacing_is_required;
+typedef struct DcBlockResources {
+    void* dc_block_filter;
+} DcBlockResources;
 
-    // --- Memory Management ---
-    MemoryArena     setup_arena;
-    void*           pipeline_chunk_data_pool;
-    SampleChunk*    sample_chunk_pool;
-    void*           sdr_deserializer_temp_buffer;
-    size_t          sdr_deserializer_buffer_size;
-    void*           writer_local_buffer;
-    unsigned int    max_out_samples;
+typedef struct DspContext {
+    const struct AppConfig* config; // Injected for DSP access
+    IqCorrectionResources iq_correct;
+    DcBlockResources      dc_block;
+    AgcContext            agc;
+    FilterContext         filter;
 
-    // --- Threading & Pipeline ---
-    PipelineMode    pipeline_mode;
-    ThreadFlags     threads_to_create;
+    resampler_t* resampler;
+    void*        pre_resample_nco;
+    void*        post_resample_nco;
 
-    // --- Dynamic Pipeline Queues ---
-    struct RingBuffer* sdr_input_buffer;
-    Queue*          reader_output_queue;
-    Queue*          pre_processor_input_queue;
-    Queue*          pre_processor_output_queue;
-    Queue*          resampler_input_queue;
-    Queue*          resampler_output_queue;
-    Queue*          post_processor_input_queue;
-    Queue*          post_processor_output_queue;
-    Queue*          writer_input_queue;
-    Queue*          iq_optimization_data_queue;
-    Queue*          free_sample_chunk_queue;
-    struct RingBuffer* writer_input_buffer;
+    float  resample_ratio;
+    double nco_shift_hz;
+    bool   is_passthrough;
+} DspContext;
 
-    // --- Progress & State Tracking ---
-    pthread_mutex_t progress_mutex;
-    double          last_sdr_heartbeat_time;
-    bool            error_occurred;
-    bool            end_of_stream_reached;
+// --- 4. Runtime Context (Metrics & Telemetry) ---
+typedef void (*ProgressUpdateFn)(unsigned long long current_output_frames, long long total_output_frames, unsigned long long current_bytes_written, void* udata);
+
+typedef struct RuntimeState {
+    pthread_mutex_t mutex;
+
+    double last_sdr_heartbeat_time;
+    bool   error_occurred;
+    bool   end_of_stream_reached;
+
     unsigned long long total_frames_read;
     unsigned long long total_output_frames;
-    long long       final_output_size_bytes;
-    long long       expected_total_output_frames;
-    time_t          start_time;
-    ProgressUpdateFn progress_callback;
-    void*           progress_callback_udata;
-} AppResources;
+    long long          final_output_size_bytes;
+    long long          expected_total_output_frames;
+    time_t             start_time;
+
+    ProgressUpdateFn   progress_callback;
+    void*              progress_callback_udata;
+} RuntimeState;
+
+// =========================================================
+// == The Main Container (formerly AppResources)
+// =========================================================
+typedef struct AppContext {
+    const struct AppConfig* config; 
+
+    PipelineInfrastructure pipeline;
+    DspContext             dsp;
+    ModuleState            modules;
+    RuntimeState           stats;
+
+    PipelineMode    pipeline_mode;
+    struct {
+        bool reader;
+        bool pre_processor;
+        bool resampler;
+        bool post_processor;
+        bool writer;
+        bool iq_optimizer;
+        bool sdr_capture;
+        bool sdr_watchdog;
+    } threads_to_create;
+} AppContext;
 
 #endif // APP_CONTEXT_H_

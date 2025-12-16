@@ -256,12 +256,12 @@ static bool airspy_validate_options(AppConfig* config) {
 }
 
 static int airspy_buffered_stream_callback(airspy_transfer* transfer) {
-    AppResources *resources = (AppResources*)transfer->ctx;
+    AppContext* app = (AppContext*)transfer->ctx;
 
     // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(resources);
+    sdr_input_update_heartbeat(app);
 
-    if (is_shutdown_requested() || resources->error_occurred) {
+    if (is_shutdown_requested() || app->stats.error_occurred) {
         return -1;
     }
 
@@ -274,7 +274,7 @@ static int airspy_buffered_stream_callback(airspy_transfer* transfer) {
         case AIRSPY_SAMPLE_INT16_IQ:
             // When packing is enabled, the library unpacks to INT16_IQ automatically
             if (!sdr_packet_serializer_write_block(
-                    resources->sdr_input_buffer,
+                    app->pipeline.sdr_input_buffer,
                     transfer->sample_count,
                     transfer->samples,
                     CS16)) {
@@ -284,7 +284,7 @@ static int airspy_buffered_stream_callback(airspy_transfer* transfer) {
 
         case AIRSPY_SAMPLE_FLOAT32_IQ:
             if (!sdr_packet_serializer_write_block(
-                    resources->sdr_input_buffer,
+                    app->pipeline.sdr_input_buffer,
                     transfer->sample_count,
                     transfer->samples,
                     CF32)) {
@@ -295,18 +295,18 @@ static int airspy_buffered_stream_callback(airspy_transfer* transfer) {
         case AIRSPY_SAMPLE_RAW:
             // We force INT16_IQ mode during initialization, so we should not see RAW here.
             // If we do, it implies the library failed to unpack or configuration is wrong.
-            handle_fatal_thread_error("Airspy unexpected RAW sample type. Library unpacking config error?", resources);
+            handle_fatal_thread_error("Airspy unexpected RAW sample type. Library unpacking config error?", app);
             return -1;
 
         case AIRSPY_SAMPLE_INT16_REAL:
         case AIRSPY_SAMPLE_FLOAT32_REAL:
         case AIRSPY_SAMPLE_UINT16_REAL:
             // Real (non-IQ) sample formats are not supported by our pipeline
-            handle_fatal_thread_error("Airspy real-only sample format not supported. Pipeline requires I/Q samples.", resources);
+            handle_fatal_thread_error("Airspy real-only sample format not supported. Pipeline requires I/Q samples.", app);
             return -1;
             
         default:
-            handle_fatal_thread_error("Airspy unknown sample type received.", resources);
+            handle_fatal_thread_error("Airspy unknown sample type received.", app);
             return -1;
     }
 
@@ -314,13 +314,13 @@ static int airspy_buffered_stream_callback(airspy_transfer* transfer) {
 }
 
 static int airspy_realtime_stream_callback(airspy_transfer* transfer) {
-    AppResources *resources = (AppResources*)transfer->ctx;
-    const AppConfig *config = resources->config;
+    AppContext* app = (AppContext*)transfer->ctx;
+    const AppConfig *config = app->config;
 
     // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(resources);
+    sdr_input_update_heartbeat(app);
 
-    if (is_shutdown_requested() || resources->error_occurred) {
+    if (is_shutdown_requested() || app->stats.error_occurred) {
         return -1;
     }
 
@@ -330,17 +330,17 @@ static int airspy_realtime_stream_callback(airspy_transfer* transfer) {
 
     // Validate sample type: Real (non-IQ) or Raw formats are not supported.
     if (transfer->sample_type != AIRSPY_SAMPLE_INT16_IQ && transfer->sample_type != AIRSPY_SAMPLE_FLOAT32_IQ) {
-        handle_fatal_thread_error("Airspy sample type not supported (Real/Raw) or unknown. Pipeline requires I/Q samples.", resources);
+        handle_fatal_thread_error("Airspy sample type not supported (Real/Raw) or unknown. Pipeline requires I/Q samples.", app);
         return -1;
     }
 
     // Determine bytes per sample using helper function based on configured format
-    size_t bytes_per_sample = get_bytes_per_sample(resources->input_format);
+    size_t bytes_per_sample = get_bytes_per_sample(app->modules.input_format);
 
     if (config->dsp.raw_passthrough) {
         size_t total_bytes = transfer->sample_count * bytes_per_sample;
-        ModuleContext ctx = { .config = config, .resources = resources };
-        size_t written = resources->selected_output_module_api->write_chunk(&ctx, transfer->samples, total_bytes);
+        ModuleContext ctx = { .config = config, .app = app };
+        size_t written = app->modules.output_api->write_chunk(&ctx, transfer->samples, total_bytes);
         if (written < total_bytes) {
             log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
             request_shutdown();
@@ -351,7 +351,7 @@ static int airspy_realtime_stream_callback(airspy_transfer* transfer) {
 
     size_t samples_processed = 0;
     while (samples_processed < (size_t)transfer->sample_count) {
-        SampleChunk *item = (SampleChunk*)queue_dequeue(resources->free_sample_chunk_queue);
+        SampleChunk *item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
         if (!item) {
             log_warn("Real-time pipeline stalled. Dropping %zu samples.", (size_t)transfer->sample_count - samples_processed);
             return 0;
@@ -369,16 +369,16 @@ static int airspy_realtime_stream_callback(airspy_transfer* transfer) {
         memcpy(item->raw_input_data, src_ptr, bytes_to_copy);
         item->frames_read = samples_to_copy;
         item->is_last_chunk = false;
-        item->packet_sample_format = resources->input_format;
+        item->packet_sample_format = app->modules.input_format;
 
         if (samples_to_copy > 0) {
-            pthread_mutex_lock(&resources->progress_mutex);
-            resources->total_frames_read += samples_to_copy;
-            pthread_mutex_unlock(&resources->progress_mutex);
+            pthread_mutex_lock(&app->stats.mutex);
+            app->stats.total_frames_read += samples_to_copy;
+            pthread_mutex_unlock(&app->stats.mutex);
         }
 
-        if (!queue_enqueue(resources->reader_output_queue, item)) {
-            queue_enqueue(resources->free_sample_chunk_queue, item);
+        if (!queue_enqueue(app->pipeline.reader_output_queue, item)) {
+            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
             return -1;
         }
         samples_processed += samples_to_copy;
@@ -389,8 +389,8 @@ static int airspy_realtime_stream_callback(airspy_transfer* transfer) {
 
 static void airspy_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
-    const AppResources *resources = ctx->resources;
-    AirspyPrivateData* private_data = (AirspyPrivateData*)resources->input_module_private_data;
+    const AppContext* app = ctx->app;
+    AirspyPrivateData* private_data = (AirspyPrivateData*)app->modules.input_private_data;
 
     // Use dynamic board name if available, else fallback
     const char* source_name = (private_data && private_data->board_name) ? private_data->board_name : "Airspy (Unknown)";
@@ -405,7 +405,7 @@ static void airspy_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* 
     }
 
     add_summary_item(info, "Input Format", "%s", format_str);
-    add_summary_item(info, "Input Rate", "%d Hz", resources->source_info.samplerate);
+    add_summary_item(info, "Input Rate", "%d Hz", app->modules.source_info.samplerate);
     add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
     // Gain reporting
@@ -433,18 +433,18 @@ static void airspy_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* 
 
 static bool airspy_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
-    AppResources *resources = ctx->resources;
+    AppContext* app = ctx->app;
     int result;
     bool success = false;
 
-    AirspyPrivateData* private_data = (AirspyPrivateData*)mem_arena_alloc(&resources->setup_arena, sizeof(AirspyPrivateData), true);
+    AirspyPrivateData* private_data = (AirspyPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(AirspyPrivateData), true);
     if (!private_data) {
         return false;
     }
     private_data->dev = NULL;
     private_data->board_name = "Airspy Unknown"; // Default
 
-    resources->input_module_private_data = private_data;
+    app->modules.input_private_data = private_data;
 
     result = airspy_init();
     if (result != AIRSPY_SUCCESS) {
@@ -498,7 +498,7 @@ static bool airspy_initialize(ModuleContext* ctx) {
         goto cleanup;
     }
 
-    uint32_t* rates = (uint32_t*)mem_arena_alloc(&resources->setup_arena, num_rates * sizeof(uint32_t), false);
+    uint32_t* rates = (uint32_t*)mem_arena_alloc(&app->pipeline.setup_arena, num_rates * sizeof(uint32_t), false);
     if (!rates) {
         goto cleanup;
     }
@@ -545,7 +545,7 @@ static bool airspy_initialize(ModuleContext* ctx) {
     // Determine sample format and packing
     // Default assumption
     private_data->sample_type = AIRSPY_SAMPLE_INT16_IQ;
-    resources->input_format = CS16;
+    app->modules.input_format = CS16;
 
     if (s_airspy_config.packing_enabled) {
         log_info("Enabling bit-packing mode (12-bit).");
@@ -558,7 +558,7 @@ static bool airspy_initialize(ModuleContext* ctx) {
                 strcasecmp(s_airspy_config.sample_format, "cf32") == 0) {
                 log_warn("Airspy Packing enabled: Overriding sample format to CS16 (Packed mode does not support Float).");
             }
-            resources->input_format = CS16;
+            app->modules.input_format = CS16;
             
             // When packing is enabled, we MUST force the sample type to INT16_IQ.
             // This tells the library to unpack the raw 12-bit data into 16-bit integers for us.
@@ -567,7 +567,7 @@ static bool airspy_initialize(ModuleContext* ctx) {
     } else if (s_airspy_config.sample_format_provided) {
         if (strcasecmp(s_airspy_config.sample_format, "cf32") == 0) {
             private_data->sample_type = AIRSPY_SAMPLE_FLOAT32_IQ;
-            resources->input_format = CF32;
+            app->modules.input_format = CF32;
         }
     }
 
@@ -656,11 +656,11 @@ static bool airspy_initialize(ModuleContext* ctx) {
         }
     }
 
-    resources->input_bytes_per_sample_pair = get_bytes_per_sample(resources->input_format);
-    resources->source_info.samplerate = (int)config->sdr_general.sample_rate_hz;
-    resources->source_info.frames = -1;
+    app->modules.input_bytes_per_sample_pair = get_bytes_per_sample(app->modules.input_format);
+    app->modules.source_info.samplerate = (int)config->sdr_general.sample_rate_hz;
+    app->modules.source_info.frames = -1;
 
-    if (config->dsp.raw_passthrough && resources->input_format != config->output.format) {
+    if (config->dsp.raw_passthrough && app->modules.input_format != config->output.format) {
         log_error("Option --raw-passthrough requires input and output formats to be identical. Airspy input is '%s', but output was set to '%s'.",
                   s_airspy_config.sample_format ? s_airspy_config.sample_format : "cs16",
                   config->output.format_name);
@@ -677,12 +677,12 @@ cleanup:
 }
 
 static void* airspy_start_stream(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    AirspyPrivateData* private_data = (AirspyPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    AirspyPrivateData* private_data = (AirspyPrivateData*)app->modules.input_private_data;
     int result;
     airspy_sample_block_cb_fn callback_fn;
 
-    if (resources->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
+    if (app->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
         log_info("Starting Airspy stream (Buffered Mode)...");
         callback_fn = airspy_buffered_stream_callback;
     } else { // PIPELINE_MODE_REALTIME_SDR
@@ -690,15 +690,15 @@ static void* airspy_start_stream(ModuleContext* ctx) {
         callback_fn = airspy_realtime_stream_callback;
     }
 
-    result = airspy_start_rx(private_data->dev, callback_fn, resources);
+    result = airspy_start_rx(private_data->dev, callback_fn, app);
     if (result != AIRSPY_SUCCESS) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "airspy_start_rx() failed: %s (%d)", airspy_error_name(result), result);
-        handle_fatal_thread_error(error_buf, resources);
+        handle_fatal_thread_error(error_buf, app);
         return NULL;
     }
 
-    while (!is_shutdown_requested() && !resources->error_occurred && airspy_is_streaming(private_data->dev) == AIRSPY_TRUE) {
+    while (!is_shutdown_requested() && !app->stats.error_occurred && airspy_is_streaming(private_data->dev) == AIRSPY_TRUE) {
 #ifdef _WIN32
         Sleep(100);
 #else
@@ -713,8 +713,8 @@ static void* airspy_start_stream(ModuleContext* ctx) {
 }
 
 static void airspy_stop_stream(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    AirspyPrivateData* private_data = (AirspyPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    AirspyPrivateData* private_data = (AirspyPrivateData*)app->modules.input_private_data;
     if (private_data && private_data->dev && airspy_is_streaming(private_data->dev) == AIRSPY_TRUE) {
         log_info("Stopping Airspy stream...");
         int result = airspy_stop_rx(private_data->dev);
@@ -725,15 +725,15 @@ static void airspy_stop_stream(ModuleContext* ctx) {
 }
 
 static void airspy_cleanup(ModuleContext* ctx) {
-    AppResources *resources = ctx->resources;
-    if (resources->input_module_private_data) {
-        AirspyPrivateData* private_data = (AirspyPrivateData*)resources->input_module_private_data;
+    AppContext* app = ctx->app;
+    if (app->modules.input_private_data) {
+        AirspyPrivateData* private_data = (AirspyPrivateData*)app->modules.input_private_data;
         if (private_data->dev) {
             log_info("Closing Airspy device...");
             airspy_close(private_data->dev);
             private_data->dev = NULL;
         }
-        resources->input_module_private_data = NULL;
+        app->modules.input_private_data = NULL;
     }
     log_info("Exiting Airspy library...");
     airspy_exit();
