@@ -13,18 +13,12 @@
 #include <string.h>
 #include <math.h>
 #include <complex.h>
+#include <liquid.h>
 
 #ifdef _WIN32
 #include <windows.h>
 #else
 #include <unistd.h>
-#endif
-
-// --- Liquid DSP ---
-#ifdef _WIN32
-#include <liquid.h>
-#else
-#include <liquid/liquid.h>
 #endif
 
 // --- Constants ---

@@ -3,14 +3,7 @@
 #include "log.h"
 #include "app_context.h"
 #include <stdlib.h> // For exit()
-
-// This is now the ONLY file in our application outside of the processing
-// threads that knows about the specific liquid-dsp implementation.
-#ifdef _WIN32
 #include <liquid.h>
-#else
-#include <liquid/liquid.h>
-#endif
 
 // The resampler_s struct is just an alias for the liquid-dsp object.
 // This definition is private to this .c file.

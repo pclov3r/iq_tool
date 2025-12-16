@@ -31,11 +31,7 @@ constexpr float k2Pi{2.f * kPi};
 // https://github.com/jgaeddert/liquid-dsp/issues/229
 #pragma clang diagnostic ignored "-Wreturn-type-c-linkage"
 extern "C" {
-#ifdef _WIN32
 #include <liquid.h>
-#else
-#include <liquid/liquid.h>
-#endif
 }
 #pragma clang diagnostic pop
 

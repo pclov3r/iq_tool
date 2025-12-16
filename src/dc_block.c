@@ -6,16 +6,12 @@
 #include <string.h>
 #include <math.h>
 #include <errno.h>
+#include <liquid.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
-#ifdef _WIN32
-#include <liquid.h>
-#else
-#include <liquid/liquid.h>
-#endif
 
 bool dc_block_create(AppConfig* config, AppResources* resources) {
     if (!config->dsp.dc_block.enable) {

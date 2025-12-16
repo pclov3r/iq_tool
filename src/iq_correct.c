@@ -61,12 +61,7 @@
 #include <math.h>
 #include <complex.h>
 #include <pthread.h>
-
-#ifdef _WIN32
 #include <liquid.h>
-#else
-#include <liquid/liquid.h>
-#endif
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846

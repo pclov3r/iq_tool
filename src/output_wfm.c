@@ -49,12 +49,13 @@
 #include "signal_handler.h"
 #include "queue.h"
 #include "sample_convert.h"
-#include "redsea_wrapper.h" // <--- ADDED
+#include "redsea_wrapper.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <complex.h>
+#include <liquid.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -62,13 +63,6 @@
 #include <fcntl.h>
 #else
 #include <unistd.h>
-#endif
-
-// --- Liquid DSP ---
-#ifdef _WIN32
-#include <liquid.h>
-#else
-#include <liquid/liquid.h>
 #endif
 
 #ifndef M_PI

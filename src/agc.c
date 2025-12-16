@@ -19,12 +19,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
-
-#ifdef _WIN32
 #include <liquid.h>
-#else
-#include <liquid/liquid.h>
-#endif
 
 bool agc_create(AppConfig* config, AppResources* resources) {
     if (!config->dsp.agc.enable) {
