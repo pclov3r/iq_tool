@@ -232,6 +232,7 @@ set(OTHER_SOURCES
     src/thread_manager.c
     src/utility_threads.c
     src/utils.c
+    src/wait_event.c
 )
 
 # --- Add the correct Wrapper ---
