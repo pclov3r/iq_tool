@@ -40,13 +40,13 @@ static bool stdout_out_initialize(ModuleContext* ctx) {
     }
 #endif
 
-    app->modules.output_private_data = data;
+    app->module.output_private_data = data;
     return true;
 }
 
 static void* stdout_out_run_writer(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    StdoutData* data = (StdoutData*)app->modules.output_private_data;
+    StdoutData* data = (StdoutData*)app->module.output_private_data;
 
     while (true) {
         SampleChunk* item = (SampleChunk*)queue_dequeue(app->pipeline.writer_input_queue);
@@ -62,7 +62,7 @@ static void* stdout_out_run_writer(ModuleContext* ctx) {
             break; // End of stream
         }
 
-        size_t output_bytes_this_chunk = item->frames_to_write * app->modules.output_bytes_per_sample_pair;
+        size_t output_bytes_this_chunk = item->frames_to_write * app->module.output_bytes_per_sample_pair;
         if (output_bytes_this_chunk > 0) {
             size_t written_bytes = fwrite(item->final_output_data, 1, output_bytes_this_chunk, stdout);
             if (written_bytes > 0) {
@@ -88,7 +88,7 @@ static void* stdout_out_run_writer(ModuleContext* ctx) {
 
 static size_t stdout_out_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
     AppContext* app = ctx->app;
-    StdoutData* data = (StdoutData*)app->modules.output_private_data;
+    StdoutData* data = (StdoutData*)app->module.output_private_data;
     if (!data) return 0;
 
     size_t written = fwrite(buffer, 1, bytes_to_write, stdout);
@@ -100,8 +100,8 @@ static size_t stdout_out_write_chunk(ModuleContext* ctx, const void* buffer, siz
 
 static void stdout_out_finalize_output(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    if (!app->modules.output_private_data) return;
-    StdoutData* data = (StdoutData*)app->modules.output_private_data;
+    if (!app->module.output_private_data) return;
+    StdoutData* data = (StdoutData*)app->module.output_private_data;
 
     fflush(stdout);
     app->stats.final_output_size_bytes = data->total_bytes_written;

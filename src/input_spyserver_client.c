@@ -326,7 +326,7 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
 
     SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(SpyServerClientPrivateData), true);
     if (!p) return false;
-    app->modules.input_private_data = p;
+    app->module.input_private_data = p;
     p->net_ctx = NULL;
 
     // Allocate receive scratch buffer
@@ -482,8 +482,8 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
 
     // Set the final, negotiated format for use by the rest of the application.
     p->active_format = final_format;
-    app->modules.input_format = final_format;
-    app->modules.input_bytes_per_sample_pair = get_bytes_per_sample(final_format);
+    app->module.input_format = final_format;
+    app->module.input_bytes_per_sample_pair = get_bytes_per_sample(final_format);
 
     uint32_t max_sr = p->device_info.MaximumSampleRate;
     uint32_t min_dec = p->device_info.MinimumIQDecimation;
@@ -513,7 +513,7 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
         log_info("Requested sample rate %.0f Hz. Using closest available rate: %.0f Hz.", user_rate, actual_rate);
     }
 
-    app->modules.source_info.samplerate = (int)actual_rate;
+    app->module.source_info.samplerate = (int)actual_rate;
 
     int format_to_request_int = get_spyserver_enum_from_internal_format(final_format);
 
@@ -573,7 +573,7 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
     // -------------------------------------------------------------------------
     // NEW: Dynamic Ring Buffer Sizing
     // -------------------------------------------------------------------------
-    double bytes_per_sec = (double)actual_rate * (double)app->modules.input_bytes_per_sample_pair;
+    double bytes_per_sec = (double)actual_rate * (double)app->module.input_bytes_per_sample_pair;
 
     // Calculate total capacity based on the pre-buffer target and the headroom factor.
     // e.g. 2.5s * 4.0 = 10.0s of total capacity.
@@ -606,7 +606,7 @@ static void* spyserver_client_producer_thread(void* arg) {
 
     ModuleContext* ctx = (ModuleContext*)arg;
     AppContext* app = ctx->app;
-    SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->modules.input_private_data;
+    SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->module.input_private_data;
 
 
     while (!is_shutdown_requested()) {
@@ -690,7 +690,7 @@ end_loop:;
 
 static void* spyserver_client_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->modules.input_private_data;
+    SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->module.input_private_data;
 
     if (!send_setting(p, SPYSERVER_SETTING_STREAMING_ENABLED, 1)) {
         handle_fatal_thread_error("Failed to start spyserver stream.", app);
@@ -704,7 +704,7 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
     }
 
     size_t buffer_capacity = ring_buffer_get_capacity(p->stream_buffer);
-    double bytes_per_second = (double)app->modules.source_info.samplerate * (double)app->modules.input_bytes_per_sample_pair;
+    double bytes_per_second = (double)app->module.source_info.samplerate * (double)app->module.input_bytes_per_sample_pair;
     size_t high_water_mark = (size_t)(bytes_per_second * SPYSERVER_PREBUFFER_TARGET_SECONDS);
 
     // Sanity Cap
@@ -793,8 +793,8 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
 
 static void spyserver_client_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    if (app->modules.input_private_data) {
-        SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->modules.input_private_data;
+    if (app->module.input_private_data) {
+        SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->module.input_private_data;
         if (p->stream_buffer) {
             ring_buffer_signal_shutdown(p->stream_buffer);
         }
@@ -803,8 +803,8 @@ static void spyserver_client_stop_stream(ModuleContext* ctx) {
 
 static void spyserver_client_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    if (app->modules.input_private_data) {
-        SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->modules.input_private_data;
+    if (app->module.input_private_data) {
+        SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->module.input_private_data;
         if (p->stream_buffer) {
             ring_buffer_destroy(p->stream_buffer);
             p->stream_buffer = NULL;
@@ -820,7 +820,7 @@ static void spyserver_client_cleanup(ModuleContext* ctx) {
 }
 
 static void spyserver_client_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
-    const SpyServerClientPrivateData* p = (const SpyServerClientPrivateData*)ctx->app->modules.input_private_data;
+    const SpyServerClientPrivateData* p = (const SpyServerClientPrivateData*)ctx->app->module.input_private_data;
     const AppContext* app = ctx->app;
     const AppConfig* config = ctx->config;
     char server_addr[256];
@@ -838,8 +838,8 @@ static void spyserver_client_get_summary_info(const ModuleContext* ctx, InputSum
         char dev_info_str[128];
         snprintf(dev_info_str, sizeof(dev_info_str), "%s (S/N: %08X)", dev_type_str, p->device_info.DeviceSerial);
         add_summary_item(info, "Remote Device", dev_info_str);
-        add_summary_item(info, "Input Format", utils_get_format_description_string(app->modules.input_format));
-        add_summary_item(info, "Input Rate", "%d Hz", app->modules.source_info.samplerate);
+        add_summary_item(info, "Input Format", utils_get_format_description_string(app->module.input_format));
+        add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.samplerate);
         add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
         if (s_spyserver_client_config.gain_provided) {

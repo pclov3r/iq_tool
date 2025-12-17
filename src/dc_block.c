@@ -25,7 +25,7 @@ bool dc_block_create(AppConfig* config, AppContext* app) {
     // where alpha = 2 * pi * fc / Fs.
     // The documentation for iirfilt_crcf_create_dc_blocker states it creates a first-order
     // DC-blocking filter with transfer function H(z) = (1 - z^-1) / (1 - (1-alpha)z^-1).
-    float normalized_alpha = (float)(2.0 * M_PI * DC_BLOCK_CUTOFF_HZ / app->modules.source_info.samplerate);
+    float normalized_alpha = (float)(2.0 * M_PI * DC_BLOCK_CUTOFF_HZ / app->module.source_info.samplerate);
 
     // Ensure alpha is within a reasonable range (e.g., small positive value)
     // A very small alpha means a very narrow notch at DC, a larger alpha means wider.

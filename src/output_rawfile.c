@@ -139,13 +139,13 @@ static bool raw_out_initialize(ModuleContext* ctx) {
         return false;
     }
 
-    app->modules.output_private_data = data;
+    app->module.output_private_data = data;
     return true;
 }
 
 static void* raw_out_run_writer(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    RawOutData* data = (RawOutData*)app->modules.output_private_data;
+    RawOutData* data = (RawOutData*)app->module.output_private_data;
 
     unsigned char* local_write_buffer = (unsigned char*)app->pipeline.writer_local_buffer;
     if (!local_write_buffer) {
@@ -172,7 +172,7 @@ static void* raw_out_run_writer(ModuleContext* ctx) {
         }
 
         if (app->stats.progress_callback) {
-            unsigned long long current_frames = data->total_bytes_written / app->modules.output_bytes_per_sample_pair;
+            unsigned long long current_frames = data->total_bytes_written / app->module.output_bytes_per_sample_pair;
             pthread_mutex_lock(&app->stats.mutex);
             app->stats.total_output_frames = current_frames;
             pthread_mutex_unlock(&app->stats.mutex);
@@ -185,7 +185,7 @@ static void* raw_out_run_writer(ModuleContext* ctx) {
 
 static size_t raw_out_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
     AppContext* app = ctx->app;
-    RawOutData* data = (RawOutData*)app->modules.output_private_data;
+    RawOutData* data = (RawOutData*)app->module.output_private_data;
     if (!data || !data->handle) return 0;
 
     size_t written = fwrite(buffer, 1, bytes_to_write, data->handle);
@@ -197,8 +197,8 @@ static size_t raw_out_write_chunk(ModuleContext* ctx, const void* buffer, size_t
 
 static void raw_out_finalize_output(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    if (!app->modules.output_private_data) return;
-    RawOutData* data = (RawOutData*)app->modules.output_private_data;
+    if (!app->module.output_private_data) return;
+    RawOutData* data = (RawOutData*)app->module.output_private_data;
 
     if (data->handle) {
         fclose(data->handle);

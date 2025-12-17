@@ -297,7 +297,7 @@ static bool bladerf_initialize(ModuleContext* ctx) {
 
     // Initialize state variables that the main cleanup function will check.
     private_data->dev = NULL;
-    app->modules.input_private_data = private_data;
+    app->module.input_private_data = private_data;
 
 #if defined(_WIN32) && defined(WITH_BLADERF)
     if (!bladerf_load_api()) goto cleanup;
@@ -398,7 +398,7 @@ static bool bladerf_initialize(ModuleContext* ctx) {
         if (!bladerf_configure_standard_rate_and_rf(ctx, rx_channel)) goto cleanup;
     }
 
-    if (app->modules.source_info.samplerate == 0) {
+    if (app->module.source_info.samplerate == 0) {
         log_fatal("BladeRF failed to set the sample rate. The actual rate was reported as 0 Hz.");
         goto cleanup;
     }
@@ -428,14 +428,14 @@ static bool bladerf_initialize(ModuleContext* ctx) {
         }
     }
 
-    app->modules.input_format = (s_bladerf_config.active_bit_depth == 8) ? CS8 : SC16Q11;
-    app->modules.input_bytes_per_sample_pair = get_bytes_per_sample(app->modules.input_format);
+    app->module.input_format = (s_bladerf_config.active_bit_depth == 8) ? CS8 : SC16Q11;
+    app->module.input_bytes_per_sample_pair = get_bytes_per_sample(app->module.input_format);
 
     // Note: We intentionally allocate a large enough temp buffer for max transfer size,
     // not just the chunk size, to handle whatever the hardware gives us in Buffered Mode.
     // However, in the new architecture, we might not even need this intermediate buffer
     // if we wrote directly, but BladeRF's sync_rx interface requires a destination pointer.
-    size_t buffer_size_bytes = 131072 * app->modules.input_bytes_per_sample_pair; // Safe upper bound
+    size_t buffer_size_bytes = 131072 * app->module.input_bytes_per_sample_pair; // Safe upper bound
     private_data->stream_temp_buffer = mem_arena_alloc(&app->pipeline.setup_arena, buffer_size_bytes, false);
     if (!private_data->stream_temp_buffer) goto cleanup;
 
@@ -449,7 +449,7 @@ cleanup:
 static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel) {
     AppConfig *config = (AppConfig*)ctx->config;
     AppContext* app = ctx->app;
-    BladerfPrivateData* private_data = (BladerfPrivateData*)app->modules.input_private_data;
+    BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;
     int status;
     
     log_debug("Enabling BladeRF 2.0 oversample feature for high-speed sampling.");
@@ -473,8 +473,8 @@ static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf
         return false;
     }
     double actual_rate_double = (double)actual_rate_from_device.integer + ((double)actual_rate_from_device.num / (double)actual_rate_from_device.den);
-    app->modules.source_info.samplerate = (int)actual_rate_double;
-    log_info("BladeRF: Requested sample rate %.0f Hz, actual rate set to %d Hz.", config->sdr_general.sample_rate_hz, app->modules.source_info.samplerate);
+    app->module.source_info.samplerate = (int)actual_rate_double;
+    log_info("BladeRF: Requested sample rate %.0f Hz, actual rate set to %d Hz.", config->sdr_general.sample_rate_hz, app->module.source_info.samplerate);
 
     status = bladerf_set_frequency(private_data->dev, rx_channel, config->sdr_general.rf_freq_hz);
     if (is_shutdown_requested()) { return false; }
@@ -490,7 +490,7 @@ static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf
 static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel) {
     AppConfig *config = (AppConfig*)ctx->config;
     AppContext* app = ctx->app;
-    BladerfPrivateData* private_data = (BladerfPrivateData*)app->modules.input_private_data;
+    BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;
     int status;
     
     bladerf_sample_rate requested_rate = (bladerf_sample_rate)config->sdr_general.sample_rate_hz;
@@ -502,7 +502,7 @@ static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_c
         return false;
     }
     log_info("BladeRF: Requested sample rate %u Hz, actual rate set to %u Hz.", requested_rate, actual_rate);
-    app->modules.source_info.samplerate = (int)actual_rate;
+    app->module.source_info.samplerate = (int)actual_rate;
 
     bladerf_bandwidth requested_bw = s_bladerf_config.bandwidth_hz;
     bladerf_bandwidth actual_bw;
@@ -529,7 +529,7 @@ static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_c
 static void* bladerf_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     const AppConfig *config = ctx->config;
-    BladerfPrivateData* private_data = (BladerfPrivateData*)app->modules.input_private_data;
+    BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;
     int status;
     bladerf_channel rx_channel;
     struct bladerf_metadata meta;
@@ -538,12 +538,12 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
         return NULL;
     }
 
-    if (app->modules.source_info.samplerate >= 5000000) {
+    if (app->module.source_info.samplerate >= 5000000) {
         log_debug("BladeRF: Using High-Throughput profile for sample rate >= 5 MSPS.");
         s_bladerf_config.num_buffers = BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_BUFFERS;
         s_bladerf_config.buffer_size = BLADERF_PROFILE_HIGHTHROUGHPUT_BUFFER_SIZE;
         s_bladerf_config.num_transfers = BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS;
-    } else if (app->modules.source_info.samplerate >= 1000000) {
+    } else if (app->module.source_info.samplerate >= 1000000) {
         log_debug("BladeRF: Using Balanced profile for sample rate between 1 and 5 MSPS.");
         s_bladerf_config.num_buffers = BLADERF_PROFILE_BALANCED_NUM_BUFFERS;
         s_bladerf_config.buffer_size = BLADERF_PROFILE_BALANCED_BUFFER_SIZE;
@@ -587,12 +587,12 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
         return NULL;
     }
 
-    if (config->dsp.raw_passthrough && app->modules.input_format != config->output.format) {
+    if (config->dsp.raw_passthrough && app->module.input_format != config->output.format) {
         handle_fatal_thread_error("Option --raw-passthrough requires input and output formats to be identical.", app);
         return NULL;
     }
 
-    unsigned int samples_per_transfer = (unsigned int)(app->modules.source_info.samplerate * BLADERF_TRANSFER_SIZE_SECONDS);
+    unsigned int samples_per_transfer = (unsigned int)(app->module.source_info.samplerate * BLADERF_TRANSFER_SIZE_SECONDS);
     // Sanity clamp for max transfer size allowed by libbladeRF in sync mode
     if (samples_per_transfer > 65536) samples_per_transfer = 65536; 
     
@@ -636,7 +636,7 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
                             app->pipeline.sdr_input_buffer,
                             meta.actual_count,
                             temp_buffer,
-                            app->modules.input_format))
+                            app->module.input_format))
                     {
                         log_warn("BladeRF: Ring buffer overrun, dropped block.");
                     }
@@ -674,8 +674,8 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
                         if ((meta.status & BLADERF_META_STATUS_OVERRUN) != 0) {
                             log_warn("BladeRF reported a stream overrun (discontinuity).");
                         }
-                        size_t bytes_to_write = meta.actual_count * app->modules.input_bytes_per_sample_pair;
-                        size_t written = app->modules.output_api->write_chunk(ctx, passthrough_buffer, bytes_to_write);
+                        size_t bytes_to_write = meta.actual_count * app->module.input_bytes_per_sample_pair;
+                        size_t written = app->module.output_api->write_chunk(ctx, passthrough_buffer, bytes_to_write);
                         if (written < bytes_to_write) {
                             log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
                             request_shutdown();
@@ -695,7 +695,7 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
                     // --- CHANGED: Use dynamic chunk capacity ---
                     // Note: We clamp samples_per_transfer to the item capacity to avoid overflow.
                     unsigned int request_count = samples_per_transfer;
-                    unsigned int max_item_samples = item->raw_input_capacity_bytes / app->modules.input_bytes_per_sample_pair;
+                    unsigned int max_item_samples = item->raw_input_capacity_bytes / app->module.input_bytes_per_sample_pair;
                     if (request_count > max_item_samples) {
                         request_count = max_item_samples;
                     }
@@ -723,7 +723,7 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
                     }
                     item->frames_read = meta.actual_count;
                     item->is_last_chunk = false;
-                    item->packet_sample_format = app->modules.input_format;
+                    item->packet_sample_format = app->module.input_format;
 
                     if (item->frames_read > 0) {
                         pthread_mutex_lock(&app->stats.mutex);
@@ -756,7 +756,7 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
 
 static void bladerf_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    BladerfPrivateData* private_data = (BladerfPrivateData*)app->modules.input_private_data;
+    BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;
     if (private_data && private_data->dev) {
         bladerf_channel rx_channel;
         if (strcmp(private_data->board_name, "bladerf2") == 0) {
@@ -774,13 +774,13 @@ static void bladerf_stop_stream(ModuleContext* ctx) {
 
 static void bladerf_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    if (app->modules.input_private_data) {
-        BladerfPrivateData* private_data = (BladerfPrivateData*)app->modules.input_private_data;
+    if (app->module.input_private_data) {
+        BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;
         if (private_data->dev) {
             log_info("Closing BladeRF device...");
             bladerf_close(private_data->dev);
         }
-        app->modules.input_private_data = NULL;
+        app->module.input_private_data = NULL;
     }
 #if defined(_WIN32) && defined(WITH_BLADERF)
     bladerf_unload_api();
@@ -790,7 +790,7 @@ static void bladerf_cleanup(ModuleContext* ctx) {
 static void bladerf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     AppContext* app = ctx->app;
-    BladerfPrivateData* private_data = (BladerfPrivateData*)app->modules.input_private_data;
+    BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;
     add_summary_item(info, "Input Source", "%s", private_data->display_name);
 
     if (s_bladerf_config.active_bit_depth == 8) add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
@@ -799,7 +799,7 @@ static void bladerf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo*
     if (strcmp(private_data->board_name, "bladerf2") == 0) add_summary_item(info, "Channel", "%d (RXA)", s_bladerf_config.channel);
     else add_summary_item(info, "Antenna Port", "Automatic");
 
-    add_summary_item(info, "Input Rate", "%d Hz", app->modules.source_info.samplerate);
+    add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.samplerate);
     add_summary_item(info, "Bandwidth", "%u Hz", s_bladerf_config.bandwidth_hz);
     add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 

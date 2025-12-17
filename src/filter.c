@@ -47,7 +47,7 @@ static bool _configure_filter_stage(AppConfig *config, AppContext* app) {
         return true;
     }
 
-    double input_rate = (double)app->modules.source_info.samplerate;
+    double input_rate = (double)app->module.source_info.samplerate;
     double output_rate = config->output_rate.target_rate;
 
     // This optimization is only relevant if we are downsampling.
@@ -159,7 +159,7 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
 
     double sample_rate_for_design = config->dsp.filter.apply_post_resample
                                       ? config->output_rate.target_rate
-                                      : (double)app->modules.source_info.samplerate;
+                                      : (double)app->module.source_info.samplerate;
 
     bool is_final_filter_complex = false;
     bool normalize_by_peak = false;

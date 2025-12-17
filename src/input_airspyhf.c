@@ -222,7 +222,7 @@ static int airspyhf_realtime_stream_callback(airspyhf_transfer_t* transfer) {
     if (config->dsp.raw_passthrough) {
         size_t total_bytes = transfer->sample_count * bytes_per_sample;
         ModuleContext ctx = { .config = config, .app = app };
-        size_t written = app->modules.output_api->write_chunk(&ctx, transfer->samples, total_bytes);
+        size_t written = app->module.output_api->write_chunk(&ctx, transfer->samples, total_bytes);
         if (written < total_bytes) {
             log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
             request_shutdown();
@@ -275,7 +275,7 @@ static void airspyhf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo
 
     add_summary_item(info, "Input Source", "Airspy HF+");
     add_summary_item(info, "Input Format", "32-bit Float Complex (cf32)");
-    add_summary_item(info, "Input Rate", "%d Hz", app->modules.source_info.samplerate);
+    add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.samplerate);
     add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
     // Gain reporting
@@ -315,7 +315,7 @@ static bool airspyhf_initialize(ModuleContext* ctx) {
     }
     private_data->dev = NULL;
 
-    app->modules.input_private_data = private_data;
+    app->module.input_private_data = private_data;
 
     // Open device
     if (s_airspyhf_config.serial_provided) {
@@ -390,7 +390,7 @@ static bool airspyhf_initialize(ModuleContext* ctx) {
     }
 
     // Airspy HF+ always outputs CF32
-    app->modules.input_format = CF32;
+    app->module.input_format = CF32;
 
     // Configure AGC
     if (s_airspyhf_config.agc_mode_provided) {
@@ -481,11 +481,11 @@ static bool airspyhf_initialize(ModuleContext* ctx) {
         }
     }
 
-    app->modules.input_bytes_per_sample_pair = get_bytes_per_sample(CF32);
-    app->modules.source_info.samplerate = (int)config->sdr_general.sample_rate_hz;
-    app->modules.source_info.frames = -1;
+    app->module.input_bytes_per_sample_pair = get_bytes_per_sample(CF32);
+    app->module.source_info.samplerate = (int)config->sdr_general.sample_rate_hz;
+    app->module.source_info.frames = -1;
 
-    if (config->dsp.raw_passthrough && app->modules.input_format != config->output.format) {
+    if (config->dsp.raw_passthrough && app->module.input_format != config->output.format) {
         log_error("Option --raw-passthrough requires input and output formats to be identical. Airspy HF+ input is 'cf32', but output was set to '%s'.",
                   config->output.format_name);
         goto cleanup;
@@ -502,7 +502,7 @@ cleanup:
 
 static void* airspyhf_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)app->modules.input_private_data;
+    AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)app->module.input_private_data;
     int result;
     airspyhf_sample_block_cb_fn callback_fn;
 
@@ -538,7 +538,7 @@ static void* airspyhf_start_stream(ModuleContext* ctx) {
 
 static void airspyhf_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)app->modules.input_private_data;
+    AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)app->module.input_private_data;
     if (private_data && private_data->dev && airspyhf_is_streaming(private_data->dev)) {
         log_info("Stopping Airspy HF+ stream...");
         int result = airspyhf_stop(private_data->dev);
@@ -550,13 +550,13 @@ static void airspyhf_stop_stream(ModuleContext* ctx) {
 
 static void airspyhf_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    if (app->modules.input_private_data) {
-        AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)app->modules.input_private_data;
+    if (app->module.input_private_data) {
+        AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)app->module.input_private_data;
         if (private_data->dev) {
             log_info("Closing Airspy HF+ device...");
             airspyhf_close(private_data->dev);
             private_data->dev = NULL;
         }
-        app->modules.input_private_data = NULL;
+        app->module.input_private_data = NULL;
     }
 }

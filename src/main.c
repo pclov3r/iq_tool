@@ -180,8 +180,8 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    app.modules.input_api = module_manager_get_input_interface_by_name(config.input.type_name, &app.pipeline.setup_arena);
-    if (!app.modules.input_api) {
+    app.module.input_api = module_manager_get_input_interface_by_name(config.input.type_name, &app.pipeline.setup_arena);
+    if (!app.module.input_api) {
         log_fatal("Input type '%s' is not supported or not enabled in this build.", config.input.type_name);
         goto cleanup;
     }
@@ -269,7 +269,7 @@ static void print_final_summary(const AppConfig *config, const AppContext* app, 
     (void)config;
 
     // If the output target is not a file (e.g., stdout), don't print a summary.
-    if (!app->modules.pacing_is_required) {
+    if (!app->module.pacing_is_required) {
         return;
     }
 
@@ -299,14 +299,14 @@ static void print_final_summary(const AppConfig *config, const AppContext* app, 
     } else if (app->stats.end_of_stream_reached) {
         fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Completed Successfully");
         fprintf(stderr, "%-*s %s\n", label_width, "Processing Duration:", duration_buf);
-        fprintf(stderr, "%-*s %llu / %lld (100.0%%)\n", label_width, "Input Frames Read:", app->stats.total_frames_read, (long long)app->modules.source_info.frames);
+        fprintf(stderr, "%-*s %llu / %lld (100.0%%)\n", label_width, "Input Frames Read:", app->stats.total_frames_read, (long long)app->module.source_info.frames);
         fprintf(stderr, "%-*s %llu\n", label_width, "Input Samples Read:", total_input_samples);
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", app->stats.total_output_frames);
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Written:", total_output_samples);
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
         fprintf(stderr, "%-*s %.2f MB/s\n", label_width, "Average Write Speed:", avg_write_speed_mbps);
     } else if (is_shutdown_requested()) {
-        bool source_has_known_length = app->modules.input_api->has_known_length();
+        bool source_has_known_length = app->module.input_api->has_known_length();
         if (!source_has_known_length) {
             fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Capture Stopped by User");
         } else {
@@ -319,10 +319,10 @@ static void print_final_summary(const AppConfig *config, const AppContext* app, 
             fprintf(stderr, "%-*s %llu\n", label_width, "Input Samples Read:", total_input_samples);
         } else {
             double percentage = 0.0;
-            if (app->modules.source_info.frames > 0) {
-                percentage = ((double)app->stats.total_frames_read / (double)app->modules.source_info.frames) * 100.0;
+            if (app->module.source_info.frames > 0) {
+                percentage = ((double)app->stats.total_frames_read / (double)app->module.source_info.frames) * 100.0;
             }
-            fprintf(stderr, "%-*s %llu / %lld (%.1f%%)\n", label_width, "Input Frames Read:", app->stats.total_frames_read, (long long)app->modules.source_info.frames, percentage);
+            fprintf(stderr, "%-*s %llu / %lld (%.1f%%)\n", label_width, "Input Frames Read:", app->stats.total_frames_read, (long long)app->module.source_info.frames, percentage);
             fprintf(stderr, "%-*s %llu\n", label_width, "Input Samples Read:", total_input_samples);
         }
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", app->stats.total_output_frames);

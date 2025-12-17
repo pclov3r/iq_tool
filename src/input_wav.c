@@ -472,7 +472,7 @@ InputModuleInterface* get_wav_input_module_api(void) {
 static void wav_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppContext* app = ctx->app;
-    WavPrivateData* private_data = (WavPrivateData*)app->modules.input_private_data;
+    WavPrivateData* private_data = (WavPrivateData*)app->module.input_private_data;
 
     const char* display_path = config->input.path_arg;
 #ifdef _WIN32
@@ -484,13 +484,13 @@ static void wav_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* inf
     add_summary_item(info, "Input File", "%s", display_path);
 
     const char *format_str;
-    switch (app->modules.input_format) {
+    switch (app->module.input_format) {
         case CS16: format_str = "16-bit Signed Complex PCM (cs16)"; break;
         case CU8:  format_str = "8-bit Unsigned Complex PCM (cu8)"; break;
         default:   format_str = "Unknown PCM"; break;
     }
     add_summary_item(info, "Input Format", "%s", format_str);
-    add_summary_item(info, "Input Rate", "%.0f Hz", (double)app->modules.source_info.samplerate);
+    add_summary_item(info, "Input Rate", "%.0f Hz", (double)app->module.source_info.samplerate);
 
     long long input_file_size = -1LL;
 #ifdef _WIN32
@@ -547,7 +547,7 @@ static bool wav_initialize(ModuleContext* ctx) {
     if (!private_data) {
         return false;
     }
-    app->modules.input_private_data = private_data;
+    app->module.input_private_data = private_data;
 
 #ifdef _WIN32
     log_info("Opening WAV input file: %s", config->input.effective_path_utf8);
@@ -575,8 +575,8 @@ static bool wav_initialize(ModuleContext* ctx) {
 
     int sf_subtype = (sfinfo.format & SF_FORMAT_SUBMASK);
     switch (sf_subtype) {
-        case SF_FORMAT_PCM_16: app->modules.input_format = CS16; break;
-        case SF_FORMAT_PCM_U8: app->modules.input_format = CU8; break;
+        case SF_FORMAT_PCM_16: app->module.input_format = CS16; break;
+        case SF_FORMAT_PCM_U8: app->module.input_format = CU8; break;
         default:
             log_fatal("Error: Input WAV file uses an unsupported PCM subtype (0x%04X). "
                       "Supported WAV PCM subtypes are 16-bit Signed (cs16) and 8-bit Unsigned (cu8).", sf_subtype);
@@ -585,7 +585,7 @@ static bool wav_initialize(ModuleContext* ctx) {
             return false;
     }
 
-    app->modules.input_bytes_per_sample_pair = get_bytes_per_sample(app->modules.input_format);
+    app->module.input_bytes_per_sample_pair = get_bytes_per_sample(app->module.input_format);
 
     if (sfinfo.samplerate <= 0) {
         log_fatal("Error: Invalid input sample rate (%d Hz).", sfinfo.samplerate);
@@ -598,8 +598,8 @@ static bool wav_initialize(ModuleContext* ctx) {
         log_warn("Warning: Input file appears to be empty (0 frames).");
     }
 
-    app->modules.source_info.samplerate = sfinfo.samplerate;
-    app->modules.source_info.frames = sfinfo.frames;
+    app->module.source_info.samplerate = sfinfo.samplerate;
+    app->module.source_info.frames = sfinfo.frames;
 
     init_sdr_metadata(&private_data->sdr_info);
     private_data->sdr_info_present = parse_sdr_metadata_chunks(private_data->infile, &sfinfo, &private_data->sdr_info, &app->pipeline.setup_arena);
@@ -633,11 +633,11 @@ static bool wav_initialize(ModuleContext* ctx) {
 
 static void* wav_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    WavPrivateData* private_data = (WavPrivateData*)app->modules.input_private_data;
+    WavPrivateData* private_data = (WavPrivateData*)app->module.input_private_data;
     const AppConfig *config = ctx->config;
 
     // This is now a clean, high-level check.
-    bool pacing_required = app->modules.pacing_is_required;
+    bool pacing_required = app->module.pacing_is_required;
 
     // Pre-calculate the back-pressure threshold in bytes for efficiency.
     const size_t writer_buffer_capacity = pacing_required ? ring_buffer_get_capacity(app->pipeline.writer_input_buffer) : 0;
@@ -660,7 +660,7 @@ static void* wav_start_stream(ModuleContext* ctx) {
         size_t samples_to_read = app->pipeline.read_chunk_size;
         
         // Ensure we don't overflow the buffer (sanity check)
-        size_t capacity_samples = current_item->raw_input_capacity_bytes / app->modules.input_bytes_per_sample_pair;
+        size_t capacity_samples = current_item->raw_input_capacity_bytes / app->module.input_bytes_per_sample_pair;
         if (samples_to_read > capacity_samples) {
             samples_to_read = capacity_samples;
         }
@@ -672,7 +672,7 @@ static void* wav_start_stream(ModuleContext* ctx) {
             target_buffer = current_item->raw_input_data;
         }
 
-        int64_t bytes_read = sf_read_raw(private_data->infile, target_buffer, samples_to_read * app->modules.input_bytes_per_sample_pair);
+        int64_t bytes_read = sf_read_raw(private_data->infile, target_buffer, samples_to_read * app->module.input_bytes_per_sample_pair);
 
         if (bytes_read < 0) {
             log_fatal("libsndfile read error: %s", sf_strerror(private_data->infile));
@@ -684,8 +684,8 @@ static void* wav_start_stream(ModuleContext* ctx) {
             break;
         }
 
-        current_item->frames_read = bytes_read / app->modules.input_bytes_per_sample_pair;
-        current_item->packet_sample_format = app->modules.input_format;
+        current_item->frames_read = bytes_read / app->module.input_bytes_per_sample_pair;
+        current_item->packet_sample_format = app->module.input_format;
         current_item->frames_to_write = (unsigned int)current_item->frames_read;
 
         // If we read fewer bytes than requested (and it wasn't 0), it's the last chunk.
@@ -723,20 +723,20 @@ static void wav_stop_stream(ModuleContext* ctx) {
 
 static void wav_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    if (app->modules.input_private_data) {
-        WavPrivateData* private_data = (WavPrivateData*)app->modules.input_private_data;
+    if (app->module.input_private_data) {
+        WavPrivateData* private_data = (WavPrivateData*)app->module.input_private_data;
         if (private_data->infile) {
             log_info("Closing WAV input file.");
             sf_close(private_data->infile);
             private_data->infile = NULL;
         }
-        app->modules.input_private_data = NULL;
+        app->module.input_private_data = NULL;
     }
 }
 
 static bool wav_pre_stream_iq_correction(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
-    WavPrivateData* private_data = (WavPrivateData*)ctx->app->modules.input_private_data;
+    WavPrivateData* private_data = (WavPrivateData*)ctx->app->module.input_private_data;
 
     // This routine is only necessary if I/Q correction is enabled.
     if (!config->dsp.iq_correction.enable) {

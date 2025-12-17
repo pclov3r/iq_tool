@@ -324,7 +324,7 @@ static bool nrsc5_initialize(ModuleContext* ctx) {
 
     Nrsc5Context* p = (Nrsc5Context*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(Nrsc5Context), true);
     if (!p) return false;
-    app->modules.output_private_data = p;
+    app->module.output_private_data = p;
 
     // Direct API call
     const char* ver_str = NULL;
@@ -388,7 +388,7 @@ static bool nrsc5_initialize(ModuleContext* ctx) {
 
 static void* nrsc5_run_writer(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    Nrsc5Context* p = (Nrsc5Context*)app->modules.output_private_data;
+    Nrsc5Context* p = (Nrsc5Context*)app->module.output_private_data;
 
     // Throttle if buffer is > 80% full (approx 2.3 seconds of audio)
     const size_t THROTTLE_THRESHOLD = (size_t)(NRSC5_AUDIO_BUFFER_SIZE * 0.8);
@@ -473,8 +473,8 @@ cleanup:
 
 static void nrsc5_finalize_output(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    if (!app->modules.output_private_data) return;
-    Nrsc5Context* p = (Nrsc5Context*)app->modules.output_private_data;
+    if (!app->module.output_private_data) return;
+    Nrsc5Context* p = (Nrsc5Context*)app->module.output_private_data;
 
     if (p->audio_device_initialized) {
         ma_device_uninit(&p->audio_device);

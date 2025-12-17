@@ -58,7 +58,7 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
     // Allocate the private data struct for this module instance.
     WavCommonData* data = (WavCommonData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(WavCommonData), true);
     if (!data) return false;
-    app->modules.output_private_data = data;
+    app->module.output_private_data = data;
 
     // Use platform-specific UTF-8 path for messages.
     #ifdef _WIN32
@@ -118,7 +118,7 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
 
 void* wav_common_run_writer(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    WavCommonData* data = (WavCommonData*)app->modules.output_private_data;
+    WavCommonData* data = (WavCommonData*)app->module.output_private_data;
 
     unsigned char* local_buffer = (unsigned char*)app->pipeline.writer_local_buffer;
     if (!local_buffer) { handle_fatal_thread_error("WAV writer: Local buffer is NULL.", app); return NULL; }
@@ -142,7 +142,7 @@ void* wav_common_run_writer(ModuleContext* ctx) {
 
         // Update and invoke the progress callback.
         if (app->stats.progress_callback) {
-            unsigned long long current_frames = data->total_bytes_written / app->modules.output_bytes_per_sample_pair;
+            unsigned long long current_frames = data->total_bytes_written / app->module.output_bytes_per_sample_pair;
             pthread_mutex_lock(&app->stats.mutex);
             app->stats.total_output_frames = current_frames;
             pthread_mutex_unlock(&app->stats.mutex);
@@ -155,7 +155,7 @@ void* wav_common_run_writer(ModuleContext* ctx) {
 
 size_t wav_common_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
     AppContext* app = ctx->app;
-    WavCommonData* data = (WavCommonData*)app->modules.output_private_data;
+    WavCommonData* data = (WavCommonData*)app->module.output_private_data;
     if (!data || !data->handle || bytes_to_write == 0) return 0;
     sf_count_t written = sf_write_raw(data->handle, buffer, bytes_to_write);
     if (written > 0) data->total_bytes_written += written;
@@ -164,8 +164,8 @@ size_t wav_common_write_chunk(ModuleContext* ctx, const void* buffer, size_t byt
 
 void wav_common_finalize_output(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    if (!app->modules.output_private_data) return;
-    WavCommonData* data = (WavCommonData*)app->modules.output_private_data;
+    if (!app->module.output_private_data) return;
+    WavCommonData* data = (WavCommonData*)app->module.output_private_data;
     if (data->handle) {
         sf_close(data->handle);
         data->handle = NULL;

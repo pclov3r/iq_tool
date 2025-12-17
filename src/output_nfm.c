@@ -131,7 +131,7 @@ static bool nfm_validate_options(AppConfig* config) {
 static bool nfm_initialize(ModuleContext* ctx) {
     AppContext* res = ctx->app;
     NfmContext* p = (NfmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(NfmContext), true);
-    res->modules.output_private_data = p;
+    res->module.output_private_data = p;
 
     // 1. Audio Buffer
     p->audio_ring_buffer = ring_buffer_create(NFM_BUFFER_SIZE);
@@ -193,7 +193,7 @@ static bool nfm_initialize(ModuleContext* ctx) {
 
 static void* nfm_run_writer(ModuleContext* ctx) {
     AppContext* res = ctx->app;
-    NfmContext* p = (NfmContext*)res->modules.output_private_data;
+    NfmContext* p = (NfmContext*)res->module.output_private_data;
 
     // Use a threshold of 80% to trigger backpressure
     const size_t THROTTLE_THRESHOLD = (size_t)(NFM_BUFFER_SIZE * 0.8);
@@ -352,8 +352,8 @@ cleanup:
 
 static void nfm_finalize(ModuleContext* ctx) {
     AppContext* res = ctx->app;
-    if (!res->modules.output_private_data) return;
-    NfmContext* p = (NfmContext*)res->modules.output_private_data;
+    if (!res->module.output_private_data) return;
+    NfmContext* p = (NfmContext*)res->module.output_private_data;
 
     if (p->audio_device_initialized) ma_device_uninit(&p->audio_device);
     if (p->audio_ring_buffer) ring_buffer_destroy(p->audio_ring_buffer);

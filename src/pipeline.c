@@ -211,7 +211,7 @@ static bool _init_queues_and_buffers(AppConfig* config, AppContext* app) {
         if (!app->pipeline.sdr_input_buffer) return false;
     }
     
-    if (app->modules.pacing_is_required) {
+    if (app->module.pacing_is_required) {
         app->pipeline.writer_input_buffer = ring_buffer_create(IO_OUTPUT_WRITER_BUFFER_BYTES);
         if (!app->pipeline.writer_input_buffer) return false;
     }
@@ -243,7 +243,7 @@ void* sdr_capture_thread_func(void* arg) {
     AppContext* app = args->app;
     ModuleContext ctx = { .config = args->config, .app = app };
 
-    app->modules.input_api->start_stream(&ctx);
+    app->module.input_api->start_stream(&ctx);
 
     if (app->pipeline.sdr_input_buffer) {
         ring_buffer_signal_end_of_stream(app->pipeline.sdr_input_buffer);
@@ -328,7 +328,7 @@ void* reader_thread_func(void* arg) {
             // These modes manage their own chunking inside their start_stream functions,
             // which have already been updated to use 'pipeline_read_chunk_size'.
             ModuleContext ctx = { .config = config, .app = app };
-            app->modules.input_api->start_stream(&ctx);
+            app->module.input_api->start_stream(&ctx);
             break;
         }
     }
@@ -355,8 +355,8 @@ void* writer_thread_func(void* arg) {
     PipelineContext* args = (PipelineContext*)arg;
     ModuleContext ctx = { .config = args->config, .app = args->app };
 
-    if (args->app->modules.output_api && args->app->modules.output_api->run_writer) {
-        return args->app->modules.output_api->run_writer(&ctx);
+    if (args->app->module.output_api && args->app->module.output_api->run_writer) {
+        return args->app->module.output_api->run_writer(&ctx);
     }
 
     log_fatal("Writer thread started with no output module selected or run_writer is NULL.");
@@ -485,7 +485,7 @@ void* post_processor_thread_func(void* arg) {
 
         if (item->is_last_chunk) {
             // If we are NOT using a paced buffer (e.g. stdout), we need to send the last_chunk marker to the writer.
-            if (!app->modules.pacing_is_required) {
+            if (!app->module.pacing_is_required) {
                 queue_enqueue(app->pipeline.writer_input_queue, item);
             } else { // Otherwise, we signal the ring buffer and free the chunk.
                 if (app->pipeline.writer_input_buffer) {
@@ -508,13 +508,13 @@ void* post_processor_thread_func(void* arg) {
 
         if (item->frames_to_write > 0) {
             // If we are NOT using a paced buffer, pass the chunk directly to the writer thread's queue.
-            if (!app->modules.pacing_is_required) {
+            if (!app->module.pacing_is_required) {
                 if (!queue_enqueue(app->pipeline.writer_input_queue, item)) {
                     break;
                 }
             } else { // Otherwise, write the data to the ring buffer and return the chunk to the free pool.
                 if (app->pipeline.writer_input_buffer) {
-                    size_t bytes_to_write = item->frames_to_write * app->modules.output_bytes_per_sample_pair;
+                    size_t bytes_to_write = item->frames_to_write * app->module.output_bytes_per_sample_pair;
                     ring_buffer_write(app->pipeline.writer_input_buffer, item->final_output_data, bytes_to_write);
                 }
                 queue_enqueue(app->pipeline.free_sample_chunk_queue, item);

@@ -125,9 +125,9 @@ void request_shutdown(void) {
 
         // Generic shutdown: If the active input module has a stop function, call it.
         // This handles blocking SDR drivers (like RTL-SDR) and background threads.
-        if (r->modules.input_api && r->modules.input_api->stop_stream) {
+        if (r->module.input_api && r->module.input_api->stop_stream) {
             ModuleContext ctx = { .config = r->config, .app = r };
-            r->modules.input_api->stop_stream(&ctx);
+            r->module.input_api->stop_stream(&ctx);
         }
 
         // Signal all queues to wake up any waiting threads.

@@ -111,16 +111,16 @@ static bool rawfile_initialize(ModuleContext* ctx) {
     if (!private_data) {
         return false;
     }
-    app->modules.input_private_data = private_data;
+    app->module.input_private_data = private_data;
 
-    app->modules.input_format = utils_get_format_from_string(s_rawfile_config.format_str);
-    if (app->modules.input_format == FORMAT_UNKNOWN) {
+    app->module.input_format = utils_get_format_from_string(s_rawfile_config.format_str);
+    if (app->module.input_format == FORMAT_UNKNOWN) {
         log_fatal("Invalid RAW input format '%s'. See --help for valid formats.", s_rawfile_config.format_str);
         return false;
     }
 
-    app->modules.input_bytes_per_sample_pair = get_bytes_per_sample(app->modules.input_format);
-    if (app->modules.input_bytes_per_sample_pair == 0) {
+    app->module.input_bytes_per_sample_pair = get_bytes_per_sample(app->module.input_format);
+    if (app->module.input_bytes_per_sample_pair == 0) {
         log_fatal("Internal error: could not determine sample size for format '%s'.", s_rawfile_config.format_str);
         return false;
     }
@@ -130,7 +130,7 @@ static bool rawfile_initialize(ModuleContext* ctx) {
     sfinfo.samplerate = (int)s_rawfile_config.sample_rate_hz;
     sfinfo.channels = 2;
     int format_code = SF_FORMAT_RAW;
-    switch (app->modules.input_format) {
+    switch (app->module.input_format) {
         case SC16Q11:
         case CS16: format_code |= SF_FORMAT_PCM_16; break;
         case CU16: format_code |= SF_FORMAT_PCM_16; break;
@@ -160,8 +160,8 @@ static bool rawfile_initialize(ModuleContext* ctx) {
     }
 
     sf_command(private_data->infile, SFC_GET_CURRENT_SF_INFO, &sfinfo, sizeof(sfinfo));
-    app->modules.source_info.samplerate = sfinfo.samplerate;
-    app->modules.source_info.frames = sfinfo.frames;
+    app->module.source_info.samplerate = sfinfo.samplerate;
+    app->module.source_info.frames = sfinfo.frames;
 
     return true;
 }
@@ -169,9 +169,9 @@ static bool rawfile_initialize(ModuleContext* ctx) {
 static void* rawfile_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     const AppConfig *config = ctx->config;
-    RawfilePrivateData* private_data = (RawfilePrivateData*)app->modules.input_private_data;
+    RawfilePrivateData* private_data = (RawfilePrivateData*)app->module.input_private_data;
 
-    if (config->dsp.raw_passthrough && app->modules.input_format != config->output.format) {
+    if (config->dsp.raw_passthrough && app->module.input_format != config->output.format) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf),
                  "Option --raw-passthrough requires input and output formats to be identical. Input format is '%s', output format is '%s'.",
@@ -180,7 +180,7 @@ static void* rawfile_start_stream(ModuleContext* ctx) {
         return NULL;
     }
 
-    bool pacing_required = app->modules.pacing_is_required;
+    bool pacing_required = app->module.pacing_is_required;
 
     // Pre-calculate the back-pressure threshold in bytes for efficiency.
     const size_t writer_buffer_capacity = pacing_required ? ring_buffer_get_capacity(app->pipeline.writer_input_buffer) : 0;
@@ -203,7 +203,7 @@ static void* rawfile_start_stream(ModuleContext* ctx) {
         size_t samples_to_read = app->pipeline.read_chunk_size;
         
         // Ensure we don't overflow the buffer (sanity check)
-        size_t capacity_samples = current_item->raw_input_capacity_bytes / app->modules.input_bytes_per_sample_pair;
+        size_t capacity_samples = current_item->raw_input_capacity_bytes / app->module.input_bytes_per_sample_pair;
         if (samples_to_read > capacity_samples) {
             samples_to_read = capacity_samples;
         }
@@ -215,7 +215,7 @@ static void* rawfile_start_stream(ModuleContext* ctx) {
             target_buffer = current_item->raw_input_data;
         }
 
-        int64_t bytes_read = sf_read_raw(private_data->infile, target_buffer, samples_to_read * app->modules.input_bytes_per_sample_pair);
+        int64_t bytes_read = sf_read_raw(private_data->infile, target_buffer, samples_to_read * app->module.input_bytes_per_sample_pair);
 
         if (bytes_read < 0) {
             log_fatal("libsndfile read error: %s", sf_strerror(private_data->infile));
@@ -227,8 +227,8 @@ static void* rawfile_start_stream(ModuleContext* ctx) {
             break;
         }
 
-        current_item->frames_read = bytes_read / app->modules.input_bytes_per_sample_pair;
-        current_item->packet_sample_format = app->modules.input_format;
+        current_item->frames_read = bytes_read / app->module.input_bytes_per_sample_pair;
+        current_item->packet_sample_format = app->module.input_format;
         current_item->frames_to_write = (unsigned int)current_item->frames_read;
 
         // If we read fewer bytes than requested (and it wasn't 0), it's the last chunk.
@@ -266,14 +266,14 @@ static void rawfile_stop_stream(ModuleContext* ctx) {
 
 static void rawfile_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    if (app->modules.input_private_data) {
-        RawfilePrivateData* private_data = (RawfilePrivateData*)app->modules.input_private_data;
+    if (app->module.input_private_data) {
+        RawfilePrivateData* private_data = (RawfilePrivateData*)app->module.input_private_data;
         if (private_data->infile) {
             log_info("Closing RAW input file.");
             sf_close(private_data->infile);
             private_data->infile = NULL;
         }
-        app->modules.input_private_data = NULL;
+        app->module.input_private_data = NULL;
     }
 }
 
@@ -293,13 +293,13 @@ static void rawfile_get_summary_info(const ModuleContext* ctx, InputSummaryInfo*
     add_summary_item(info, "Input Rate", "%.0f Hz", s_rawfile_config.sample_rate_hz);
 
     char size_buf[40];
-    long long file_size_bytes = app->modules.source_info.frames * app->modules.input_bytes_per_sample_pair;
+    long long file_size_bytes = app->module.source_info.frames * app->module.input_bytes_per_sample_pair;
     add_summary_item(info, "Input File Size", "%s", format_file_size(file_size_bytes, size_buf, sizeof(size_buf)));
 }
 
 static bool rawfile_pre_stream_iq_correction(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
-    RawfilePrivateData* private_data = (RawfilePrivateData*)ctx->app->modules.input_private_data;
+    RawfilePrivateData* private_data = (RawfilePrivateData*)ctx->app->module.input_private_data;
 
     // This routine is only necessary if I/Q correction is enabled.
     if (!config->dsp.iq_correction.enable) {

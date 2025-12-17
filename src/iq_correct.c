@@ -284,13 +284,13 @@ bool iq_correct_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile) {
 
     log_info("Performing initial I/Q calibration for file input...");
 
-    if (app->modules.source_info.frames < FFTBins) {
+    if (app->module.source_info.frames < FFTBins) {
         log_warn("Input file is too short for I/Q calibration. Skipping.");
         return true;
     }
 
     // Allocate temporary buffers from the setup arena.
-    size_t raw_buffer_size = FFTBins * app->modules.input_bytes_per_sample_pair;
+    size_t raw_buffer_size = FFTBins * app->module.input_bytes_per_sample_pair;
     void* raw_buffer = mem_arena_alloc(&app->pipeline.setup_arena, raw_buffer_size, false);
     complex_float_t* cf32_buffer = (complex_float_t*)mem_arena_alloc(&app->pipeline.setup_arena, FFTBins * sizeof(complex_float_t), false);
 
@@ -312,7 +312,7 @@ bool iq_correct_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile) {
     memset(&temp_chunk, 0, sizeof(SampleChunk));
     temp_chunk.raw_input_data = raw_buffer;
     temp_chunk.frames_read = FFTBins;
-    temp_chunk.packet_sample_format = app->modules.input_format;
+    temp_chunk.packet_sample_format = app->module.input_format;
     temp_chunk.complex_sample_buffer_a = cf32_buffer;
     temp_chunk.current_output_buffer = temp_chunk.complex_sample_buffer_a;
 

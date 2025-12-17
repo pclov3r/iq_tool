@@ -104,12 +104,12 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppContext* app, f
     // --- Step 1: Handle Smart Default (Missing Rate) ---
     // If the user didn't specify a rate (0), use the hardware/file input rate.
     if (config->output_rate.target_rate <= 0.0) {
-        config->output_rate.target_rate = (double)app->modules.source_info.samplerate;
+        config->output_rate.target_rate = (double)app->module.source_info.samplerate;
         log_info("No output rate specified. Defaulting to native input rate: %.0f Hz", config->output_rate.target_rate);
     }
 
     // --- Step 2: Calculate Ratio ---
-    double input_rate_d = (double)app->modules.source_info.samplerate;
+    double input_rate_d = (double)app->module.source_info.samplerate;
     float r = (float)(config->output_rate.target_rate / input_rate_d);
 
     // --- Step 3: Check for Passthrough Conditions ---
@@ -135,8 +135,8 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppContext* app, f
     }
     *out_ratio = r;
 
-    if (app->modules.source_info.frames > 0) {
-        app->stats.expected_total_output_frames = (long long)round((double)app->modules.source_info.frames * (double)r);
+    if (app->module.source_info.frames > 0) {
+        app->stats.expected_total_output_frames = (long long)round((double)app->module.source_info.frames * (double)r);
     } else {
         app->stats.expected_total_output_frames = -1;
     }
@@ -152,7 +152,7 @@ bool validate_and_configure_filter_stage(struct AppConfig *config, struct AppCon
         return true;
     }
 
-    double input_rate = (double)app->modules.source_info.samplerate;
+    double input_rate = (double)app->module.source_info.samplerate;
     double output_rate = config->output_rate.target_rate;
 
     // Optimization: If downsampling, filtering AFTER resampling might be more efficient
@@ -281,7 +281,7 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
     // -------------------------------------------------------------------------
     // 4. Calculate Dynamic Pipeline Depth ("Trays")
     // -------------------------------------------------------------------------
-    double input_rate = (double)app->modules.source_info.samplerate;
+    double input_rate = (double)app->module.source_info.samplerate;
 
     // FAIL FAST: If the input rate is unknown or invalid, we cannot safely configure the pipeline.
     if (input_rate <= 0.0) {
@@ -312,10 +312,10 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
     // --- MEMORY ALLOCATION WITH ALIGNMENT ---
 
     // Calculate raw byte sizes
-    size_t raw_input_bytes = app->pipeline.alloc_size_samples * app->modules.input_bytes_per_sample_pair;
+    size_t raw_input_bytes = app->pipeline.alloc_size_samples * app->module.input_bytes_per_sample_pair;
     size_t complex_bytes = app->pipeline.alloc_size_samples * sizeof(complex_float_t);
-    app->modules.output_bytes_per_sample_pair = get_bytes_per_sample(config->output.format);
-    size_t final_output_bytes = app->pipeline.alloc_size_samples * app->modules.output_bytes_per_sample_pair;
+    app->module.output_bytes_per_sample_pair = get_bytes_per_sample(config->output.format);
+    size_t final_output_bytes = app->pipeline.alloc_size_samples * app->module.output_bytes_per_sample_pair;
 
     // Calculate Strides (Aligned to 32 bytes)
     size_t raw_stride = ALIGN_UP(raw_input_bytes, MEM_ARENA_ALIGNMENT);
@@ -363,7 +363,7 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
         item->raw_input_capacity_bytes = raw_input_bytes;
         item->complex_buffer_capacity_samples = app->pipeline.alloc_size_samples;
         item->final_output_capacity_bytes = final_output_bytes;
-        item->input_bytes_per_sample_pair = app->modules.input_bytes_per_sample_pair;
+        item->input_bytes_per_sample_pair = app->module.input_bytes_per_sample_pair;
     }
 
     // Allocate aux buffers
@@ -386,12 +386,12 @@ bool create_threading_components(AppConfig *config, AppContext* app) {
 }
 
 void print_configuration_summary(const AppConfig *config, const AppContext* app) {
-    if (!config || !app || !app->modules.input_api) return;
+    if (!config || !app || !app->module.input_api) return;
 
     InputSummaryInfo summary_info;
     memset(&summary_info, 0, sizeof(InputSummaryInfo));
     const ModuleContext ctx = { .config = config, .app = (AppContext*)app };
-    app->modules.input_api->get_summary_info(&ctx, &summary_info);
+    app->module.input_api->get_summary_info(&ctx, &summary_info);
 
     int max_label_len = 0;
     if (summary_info.count > 0) {
@@ -456,10 +456,10 @@ void print_configuration_summary(const AppConfig *config, const AppContext* app)
 
 
     fprintf(stderr, "--- Output Details ---\n");
-    if (app->modules.output_api && app->modules.output_api->get_summary_info) {
+    if (app->module.output_api && app->module.output_api->get_summary_info) {
         OutputSummaryInfo output_summary;
         memset(&output_summary, 0, sizeof(output_summary));
-        app->modules.output_api->get_summary_info(&ctx, &output_summary);
+        app->module.output_api->get_summary_info(&ctx, &output_summary);
         for (int i = 0; i < output_summary.count; i++) {
             fprintf(stderr, " %-*s : %s\n", max_label_len, output_summary.items[i].label, output_summary.items[i].value);
         }
@@ -538,7 +538,7 @@ void print_configuration_summary(const AppConfig *config, const AppContext* app)
 
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Resampling", app->dsp.is_passthrough ? "Disabled (Passthrough Mode)" : "Enabled");
 
-    bool is_file_output = app->modules.pacing_is_required;
+    bool is_file_output = app->module.pacing_is_required;
     const char* output_path_for_messages;
 #ifdef _WIN32
     output_path_for_messages = config->output.effective_path_utf8;
@@ -553,9 +553,9 @@ void print_configuration_summary(const AppConfig *config, const AppContext* app)
 }
 
 bool prepare_output_stream(struct AppConfig *config, struct AppContext* app) {
-    if (!app->modules.output_api) return false;
+    if (!app->module.output_api) return false;
     ModuleContext ctx = { .config = config, .app = app };
-    return app->modules.output_api->initialize(&ctx);
+    return app->module.output_api->initialize(&ctx);
 }
 
 bool initialize_application(AppConfig *config, AppContext* app) {
@@ -569,10 +569,10 @@ bool initialize_application(AppConfig *config, AppContext* app) {
         log_fatal("Internal error: Could not retrieve selected output module '%s'.", config->output.module_name);
         return false;
     }
-    app->modules.output_api = (OutputModuleInterface*)selected_output_module->api;
+    app->module.output_api = (OutputModuleInterface*)selected_output_module->api;
 
     // --- STEP 2: SET THE BEHAVIORAL FLAG ---
-    app->modules.pacing_is_required = selected_output_module->requires_output_path;
+    app->module.pacing_is_required = selected_output_module->requires_output_path;
 
     log_info("Attempting to initialize the '%s' input module...", config->input.type_name);
 
@@ -580,7 +580,7 @@ bool initialize_application(AppConfig *config, AppContext* app) {
         return false;
     }
 
-    if (!app->modules.input_api->initialize(&ctx)) {
+    if (!app->module.input_api->initialize(&ctx)) {
         return false;
     }
 
@@ -595,8 +595,8 @@ bool initialize_application(AppConfig *config, AppContext* app) {
         return false;
     }
 
-    if (app->modules.input_api->pre_stream_iq_correction) {
-        if (!app->modules.input_api->pre_stream_iq_correction(&ctx)) {
+    if (app->module.input_api->pre_stream_iq_correction) {
+        if (!app->module.input_api->pre_stream_iq_correction(&ctx)) {
             return false;
         }
     }
@@ -613,13 +613,13 @@ bool initialize_application(AppConfig *config, AppContext* app) {
         return false;
     }
 
-    if (app->modules.pacing_is_required) {
+    if (app->module.pacing_is_required) {
         print_configuration_summary(config, app);
         fprintf(stderr, "\n");
     }
 
-    if (app->modules.pacing_is_required) {
-        bool source_has_known_length = app->modules.input_api->has_known_length();
+    if (app->module.pacing_is_required) {
+        bool source_has_known_length = app->module.input_api->has_known_length();
         if (!source_has_known_length) {
             log_info("Starting SDR capture...");
         } else {
@@ -634,8 +634,8 @@ void cleanup_application(AppConfig *config, AppContext* app) {
     if (!app) return;
     ModuleContext ctx = { .config = config, .app = app };
 
-    if (app->modules.output_api && app->modules.output_api->finalize_output) {
-        app->modules.output_api->finalize_output(&ctx);
+    if (app->module.output_api && app->module.output_api->finalize_output) {
+        app->module.output_api->finalize_output(&ctx);
     }
 
     if (app->pipeline.chunk_data_pool) {
@@ -647,7 +647,7 @@ void cleanup_application(AppConfig *config, AppContext* app) {
         app->pipeline.chunk_data_pool = NULL;
     }
 
-    if (app->modules.input_api && app->modules.input_api->cleanup) {
-        app->modules.input_api->cleanup(&ctx);
+    if (app->module.input_api && app->module.input_api->cleanup) {
+        app->module.input_api->cleanup(&ctx);
     }
 }

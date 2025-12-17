@@ -177,7 +177,7 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
 
     if (config->dsp.raw_passthrough) {
         ModuleContext ctx = { .config = config, .app = app };
-                        size_t written = app->modules.output_api->write_chunk(&ctx, transfer->buffer, transfer->valid_length);
+                        size_t written = app->module.output_api->write_chunk(&ctx, transfer->buffer, transfer->valid_length);
         if (written < (size_t)transfer->valid_length) {
             log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
             request_shutdown();
@@ -204,9 +204,9 @@ static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
         }
 
         memcpy(item->raw_input_data, transfer->buffer + bytes_processed, chunk_size);
-        item->frames_read = chunk_size / app->modules.input_bytes_per_sample_pair;
+        item->frames_read = chunk_size / app->module.input_bytes_per_sample_pair;
         item->is_last_chunk = false;
-	    item->packet_sample_format = app->modules.input_format;
+	    item->packet_sample_format = app->module.input_format;
 
         if (item->frames_read > 0) {
             pthread_mutex_lock(&app->stats.mutex);
@@ -229,7 +229,7 @@ static void hackrf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* 
     const AppContext* app = ctx->app;
     add_summary_item(info, "Input Source", "HackRF One");
     add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
-    add_summary_item(info, "Input Rate", "%d Hz", app->modules.source_info.samplerate);
+    add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.samplerate);
     add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
     // as HackRF does not have a true hardware AGC. The gain is always fixed.
@@ -250,7 +250,7 @@ static bool hackrf_initialize(ModuleContext* ctx) {
         return false; // mem_arena_alloc logs error, no app to clean up yet
     }
     private_data->dev = NULL; // Initialize resource state
-    app->modules.input_private_data = private_data;
+    app->module.input_private_data = private_data;
 
     result = hackrf_init();
     if (result != HACKRF_SUCCESS) {
@@ -304,12 +304,12 @@ static bool hackrf_initialize(ModuleContext* ctx) {
         }
     }
 
-    app->modules.input_format = CS8;
-    app->modules.input_bytes_per_sample_pair = get_bytes_per_sample(app->modules.input_format);
-    app->modules.source_info.samplerate = (int)config->sdr_general.sample_rate_hz;
-    app->modules.source_info.frames = -1;
+    app->module.input_format = CS8;
+    app->module.input_bytes_per_sample_pair = get_bytes_per_sample(app->module.input_format);
+    app->module.source_info.samplerate = (int)config->sdr_general.sample_rate_hz;
+    app->module.source_info.frames = -1;
 
-    if (config->dsp.raw_passthrough && app->modules.input_format != config->output.format) {
+    if (config->dsp.raw_passthrough && app->module.input_format != config->output.format) {
         log_fatal("Option --raw-passthrough requires input and output formats to be identical. HackRF input is 'cs8', but output was set to '%s'.", config->output.format_name);
         goto cleanup;
     }
@@ -325,7 +325,7 @@ cleanup:
 
 static void* hackrf_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    HackrfPrivateData* private_data = (HackrfPrivateData*)app->modules.input_private_data;
+    HackrfPrivateData* private_data = (HackrfPrivateData*)app->module.input_private_data;
     int result;
     hackrf_sample_block_cb_fn callback_fn;
 
@@ -361,7 +361,7 @@ static void* hackrf_start_stream(ModuleContext* ctx) {
 
 static void hackrf_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    HackrfPrivateData* private_data = (HackrfPrivateData*)app->modules.input_private_data;
+    HackrfPrivateData* private_data = (HackrfPrivateData*)app->module.input_private_data;
     if (private_data && private_data->dev && hackrf_is_streaming(private_data->dev) == HACKRF_TRUE) {
         log_info("Stopping HackRF stream...");
         int result = hackrf_stop_rx(private_data->dev);
@@ -373,14 +373,14 @@ static void hackrf_stop_stream(ModuleContext* ctx) {
 
 static void hackrf_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    if (app->modules.input_private_data) {
-        HackrfPrivateData* private_data = (HackrfPrivateData*)app->modules.input_private_data;
+    if (app->module.input_private_data) {
+        HackrfPrivateData* private_data = (HackrfPrivateData*)app->module.input_private_data;
         if (private_data->dev) {
             log_info("Closing HackRF device...");
             hackrf_close(private_data->dev);
             private_data->dev = NULL;
         }
-        app->modules.input_private_data = NULL;
+        app->module.input_private_data = NULL;
     }
     log_info("Exiting HackRF library...");
     hackrf_exit();

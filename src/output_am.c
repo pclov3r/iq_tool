@@ -152,7 +152,7 @@ static bool am_initialize(ModuleContext* ctx) {
 
     AmContext* p = (AmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(AmContext), true);
     if (!p) return false;
-    res->modules.output_private_data = p;
+    res->module.output_private_data = p;
 
     // 1. Setup Audio Ring Buffer
     p->audio_ring_buffer = ring_buffer_create(AUDIO_BUFFER_SIZE);
@@ -250,7 +250,7 @@ static bool am_initialize(ModuleContext* ctx) {
 
 static void* am_run_writer(ModuleContext* ctx) {
     AppContext* res = ctx->app;
-    AmContext* p = (AmContext*)res->modules.output_private_data;
+    AmContext* p = (AmContext*)res->module.output_private_data;
 
     const size_t THROTTLE_THRESHOLD = (size_t)(AUDIO_BUFFER_SIZE * 0.8);
 
@@ -416,8 +416,8 @@ cleanup:
 
 static void am_finalize(ModuleContext* ctx) {
     AppContext* res = ctx->app;
-    if (!res->modules.output_private_data) return;
-    AmContext* p = (AmContext*)res->modules.output_private_data;
+    if (!res->module.output_private_data) return;
+    AmContext* p = (AmContext*)res->module.output_private_data;
 
     if (p->audio_device_initialized) ma_device_uninit(&p->audio_device);
     if (p->audio_ring_buffer) ring_buffer_destroy(p->audio_ring_buffer);

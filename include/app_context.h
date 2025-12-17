@@ -262,7 +262,7 @@ typedef struct AppContext {
 
     PipelineInfrastructure pipeline;
     DspContext             dsp;
-    ModuleState            modules;
+    ModuleState            module;
     RuntimeState           stats;
 
     PipelineMode    pipeline_mode;
