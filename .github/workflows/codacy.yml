@@ -38,7 +38,7 @@ jobs:
       - name: Merge SARIF runs
         run: |
           npm install -g @microsoft/sarif-multitool
-          sarif merge results.sarif --merge-runs --output-file results.merged.sarif
+          sarif-multitool merge results.sarif --merge-runs --output-file results.merged.sarif
 
       - name: Upload Codacy SARIF results file
         uses: github/codeql-action/upload-sarif@v4
