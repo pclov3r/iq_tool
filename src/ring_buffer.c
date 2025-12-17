@@ -1,14 +1,19 @@
 #include "ring_buffer.h"
 #include "platform.h"
-#include "constants.h" // Added for MEM_ARENA_ALIGNMENT
+#include "constants.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include <pthread.h> // Added for Condition Variables
+#include <pthread.h>
 #include "log.h"
 
 #ifdef _WIN32
-#include <malloc.h> // Required for _aligned_malloc on Windows
+#include <malloc.h>
+#include <windows.h>
+#else
+#include <semaphore.h>
+#include <time.h>
+#include <errno.h>
 #endif
 
 struct RingBuffer {
@@ -16,8 +21,7 @@ struct RingBuffer {
     size_t capacity;
 
     // --- PADDING 1 ---
-    // Isolates the read-only configuration (buffer/capacity) from the
-    // frequently updated write position.
+    // Isolates the read-only configuration from the write position.
     char _pad1[64];
 
     // C99 Lock-Free Implementation:
@@ -42,6 +46,14 @@ struct RingBuffer {
     // These are NOT used by the lock-free writer (SDR hardware thread).
     pthread_mutex_t sync_mutex;
     pthread_cond_t space_free_cond;
+
+    // Synchronization for Latency (Consumer Waiting)
+    // Used to wake up the reader immediately when a block arrives.
+#ifdef _WIN32
+    HANDLE block_ready_event;
+#else
+    sem_t block_ready_sem;
+#endif
 };
 
 RingBuffer* ring_buffer_create(size_t capacity) {
@@ -51,8 +63,6 @@ RingBuffer* ring_buffer_create(size_t capacity) {
         return NULL;
     }
 
-    // CHANGED: Use aligned allocation to ensure the buffer base address
-    // matches the SIMD alignment requirements (32 bytes).
 #ifdef _WIN32
     iob->buffer = (unsigned char*)_aligned_malloc(capacity, MEM_ARENA_ALIGNMENT);
 #else
@@ -75,9 +85,23 @@ RingBuffer* ring_buffer_create(size_t capacity) {
     iob->end_of_stream = false;
     iob->shutting_down = false;
 
-    // Initialize sync primitives for backpressure
     pthread_mutex_init(&iob->sync_mutex, NULL);
     pthread_cond_init(&iob->space_free_cond, NULL);
+
+#ifdef _WIN32
+    // reset event, initially nonsignaled
+    iob->block_ready_event = CreateEvent(NULL, FALSE, FALSE, NULL);
+    if (!iob->block_ready_event) {
+        log_fatal("Failed to create RingBuffer event.");
+        return NULL;
+    }
+#else
+    // semaphore shared between threads (0), initial value 0
+    if (sem_init(&iob->block_ready_sem, 0, 0) != 0) {
+        log_fatal("Failed to initialize RingBuffer semaphore.");
+        return NULL;
+    }
+#endif
 
     log_info("I/O buffer created with %zu bytes capacity.", capacity);
     return iob;
@@ -88,7 +112,14 @@ void ring_buffer_destroy(RingBuffer* iob) {
     pthread_mutex_destroy(&iob->sync_mutex);
     pthread_cond_destroy(&iob->space_free_cond);
 
-    // CHANGED: Use the correct free for aligned memory
+#ifdef _WIN32
+    if (iob->block_ready_event) {
+        CloseHandle(iob->block_ready_event);
+    }
+#else
+    sem_destroy(&iob->block_ready_sem);
+#endif
+
     if (iob->buffer) {
 #ifdef _WIN32
         _aligned_free(iob->buffer);
@@ -100,25 +131,20 @@ void ring_buffer_destroy(RingBuffer* iob) {
 }
 
 // PRODUCER: High Priority, Lock-Free, Never Sleeps
-// Note: This function remains untouched by mutexes/cond-vars to ensure SDR safety.
 size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes) {
     if (!iob || !data || bytes == 0) return 0;
 
-    // 1. Load indices
     size_t w = iob->write_pos;
     size_t r = iob->read_pos;
     size_t cap = iob->capacity;
 
-    // 2. Calculate available space (One slot reserved to distinguish full/empty)
     size_t size = (w >= r) ? (w - r) : (cap - (r - w));
     size_t available = (cap - 1) - size;
 
-    // Drop data if full. We cannot block the hardware thread.
     if (bytes > available) {
-        return 0; 
+        return 0;
     }
 
-    // 3. Copy Data
     size_t first_chunk_size = (w + bytes > cap) ? (cap - w) : bytes;
     memcpy(iob->buffer + w, data, first_chunk_size);
 
@@ -127,11 +153,16 @@ size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes) {
         memcpy(iob->buffer, (const unsigned char*)data + first_chunk_size, second_chunk_size);
     }
 
-    // 4. Barrier: Ensure data is committed before index update
     MEMORY_BARRIER();
 
-    // 5. Update Write Index
     iob->write_pos = (w + bytes) % cap;
+
+    // Wake up the reader immediately (Non-blocking signal)
+#ifdef _WIN32
+    SetEvent(iob->block_ready_event);
+#else
+    sem_post(&iob->block_ready_sem);
+#endif
 
     return bytes;
 }
@@ -142,39 +173,42 @@ size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes) {
 
     size_t w, r, cap, available;
 
-    // --- BLOCKING LOOP ---
-    // Wait until data arrives or stream ends
     while (true) {
         w = iob->write_pos;
         r = iob->read_pos;
         cap = iob->capacity;
 
-        // Check shutdown first
         if (iob->shutting_down) return 0;
 
-        // Calculate available
         available = (w >= r) ? (w - r) : (cap - (r - w));
 
         if (available > 0) {
-            break; // Data found! Proceed to read.
+            break;
         }
 
-        // If empty AND end_of_stream is set, we are truly done.
         if (iob->end_of_stream) {
             return 0;
         }
 
-        // Buffer empty, but stream alive. Sleep briefly to yield CPU.
-        SLEEP_MS(1); 
+        // Buffer empty, wait efficiently for the producer signal
+#ifdef _WIN32
+        WaitForSingleObject(iob->block_ready_event, 100);
+#else
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_nsec += 100000000; // 100ms timeout
+        if (ts.tv_nsec >= 1000000000) {
+            ts.tv_sec += 1;
+            ts.tv_nsec -= 1000000000;
+        }
+        sem_timedwait(&iob->block_ready_sem, &ts);
+#endif
     }
 
-    // 1. Determine read size
     size_t bytes_to_read = (max_bytes > available) ? available : max_bytes;
 
-    // 2. Barrier: Ensure we see the latest data written by producer
     MEMORY_BARRIER();
 
-    // 3. Copy Data
     size_t first_chunk_size = (r + bytes_to_read > cap) ? (cap - r) : bytes_to_read;
     memcpy(buffer, iob->buffer + r, first_chunk_size);
 
@@ -183,14 +217,11 @@ size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes) {
         memcpy((unsigned char*)buffer + first_chunk_size, iob->buffer, second_chunk_size);
     }
 
-    // 4. Barrier: Ensure read is done before updating index
     MEMORY_BARRIER();
 
-    // 5. Update Read Index
     iob->read_pos = (r + bytes_to_read) % cap;
 
-    // 6. Signal Backpressure
-    // We freed up space. Wake up any waiting producers (File Readers).
+    // Signal Backpressure: Wake up any waiting producers (File Readers)
     pthread_mutex_lock(&iob->sync_mutex);
     pthread_cond_broadcast(&iob->space_free_cond);
     pthread_mutex_unlock(&iob->sync_mutex);
@@ -203,7 +234,6 @@ void ring_buffer_wait_for_threshold(RingBuffer* iob, size_t target_size) {
     if (!iob) return;
 
     pthread_mutex_lock(&iob->sync_mutex);
-    // While buffer is too full, wait for Consumer to signal space freed.
     while (!iob->shutting_down && ring_buffer_get_size(iob) > target_size) {
         pthread_cond_wait(&iob->space_free_cond, &iob->sync_mutex);
     }
@@ -213,18 +243,34 @@ void ring_buffer_wait_for_threshold(RingBuffer* iob, size_t target_size) {
 void ring_buffer_signal_end_of_stream(RingBuffer* iob) {
     if (!iob) return;
     iob->end_of_stream = true;
-    // Wake up any backpressure waiters so they can exit/finish
+
+    // Wake up backpressure waiters
     pthread_mutex_lock(&iob->sync_mutex);
     pthread_cond_broadcast(&iob->space_free_cond);
     pthread_mutex_unlock(&iob->sync_mutex);
+
+    // Wake up consumer
+#ifdef _WIN32
+    SetEvent(iob->block_ready_event);
+#else
+    sem_post(&iob->block_ready_sem);
+#endif
 }
 
 void ring_buffer_signal_shutdown(RingBuffer* iob) {
     if (!iob) return;
     iob->shutting_down = true;
+
     pthread_mutex_lock(&iob->sync_mutex);
     pthread_cond_broadcast(&iob->space_free_cond);
     pthread_mutex_unlock(&iob->sync_mutex);
+
+    // Wake up consumer
+#ifdef _WIN32
+    SetEvent(iob->block_ready_event);
+#else
+    sem_post(&iob->block_ready_sem);
+#endif
 }
 
 size_t ring_buffer_get_size(RingBuffer* iob) {
