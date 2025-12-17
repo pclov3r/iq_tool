@@ -447,17 +447,8 @@ static void* wfm_run_writer(ModuleContext* ctx) {
         if (p->audio_ring_buffer) {
             // While the audio buffer is too full, we sleep.
             // This leaves the SampleChunk in the upstream queue, preserving app.
-            while (ring_buffer_get_size(p->audio_ring_buffer) > THROTTLE_THRESHOLD) {
-                #ifdef _WIN32
-                    Sleep(10);
-                #else
-                    usleep(10000);
-                #endif
-
-                if (is_shutdown_requested()) {
-                    goto cleanup;
-                }
-            }
+            ring_buffer_wait_for_threshold(p->audio_ring_buffer, THROTTLE_THRESHOLD);
+            if (is_shutdown_requested()) goto cleanup;
         }
 
         // --- 2. Acquire Data ---

@@ -272,14 +272,8 @@ static void* am_run_writer(ModuleContext* ctx) {
 
     while (true) {
         if (p->audio_ring_buffer) {
-            while (ring_buffer_get_size(p->audio_ring_buffer) > THROTTLE_THRESHOLD) {
-                #ifdef _WIN32
-                    Sleep(10);
-                #else
-                    usleep(10000);
-                #endif
-                if (is_shutdown_requested()) goto cleanup;
-            }
+            ring_buffer_wait_for_threshold(p->audio_ring_buffer, THROTTLE_THRESHOLD);
+            if (is_shutdown_requested()) goto cleanup;
         }
 
         SampleChunk* item = (SampleChunk*)queue_dequeue(res->pipeline.writer_input_queue);

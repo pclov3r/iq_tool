@@ -750,7 +750,9 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
             break;
     }
     
-    bladerf_stop_stream(ctx);
+    if (!is_shutdown_requested()) {
+        bladerf_stop_stream(ctx);
+    }
     return NULL;
 }
 

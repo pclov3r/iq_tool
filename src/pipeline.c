@@ -31,6 +31,7 @@
 #include "queue.h"
 #include "ring_buffer.h"
 #include "sdr_packet_serializer.h"
+#include "wait_event.h"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -143,6 +144,13 @@ static bool _create_dsp_components(AppConfig* config, AppContext* app, float res
     if (!app->dsp.resampler && !app->dsp.is_passthrough) return false;
     if (!filter_create(config, app, &app->pipeline.setup_arena)) return false;
     if (!agc_create(config, app)) return false;
+
+    // Initialize the main shutdown event
+    app->pipeline.shutdown_event = wait_event_create(&app->pipeline.setup_arena);
+    if (!app->pipeline.shutdown_event) {
+        log_fatal("Failed to create shutdown event.");
+        return false;
+    }
     return true;
 }
 
@@ -221,6 +229,10 @@ static bool _init_queues_and_buffers(AppConfig* config, AppContext* app) {
 
 static void _destroy_queues_and_buffers(AppContext* app) {
     if (!app) return;
+
+    if (app->pipeline.shutdown_event) {
+        wait_event_destroy(app->pipeline.shutdown_event);
+    }
 
     if (app->pipeline.sdr_input_buffer) ring_buffer_destroy(app->pipeline.sdr_input_buffer);
     if (app->pipeline.writer_input_buffer) ring_buffer_destroy(app->pipeline.writer_input_buffer);

@@ -18,14 +18,10 @@
 #include <pthread.h>
 #include <sys/stat.h>
 #include <stdarg.h>
-
 #include <sndfile.h>
 
 #ifndef _WIN32
 #include <strings.h>
-#include <unistd.h> // For usleep
-#else
-#include <windows.h> // For Sleep
 #endif
 
 #ifdef _WIN32

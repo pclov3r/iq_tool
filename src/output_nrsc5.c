@@ -397,20 +397,8 @@ static void* nrsc5_run_writer(ModuleContext* ctx) {
         // --- BACKPRESSURE ---
         if (p->audio_ring_buffer) {
             // While the audio buffer is too full, we sleep.
-            while (ring_buffer_get_size(p->audio_ring_buffer) > THROTTLE_THRESHOLD) {
-
-                // 1. Sleep: Use standard OS functions instead of miniaudio
-                #ifdef _WIN32
-                    Sleep(10);        // Windows: Sleep in milliseconds
-                #else
-                    usleep(10000);    // Linux/Unix: Sleep in microseconds (10ms = 10000us)
-                #endif
-
-                // 2. Check for shutdown signal (replaces queue_is_closed)
-                if (is_shutdown_requested()) {
-                    goto cleanup;
-                }
-            }
+            ring_buffer_wait_for_threshold(p->audio_ring_buffer, THROTTLE_THRESHOLD);
+            if (is_shutdown_requested()) goto cleanup;
         }
 
         // 1. Dequeue chunk from the pipeline

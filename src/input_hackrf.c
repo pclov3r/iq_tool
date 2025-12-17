@@ -12,6 +12,7 @@
 #include "queue.h"
 #include "sdr_packet_serializer.h"
 #include "argparse.h"
+#include "wait_event.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -345,16 +346,14 @@ static void* hackrf_start_stream(ModuleContext* ctx) {
         return NULL;
     }
 
-    while (!is_shutdown_requested() && !app->stats.error_occurred && hackrf_is_streaming(private_data->dev) == HACKRF_TRUE) {
-#ifdef _WIN32
-        Sleep(100);
-#else
-        struct timespec sleep_time = {0, 100000000L};
-        nanosleep(&sleep_time, NULL);
-#endif
+    // Wait for the shutdown signal (Event-driven)
+    if (app->pipeline.shutdown_event) {
+        wait_event_wait(app->pipeline.shutdown_event);
     }
 
-    hackrf_stop_stream(ctx);
+    if (!is_shutdown_requested()) {
+        hackrf_stop_stream(ctx);
+    }
 
     return NULL;
 }

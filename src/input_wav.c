@@ -30,9 +30,6 @@
 
 #ifndef _WIN32
 #include <strings.h>
-#include <unistd.h> // For usleep
-#else
-#include <windows.h> // For Sleep
 #endif
 
 #ifdef _WIN32

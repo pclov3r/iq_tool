@@ -13,6 +13,7 @@
 #include "ring_buffer.h"
 #include "sdr_packet_serializer.h"
 #include "argparse.h"
+#include "wait_event.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -204,6 +205,7 @@ typedef struct {
     sdrplay_api_DeviceT *sdr_device;
     sdrplay_api_DeviceParamsT *sdr_device_params;
     bool sdr_api_is_open;
+    bool device_selected; // Tracks if SelectDevice was successful
     int16_t *interleave_buffer;
     bool is_streaming;
 } SdrplayPrivateData;
@@ -442,7 +444,7 @@ static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_S
 
             size_t bytes_to_write = samples_this_chunk * app->module.input_bytes_per_sample_pair;
             ModuleContext ctx = { .config = config, .app = app };
-                        size_t written = app->module.output_api->write_chunk(&ctx, interleaved_data, bytes_to_write);
+            size_t written = app->module.output_api->write_chunk(&ctx, interleaved_data, bytes_to_write);
             if (written < bytes_to_write) {
                 log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
                 request_shutdown();
@@ -637,6 +639,7 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
 
     private_data->sdr_device = NULL;
     private_data->sdr_api_is_open = false;
+    private_data->device_selected = false;
     private_data->is_streaming = false;
     app->module.input_private_data = private_data;
 
@@ -704,6 +707,8 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
         private_data->sdr_device = NULL;
         goto cleanup;
     }
+    private_data->device_selected = true; // Mark as successfully selected
+
     log_info("Using SDRplay device: %s (S/N: %s)",
              get_sdrplay_device_name(private_data->sdr_device->hwVer), private_data->sdr_device->SerNo);
 
@@ -911,11 +916,12 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
 
 cleanup:
     if (!success) {
-        if (private_data && private_data->sdr_device) {
+        if (private_data && private_data->sdr_device && private_data->device_selected) {
             sdrplay_api_ReleaseDevice(private_data->sdr_device);
         }
         if (private_data && private_data->sdr_api_is_open) {
             sdrplay_api_Close();
+            private_data->sdr_api_is_open = false; // Prevent double close in sdrplay_cleanup
         }
 #if defined(_WIN32)
         sdrplay_unload_api();
@@ -987,17 +993,15 @@ static void* sdrplay_start_stream(ModuleContext* ctx) {
         }
         handle_fatal_thread_error(error_buf, app);
     } else {
-        while (!is_shutdown_requested() && !app->stats.error_occurred) {
-#ifdef _WIN32
-            Sleep(100);
-#else
-            struct timespec sleep_time = {0, 100000000L};
-            nanosleep(&sleep_time, NULL);
-#endif
+        // Wait for the shutdown signal (Event-driven)
+        if (app->pipeline.shutdown_event) {
+            wait_event_wait(app->pipeline.shutdown_event);
         }
     }
 
-    sdrplay_stop_stream(ctx);
+    if (!is_shutdown_requested()) {
+        sdrplay_stop_stream(ctx);
+    }
 
     return NULL;
 }
@@ -1009,7 +1013,8 @@ static void sdrplay_stop_stream(ModuleContext* ctx) {
         log_info("Stopping SDRplay stream...");
         private_data->is_streaming = false;
         sdrplay_api_ErrT err = sdrplay_api_Uninit(private_data->sdr_device->dev);
-        if (err != sdrplay_api_Success && err != sdrplay_api_StopPending) {
+        // Ignore NotInitialised error, as it may happen during a race condition on shutdown
+        if (err != sdrplay_api_Success && err != sdrplay_api_StopPending && err != sdrplay_api_NotInitialised) {
             log_error("Failed to uninitialize SDRplay device: %s", sdrplay_api_GetErrorString(err));
         }
     }
@@ -1019,7 +1024,7 @@ static void sdrplay_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
         SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->module.input_private_data;
-        if (private_data->sdr_device) {
+        if (private_data->sdr_device && private_data->device_selected) {
             log_debug("Releasing SDRplay device handle...");
             sdrplay_api_ReleaseDevice(private_data->sdr_device);
 #ifndef _WIN32

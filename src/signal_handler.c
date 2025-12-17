@@ -4,6 +4,7 @@
 #include "module.h"            // Provides ModuleContext
 #include "queue.h"             // Provides queue_signal_shutdown
 #include "ring_buffer.h"       // Provides ring_buffer_signal_shutdown
+#include "wait_event.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -65,7 +66,7 @@ void* signal_handler_thread(void *arg) {
     // Wait for a signal to arrive
     if (sigwait(&signal_set, &sig) == 0) {
         if (!is_shutdown_requested()) {
-            
+
             // 1. Cosmetic: Force a newline immediately.
             // This separates the terminal's "^C" echo from the logs that follow.
             pthread_mutex_lock(&g_console_mutex);
@@ -122,6 +123,11 @@ void request_shutdown(void) {
 
     if (g_resources_for_signal_handler) {
         AppContext* r = g_resources_for_signal_handler;
+
+        // Signal the global shutdown event to wake up any sleeping input threads
+        if (r->pipeline.shutdown_event) {
+            wait_event_signal(r->pipeline.shutdown_event);
+        }
 
         // Generic shutdown: If the active input module has a stop function, call it.
         // This handles blocking SDR drivers (like RTL-SDR) and background threads.

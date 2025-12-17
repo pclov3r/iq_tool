@@ -13,6 +13,7 @@
 #include "presets_loader.h"
 #include "constants.h"
 #include "resampler.h"
+#include "wait_event.h"
 
 // --- Forward Declarations ---
 struct RingBuffer;
@@ -170,6 +171,8 @@ typedef struct PipelineInfrastructure {
 
     struct RingBuffer* sdr_input_buffer;
     struct RingBuffer* writer_input_buffer;
+
+    WaitEvent* shutdown_event;
 } PipelineInfrastructure;
 
 // --- 2. Module Context (Drivers & IO) ---
