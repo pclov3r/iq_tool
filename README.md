@@ -278,13 +278,13 @@ AM Output Options
     --am-envelope                         Disable Synchronous AM (PLL) and use Magnitude Envelope Detection.
 
 Available Presets
-    cu8-nrsc5                             Sets sample type to cu8, rate to 1488375.0 Hz for piping to nrsc5 (FM/AM).
-    cu8-nrsc5-usb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates USB sideband (102-215kHz) (Hack) for piping to nrsc5 (FM).
-    cu8-nrsc5-lsb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for piping to nrsc5 (FM).
-    cs16-fm-nrsc5                         Sets sample type to cs16, rate to 744187.5 Hz for piping to nrsc5 (FM).
-    cs16-fm-nrsc5-usb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates USB sideband (102-215kHz) (Hack) for piping to nrsc5 (FM).
-    cs16-fm-nrsc5-lsb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for piping to nrsc5 (FM).
-    cs16-am-nrsc5                         Sets sample type to cs16, rate to 46511.71875 Hz for piping to nrsc5 (AM).
+    cu8-nrsc5                             Sets sample type to cu8, rate to 1488375.0 Hz for piping to external nrsc5 (FM/AM). Use --output stdout
+    cu8-nrsc5-usb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates USB sideband (102-215kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
+    cu8-nrsc5-lsb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
+    cs16-fm-nrsc5                         Sets sample type to cs16, rate to 744187.5 Hz for piping to external nrsc5 (FM). Use --output stdout
+    cs16-fm-nrsc5-usb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates USB sideband (102-215kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
+    cs16-fm-nrsc5-lsb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
+    cs16-am-nrsc5                         Sets sample type to cs16, rate to 46511.71875 Hz for piping to external nrsc5 (AM). Use --output stdout
 
 Help & Version
     -v, --version                         show program's version number and exit
