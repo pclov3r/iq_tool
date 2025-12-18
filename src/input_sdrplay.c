@@ -944,10 +944,10 @@ static void* sdrplay_start_stream(ModuleContext* ctx) {
     cbFns.EventCbFn = sdrplay_event_callback;
 
     if (app->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
-        log_info("Starting SDRplay stream (Buffered File Mode)...");
+        log_info("Starting SDRplay stream (Buffered Mode)...");
         cbFns.StreamACbFn = sdrplay_buffered_stream_callback;
     } else { // PIPELINE_MODE_REALTIME_SDR
-        log_info("Starting SDRplay stream (Real-Time Stdout Mode)...");
+        log_info("Starting SDRplay stream (Real-Time Mode)...");
         cbFns.StreamACbFn = sdrplay_realtime_stream_callback;
     }
 

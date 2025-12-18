@@ -343,7 +343,7 @@ static void* rtlsdr_start_stream(ModuleContext* ctx) {
 
     switch (app->pipeline_mode) {
         case PIPELINE_MODE_BUFFERED_SDR:
-            log_info("Starting RTL-SDR stream");
+            log_info("Starting RTL-SDR stream (Buffered Mode)");
             // NOTE: rtlsdr_read_async BLOCKS until the stream stops or is cancelled.
             result = rtlsdr_read_async(private_data->dev, rtlsdr_stream_callback, app, 0, 0);
 
