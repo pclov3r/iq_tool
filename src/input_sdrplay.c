@@ -559,10 +559,16 @@ static void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_Tuner
                 log_info("Overload condition corrected.");
             }
             pthread_mutex_unlock(&g_console_mutex);
+
             // --- Overload ACK Logic ---
-            if (overload_state == sdrplay_api_Overload_Detected) {
-                sdrplay_api_Update(private_data->sdr_device->dev, tuner, sdrplay_api_Update_Ctrl_OverloadMsgAck, sdrplay_api_Update_Ext1_None);
-            }
+            // The SDRplay API requires an ACK for BOTH overload states
+            sdrplay_api_Update(
+                private_data->sdr_device->dev,
+                tuner,
+                sdrplay_api_Update_Ctrl_OverloadMsgAck,
+                sdrplay_api_Update_Ext1_None
+            );
+
             break;
         }
         case sdrplay_api_GainChange:
