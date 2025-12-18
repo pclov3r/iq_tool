@@ -224,8 +224,8 @@ static bool am_initialize(ModuleContext* ctx) {
     agc_rrrf_set_scale(p->agc, 0.3f);
     agc_rrrf_set_gain(p->agc, 100.0f);
 
-    p->agc_attack_bw = 0.1f;
-    p->agc_decay_bw = 1e-4f;
+    p->agc_attack_bw = 6.6e-5f;
+    p->agc_decay_bw = 3.3e-6f;
     agc_rrrf_set_bandwidth(p->agc, p->agc_attack_bw);
 
     // 5. Scratch Buffers
