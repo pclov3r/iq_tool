@@ -65,8 +65,7 @@ typedef enum {
 } FilterTypeRequest;
 
 typedef enum {
-    PIPELINE_MODE_REALTIME_SDR,
-    PIPELINE_MODE_BUFFERED_SDR,
+    PIPELINE_MODE_BUFFERED_INPUT,
     PIPELINE_MODE_FILE_PROCESSING
 } PipelineMode;
 

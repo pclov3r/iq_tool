@@ -440,6 +440,7 @@ static bool bladerf_initialize(ModuleContext* ctx) {
     if (!private_data->stream_temp_buffer) goto cleanup;
 
     log_info("BladeRF initialized successfully.");
+    app->pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT;
     success = true;
 
 cleanup:
@@ -534,10 +535,9 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
     bladerf_channel rx_channel;
     struct bladerf_metadata meta;
 
-    if (!private_data) {
-        return NULL;
-    }
+    if (!private_data) return NULL;
 
+    // Profile Selection
     if (app->module.source_info.samplerate >= 5000000) {
         log_debug("BladeRF: Using High-Throughput profile for sample rate >= 5 MSPS.");
         s_bladerf_config.num_buffers = BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_BUFFERS;
@@ -557,13 +557,10 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
 
     bladerf_channel_layout layout = BLADERF_RX_X1;
     bladerf_format format;
-
     if (s_bladerf_config.active_bit_depth == 12) {
         format = BLADERF_FORMAT_SC16_Q11_META;
-        log_info("BladeRF: Using 12-bit sample format (SC16Q11).");
     } else {
         format = BLADERF_FORMAT_SC8_Q7_META;
-        log_info("BladeRF: Using 8-bit sample format (CS8).");
     }
 
     status = bladerf_sync_config(private_data->dev, layout, format,
@@ -593,166 +590,45 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
     }
 
     unsigned int samples_per_transfer = (unsigned int)(app->module.source_info.samplerate * BLADERF_TRANSFER_SIZE_SECONDS);
-    // Sanity clamp for max transfer size allowed by libbladeRF in sync mode
     if (samples_per_transfer > 65536) samples_per_transfer = 65536; 
-    
-    // Ensure it's a multiple of 1024 for USB efficiency
     samples_per_transfer = (samples_per_transfer / 1024) * 1024;
+    
     log_debug("BladeRF: Using dynamic transfer size of %u samples.", samples_per_transfer);
 
-    switch (app->pipeline_mode) {
-        case PIPELINE_MODE_BUFFERED_SDR: {
-            void* temp_buffer = private_data->stream_temp_buffer;
-            if (!temp_buffer) {
-                handle_fatal_thread_error("BladeRF: Stream temp buffer is NULL.", app);
-                break;
-            }
-            while (!is_shutdown_requested() && !app->stats.error_occurred) {
-                memset(&meta, 0, sizeof(meta));
-                meta.flags = BLADERF_META_FLAG_RX_NOW;
-                status = bladerf_sync_rx(private_data->dev, temp_buffer, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
-                
-                if (status == 0) {
-                    // --- HEARTBEAT ---
-                    sdr_input_update_heartbeat(app);
-                }
-                
-                if (status != 0) {
-                    if (!is_shutdown_requested()) {
-                        char error_buf[256];
-                        snprintf(error_buf, sizeof(error_buf), "bladerf_sync_rx() failed: %s", bladerf_strerror(status));
-                        handle_fatal_thread_error(error_buf, app);
-                    }
-                    break;
-                }
-                if (meta.actual_count > 0) {
-                    if ((meta.status & BLADERF_META_STATUS_OVERRUN) != 0) {
-                        log_warn("BladeRF reported a stream overrun (discontinuity). Sending reset event.");
-                        sdr_packet_serializer_write_reset_event(app->pipeline.sdr_input_buffer);
-                    }
-                    
-                    // --- CHANGED: Dump the whole block ---
-                    if (!sdr_packet_serializer_write_block(
-                            app->pipeline.sdr_input_buffer,
-                            meta.actual_count,
-                            temp_buffer,
-                            app->module.input_format))
-                    {
-                        log_warn("BladeRF: Ring buffer overrun, dropped block.");
-                    }
-                }
-            }
-            break;
-        }
-
-        case PIPELINE_MODE_REALTIME_SDR: {
-            if (config->dsp.raw_passthrough) {
-                void* passthrough_buffer = private_data->stream_temp_buffer;
-                if (!passthrough_buffer) {
-                    handle_fatal_thread_error("BladeRF: Stream temp buffer is NULL for passthrough.", app);
-                    break;
-                }
-                while (!is_shutdown_requested() && !app->stats.error_occurred) {
-                    memset(&meta, 0, sizeof(meta));
-                    meta.flags = BLADERF_META_FLAG_RX_NOW;
-                    status = bladerf_sync_rx(private_data->dev, passthrough_buffer, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
-                    
-                    if (status == 0) {
-                        // --- HEARTBEAT ---
-                        sdr_input_update_heartbeat(app);
-                    }
-                    
-                    if (status != 0) {
-                        if (!is_shutdown_requested()) {
-                            char error_buf[256];
-                            snprintf(error_buf, sizeof(error_buf), "bladerf_sync_rx() failed: %s", bladerf_strerror(status));
-                            handle_fatal_thread_error(error_buf, app);
-                        }
-                        break;
-                    }
-                    if (meta.actual_count > 0) {
-                        if ((meta.status & BLADERF_META_STATUS_OVERRUN) != 0) {
-                            log_warn("BladeRF reported a stream overrun (discontinuity).");
-                        }
-                        size_t bytes_to_write = meta.actual_count * app->module.input_bytes_per_sample_pair;
-                        size_t written = app->module.output_api->write_chunk(ctx, passthrough_buffer, bytes_to_write);
-                        if (written < bytes_to_write) {
-                            log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
-                            request_shutdown();
-                            break;
-                        }
-                    }
-                }
-            } else {
-                // Normal Processing (Realtime)
-                while (!is_shutdown_requested() && !app->stats.error_occurred) {
-                    SampleChunk *item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
-                    if (!item) break;
-
-                    memset(&meta, 0, sizeof(meta));
-                    meta.flags = BLADERF_META_FLAG_RX_NOW;
-                    
-                    // --- CHANGED: Use dynamic chunk capacity ---
-                    // Note: We clamp samples_per_transfer to the item capacity to avoid overflow.
-                    unsigned int request_count = samples_per_transfer;
-                    unsigned int max_item_samples = item->raw_input_capacity_bytes / app->module.input_bytes_per_sample_pair;
-                    if (request_count > max_item_samples) {
-                        request_count = max_item_samples;
-                    }
-
-                    status = bladerf_sync_rx(private_data->dev, item->raw_input_data, request_count, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
-                    
-                    if (status == 0) {
-                        // --- HEARTBEAT ---
-                        sdr_input_update_heartbeat(app);
-                    }
-                    
-                    if (status != 0) {
-                        if (!is_shutdown_requested()) {
-                            char error_buf[256];
-                            snprintf(error_buf, sizeof(error_buf), "bladerf_sync_rx() failed: %s", bladerf_strerror(status));
-                            handle_fatal_thread_error(error_buf, app);
-                        }
-                        queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
-                        break;
-                    }
-
-                    item->stream_discontinuity_event = ((meta.status & BLADERF_META_STATUS_OVERRUN) != 0);
-                    if (item->stream_discontinuity_event) {
-                        log_warn("BladeRF reported a stream overrun (discontinuity).");
-                    }
-                    item->frames_read = meta.actual_count;
-                    item->is_last_chunk = false;
-                    item->packet_sample_format = app->module.input_format;
-
-                    if (item->frames_read > 0) {
-                        pthread_mutex_lock(&app->stats.mutex);
-                        app->stats.total_frames_read += item->frames_read;
-                        pthread_mutex_unlock(&app->stats.mutex);
-                        if (!queue_enqueue(app->pipeline.reader_output_queue, item)) {
-                            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
-                            break;
-                        }
-                    } else {
-                        queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
-                    }
-                }
-                SampleChunk *last_item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
-                if (last_item) {
-                    last_item->is_last_chunk = true;
-                    last_item->frames_read = 0;
-                    queue_enqueue(app->pipeline.reader_output_queue, last_item);
-                }
-            }
-            break;
-        }
-        case PIPELINE_MODE_FILE_PROCESSING:
-            break;
+    void* temp_buffer = private_data->stream_temp_buffer;
+    if (!temp_buffer) {
+        handle_fatal_thread_error("BladeRF: Stream temp buffer is NULL.", app);
+        return NULL;
     }
     
-    if (!is_shutdown_requested()) {
-        bladerf_stop_stream(ctx);
+    // Main Loop - Buffered Logic Only (Standardized)
+    while (!is_shutdown_requested() && !app->stats.error_occurred) {
+        memset(&meta, 0, sizeof(meta));
+        meta.flags = BLADERF_META_FLAG_RX_NOW;
+        status = bladerf_sync_rx(private_data->dev, temp_buffer, samples_per_transfer, &meta, BLADERF_SYNC_RX_TIMEOUT_MS);
+        
+        if (status == 0) sdr_input_update_heartbeat(app);
+        
+        if (status != 0) {
+            if (!is_shutdown_requested()) {
+                char error_buf[256];
+                snprintf(error_buf, sizeof(error_buf), "bladerf_sync_rx() failed: %s", bladerf_strerror(status));
+                handle_fatal_thread_error(error_buf, app);
+            }
+            break;
+        }
+        if (meta.actual_count > 0) {
+            if ((meta.status & BLADERF_META_STATUS_OVERRUN) != 0) {
+                log_warn("BladeRF reported a stream overrun. Sending reset event.");
+                sdr_packet_serializer_write_reset_event(app->pipeline.sdr_input_buffer);
+            }
+            if (!sdr_packet_serializer_write_block(app->pipeline.sdr_input_buffer, meta.actual_count, temp_buffer, app->module.input_format)) {
+                log_warn("BladeRF: Ring buffer overrun.");
+            }
+        }
     }
+    
+    if (!is_shutdown_requested()) bladerf_stop_stream(ctx);
     return NULL;
 }
 

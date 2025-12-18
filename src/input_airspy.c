@@ -116,7 +116,6 @@ static void airspy_cleanup(ModuleContext* ctx);
 static void airspy_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool airspy_validate_options(AppConfig* config);
 static bool airspy_validate_generic_options(const AppConfig* config);
-static int airspy_realtime_stream_callback(airspy_transfer* transfer);
 static int airspy_buffered_stream_callback(airspy_transfer* transfer);
 
 
@@ -314,78 +313,9 @@ static int airspy_buffered_stream_callback(airspy_transfer* transfer) {
     return 0;
 }
 
-static int airspy_realtime_stream_callback(airspy_transfer* transfer) {
-    AppContext* app = (AppContext*)transfer->ctx;
-    const AppConfig *config = app->config;
 
-    // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(app);
+// airspy_realtime_stream_callback removed by refactor
 
-    if (is_shutdown_requested() || app->stats.error_occurred) {
-        return -1;
-    }
-
-    if (transfer->sample_count == 0) {
-        return 0;
-    }
-
-    // Validate sample type: Real (non-IQ) or Raw formats are not supported.
-    if (transfer->sample_type != AIRSPY_SAMPLE_INT16_IQ && transfer->sample_type != AIRSPY_SAMPLE_FLOAT32_IQ) {
-        handle_fatal_thread_error("Airspy sample type not supported (Real/Raw) or unknown. Pipeline requires I/Q samples.", app);
-        return -1;
-    }
-
-    // Determine bytes per sample using helper function based on configured format
-    size_t bytes_per_sample = get_bytes_per_sample(app->module.input_format);
-
-    if (config->dsp.raw_passthrough) {
-        size_t total_bytes = transfer->sample_count * bytes_per_sample;
-        ModuleContext ctx = { .config = config, .app = app };
-        size_t written = app->module.output_api->write_chunk(&ctx, transfer->samples, total_bytes);
-        if (written < total_bytes) {
-            log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
-            request_shutdown();
-            return -1;
-        }
-        return 0;
-    }
-
-    size_t samples_processed = 0;
-    while (samples_processed < (size_t)transfer->sample_count) {
-        SampleChunk *item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
-        if (!item) {
-            log_warn("Real-time pipeline stalled. Dropping %zu samples.", (size_t)transfer->sample_count - samples_processed);
-            return 0;
-        }
-
-        item->stream_discontinuity_event = false;
-
-        size_t samples_remaining = transfer->sample_count - samples_processed;
-        size_t capacity_samples = item->raw_input_capacity_bytes / bytes_per_sample;
-        size_t samples_to_copy = (samples_remaining > capacity_samples) ? capacity_samples : samples_remaining;
-
-        size_t bytes_to_copy = samples_to_copy * bytes_per_sample;
-        uint8_t* src_ptr = (uint8_t*)transfer->samples + (samples_processed * bytes_per_sample);
-
-        memcpy(item->raw_input_data, src_ptr, bytes_to_copy);
-        item->frames_read = samples_to_copy;
-        item->is_last_chunk = false;
-        item->packet_sample_format = app->module.input_format;
-
-        if (samples_to_copy > 0) {
-            pthread_mutex_lock(&app->stats.mutex);
-            app->stats.total_frames_read += samples_to_copy;
-            pthread_mutex_unlock(&app->stats.mutex);
-        }
-
-        if (!queue_enqueue(app->pipeline.reader_output_queue, item)) {
-            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
-            return -1;
-        }
-        samples_processed += samples_to_copy;
-    }
-    return 0;
-}
 
 
 static void airspy_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
@@ -668,6 +598,7 @@ static bool airspy_initialize(ModuleContext* ctx) {
         goto cleanup;
     }
 
+    app->pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT;
     success = true;
 
 cleanup:
@@ -683,13 +614,9 @@ static void* airspy_start_stream(ModuleContext* ctx) {
     int result;
     airspy_sample_block_cb_fn callback_fn;
 
-    if (app->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
-        log_info("Starting Airspy stream (Buffered Mode)...");
-        callback_fn = airspy_buffered_stream_callback;
-    } else { // PIPELINE_MODE_REALTIME_SDR
-        log_info("Starting Airspy stream (Real-Time Mode)...");
-        callback_fn = airspy_realtime_stream_callback;
-    }
+    // Logic unified to Buffered Mode
+    log_info("Starting airspy stream...");
+    callback_fn = airspy_buffered_stream_callback;
 
     result = airspy_start_rx(private_data->dev, callback_fn, app);
     if (result != AIRSPY_SUCCESS) {

@@ -325,7 +325,7 @@ static bool rtlsdr_initialize(ModuleContext* ctx) {
     // This ensures we use the Async callback (rtlsdr_read_async) and the large RingBuffer.
     // This decouples the USB read timing from the output pipe backpressure, preventing
     // sample drops when piping to downstream tools.
-    app->pipeline_mode = PIPELINE_MODE_BUFFERED_SDR;
+    app->pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT;
 
     success = true; // All steps succeeded
 
@@ -342,8 +342,8 @@ static void* rtlsdr_start_stream(ModuleContext* ctx) {
     int result;
 
     switch (app->pipeline_mode) {
-        case PIPELINE_MODE_BUFFERED_SDR:
-            log_info("Starting RTL-SDR stream (Buffered Mode)");
+        case PIPELINE_MODE_BUFFERED_INPUT:
+            log_info("Starting RTL-SDR stream");
             // NOTE: rtlsdr_read_async BLOCKS until the stream stops or is cancelled.
             result = rtlsdr_read_async(private_data->dev, rtlsdr_stream_callback, app, 0, 0);
 
@@ -354,12 +354,6 @@ static void* rtlsdr_start_stream(ModuleContext* ctx) {
                 return NULL;
             }
             break;
-
-        case PIPELINE_MODE_REALTIME_SDR:
-            // This path is now explicitly disabled for RTL-SDR to prevent data loss issues
-            // when piping output. The initialize function forces BUFFERED_SDR mode.
-            handle_fatal_thread_error("Internal configuration error: RTL-SDR attempted to start in synchronous mode which is disabled for this module.", app);
-            return NULL;
 
         case PIPELINE_MODE_FILE_PROCESSING:
             break;

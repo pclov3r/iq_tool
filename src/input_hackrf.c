@@ -77,7 +77,6 @@ static void hackrf_cleanup(ModuleContext* ctx);
 static void hackrf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool hackrf_validate_options(AppConfig* config);
 static bool hackrf_validate_generic_options(const AppConfig* config);
-static int hackrf_realtime_stream_callback(hackrf_transfer* transfer);
 static int hackrf_buffered_stream_callback(hackrf_transfer* transfer);
 
 
@@ -161,68 +160,9 @@ static int hackrf_buffered_stream_callback(hackrf_transfer* transfer) {
     return 0;
 }
 
-static int hackrf_realtime_stream_callback(hackrf_transfer* transfer) {
-    AppContext* app = (AppContext*)transfer->rx_ctx;
-    const AppConfig *config = app->config;
 
-    // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(app);
+// hackrf_realtime_stream_callback removed by refactor
 
-    if (is_shutdown_requested() || app->stats.error_occurred) {
-        return -1;
-    }
-
-    if (transfer->valid_length == 0) {
-        return 0;
-    }
-
-    if (config->dsp.raw_passthrough) {
-        ModuleContext ctx = { .config = config, .app = app };
-                        size_t written = app->module.output_api->write_chunk(&ctx, transfer->buffer, transfer->valid_length);
-        if (written < (size_t)transfer->valid_length) {
-            log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
-            request_shutdown();
-            return -1;
-        }
-        return 0;
-    }
-
-    size_t bytes_processed = 0;
-    while (bytes_processed < (size_t)transfer->valid_length) {
-        SampleChunk *item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
-        if (!item) {
-            log_warn("Real-time pipeline stalled. Dropping %zu bytes.", (size_t)transfer->valid_length - bytes_processed);
-            return 0;
-        }
-
-        item->stream_discontinuity_event = false;
-
-        size_t chunk_size = transfer->valid_length - bytes_processed;
-        
-        // --- CHANGED: Use dynamic capacity instead of fixed constant ---
-        if (chunk_size > item->raw_input_capacity_bytes) {
-            chunk_size = item->raw_input_capacity_bytes;
-        }
-
-        memcpy(item->raw_input_data, transfer->buffer + bytes_processed, chunk_size);
-        item->frames_read = chunk_size / app->module.input_bytes_per_sample_pair;
-        item->is_last_chunk = false;
-	    item->packet_sample_format = app->module.input_format;
-
-        if (item->frames_read > 0) {
-            pthread_mutex_lock(&app->stats.mutex);
-            app->stats.total_frames_read += item->frames_read;
-            pthread_mutex_unlock(&app->stats.mutex);
-        }
-
-        if (!queue_enqueue(app->pipeline.reader_output_queue, item)) {
-            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
-            return -1;
-        }
-        bytes_processed += chunk_size;
-    }
-    return 0;
-}
 
 
 static void hackrf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
@@ -315,6 +255,7 @@ static bool hackrf_initialize(ModuleContext* ctx) {
         goto cleanup;
     }
 
+    app->pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT;
     success = true;
 
 cleanup:
@@ -330,13 +271,9 @@ static void* hackrf_start_stream(ModuleContext* ctx) {
     int result;
     hackrf_sample_block_cb_fn callback_fn;
 
-    if (app->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
-        log_info("Starting HackRF stream (Buffered Mode)...");
-        callback_fn = hackrf_buffered_stream_callback;
-    } else { // PIPELINE_MODE_REALTIME_SDR
-        log_info("Starting HackRF stream (Real-Time Mode)...");
-        callback_fn = hackrf_realtime_stream_callback;
-    }
+    // Logic unified to Buffered Mode
+    log_info("Starting hackrf stream...");
+    callback_fn = hackrf_buffered_stream_callback;
 
     result = hackrf_start_rx(private_data->dev, callback_fn, app);
     if (result != HACKRF_SUCCESS) {

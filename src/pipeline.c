@@ -97,7 +97,7 @@ bool pipeline_run(PipelineContext* context) {
     // --- Step 5: Spawn threads based on configuration (Direct Command Model) ---
     log_debug("Spawning pipeline threads...");
     bool threads_ok = true;
-    if (app->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
+    if (app->pipeline_mode != PIPELINE_MODE_FILE_PROCESSING) {
         if (!thread_manager_spawn_thread(&manager, "SDR Capture", sdr_capture_thread_func)) threads_ok = false;
     }
     if (threads_ok && !thread_manager_spawn_thread(&manager, "Reader", reader_thread_func)) threads_ok = false;
@@ -214,7 +214,7 @@ static bool _init_queues_and_buffers(AppConfig* config, AppContext* app) {
         }
     }
 
-    if (app->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
+    if (app->pipeline_mode != PIPELINE_MODE_FILE_PROCESSING) {
         app->pipeline.sdr_input_buffer = ring_buffer_create(IO_SDR_INPUT_BUFFER_BYTES);
         if (!app->pipeline.sdr_input_buffer) return false;
     }
@@ -273,8 +273,8 @@ void* reader_thread_func(void* arg) {
     AppConfig* config = args->config;
 
     switch (app->pipeline_mode) {
-        case PIPELINE_MODE_BUFFERED_SDR: {
-            log_debug("Reader thread starting in buffered SDR mode.");
+        case PIPELINE_MODE_BUFFERED_INPUT: {
+            log_debug("Reader thread starting.");
 
             // --- STATEFUL SIPPING LOGIC ---
             // Initialize the serializer state for this thread.
@@ -333,10 +333,7 @@ void* reader_thread_func(void* arg) {
                 }
             }
             break;
-        }
-
-        case PIPELINE_MODE_REALTIME_SDR:
-        case PIPELINE_MODE_FILE_PROCESSING: {
+        }        case PIPELINE_MODE_FILE_PROCESSING: {
             // These modes manage their own chunking inside their start_stream functions,
             // which have already been updated to use 'pipeline_read_chunk_size'.
             ModuleContext ctx = { .config = config, .app = app };

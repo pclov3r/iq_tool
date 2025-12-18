@@ -250,7 +250,6 @@ static void sdrplay_get_summary_info(const ModuleContext* ctx, InputSummaryInfo*
 static bool sdrplay_validate_options(AppConfig* config);
 static bool sdrplay_validate_generic_options(const AppConfig* config);
 static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz);
-static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext);
 static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext);
 static void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext);
 
@@ -398,95 +397,9 @@ static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz) {
     return sdrplay_api_BW_Undefined;
 }
 
-static void sdrplay_realtime_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext) {
-    (void)params;
-    AppContext* app = (AppContext*)cbContext;
-    const AppConfig *config = app->config;
 
-    // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(app);
+// sdrplay_realtime_stream_callback removed by refactor
 
-    if (is_shutdown_requested() || app->stats.error_occurred) return;
-
-    if (reset) {
-        log_info("SDRplay stream reset detected. Sending reset command to pipeline.");
-        SampleChunk* reset_item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
-        if (reset_item) {
-            reset_item->stream_discontinuity_event = true;
-            reset_item->is_last_chunk = false;
-            reset_item->frames_read = 0;
-            if (!queue_enqueue(app->pipeline.reader_output_queue, reset_item)) {
-                queue_enqueue(app->pipeline.free_sample_chunk_queue, reset_item);
-            }
-        }
-    }
-
-    if (numSamples == 0) return;
-
-    if (config->dsp.raw_passthrough) {
-        SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->module.input_private_data;
-        int16_t* interleaved_data = private_data->interleave_buffer;
-
-        unsigned int samples_processed = 0;
-        while (samples_processed < numSamples) {
-            unsigned int samples_this_chunk = numSamples - samples_processed;
-            if (samples_this_chunk > MAX_SDRPLAY_CONVERSION_SAMPLES) {
-                samples_this_chunk = MAX_SDRPLAY_CONVERSION_SAMPLES;
-            }
-
-            // Interleave logic
-            sample_convert_interleave_s16(
-                xi + samples_processed,
-                xq + samples_processed,
-                interleaved_data,
-                samples_this_chunk
-            );
-
-            size_t bytes_to_write = samples_this_chunk * app->module.input_bytes_per_sample_pair;
-            ModuleContext ctx = { .config = config, .app = app };
-            size_t written = app->module.output_api->write_chunk(&ctx, interleaved_data, bytes_to_write);
-            if (written < bytes_to_write) {
-                log_debug("Real-time passthrough: stdout write error, consumer likely closed pipe.");
-                request_shutdown();
-                return;
-            }
-            samples_processed += samples_this_chunk;
-        }
-    } else {
-        SampleChunk *item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
-        if (!item) {
-            log_warn("Real-time pipeline stalled. Dropping %u samples.", numSamples);
-            return;
-        }
-        item->stream_discontinuity_event = false;
-        size_t samples_to_copy = numSamples;
-
-        // This limit check uses the new elastic size
-        size_t capacity_samples = item->raw_input_capacity_bytes / sizeof(int16_t) / 2;
-        if (samples_to_copy > capacity_samples) {
-            log_warn("SDRplay callback provided more samples than buffer can hold. Truncating.");
-            samples_to_copy = capacity_samples;
-        }
-
-        int16_t *raw_buffer = (int16_t*)item->raw_input_data;
-
-        // Use optimized interleave helper directly into the SampleChunk buffer
-        sample_convert_interleave_s16(xi, xq, raw_buffer, samples_to_copy);
-
-        item->frames_read = samples_to_copy;
-        item->is_last_chunk = false;
-	    item->packet_sample_format = app->module.input_format;
-
-        if (samples_to_copy > 0) {
-            pthread_mutex_lock(&app->stats.mutex);
-            app->stats.total_frames_read += samples_to_copy;
-            pthread_mutex_unlock(&app->stats.mutex);
-        }
-        if (!queue_enqueue(app->pipeline.reader_output_queue, item)) {
-            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
-        }
-    }
-}
 
 static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext) {
     (void)params;
@@ -501,7 +414,7 @@ static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_S
     }
 
     if (reset) {
-        log_info("SDRplay stream reset detected (buffered mode), sending event.");
+        log_info("SDRplay stream reset detected, sending event.");
         sdr_packet_serializer_write_reset_event(app->pipeline.sdr_input_buffer);
     }
 
@@ -918,6 +831,7 @@ static bool sdrplay_initialize(ModuleContext* ctx) {
         goto cleanup;
     }
 
+    app->pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT;
     success = true;
 
 cleanup:
@@ -943,13 +857,9 @@ static void* sdrplay_start_stream(ModuleContext* ctx) {
     cbFns.StreamBCbFn = NULL;
     cbFns.EventCbFn = sdrplay_event_callback;
 
-    if (app->pipeline_mode == PIPELINE_MODE_BUFFERED_SDR) {
-        log_info("Starting SDRplay stream (Buffered Mode)...");
-        cbFns.StreamACbFn = sdrplay_buffered_stream_callback;
-    } else { // PIPELINE_MODE_REALTIME_SDR
-        log_info("Starting SDRplay stream (Real-Time Mode)...");
-        cbFns.StreamACbFn = sdrplay_realtime_stream_callback;
-    }
+    // Logic unified to Buffered Mode
+    log_info("Starting sdrplay stream...");
+    cbFns.StreamACbFn = sdrplay_buffered_stream_callback;
 
     sdrplay_api_ErrT err = sdrplay_api_Init(private_data->sdr_device->dev, &cbFns, app);
     if (err == sdrplay_api_Success) private_data->is_streaming = true;
