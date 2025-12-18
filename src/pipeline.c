@@ -450,8 +450,11 @@ void* resampler_thread_func(void* arg) {
         }
 
         // Set up the state pointers for this stage
-        item->current_input_buffer = item->complex_sample_buffer_a;
-        item->current_output_buffer = item->complex_sample_buffer_b;
+        if (item->current_input_buffer == item->complex_sample_buffer_a) {
+            item->current_output_buffer = item->complex_sample_buffer_b;
+        } else {
+            item->current_output_buffer = item->complex_sample_buffer_a;
+        }
 
         unsigned int output_frames_this_chunk = 0;
         if (app->dsp.is_passthrough) {
@@ -469,10 +472,8 @@ void* resampler_thread_func(void* arg) {
         }
         item->frames_to_write = output_frames_this_chunk;
 
-        // --- CRITICAL PING-PONG SWAP ---
-        // The output of this stage becomes the input for the next stage.
-        item->current_input_buffer = item->complex_sample_buffer_b;
-        item->current_output_buffer = item->complex_sample_buffer_a;
+        // Output becomes input for next stage
+        item->current_input_buffer = item->current_output_buffer;
 
         if (!queue_enqueue(app->pipeline.resampler_output_queue, item)) {
             queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
