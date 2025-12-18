@@ -172,7 +172,7 @@ bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* r
 
             // Unrolled Loop: Processes 4 samples (8 components) per iteration.
             // This exposes instruction-level parallelism to the CPU.
-            for (; i + 4 <= num_frames; i += 4) {
+            for (; i + 4 < num_frames; i += 4) {
                 CS24_IN_STEP(0, 0);  // Sample 0 I
                 CS24_IN_STEP(1, 3);  // Sample 0 Q
                 CS24_IN_STEP(2, 6);  // Sample 1 I
@@ -184,14 +184,23 @@ bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* r
                 in_ptr += 24;
             }
 
+            #undef CS24_IN_STEP
+
             // Tail Loop: Processes remaining samples one by one.
             for (; i < num_frames; ++i) {
-                CS24_IN_STEP(0, 0); // I
-                CS24_IN_STEP(1, 3); // Q
+                int32_t i_val = (int32_t)in_ptr[0] |
+                                ((int32_t)in_ptr[1] << 8) |
+                                ((int32_t)in_ptr[2] << 16);
+                int32_t q_val = (int32_t)in_ptr[3] |
+                                ((int32_t)in_ptr[4] << 8) |
+                                ((int32_t)in_ptr[5] << 16);
+                i_val = (i_val << 8) >> 8;
+                q_val = (q_val << 8) >> 8;
+                out_raw[i * 2]     = (float)i_val * norm_factor;
+                out_raw[i * 2 + 1] = (float)q_val * norm_factor;
                 in_ptr += 6;
             }
 
-            #undef CS24_IN_STEP
             break;
         }
         case CU16:
@@ -285,7 +294,7 @@ bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* r
                 } while (0)
 
             // Unrolled Loop: Processes 4 samples (8 components) per iteration.
-            for (; i + 4 <= num_frames; i += 4) {
+            for (; i + 4 < num_frames; i += 4) {
                 CS24_OUT_STEP(0, 0);
                 CS24_OUT_STEP(1, 3);
                 CS24_OUT_STEP(2, 6);
@@ -297,14 +306,29 @@ bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* r
                 out_ptr += 24;
             }
 
+            #undef CS24_OUT_STEP
+
             // Tail Loop: Processes remaining samples one by one.
             for (; i < num_frames; ++i) {
-                CS24_OUT_STEP(0, 0); // I
-                CS24_OUT_STEP(1, 3); // Q
+                float i_f = in_raw[i * 2] * scale;
+                float q_f = in_raw[i * 2 + 1] * scale;
+                i_f = (i_f > 0.0f) ? i_f + 0.5f : i_f - 0.5f;
+                q_f = (q_f > 0.0f) ? q_f + 0.5f : q_f - 0.5f;
+                if (i_f > max_val) i_f = max_val;
+                else if (i_f < min_val) i_f = min_val;
+                if (q_f > max_val) q_f = max_val;
+                else if (q_f < min_val) q_f = min_val;
+                int32_t i_val = (int32_t)i_f;
+                int32_t q_val = (int32_t)q_f;
+                out_ptr[0] = (uint8_t)(i_val & 0xFF);
+                out_ptr[1] = (uint8_t)((i_val >> 8) & 0xFF);
+                out_ptr[2] = (uint8_t)((i_val >> 16) & 0xFF);
+                out_ptr[3] = (uint8_t)(q_val & 0xFF);
+                out_ptr[4] = (uint8_t)((q_val >> 8) & 0xFF);
+                out_ptr[5] = (uint8_t)((q_val >> 16) & 0xFF);
                 out_ptr += 6;
             }
 
-            #undef CS24_OUT_STEP
             break;
         }
         case CS32: {
