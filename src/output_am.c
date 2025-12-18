@@ -38,6 +38,39 @@
 #define AM_MAX_INPUT_RATE       192000.0
 #define AM_DEFAULT_INPUT_RATE   48000.0
 
+// --- AGC Tuning (Universal Mode) ---
+#define AM_AGC_ATTACK_BW        1.0e-2f // Fast attack (2ms)
+
+// Decay: Medium-Slow (1.0s).
+// Used only AFTER the Hold Timer expires.
+#define AM_AGC_DECAY_BW         2.0e-5f
+
+// Hold Time: 0.5 Seconds.
+// The AGC will FREEZE gain for this long after a signal drop.
+#define AM_AGC_HOLD_SEC         0.5f
+
+#define AM_AGC_HANG_BW          1.0e-8f // Hang on silence
+#define AM_AGC_NOISE_THRESH     1.0e-4f // Noise floor threshold (-80dB)
+#define AM_AGC_INITIAL_GAIN     316.0f  // Start at 50dB
+#define AM_AGC_MAX_GAIN         30.0f   // Max gain +30dB
+#define AM_AGC_TARGET_LEVEL     0.3f    // Target output level
+
+// --- PLL Tuning (Sync AM) ---
+// Acquisition: Wide to catch signal (100 Hz)
+#define AM_PLL_ACQ_BW           100.0f
+// Tracking: 30 Hz
+#define AM_PLL_TRACKING_BW      30.0f
+// Lock Time: 0.5 seconds
+#define AM_PLL_LOCK_TIME        0.5f
+
+// --- Lock Detector / Auto-Fallback ---
+// Quality Threshold (0.0 - 1.0). Ratio of In-Phase energy to Total Magnitude.
+#define AM_LOCK_THRESHOLD       0.5f
+
+// Timeout (seconds). Force fallback to Envelope if unlocked for this long.
+#define AM_LOCK_TIMEOUT_SEC     3
+
+
 // --- Internal Structures ---
 
 typedef struct {
@@ -47,12 +80,9 @@ typedef struct {
     bool audio_device_initialized;
 
     // DSP Objects (Liquid)
-    // Note: 'ampmodem' removed to prevent hollow sound.
-    // We use raw magnitude calculation instead.
     nco_crcf pll;               // Sync AM PLL
 
     // Manual DC Tracking (Input Rate)
-    // REQUIRED: Since we aren't using ampmodem, we must remove DC manually.
     float dc_integrator;
     float dc_alpha;
 
@@ -64,6 +94,10 @@ typedef struct {
     float agc_attack_bw;
     float agc_decay_bw;
 
+    // AGC Hang State
+    size_t agc_hang_counter;    // Samples remaining to hold gain
+    size_t agc_hang_max;        // Reset value for counter
+
     // Output Resamplers (Input Rate -> 48k)
     msresamp_rrrf resamp_out;
     float output_resample_ratio;
@@ -74,6 +108,10 @@ typedef struct {
     bool sync_mode;
     bool pll_tracking_mode;
     size_t pll_lock_counter;
+
+    // Auto-Fallback State
+    bool fallback_mode;         // True if we gave up on Sync AM
+    int unlock_counter;         // Counts consecutive seconds of bad lock
 
     // Scratch Buffers
     float* mono_buffer;
@@ -87,7 +125,7 @@ static struct {
     float audio_cutoff;     // Audio LPF cutoff in Hz
     int force_envelope;     // Force Envelope Detection (Disable Sync)
 } s_am_config = {
-    .gain_val = 2.5f,
+    .gain_val = 1.0f,
     .audio_cutoff = 10000.0f, // Default: 10kHz (Standard AM Broadcast Bandwidth)
     .force_envelope = 0       // Default: 0 (Sync AM is Active)
 };
@@ -111,36 +149,20 @@ static void miniaudio_data_callback(ma_device* pDevice, void* pOutput, const voi
 // --- Module Interface Implementation ---
 
 static bool am_validate_options(AppConfig* config) {
-    // 1. Force CF32 (Standard)
     config->output.format = CF32;
 
-    // 2. Handle Rate "Contract" with Pipeline
     if (config->output_rate.target_rate == 0.0) {
-        // Case A: User didn't specify.
-        // Force 48kHz. This creates a 1:1 relationship with audio output.
-        // This is the most efficient mode (resampler becomes pass-through).
         config->output_rate.target_rate = AM_DEFAULT_INPUT_RATE;
         config->output_rate.provided = true;
-
-        // Changed to LOG_DEBUG to reduce startup noise.
-        // The user will see the final rate in the initialization log.
         log_debug("AM: No rate specified. Requesting %.0f Hz.", AM_DEFAULT_INPUT_RATE);
     } else {
-        // Case B: User specified a rate. Enforce sanity limits.
         double rate = config->output_rate.target_rate;
-
-        // Minimum: 12k (below this, speech is unintelligible)
         if (rate < AM_MIN_INPUT_RATE) {
             log_fatal("AM: Input rate %.0f Hz is too low for audio (Min: %.0f).", rate, AM_MIN_INPUT_RATE);
             return false;
         }
-
-        // Maximum: 192k.
-        // Demodulating AM at 1MS/s or 2MS/s is a massive waste of CPU for no benefit.
         if (rate > AM_MAX_INPUT_RATE) {
             log_fatal("AM: Input rate %.0f Hz is unnecessarily high (Max: %.0f).", rate, AM_MAX_INPUT_RATE);
-            log_fatal("AM: High sample rates waste CPU with no audio benefit.");
-            log_fatal("AM: Please use --output-rate 48000 for best performance.");
             return false;
         }
     }
@@ -174,12 +196,13 @@ static bool am_initialize(ModuleContext* ctx) {
 
     // 3. DSP Configuration
     float input_rate = (float)ctx->config->output_rate.target_rate;
-    // Sanity fallback (should be caught by validate_options)
     if (input_rate < 1.0f) input_rate = 48000.0f;
 
     p->input_samplerate = input_rate;
     p->manual_gain = s_am_config.gain_val;
     p->sync_mode = !s_am_config.force_envelope;
+    p->fallback_mode = false;
+    p->unlock_counter = 0;
 
     if (s_am_config.audio_cutoff > MAX_AUDIO_CUTOFF_HZ) {
         s_am_config.audio_cutoff = MAX_AUDIO_CUTOFF_HZ;
@@ -191,18 +214,15 @@ static bool am_initialize(ModuleContext* ctx) {
 
     // 4. Create Liquid Objects
 
-    // A. Demodulators
-    // We only create the PLL. Envelope mode uses raw math (cabsf).
+    // A. Demodulators (PLL)
     if (p->sync_mode) {
         p->pll = nco_crcf_create(LIQUID_VCO);
-        nco_crcf_pll_set_bandwidth(p->pll, 100.0f / input_rate);
+        nco_crcf_pll_set_bandwidth(p->pll, AM_PLL_ACQ_BW / input_rate);
     } else {
         p->pll = NULL;
     }
 
-    // B. Manual DC Tracking (Input Rate)
-    // This is CRITICAL. Since we aren't using ampmodem, we must remove the Carrier (DC) manually.
-    // We calculate the alpha based on the *actual* input rate.
+    // B. Manual DC Tracking
     float dc_cutoff = 5.0f;
     p->dc_alpha = expf(-2.0f * (float)M_PI * dc_cutoff / input_rate);
     p->dc_integrator = 0.0f;
@@ -211,7 +231,7 @@ static bool am_initialize(ModuleContext* ctx) {
     p->output_resample_ratio = (float)AUDIO_SAMPLE_RATE / input_rate;
     p->resamp_out = msresamp_rrrf_create(p->output_resample_ratio, 60.0f);
 
-    // D. Audio Lowpass Filter (Output Rate - 48kHz)
+    // D. Audio Lowpass Filter
     unsigned int h_len = 63;
     float h[63];
     float fc = s_am_config.audio_cutoff / (float)AUDIO_SAMPLE_RATE;
@@ -219,14 +239,20 @@ static bool am_initialize(ModuleContext* ctx) {
     liquid_firdes_kaiser(h_len, fc, 60.0f, 0.0f, h);
     p->audio_lpf = firfilt_rrrf_create(h, h_len);
 
-    // E. AGC (Output Rate)
+    // E. AGC
     p->agc = agc_rrrf_create();
-    agc_rrrf_set_scale(p->agc, 0.3f);
-    agc_rrrf_set_gain(p->agc, 100.0f);
+    agc_rrrf_set_scale(p->agc, AM_AGC_TARGET_LEVEL);
 
-    p->agc_attack_bw = 6.6e-5f;
-    p->agc_decay_bw = 3.3e-6f;
+    // Set Initial Gain to 50dB (316.0)
+    agc_rrrf_set_gain(p->agc, AM_AGC_INITIAL_GAIN);
+
+    p->agc_attack_bw = AM_AGC_ATTACK_BW;
+    p->agc_decay_bw = AM_AGC_DECAY_BW;
     agc_rrrf_set_bandwidth(p->agc, p->agc_attack_bw);
+
+    // Setup Hang Timer (Samples at 48kHz)
+    p->agc_hang_max = (size_t)(AUDIO_SAMPLE_RATE * AM_AGC_HOLD_SEC);
+    p->agc_hang_counter = 0;
 
     // 5. Scratch Buffers
     size_t buf_samples = res->pipeline.alloc_size_samples;
@@ -262,9 +288,10 @@ static void* am_run_writer(ModuleContext* ctx) {
     double accum_phase_err_sq_sum = 0.0;
     double accum_carrier_freq_sum = 0.0;
     double accum_carrier_strength_sum = 0.0;
+    double accum_inphase_sum = 0.0; // Track In-Phase energy for lock detection
     size_t accum_pll_count = 0;
 
-    const size_t pll_lock_samples = (size_t)(p->input_samplerate * 0.5f);
+    const size_t pll_lock_samples = (size_t)(p->input_samplerate * AM_PLL_LOCK_TIME);
     p->pll_tracking_mode = false;
     p->pll_lock_counter = 0;
 
@@ -295,20 +322,21 @@ static void* am_run_writer(ModuleContext* ctx) {
             unsigned int num_frames = item->frames_to_write;
             liquid_float_complex* iq_ptr = (liquid_float_complex*)iq_in;
 
+            // Determine effective mode (Fall back to Envelope if PLL failed)
+            bool use_sync_mode = p->sync_mode && !p->fallback_mode;
+
             // --- STAGE 1: Demodulation (Input Rate) ---
             for (unsigned int i = 0; i < num_frames; i++) {
                 float raw_demod = 0.0f;
-                // Calculate Magnitude (Required for stats AND Envelope Mode)
                 float mag = cabsf(iq_ptr[i]);
                 accum_mag_sq_sum += (mag * mag);
 
-                if (p->sync_mode) {
+                if (use_sync_mode) {
                     // --- SYNC MODE (PLL) ---
                     if (!p->pll_tracking_mode) {
                         p->pll_lock_counter++;
                         if (p->pll_lock_counter >= pll_lock_samples) {
-                            float pll_tracking_bw = 20.0f / p->input_samplerate;
-                            nco_crcf_pll_set_bandwidth(p->pll, pll_tracking_bw);
+                            nco_crcf_pll_set_bandwidth(p->pll, AM_PLL_TRACKING_BW / p->input_samplerate);
                             p->pll_tracking_mode = true;
                         }
                     }
@@ -317,51 +345,72 @@ static void* am_run_writer(ModuleContext* ctx) {
                     nco_crcf_cexpf(p->pll, &carrier);
                     liquid_float_complex product = iq_ptr[i] * conjf(carrier);
 
-                    raw_demod = crealf(product);
-
+                    // Standard Costas Loop
                     float phase_error = cimagf(product);
                     nco_crcf_pll_step(p->pll, phase_error);
                     nco_crcf_step(p->pll);
+
+                    raw_demod = crealf(product);
 
                     if ((i & 3) == 0) {
                         accum_phase_err_sq_sum += (phase_error * phase_error);
                         accum_carrier_freq_sum += (nco_crcf_get_frequency(p->pll) / (2.0f * (float)M_PI)) * p->input_samplerate;
                         accum_carrier_strength_sum += cabsf(product);
+                        accum_inphase_sum += raw_demod; // Accumulate Real part for Lock Check
                         accum_pll_count++;
                     }
                 } else {
-                    // --- ENVELOPE MODE (Magnitude) ---
-                    // REPLACED ampmodem with direct magnitude calculation.
-                    // This fixes the hollow sound caused by frequency offsets.
+                    // --- ENVELOPE MODE (Or Fallback) ---
                     raw_demod = mag;
                 }
 
-                // --- STAGE 2: Soft DC Removal (Input Rate) ---
-                // CRITICAL: Magnitude detection creates a HUGE DC offset (the carrier).
-                // We MUST remove it here, or the audio will be broken.
+                // --- STAGE 2: Soft DC Removal ---
                 p->dc_integrator = (p->dc_alpha * p->dc_integrator) + ((1.0f - p->dc_alpha) * raw_demod);
                 p->mono_buffer[i] = raw_demod - p->dc_integrator;
             }
 
             stat_counter += num_frames;
 
-            // --- Stats ---
+            // --- Stats & Lock Check ---
             if (stat_counter >= stat_threshold) {
                 double avg_power = accum_mag_sq_sum / (double)stat_counter;
                 float rssi_db = 10.0f * log10f((float)avg_power + 1e-10f);
                 float agc_rssi = agc_rrrf_get_rssi(p->agc);
 
-                if (p->sync_mode && accum_pll_count > 0) {
+                if (use_sync_mode && accum_pll_count > 0) {
+                    // 1. Calculate Phase Error %
                     float avg_phase_mse = (float)(accum_phase_err_sq_sum / (double)accum_pll_count);
                     float phase_err_pct = sqrtf(avg_phase_mse) * 100.0f;
+
+                    // 2. Calculate Offset
                     float avg_carrier_offset = (float)(accum_carrier_freq_sum / (double)accum_pll_count);
-                    log_info("AM RSSI: %.1f dB | AGC: %.1f dB | Offset: %.2f Hz | PhaseErr: %.2f%%",
-                             rssi_db, -agc_rssi, avg_carrier_offset, phase_err_pct);
-                    accum_phase_err_sq_sum = 0.0; accum_carrier_freq_sum = 0.0; accum_carrier_strength_sum = 0.0; accum_pll_count = 0;
+
+                    // 3. Lock Detector (Ratio of In-Phase (Real) energy to Total Magnitude)
+                    float lock_quality = (float)(accum_inphase_sum / (accum_carrier_strength_sum + 1e-9));
+
+                    // Clamp to 0 if negative (avoids weird -5% display if locked 180 out)
+                    if (lock_quality < 0.0f) lock_quality = 0.0f;
+
+                    if (lock_quality < AM_LOCK_THRESHOLD) {
+                        p->unlock_counter++;
+                        if (p->unlock_counter >= AM_LOCK_TIMEOUT_SEC) {
+                            p->fallback_mode = true;
+                            log_warn("AM: PLL failed to lock. Falling back to Envelope detection.");
+                        }
+                    } else {
+                        p->unlock_counter = 0;
+                    }
+
+                    log_info("AM RSSI: %.1f dB | AGC Gain: %.1f dB | Freq Offset: %.2f Hz | Phase Error: %.2f%% | PLL Lock Quality: %.2f%%",
+                             rssi_db, -agc_rssi, avg_carrier_offset, phase_err_pct, lock_quality * 100.0f);
+
+                    accum_phase_err_sq_sum = 0.0; accum_carrier_freq_sum = 0.0;
+                    accum_carrier_strength_sum = 0.0; accum_inphase_sum = 0.0; accum_pll_count = 0;
                 } else {
-                    log_info("AM RSSI: %.1f dB | AGC: %.1f dB | Mode: Envelope",
-                             rssi_db, -agc_rssi);
+                    // Envelope Mode
+                    log_info("AM RSSI: %.1f dB | AGC Gain: %.1f dB", rssi_db, -agc_rssi);
                 }
+
                 stat_counter = 0; accum_mag_sq_sum = 0.0;
             }
 
@@ -373,17 +422,36 @@ static void* am_run_writer(ModuleContext* ctx) {
             for (unsigned int i = 0; i < num_resampled; i++) {
                 float sample = p->resamp_buffer[i];
 
-                // A. Audio LPF (FIR - Linear Phase)
+                // A. Audio LPF
                 firfilt_rrrf_push(p->audio_lpf, sample);
                 firfilt_rrrf_execute(p->audio_lpf, &sample);
 
-                // B. AGC
+                // B. Smart "Hang" AGC Logic
                 float current_est = agc_rrrf_get_signal_level(p->agc);
-                if (fabsf(sample) > current_est) {
-                    agc_rrrf_set_bandwidth(p->agc, p->agc_attack_bw);
+                float signal_mag = fabsf(sample);
+
+                if (signal_mag > current_est) {
+                    // Attack (Rising Signal): Reduce gain fast
+                    agc_rrrf_set_bandwidth(p->agc, AM_AGC_ATTACK_BW);
+                    // Reset Hold Timer on every attack (carrier peak)
+                    p->agc_hang_counter = p->agc_hang_max;
                 } else {
-                    agc_rrrf_set_bandwidth(p->agc, p->agc_decay_bw);
+                    // Signal is dropping
+                    if (p->agc_hang_counter > 0) {
+                        // Hold Phase: Freeze Gain
+                        p->agc_hang_counter--;
+                        agc_rrrf_set_bandwidth(p->agc, AM_AGC_HANG_BW);
+                    } else {
+                        // Decay Phase: Increase Gain
+                        if (signal_mag > AM_AGC_NOISE_THRESH) {
+                            agc_rrrf_set_bandwidth(p->agc, AM_AGC_DECAY_BW);
+                        } else {
+                            // Pure Silence/Static: Don't ramp up endlessly
+                            agc_rrrf_set_bandwidth(p->agc, AM_AGC_HANG_BW);
+                        }
+                    }
                 }
+
                 agc_rrrf_execute(p->agc, sample, &sample);
 
                 // C. Manual Gain
@@ -416,7 +484,6 @@ static void am_finalize(ModuleContext* ctx) {
     if (p->audio_device_initialized) ma_device_uninit(&p->audio_device);
     if (p->audio_ring_buffer) ring_buffer_destroy(p->audio_ring_buffer);
 
-    // No demod to destroy
     if (p->pll) nco_crcf_destroy(p->pll);
     if (p->agc) agc_rrrf_destroy(p->agc);
     if (p->audio_lpf) firfilt_rrrf_destroy(p->audio_lpf);
