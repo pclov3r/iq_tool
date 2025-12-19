@@ -19,6 +19,12 @@ bool dc_block_create(AppConfig* config, AppContext* app) {
         return true;
     }
 
+    if (app->module.source_info.samplerate <= 0.0) {
+        log_fatal("DC Block: Cannot initialize with invalid sample rate (%.0f Hz).",
+                  app->module.source_info.samplerate);
+        return false;
+    }
+
     // Calculate normalized cutoff frequency based on the input sample rate.
     // This assumes the DC block is applied before resampling, so it uses the source_info.samplerate.
     // liquid-dsp's iirfilt_crcf_create_dc_blocker expects a normalized bandwidth (alpha)
