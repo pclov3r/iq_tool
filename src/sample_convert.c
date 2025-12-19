@@ -172,7 +172,7 @@ bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* r
 
             // Unrolled Loop: Processes 4 samples (8 components) per iteration.
             // This exposes instruction-level parallelism to the CPU.
-            for (; i + 4 < num_frames; i += 4) {
+            for (; i + 4 <= num_frames; i += 4) {
                 CS24_IN_STEP(0, 0);  // Sample 0 I
                 CS24_IN_STEP(1, 3);  // Sample 0 Q
                 CS24_IN_STEP(2, 6);  // Sample 1 I
@@ -183,8 +183,6 @@ bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* r
                 CS24_IN_STEP(7, 21); // Sample 3 Q
                 in_ptr += 24;
             }
-
-            #undef CS24_IN_STEP
 
             // Tail Loop: Processes remaining samples one by one.
             for (; i < num_frames; ++i) {
@@ -201,6 +199,7 @@ bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* r
                 in_ptr += 6;
             }
 
+            #undef CS24_IN_STEP
             break;
         }
         case CU16:
@@ -294,7 +293,7 @@ bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* r
                 } while (0)
 
             // Unrolled Loop: Processes 4 samples (8 components) per iteration.
-            for (; i + 4 < num_frames; i += 4) {
+            for (; i + 4 <= num_frames; i += 4) {
                 CS24_OUT_STEP(0, 0);
                 CS24_OUT_STEP(1, 3);
                 CS24_OUT_STEP(2, 6);
@@ -305,8 +304,6 @@ bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* r
                 CS24_OUT_STEP(7, 21);
                 out_ptr += 24;
             }
-
-            #undef CS24_OUT_STEP
 
             // Tail Loop: Processes remaining samples one by one.
             for (; i < num_frames; ++i) {
@@ -329,6 +326,7 @@ bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* r
                 out_ptr += 6;
             }
 
+            #undef CS24_OUT_STEP
             break;
         }
         case CS32: {
