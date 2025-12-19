@@ -217,14 +217,12 @@ void iq_correct_apply(DspContext* dsp, complex_float_t* samples, int num_samples
 
     IqState* st = (IqState*)dsp->iq_correct.internal_state;
 
-    // Thread Safety: Try to lock to update interpolation targets.
-    // If locked (optimizer running), proceed with current values to avoid stalling audio.
-    if (pthread_mutex_trylock(&dsp->iq_correct.iq_factors_mutex) == 0) {
-        adjust_phase_amplitude(st, samples, num_samples);
-        pthread_mutex_unlock(&dsp->iq_correct.iq_factors_mutex);
-    } else {
-        adjust_phase_amplitude(st, samples, num_samples);
-    }
+    // Thread Safety: Lock to ensure consistent reads of phase/amplitude parameters.
+    // The optimizer thread may update these values, so we must synchronize access.
+    // Lock contention is rare (optimizer runs infrequently) and hold time is minimal.
+    pthread_mutex_lock(&dsp->iq_correct.iq_factors_mutex);
+    adjust_phase_amplitude(st, samples, num_samples);
+    pthread_mutex_unlock(&dsp->iq_correct.iq_factors_mutex);
 }
 
 void iq_correct_run_optimization(DspContext* dsp, const complex_float_t* optimization_data) {
