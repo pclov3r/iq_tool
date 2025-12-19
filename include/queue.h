@@ -55,6 +55,23 @@ void queue_destroy(Queue* queue);
 bool queue_enqueue(Queue* queue, void* item);
 
 /**
+ * @brief Enqueues an item regardless of the shutdown state.
+ *
+ * Unlike queue_enqueue(), this function does not check the shutdown flag.
+ * It is specifically designed for returning items to a memory pool (like
+ * free_sample_chunk_queue) during application termination. This ensures that
+ * resources are not leaked even when the rest of the pipeline has stopped.
+ *
+ * This is a blocking call if the queue is physically full, though this
+ * typically should not happen in a closed-loop memory pool during shutdown.
+ *
+ * @param queue Pointer to the queue.
+ * @param item The void pointer item to add to the queue.
+ * @return true if the item was enqueued, false if the queue pointer was NULL.
+ */
+bool queue_enqueue_forced(Queue* queue, void* item);
+
+/**
  * @brief Dequeues an item from the queue.
  *
  * This is a blocking call. If the queue is empty, the calling thread will sleep

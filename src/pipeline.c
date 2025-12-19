@@ -328,12 +328,17 @@ void* reader_thread_func(void* arg) {
                 }
 
                 if (!queue_enqueue(app->pipeline.reader_output_queue, item)) {
-                    queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
+                    // The pipeline is shutting down, so we can't send data forward.
+                    // We drop the data, but we MUST return the memory to the pool.
+                    // We use forced enqueue to guarantee the pool accepts it.
+                    queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
                     break;
                 }
             }
             break;
-        }        case PIPELINE_MODE_FILE_PROCESSING: {
+        }
+
+        case PIPELINE_MODE_FILE_PROCESSING: {
             // These modes manage their own chunking inside their start_stream functions,
             // which have already been updated to use 'pipeline_read_chunk_size'.
             ModuleContext ctx = { .config = config, .app = app };
@@ -416,11 +421,13 @@ void* pre_processor_thread_func(void* arg) {
 
         if (item->frames_read > 0) {
             if (!queue_enqueue(app->pipeline.pre_processor_output_queue, item)) {
-                queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
+                // Downstream rejected us (shutdown). Force return to pool.
+                queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
                 break;
             }
         } else {
-            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
+            // Empty/Control chunk, just return it.
+            queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
         }
     }
 
@@ -476,7 +483,8 @@ void* resampler_thread_func(void* arg) {
         item->current_input_buffer = item->current_output_buffer;
 
         if (!queue_enqueue(app->pipeline.resampler_output_queue, item)) {
-            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
+            // Downstream rejected us. Force return to pool.
+            queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
             break;
         }
     }
@@ -520,6 +528,8 @@ void* post_processor_thread_func(void* arg) {
             // If we are NOT using a paced buffer, pass the chunk directly to the writer thread's queue.
             if (!app->module.pacing_is_required) {
                 if (!queue_enqueue(app->pipeline.writer_input_queue, item)) {
+                    // Writer queue closed. Force return to pool.
+                    queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
                     break;
                 }
             } else { // Otherwise, write the data to the ring buffer and return the chunk to the free pool.
@@ -527,10 +537,12 @@ void* post_processor_thread_func(void* arg) {
                     size_t bytes_to_write = item->frames_to_write * app->module.output_bytes_per_sample_pair;
                     ring_buffer_write(app->pipeline.writer_input_buffer, item->final_output_data, bytes_to_write);
                 }
-                queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
+                // Always force return to pool after using ring buffer
+                queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
             }
         } else {
-            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
+            // Empty frame, force return to pool
+            queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
         }
     }
 

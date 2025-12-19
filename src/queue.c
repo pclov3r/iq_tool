@@ -82,6 +82,24 @@ bool queue_enqueue(Queue* queue, void* item) {
     return true;
 }
 
+bool queue_enqueue_forced(Queue* queue, void* item) {
+    if (!queue) return false;
+    pthread_mutex_lock(&queue->mutex);
+
+    // Wait for space (sanity check), but IGNORE shutting_down flag
+    while (queue->count == queue->capacity) {
+        pthread_cond_wait(&queue->not_full_cond, &queue->mutex);
+    }
+
+    queue->buffer[queue->tail] = item;
+    queue->tail = (queue->tail + 1) % queue->capacity;
+    queue->count++;
+
+    pthread_cond_signal(&queue->not_empty_cond);
+    pthread_mutex_unlock(&queue->mutex);
+    return true;
+}
+
 void* queue_dequeue(Queue* queue) {
     if (!queue) return NULL;
 
