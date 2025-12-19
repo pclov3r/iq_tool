@@ -42,6 +42,8 @@ enum argparse_option_type {
     /* options with arguments (optional or required) */
     ARGPARSE_OPT_INTEGER,
     ARGPARSE_OPT_FLOAT,
+    // CHANGE: Added double precision support
+    ARGPARSE_OPT_DOUBLE,
     ARGPARSE_OPT_STRING,
 };
 
@@ -93,7 +95,7 @@ struct argparse_option {
 };
 
 /**
- * argpparse
+ * argparse
  */
 struct argparse {
     // user supplied
@@ -122,6 +124,8 @@ int argparse_help_cb_no_exit(struct argparse *self,
 #define OPT_BIT(...)     { ARGPARSE_OPT_BIT, __VA_ARGS__ }
 #define OPT_INTEGER(...) { ARGPARSE_OPT_INTEGER, __VA_ARGS__ }
 #define OPT_FLOAT(...)   { ARGPARSE_OPT_FLOAT, __VA_ARGS__ }
+// CHANGE: Added double precision support
+#define OPT_DOUBLE(...)  { ARGPARSE_OPT_DOUBLE, __VA_ARGS__ }
 #define OPT_STRING(...)  { ARGPARSE_OPT_STRING, __VA_ARGS__ }
 #define OPT_GROUP(h)     { ARGPARSE_OPT_GROUP, 0, NULL, NULL, h, NULL, 0, 0 }
 #define OPT_HELP()       OPT_BOOLEAN('h', "help", NULL,                 \

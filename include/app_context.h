@@ -81,7 +81,7 @@ typedef struct AppConfig {
     // --- Output Sample Rate ---
     struct {
         double target_rate;
-        float  user_arg;
+        double user_arg;
         bool   provided;
     } output_rate;
 
@@ -91,7 +91,7 @@ typedef struct AppConfig {
         bool  input_gain_provided;
         float output_gain;
         bool  output_gain_provided;
-        float freq_shift_hz;
+        double freq_shift_hz;
         int   shift_after_resample;
         int   raw_passthrough;
 
@@ -121,12 +121,12 @@ typedef struct AppConfig {
     // --- SDR General ---
     struct {
         double rf_freq_hz;
-        float  rf_freq_hz_arg;
+        double rf_freq_hz_arg;
         bool   rf_freq_provided;
         double frequency_offset_hz;
-        float  frequency_offset_arg;
+        double frequency_offset_arg;
         double sample_rate_hz;
-        float  sample_rate_hz_arg;
+        double sample_rate_hz_arg;
         bool   sample_rate_provided;
         bool   bias_t_enable;
     } sdr_general;

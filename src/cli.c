@@ -84,13 +84,13 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_GROUP("Output Options"),
         OPT_STRING(0, "output-sample-format", &config->output.format_name, "Sample format for output data {cs8|cu8|cs16|...}", NULL, 0, 0),
         OPT_GROUP("Processing Options"),
-        OPT_FLOAT(0, "output-rate", &config->output_rate.user_arg, "Output sample rate in Hz.", NULL, 0, 0),
+        OPT_DOUBLE(0, "output-rate", &config->output_rate.user_arg, "Output sample rate in Hz.", NULL, 0, 0),
 
         // CHANGE: Renamed input gain option and added output gain option
         OPT_FLOAT(0, "input-gain-multiplier", &config->dsp.input_gain, "Apply a linear gain multiplier to INPUT samples (before processing).", NULL, 0, 0),
         OPT_FLOAT(0, "output-gain-multiplier", &config->dsp.output_gain, "Apply a linear gain multiplier to OUTPUT samples (after processing).", NULL, 0, 0),
 
-        OPT_FLOAT(0, "freq-shift", &config->dsp.freq_shift_hz, "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0, 0),
+        OPT_DOUBLE(0, "freq-shift", &config->dsp.freq_shift_hz, "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0, 0),
         OPT_BOOLEAN(0, "shift-after-resample", &config->dsp.shift_after_resample, "Apply frequency shift AFTER resampling (default is before)", NULL, 0, 0),
         OPT_BOOLEAN(0, "raw-passthrough", &config->dsp.raw_passthrough, "Bypass all processing. Copies raw input bytes directly to output.", NULL, 0, 0),
         OPT_BOOLEAN(0, "iq-correction", &config->dsp.iq_correction.enable, "(Optional) Enable automatic I/Q imbalance correction.", NULL, 0, 0),
@@ -100,9 +100,9 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
 
     struct argparse_option sdr_general_options[] = {
         OPT_GROUP("SDR General Options"),
-        OPT_FLOAT(0, "sdr-rf-freq", &config->sdr_general.rf_freq_hz_arg, "(Required for SDR) Tuner center frequency in Hz", NULL, 0, 0),
-        OPT_FLOAT(0, "sdr-frequency-offset", &config->sdr_general.frequency_offset_arg, "Frequency offset in Hz (e.g. 125e6 for HamItUp).", NULL, 0, 0),
-        OPT_FLOAT(0, "sdr-sample-rate", &config->sdr_general.sample_rate_hz_arg, "Set sample rate in Hz. (Device-specific default)", NULL, 0, 0),
+        OPT_DOUBLE(0, "sdr-rf-freq", &config->sdr_general.rf_freq_hz_arg, "(Required for SDR) Tuner center frequency in Hz", NULL, 0, 0),
+        OPT_DOUBLE(0, "sdr-frequency-offset", &config->sdr_general.frequency_offset_arg, "Frequency offset in Hz (e.g. 125e6 for HamItUp).", NULL, 0, 0),
+        OPT_DOUBLE(0, "sdr-sample-rate", &config->sdr_general.sample_rate_hz_arg, "Set sample rate in Hz. (Device-specific default)", NULL, 0, 0),
         OPT_BOOLEAN(0, "sdr-bias-t", &config->sdr_general.bias_t_enable, "(Optional) Enable Bias-T power.", NULL, 0, 0),
     };
 
@@ -277,11 +277,11 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
 
     // --- Step 4: Post-process SDR arguments ---
     if (config->sdr_general.rf_freq_hz_arg > 0.0f) {
-        config->sdr_general.rf_freq_hz = (double)config->sdr_general.rf_freq_hz_arg;
+        config->sdr_general.rf_freq_hz = config->sdr_general.rf_freq_hz_arg;
 
         // Apply Frequency Offset Logic
         if (config->sdr_general.frequency_offset_arg != 0.0f) {
-            config->sdr_general.frequency_offset_hz = (double)config->sdr_general.frequency_offset_arg;
+            config->sdr_general.frequency_offset_hz = config->sdr_general.frequency_offset_arg;
 
             // 1. PERFORM MATH FIRST: Target + Offset = Hardware
             config->sdr_general.rf_freq_hz += config->sdr_general.frequency_offset_hz;
@@ -304,7 +304,7 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
         config->sdr_general.rf_freq_provided = true;
     }
     if (config->sdr_general.sample_rate_hz_arg > 0.0f) {
-        config->sdr_general.sample_rate_hz = (double)config->sdr_general.sample_rate_hz_arg;
+        config->sdr_general.sample_rate_hz = config->sdr_general.sample_rate_hz_arg;
         config->sdr_general.sample_rate_provided = true;
     }
 

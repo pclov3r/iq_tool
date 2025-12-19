@@ -120,6 +120,23 @@ argparse_getvalue(struct argparse *self, const struct argparse_option *opt,
         if (s[0] != '\0') // no digits or contains invalid characters
             argparse_error(self, opt, "expects a numerical value", flags);
         break;
+    // CHANGE: Added double precision support
+    case ARGPARSE_OPT_DOUBLE:
+        errno = 0;
+        if (self->optvalue) {
+            *(double *)opt->value = strtod(self->optvalue, (char **)&s);
+            self->optvalue       = NULL;
+        } else if (self->argc > 1) {
+            self->argc--;
+            *(double *)opt->value = strtod(*++self->argv, (char **)&s);
+        } else {
+            argparse_error(self, opt, "requires a value", flags);
+        }
+        if (errno == ERANGE)
+            argparse_error(self, opt, "numerical result out of range", flags);
+        if (s[0] != '\0') // no digits or contains invalid characters
+            argparse_error(self, opt, "expects a numerical value", flags);
+        break;
     default:
         assert(0);
     }
@@ -141,6 +158,8 @@ argparse_options_check(const struct argparse_option *options)
         case ARGPARSE_OPT_BIT:
         case ARGPARSE_OPT_INTEGER:
         case ARGPARSE_OPT_FLOAT:
+        // CHANGE: Added double precision support
+        case ARGPARSE_OPT_DOUBLE:
         case ARGPARSE_OPT_STRING:
         case ARGPARSE_OPT_GROUP:
             continue;
@@ -338,6 +357,10 @@ argparse_usage(struct argparse *self)
         } else if (options->type == ARGPARSE_OPT_STRING) {
             len += strlen("=<str>");
         }
+        // CHANGE: Added double precision support
+        if (options->type == ARGPARSE_OPT_DOUBLE) {
+            len += strlen("=<flt>");
+        }
         len = (len + 3) - ((len + 3) & 3);
         if (usage_opts_width < len) {
             usage_opts_width = len;
@@ -382,6 +405,10 @@ argparse_usage(struct argparse *self)
             pos += fprintf(stdout, "=<flt>");
         } else if (options->type == ARGPARSE_OPT_STRING) {
             pos += fprintf(stdout, "=<str>");
+        }
+        // CHANGE: Added double precision support
+        else if (options->type == ARGPARSE_OPT_DOUBLE) {
+            pos += fprintf(stdout, "=<flt>");
         }
         if (pos <= usage_opts_width) {
             pad = usage_opts_width - pos;

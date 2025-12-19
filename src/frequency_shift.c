@@ -25,7 +25,7 @@ bool freq_shift_create(AppConfig *config, AppContext* app) {
     // First, resolve the final shift value. If a module (like WAV) hasn't already
     // calculated a shift, check for the generic manual shift option from the CLI.
     if (app->dsp.nco_shift_hz == 0.0 && config->dsp.freq_shift_hz != 0.0f) {
-        app->dsp.nco_shift_hz = (double)config->dsp.freq_shift_hz;
+        app->dsp.nco_shift_hz = config->dsp.freq_shift_hz;
     }
 
     // Now that the final shift value is resolved, validate dependent options.
