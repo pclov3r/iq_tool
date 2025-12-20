@@ -159,6 +159,8 @@ static bool rawfile_initialize(ModuleContext* ctx) {
     app->module.source_info.samplerate = sfinfo.samplerate;
     app->module.source_info.frames = sfinfo.frames;
 
+    app->pipeline_mode = PIPELINE_MODE_FILE_PROCESSING;
+
     return true;
 }
 

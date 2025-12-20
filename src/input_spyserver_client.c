@@ -598,6 +598,9 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
     }
 
     log_info("Initialization successful.");
+
+    app->pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT;
+
     return true;
 }
 

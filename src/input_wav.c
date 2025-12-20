@@ -625,6 +625,8 @@ static bool wav_initialize(ModuleContext* ctx) {
         app->dsp.nco_shift_hz = private_data->sdr_info.center_freq_hz - target_freq;
     }
 
+    app->pipeline_mode = PIPELINE_MODE_FILE_PROCESSING;
+
     return true;
 }
 
