@@ -11,7 +11,6 @@
 #include <malloc.h>
 #include <windows.h>
 #else
-#include <semaphore.h>
 #include <time.h>
 #include <errno.h>
 #endif
@@ -52,7 +51,11 @@ struct RingBuffer {
 #ifdef _WIN32
     HANDLE block_ready_event;
 #else
-    sem_t block_ready_sem;
+    // Replaced sem_t with manual Auto-Reset Event logic to match Windows behavior
+    // and ensure CLOCK_MONOTONIC usage (immune to time jumps).
+    pthread_mutex_t event_mutex;
+    pthread_cond_t  event_cond;
+    bool            event_signaled;
 #endif
 };
 
@@ -96,11 +99,26 @@ RingBuffer* ring_buffer_create(size_t capacity) {
         return NULL;
     }
 #else
-    // semaphore shared between threads (0), initial value 0
-    if (sem_init(&iob->block_ready_sem, 0, 0) != 0) {
-        log_fatal("Failed to initialize RingBuffer semaphore.");
+    // Init POSIX manual event
+    if (pthread_mutex_init(&iob->event_mutex, NULL) != 0) {
+        log_fatal("Failed to initialize RingBuffer event mutex.");
         return NULL;
     }
+
+    pthread_condattr_t attr;
+    pthread_condattr_init(&attr);
+    // Use Monotonic Clock.
+    // Prevents hangs if system time jumps backward (NTP).
+    pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+
+    if (pthread_cond_init(&iob->event_cond, &attr) != 0) {
+        log_fatal("Failed to initialize RingBuffer event cond.");
+        pthread_condattr_destroy(&attr);
+        return NULL;
+    }
+    pthread_condattr_destroy(&attr);
+
+    iob->event_signaled = false;
 #endif
 
     log_info("I/O buffer created with %zu bytes capacity.", capacity);
@@ -117,7 +135,8 @@ void ring_buffer_destroy(RingBuffer* iob) {
         CloseHandle(iob->block_ready_event);
     }
 #else
-    sem_destroy(&iob->block_ready_sem);
+    pthread_mutex_destroy(&iob->event_mutex);
+    pthread_cond_destroy(&iob->event_cond);
 #endif
 
     if (iob->buffer) {
@@ -161,7 +180,10 @@ size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes) {
 #ifdef _WIN32
     SetEvent(iob->block_ready_event);
 #else
-    sem_post(&iob->block_ready_sem);
+    pthread_mutex_lock(&iob->event_mutex);
+    iob->event_signaled = true; // Latch the signal
+    pthread_cond_signal(&iob->event_cond);
+    pthread_mutex_unlock(&iob->event_mutex);
 #endif
 
     return bytes;
@@ -195,13 +217,29 @@ size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes) {
         WaitForSingleObject(iob->block_ready_event, 100);
 #else
         struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_nsec += 100000000; // 100ms timeout
+        clock_gettime(CLOCK_MONOTONIC, &ts); // Safe Clock
+
+        // Add 100ms
+        ts.tv_nsec += 100000000;
         if (ts.tv_nsec >= 1000000000) {
             ts.tv_sec += 1;
             ts.tv_nsec -= 1000000000;
         }
-        sem_timedwait(&iob->block_ready_sem, &ts);
+
+        pthread_mutex_lock(&iob->event_mutex);
+
+        // Auto-Reset Event Logic:
+        // Wait until signaled or timeout.
+        while (!iob->event_signaled) {
+            int rc = pthread_cond_timedwait(&iob->event_cond, &iob->event_mutex, &ts);
+            if (rc == ETIMEDOUT) break;
+        }
+
+        // Clear flag immediately (Auto-Reset) so we sleep again next time
+        // unless producer signals again. This prevents the "Counting Semaphore Spin".
+        iob->event_signaled = false;
+
+        pthread_mutex_unlock(&iob->event_mutex);
 #endif
     }
 
@@ -253,7 +291,10 @@ void ring_buffer_signal_end_of_stream(RingBuffer* iob) {
 #ifdef _WIN32
     SetEvent(iob->block_ready_event);
 #else
-    sem_post(&iob->block_ready_sem);
+    pthread_mutex_lock(&iob->event_mutex);
+    iob->event_signaled = true;
+    pthread_cond_signal(&iob->event_cond);
+    pthread_mutex_unlock(&iob->event_mutex);
 #endif
 }
 
@@ -269,7 +310,10 @@ void ring_buffer_signal_shutdown(RingBuffer* iob) {
 #ifdef _WIN32
     SetEvent(iob->block_ready_event);
 #else
-    sem_post(&iob->block_ready_sem);
+    pthread_mutex_lock(&iob->event_mutex);
+    iob->event_signaled = true;
+    pthread_cond_signal(&iob->event_cond);
+    pthread_mutex_unlock(&iob->event_mutex);
 #endif
 }
 
