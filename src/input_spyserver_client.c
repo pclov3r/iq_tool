@@ -585,7 +585,7 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
     // Hard Ceiling: Never exceed the absolute max defined in constants.h
     if (desired_buffer_size > SPYSERVER_MAX_BUFFER_BYTES) desired_buffer_size = SPYSERVER_MAX_BUFFER_BYTES;
 
-    log_info("SpyServer Ring Buffer: Allocating %zu bytes (%.2f sec capacity) for %.2f sec pre-buffer target.", 
+    log_info("SpyServer Ring Buffer: Allocating %zu bytes (%.2f sec capacity) for %.2f sec pre-buffer target.",
              desired_buffer_size,
              (double)desired_buffer_size / bytes_per_sec,
              SPYSERVER_PREBUFFER_TARGET_SECONDS);
@@ -608,7 +608,6 @@ static void* spyserver_client_producer_thread(void* arg) {
     AppContext* app = ctx->app;
     SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->module.input_private_data;
 
-
     while (!is_shutdown_requested()) {
         SpyServerMessageHeader header;
 
@@ -627,41 +626,44 @@ static void* spyserver_client_producer_thread(void* arg) {
         bool is_iq_data = (msg_type >= SPYSERVER_MSG_TYPE_UINT8_IQ && msg_type <= SPYSERVER_MSG_TYPE_FLOAT_IQ);
 
         if (is_iq_data && body_size > 0) {
-            // --- PROTOCOL CLEANING LOGIC ---
-            // We read the I/Q payload from the network, but we wrap it in our
-            // internal standardized header before writing to the RingBuffer.
-
             size_t bytes_remaining = body_size;
             size_t bpp = get_bytes_per_sample(p->active_format);
-            if (bpp == 0) bpp = 1; // Sanity guard against div/0
+            if (bpp == 0) bpp = 1;
 
             while (bytes_remaining > 0 && !is_shutdown_requested()) {
                 // Determine how much to read in this chunk (limited by scratch buffer size)
-                size_t to_read = (bytes_remaining > p->rx_buffer_size) ? p->rx_buffer_size : bytes_remaining;
+                size_t chunk_size = (bytes_remaining > p->rx_buffer_size) ? p->rx_buffer_size : bytes_remaining;
 
-                // Align read size to sample boundary to avoid partial samples
-                to_read = (to_read / bpp) * bpp;
-                if (to_read == 0) break; // Should not happen unless buffer is tiny or corrupt packet
+                // Align read size to sample boundary
+                size_t aligned_read = (chunk_size / bpp) * bpp;
+
+                if (aligned_read == 0) {
+                    // We have fewer bytes left than a single sample requires (e.g. 1 byte left for 2-byte format).
+                    // We MUST consume these from the socket or the next header read will be desynchronized.
+                    // We use bytes_remaining here because aligned_read is 0.
+                    if (!networking_recv_all(p->net_ctx, p->rx_buffer, bytes_remaining)) {
+                        if (!is_shutdown_requested()) handle_fatal_thread_error("Connection lost draining leftovers.", app);
+                        goto end_loop;
+                    }
+                    // Discard them (do nothing with rx_buffer) and exit inner loop
+                    bytes_remaining = 0;
+                    break;
+                }
 
                 // 1. Read Payload Chunk from Network
-                if (!networking_recv_all(p->net_ctx, p->rx_buffer, to_read)) {
+                if (!networking_recv_all(p->net_ctx, p->rx_buffer, aligned_read)) {
                     if (!is_shutdown_requested()) handle_fatal_thread_error("Connection lost reading payload.", app);
                     goto end_loop;
                 }
 
                 // 2. Wrap and Write to Ring Buffer
-                // This function creates the internal header and writes both header + data
-                // atomically to the ring buffer.
-                uint32_t samples_in_chunk = (uint32_t)(to_read / bpp);
+                uint32_t samples_in_chunk = (uint32_t)(aligned_read / bpp);
                 if (!sdr_packet_serializer_write_block(p->stream_buffer, samples_in_chunk, p->rx_buffer, p->active_format)) {
-                    // Buffer overrun. We drop the packet to keep up with the real-time stream.
-                    // This is preferable to lagging behind and parsing old data.
                     log_warn("SpyServer: Ring buffer full, dropped %u samples.", samples_in_chunk);
                 }
 
-                bytes_remaining -= to_read;
+                bytes_remaining -= aligned_read;
 
-                // --- HEARTBEAT ---
                 sdr_input_update_heartbeat(app);
             }
         }
