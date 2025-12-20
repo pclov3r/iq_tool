@@ -252,7 +252,7 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
 
         // We must allocate enough memory to hold the *Result* of this input chunk.
         // Allocation = (Input * Ratio) + Safety Margin.
-        sample_allocation_count = (size_t)ceil((double)calculated_input_samples * resample_ratio) + RESAMPLER_OUTPUT_SAFETY_MARGIN;
+        sample_allocation_count = (size_t)ceil((double)calculated_input_samples * resample_ratio) + PIPELINE_BUFFER_PADDING_SAMPLES;
     }
     else {
         // --- CASE B: DOWNSAMPLING / PASSTHROUGH ---
@@ -261,7 +261,7 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
 
         // Allocation = Input Size + Safety Margin.
         // (Since output shrinks, the input buffer determines the required memory pool size).
-        sample_allocation_count = target_block_samples + RESAMPLER_OUTPUT_SAFETY_MARGIN;
+        sample_allocation_count = target_block_samples + PIPELINE_BUFFER_PADDING_SAMPLES;
     }
 
     // Store the results for runtime usage

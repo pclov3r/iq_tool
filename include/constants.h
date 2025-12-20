@@ -123,10 +123,11 @@
 #define PIPELINE_MAX_CHUNKS 16384
 
 /**
- * @def RESAMPLER_OUTPUT_SAFETY_MARGIN
- * @brief A safety margin for the resampler's output buffer calculation.
+ * @def PIPELINE_BUFFER_PADDING_SAMPLES
+ * @brief Safety padding for resampler bursts and to prevent write overflows.
+ * Take caution if you reduce this!
  */
-#define RESAMPLER_OUTPUT_SAFETY_MARGIN  384
+#define PIPELINE_BUFFER_PADDING_SAMPLES  384
 
 // =============================================================================
 // == Tier 3: DSP Algorithm Quality & Tuning
