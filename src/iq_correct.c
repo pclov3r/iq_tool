@@ -95,14 +95,18 @@ static bool __boost_initialized = false;
 
 // --- Internal State Structure ---
 typedef struct {
+    // Shared State (Protected by Mutex)
     float phase;
-    float last_phase;
-
     float amplitude;
+
+    // Apply-Only State (Accessed only by DSP thread, no lock needed)
+    float last_phase;
     float last_amplitude;
 
-    float integrated_total_power;
-    float integrated_image_power;
+    // Optimizer-Only State (Accessed only by Optimizer thread, no lock needed)
+    // Changed accumulators to double to prevent precision drift
+    double integrated_total_power;
+    double integrated_image_power;
     float maximum_image_power;
 
     float raw_phases[MaxLookback];
@@ -119,12 +123,12 @@ typedef struct {
     int reset_flag;
     int *power_flag;
 
-    // Buffers
+    // Buffers (Optimizer Only)
     complex float *corr;
     complex float *corr_plus;
     float *boost;
 
-    // Liquid-DSP Resources
+    // Liquid-DSP Resources (Optimizer Only)
     fftplan fft_plan;
     complex float *fft_buffer; // Persistent buffer bound to the plan
     float *window_func;        // Pre-calculated window function
@@ -134,8 +138,13 @@ typedef struct {
 static void init_window(float * restrict w, int length);
 static void init_boost_window(void);
 static void apply_window(complex float * restrict buffer, float * restrict w, int length);
-static void adjust_phase_amplitude(IqState *st, complex float* restrict iq, int length);
-static void estimate_imbalance(IqState *st, const complex float* restrict iq, int length);
+static float adjust_benchmark(complex float *iq, float phase, float amplitude);
+
+// Updated signature to accept current values and return new values via pointers.
+// This allows the calculation to happen without holding the main mutex.
+static void estimate_imbalance(IqState *st, const complex float* restrict iq, int length,
+                               float current_phase, float current_amp,
+                               float* out_phase, float* out_amp);
 
 // ============================================================================
 // == Public API Implementation
@@ -217,48 +226,76 @@ void iq_correct_apply(DspContext* dsp, complex_float_t* samples, int num_samples
 
     IqState* st = (IqState*)dsp->iq_correct.internal_state;
 
-    // Thread Safety: Lock to ensure consistent reads of phase/amplitude parameters.
-    // The optimizer thread may update these values, so we must synchronize access.
-    // Lock contention is rare (optimizer runs infrequently) and hold time is minimal.
+    // Lock briefly to read shared values.
+    // This allows the optimizer to update them safely without tearing.
+    float current_phase, current_amp;
     pthread_mutex_lock(&dsp->iq_correct.iq_factors_mutex);
-    adjust_phase_amplitude(st, samples, num_samples);
+    current_phase = st->phase;
+    current_amp = st->amplitude;
     pthread_mutex_unlock(&dsp->iq_correct.iq_factors_mutex);
+
+    float scale = 1.0f / (num_samples - 1);
+    float last_phase = st->last_phase;
+    float last_amp = st->last_amplitude;
+
+    for (int i = 0; i < num_samples; i++)
+    {
+        // Interpolate parameters across the buffer to prevent phase discontinuities
+        float phase = (i * last_phase + (num_samples - 1 - i) * current_phase) * scale;
+        float amplitude = (i * last_amp + (num_samples - 1 - i) * current_amp) * scale;
+
+        float re = crealf(samples[i]);
+        float im = cimagf(samples[i]);
+
+        float new_re = re + phase * im;
+        float new_im = im + phase * re;
+
+        new_re *= (1.0f + amplitude);
+        new_im *= (1.0f - amplitude);
+
+        samples[i] = new_re + I * new_im;
+    }
+
+    st->last_phase = current_phase;
+    st->last_amplitude = current_amp;
 }
 
 void iq_correct_run_optimization(DspContext* dsp, const complex_float_t* optimization_data) {
     if (!dsp->config->dsp.iq_correction.enable || !dsp->iq_correct.internal_state) return;
 
-    // RATE LIMITER REMOVED:
-    // We want the optimizer to process every chunk available in the queue to ensure
-    // fast convergence. The thread priority (LOW) ensures it doesn't starve the audio.
-
-    // Update timestamp just for logging purposes
-    double current_time = get_monotonic_time_sec();
-    dsp->iq_correct.last_optimization_time = current_time;
-
+    dsp->iq_correct.last_optimization_time = get_monotonic_time_sec();
     IqState* st = (IqState*)dsp->iq_correct.internal_state;
 
-    // The algorithm requires at least one FFT frame.
-    // The pipeline chunk is typically larger (~12k samples), so this is safe.
+    // Snapshot current values under lock.
+    float start_phase, start_amp;
     pthread_mutex_lock(&dsp->iq_correct.iq_factors_mutex);
-    estimate_imbalance(st, optimization_data, FFTBins);
+    start_phase = st->phase;
+    start_amp = st->amplitude;
+    pthread_mutex_unlock(&dsp->iq_correct.iq_factors_mutex);
 
-    // --- DEBUG LOGGING ---
-    // Log once every 1.0 seconds to avoid console spam, but process continuously.
+    // Perform heavy calculation UNLOCKED using local variables.
+    // This prevents stalling the high-priority DSP thread.
+    float new_phase = start_phase;
+    float new_amp = start_amp;
+
+    estimate_imbalance(st, optimization_data, FFTBins, start_phase, start_amp, &new_phase, &new_amp);
+
+    // Lock only to update the shared state.
+    pthread_mutex_lock(&dsp->iq_correct.iq_factors_mutex);
+    st->phase = new_phase;
+    st->amplitude = new_amp;
+
+    // Debug logging (rate limited)
     static double last_debug_log_time = 0.0;
-
-    if (current_time - last_debug_log_time >= 1.0) {
+    if (dsp->iq_correct.last_optimization_time - last_debug_log_time >= 1.0) {
         float phase_deg = st->phase * (180.0f / (float)M_PI);
         float amp_pct = st->amplitude * 100.0f;
-        // Simple dB calculation of the integration metric
-        float image_db = 10.0f * log10f(st->integrated_image_power + 1e-12f);
+        float image_db = 10.0f * log10f((float)st->integrated_image_power + 1e-12f);
 
-        log_debug("IQ Correction: Phase: %+.3f deg | Amp: %+.3f %% | Image Pwr: %.1f dB",
+        log_debug("IQ Correct: Phase: %+.3f deg | Amp: %+.3f %% | Image Pwr: %.1f dB",
                  phase_deg, amp_pct, image_db);
-        last_debug_log_time = current_time;
+        last_debug_log_time = dsp->iq_correct.last_optimization_time;
     }
-    // -----------------------------------------
-
     pthread_mutex_unlock(&dsp->iq_correct.iq_factors_mutex);
 }
 
@@ -366,36 +403,6 @@ static void apply_window(complex float * restrict buffer, float * restrict w, in
     }
 }
 
-static void adjust_phase_amplitude(IqState *st, complex float* restrict iq, int length)
-{
-    float scale = 1.0f / (length - 1);
-    float current_phase = st->phase;
-    float current_amp = st->amplitude;
-    float last_phase = st->last_phase;
-    float last_amp = st->last_amplitude;
-
-    for (int i = 0; i < length; i++)
-    {
-        // Interpolate parameters across the buffer to prevent phase discontinuities
-        float phase = (i * last_phase + (length - 1 - i) * current_phase) * scale;
-        float amplitude = (i * last_amp + (length - 1 - i) * current_amp) * scale;
-
-        float re = crealf(iq[i]);
-        float im = cimagf(iq[i]);
-
-        float new_re = re + phase * im;
-        float new_im = im + phase * re;
-
-        new_re *= (1.0f + amplitude);
-        new_im *= (1.0f - amplitude);
-
-        iq[i] = new_re + I * new_im;
-    }
-
-    st->last_phase = current_phase;
-    st->last_amplitude = current_amp;
-}
-
 static float adjust_benchmark(complex float *iq, float phase, float amplitude)
 {
     float sum = 0;
@@ -443,8 +450,16 @@ static complex float utility(IqState *st, complex float* ccorr)
     return acc;
 }
 
-static void estimate_imbalance(IqState *st, const complex float* restrict iq, int length)
+// Updated signature to accept params and return results via pointers.
+// This decouples calculation from shared state.
+static void estimate_imbalance(IqState *st, const complex float* restrict iq, int length,
+                               float current_phase, float current_amp,
+                               float* out_phase, float* out_amp)
 {
+    // Initialize outputs with current values in case we exit early
+    *out_phase = current_phase;
+    *out_amp = current_amp;
+
     int i, j;
     float amplitude, phase, mu;
     complex float a, b;
@@ -473,6 +488,7 @@ static void estimate_imbalance(IqState *st, const complex float* restrict iq, in
     st->maximum_image_power *= MaxPowerDecay;
 
     // Use the persistent buffer for FFT operations to avoid stack thrashing
+    // Safe because this function is only called from one thread (Optimizer)
     complex float *fftPtr = st->fft_buffer;
 
     // 1. Compute Correlation (Current Parameters)
@@ -484,7 +500,8 @@ static void estimate_imbalance(IqState *st, const complex float* restrict iq, in
     {
         memcpy(fftPtr, iq, FFTBins * sizeof(complex float));
 
-        float power = adjust_benchmark(fftPtr, st->phase, st->amplitude);
+        // Use passed-in values, not st->phase/amp
+        float power = adjust_benchmark(fftPtr, current_phase, current_amp);
 
         if (power > MinimumPower)
         {
@@ -519,7 +536,8 @@ static void estimate_imbalance(IqState *st, const complex float* restrict iq, in
 
     // 2. Compute Correlation (Perturbed Parameters) - Re-use buffer
     memcpy(fftPtr, iq, FFTBins * sizeof(complex float));
-    adjust_benchmark(fftPtr, st->phase + PhaseStep, st->amplitude + AmplitudeStep);
+    // Use passed-in values for perturbation base
+    adjust_benchmark(fftPtr, current_phase + PhaseStep, current_amp + AmplitudeStep);
     apply_window(fftPtr, st->window_func, FFTBins);
     fft_execute(st->fft_plan);
 
@@ -537,13 +555,13 @@ static void estimate_imbalance(IqState *st, const complex float* restrict iq, in
     if (st->optimal_bin == FFTBins / 2)
     {
         if (st->integrated_total_power < st->maximum_image_power) return;
-        st->maximum_image_power = st->integrated_total_power;
+        st->maximum_image_power = (float)st->integrated_total_power;
     }
     else
     {
         if (st->integrated_image_power - st->integrated_total_power * BoostWindowNorm < st->maximum_image_power * PowerThreshold)
             return;
-        st->maximum_image_power = st->integrated_image_power - st->integrated_total_power * BoostWindowNorm;
+        st->maximum_image_power = (float)(st->integrated_image_power - st->integrated_total_power * BoostWindowNorm);
     }
 
     // Calculate utility vectors
@@ -562,7 +580,7 @@ static void estimate_imbalance(IqState *st, const complex float* restrict iq, in
     {
         mu = 0;
     }
-    phase = st->phase + PhaseStep * mu;
+    phase = current_phase + PhaseStep * mu;
 
     // Update Amplitude
     mu = crealf(a) - crealf(b);
@@ -576,7 +594,7 @@ static void estimate_imbalance(IqState *st, const complex float* restrict iq, in
     {
         mu = 0;
     }
-    amplitude = st->amplitude + AmplitudeStep * mu;
+    amplitude = current_amp + AmplitudeStep * mu;
 
     // History Smoothing
     if (st->no_of_raw < MaxLookback)
@@ -586,17 +604,21 @@ static void estimate_imbalance(IqState *st, const complex float* restrict iq, in
     st->raw_phases[st->raw_ptr] = phase;
 
     i = st->raw_ptr;
-    for (j = 0; j < st->no_of_raw - 1; j++)
+    // Note: Reset accumulators for smoothing calc
+    phase = 0;
+    amplitude = 0;
+
+    for (j = 0; j < st->no_of_raw; j++) // Correction: Loop over valid raw entries
     {
-        i = (i + MaxLookback - 1) & (MaxLookback - 1);
-        phase += st->raw_phases[i];
-        amplitude += st->raw_amplitudes[i];
+        int idx = (st->raw_ptr + MaxLookback - j) & (MaxLookback - 1);
+        phase += st->raw_phases[idx];
+        amplitude += st->raw_amplitudes[idx];
     }
     phase /= st->no_of_raw;
     amplitude /= st->no_of_raw;
     st->raw_ptr = (st->raw_ptr + 1) & (MaxLookback - 1);
 
-    // Commit new parameters
-    st->phase = phase;
-    st->amplitude = amplitude;
+    // Commit new parameters to output pointers
+    *out_phase = phase;
+    *out_amp = amplitude;
 }
