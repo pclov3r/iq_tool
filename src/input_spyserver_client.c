@@ -178,7 +178,7 @@ static struct {
     int port;
     int gain;
     bool gain_provided;
-    const char* format_str;
+    const char* sample_format_str;
 } s_spyserver_client_config;
 
 // --- Private Module State ---
@@ -201,7 +201,7 @@ static const struct argparse_option spyserver_client_cli_options[] = {
     OPT_STRING(0, "spyserver-client-host", &s_spyserver_client_config.hostname, "Hostname or IP of the spyserver instance (Required).", NULL, 0, 0),
     OPT_INTEGER(0, "spyserver-client-port", &s_spyserver_client_config.port, "Port number of the spyserver instance (Required).", NULL, 0, 0),
     OPT_INTEGER(0, "spyserver-client-gain", &s_spyserver_client_config.gain, "Set manual gain. Disables AGC. (Ignored on servers without gain control)", NULL, 0, 0),
-    OPT_STRING(0, "spyserver-client-format", &s_spyserver_client_config.format_str, "Select sample format {cu8|cs16|cs24|cf32}. Default is cu8.", NULL, 0, 0),
+    OPT_STRING(0, "spyserver-client-sample-format", &s_spyserver_client_config.sample_format_str, "Select sample format {cu8|cs16|cs24|cf32}. Default is cu8.", NULL, 0, 0),
 };
 
 const struct argparse_option* spyserver_client_get_cli_options(int* count) {
@@ -216,7 +216,7 @@ void spyserver_client_set_default_config(struct AppConfig* config) {
     s_spyserver_client_config.port = 0;
     s_spyserver_client_config.gain = -1;
     s_spyserver_client_config.gain_provided = false;
-    s_spyserver_client_config.format_str = "cu8";
+    s_spyserver_client_config.sample_format_str = "cu8";
 }
 
 // --- Function Prototypes ---
@@ -307,12 +307,12 @@ static bool spyserver_client_validate_options(AppConfig* config) {
         s_spyserver_client_config.gain_provided = true;
     }
 
-    if (s_spyserver_client_config.format_str != NULL) {
-        if (strcasecmp(s_spyserver_client_config.format_str, "cu8") != 0 &&
-            strcasecmp(s_spyserver_client_config.format_str, "cs16") != 0 &&
-            strcasecmp(s_spyserver_client_config.format_str, "cs24") != 0 &&
-            strcasecmp(s_spyserver_client_config.format_str, "cf32") != 0) {
-            log_fatal("Invalid value for --spyserver-client-format: '%s'. Must be one of {cu8|cs16|cs24|cf32}.", s_spyserver_client_config.format_str);
+    if (s_spyserver_client_config.sample_format_str != NULL) {
+        if (strcasecmp(s_spyserver_client_config.sample_format_str, "cu8") != 0 &&
+            strcasecmp(s_spyserver_client_config.sample_format_str, "cs16") != 0 &&
+            strcasecmp(s_spyserver_client_config.sample_format_str, "cs24") != 0 &&
+            strcasecmp(s_spyserver_client_config.sample_format_str, "cf32") != 0) {
+            log_fatal("Invalid value for --spyserver-client-sample-format: '%s'. Must be one of {cu8|cs16|cs24|cf32}.", s_spyserver_client_config.sample_format_str);
             return false;
         }
     }
@@ -459,7 +459,7 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
     log_info("Client has control of the remote device. Negotiating stream parameters...");
 
     // Determine the format our client wants to request based on user args or defaults.
-    format_t requested_format = utils_get_format_from_string(s_spyserver_client_config.format_str);
+    format_t requested_format = utils_get_format_from_string(s_spyserver_client_config.sample_format_str);
     log_info("Client requesting sample format: %s", utils_get_format_description_string(requested_format));
 
     // Assume our request will be honored unless the server says otherwise.

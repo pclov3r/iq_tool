@@ -146,148 +146,148 @@ The best way to see all options is to run `iq_tool --help`.
 Usage: iq_tool -i <in_type> [in_file] -o <out_type> [out_file] [options]
 
 Required Input & Output
-    -i, --input=<str>                     Specifies the input module.
-    -o, --output=<str>                    Specifies the output module and optional file path
+    -i, --input=<str>                         Specifies the input module.
+    -o, --output=<str>                        Specifies the output module and optional file path
 
 Output Options
-    --output-sample-format=<str>          Sample format for output data {cs8|cu8|cs16|...}
+    --output-sample-format=<str>              Sample format for output data {cs8|cu8|cs16|...}
 
 Processing Options
-    --output-rate=<flt>                   Output sample rate in Hz.
-    --input-gain-multiplier=<flt>         Apply a linear gain multiplier to INPUT samples (before processing).
-    --output-gain-multiplier=<flt>        Apply a linear gain multiplier to OUTPUT samples (after processing).
-    --freq-shift=<flt>                    Apply a direct frequency shift in Hz (e.g., -100e3)
-    --shift-after-resample                Apply frequency shift AFTER resampling (default is before)
-    --raw-passthrough                     Bypass all processing. Copies raw input bytes directly to output.
-    --iq-correction                       (Optional) Enable automatic I/Q imbalance correction.
-    --dc-block                            (Optional) Enable DC offset removal (high-pass filter).
-    --preset=<str>                        Use a preset for a common target.
+    --output-rate=<flt>                       Output sample rate in Hz.
+    --input-gain-multiplier=<flt>             Apply a linear gain multiplier to INPUT samples (before processing).
+    --output-gain-multiplier=<flt>            Apply a linear gain multiplier to OUTPUT samples (after processing).
+    --freq-shift=<flt>                        Apply a direct frequency shift in Hz (e.g., -100e3)
+    --shift-after-resample                    Apply frequency shift AFTER resampling (default is before)
+    --raw-passthrough                         Bypass all processing. Copies raw input bytes directly to output.
+    --iq-correction                           (Optional) Enable automatic I/Q imbalance correction.
+    --dc-block                                (Optional) Enable DC offset removal (high-pass filter).
+    --preset=<str>                            Use a preset for a common target.
 
 Output Automatic Gain Control
-    --output-agc                          Enable automatic gain control on the output.
-    --agc-profile=<str>                   AGC profile {dx|local|digital}. (Default: local)
-    --agc-target=<flt>                    AGC target magnitude (0.0 - 1.0). (Default: Profile Dependent)
+    --output-agc                              Enable automatic gain control on the output.
+    --agc-profile=<str>                       AGC profile {dx|local|digital}. (Default: local)
+    --agc-target=<flt>                        AGC target magnitude (0.0 - 1.0). (Default: Profile Dependent)
 
 Filtering Options (Chain up to 5 by combining options or adding suffixes -2, -3, etc. e.g., --lowpass --stopband --lowpass-2 --pass-range --pass-range-2)
-    --lowpass=<flt>                       Isolate signal at DC. Keeps freqs from -<hz> to +<hz>.
-    --highpass=<flt>                      Remove signal at DC. Rejects freqs from -<hz> to +<hz>.
-    --pass-range=<str>                    Isolate a specific band. Format: 'start_freq:end_freq'.
-    --stopband=<str>                      Remove a specific band (notch). Format: 'start_freq:end_freq'.
+    --lowpass=<flt>                           Isolate signal at DC. Keeps freqs from -<hz> to +<hz>.
+    --highpass=<flt>                          Remove signal at DC. Rejects freqs from -<hz> to +<hz>.
+    --pass-range=<str>                        Isolate a specific band. Format: 'start_freq:end_freq'.
+    --stopband=<str>                          Remove a specific band (notch). Format: 'start_freq:end_freq'.
 
 Filter Quality Options
-    --transition-width=<flt>              Set filter sharpness by transition width in Hz. (Default: Auto).
-    --filter-taps=<int>                   Set exact filter length. Overrides --transition-width.
-    --attenuation=<flt>                   Set filter stop-band attenuation in dB. (Default: 60).
+    --transition-width=<flt>                  Set filter sharpness by transition width in Hz. (Default: Auto).
+    --filter-taps=<int>                       Set exact filter length. Overrides --transition-width.
+    --attenuation=<flt>                       Set filter stop-band attenuation in dB. (Default: 60).
 
 Filter Implementation Options
-    --filter-type=<str>                   Set filter implementation {fir|fft}. (Default: auto).
-    --filter-fft-size=<int>               Set FFT size for 'fft' filter type. Must be a power of 2.
+    --filter-type=<str>                       Set filter implementation {fir|fft}. (Default: auto).
+    --filter-fft-size=<int>                   Set FFT size for 'fft' filter type. Must be a power of 2.
 
 SDR General Options
-    --sdr-rf-freq=<flt>                   (Required for SDR) Tuner center frequency in Hz
-    --sdr-frequency-offset=<flt>          Frequency offset in Hz (e.g. 125e6 for HamItUp).
-    --sdr-sample-rate=<flt>               Set sample rate in Hz. (Device-specific default)
-    --sdr-bias-t                          (Optional) Enable Bias-T power.
+    --sdr-rf-freq=<flt>                       (Required for SDR) Tuner center frequency in Hz
+    --sdr-frequency-offset=<flt>              Frequency offset in Hz (e.g. 125e6 for HamItUp).
+    --sdr-sample-rate=<flt>                   Set sample rate in Hz. (Device-specific default)
+    --sdr-bias-t                              (Optional) Enable Bias-T power.
 
 WAV Input (wav)
-    --wav-center-target-freq=<flt>        Shift signal to a new target center frequency (e.g., 97.3e6)
+    --wav-center-target-freq=<flt>            Shift signal to a new target center frequency (e.g., 97.3e6)
 
 Raw File Input (raw-file)
-    --raw-file-input-rate=<flt>           (Required) The sample rate of the RAW input file.
-    --raw-file-input-sample-format=<str>  (Required) The sample format of the RAW input file.
+    --raw-file-input-rate=<flt>               (Required) The sample rate of the RAW input file.
+    --raw-file-input-sample-format=<str>      (Required) The sample format of the RAW input file.
 
 RTL-SDR Input (rtlsdr)
-    --rtlsdr-device-idx=<int>             Select specific RTL-SDR device by index (0-indexed). (Default: 0)
-    --rtlsdr-gain=<flt>                   Set manual tuner gain in dB (e.g., 28.0, 49.6). Disables AGC.
-    --rtlsdr-ppm=<int>                    Set frequency correction in parts-per-million. (Optional, Default: 0)
-    --rtlsdr-direct-sampling=<int>        Enable direct sampling mode for HF reception (1=I-branch, 2=Q-branch)
+    --rtlsdr-device-idx=<int>                 Select specific RTL-SDR device by index (0-indexed). (Default: 0)
+    --rtlsdr-gain=<flt>                       Set manual tuner gain in dB (e.g., 28.0, 49.6). Disables AGC.
+    --rtlsdr-ppm=<int>                        Set frequency correction in parts-per-million. (Optional, Default: 0)
+    --rtlsdr-direct-sampling=<int>            Enable direct sampling mode for HF reception (1=I-branch, 2=Q-branch)
 
 SDRplay Input (sdrplay)
-    --sdrplay-bandwidth=<flt>             Set analog bandwidth in Hz. (Optional, Default: 1.536e6)
-    --sdrplay-device-idx=<int>            Select specific SDRplay device by index (0-indexed). (Default: 0)
-    --sdrplay-lna-state=<int>             Set LNA state (0=min gain). Disables AGC.
-    --sdrplay-if-gain=<int>               Set IF gain in dB (fine gain, e.g., -20, -35, -59). (Default: -50 if --sdrplay-lna-state is specified.) Disables AGC.
-    --sdrplay-antenna=<str>               Select antenna port (device-specific).
-    --sdrplay-hdr-mode                    (Optional) Enable HDR mode on RSPdx/RSPdxR2.
-    --sdrplay-hdr-bw=<flt>                Set bandwidth for HDR mode. Requires --sdrplay-hdr-mode.
-    --sdrplay-notch-fm                    Enable FM Broadcast Notch Filter.
-    --sdrplay-notch-dab                   Enable DAB Broadcast Notch Filter.
-    --sdrplay-notch-am                    Enable MW/AM Notch Filter (RSPduo Tuner A only).
+    --sdrplay-bandwidth=<flt>                 Set analog bandwidth in Hz. (Optional, Default: 1.536e6)
+    --sdrplay-device-idx=<int>                Select specific SDRplay device by index (0-indexed). (Default: 0)
+    --sdrplay-lna-state=<int>                 Set LNA state (0=min gain). Disables AGC.
+    --sdrplay-if-gain=<int>                   Set IF gain in dB (fine gain, e.g., -20, -35, -59). (Default: -50 if --sdrplay-lna-state is specified.) Disables AGC.
+    --sdrplay-antenna=<str>                   Select antenna port (device-specific).
+    --sdrplay-hdr-mode                        (Optional) Enable HDR mode on RSPdx/RSPdxR2.
+    --sdrplay-hdr-bw=<flt>                    Set bandwidth for HDR mode. Requires --sdrplay-hdr-mode.
+    --sdrplay-notch-fm                        Enable FM Broadcast Notch Filter.
+    --sdrplay-notch-dab                       Enable DAB Broadcast Notch Filter.
+    --sdrplay-notch-am                        Enable MW/AM Notch Filter (RSPduo Tuner A only).
 
 HackRF Input (hackrf)
-    --hackrf-lna-gain=<int>               Set LNA (IF) gain in dB. (Optional, Default: 16)
-    --hackrf-vga-gain=<int>               Set VGA (Baseband) gain in dB. (Optional, Default: 0)
-    --hackrf-amp-enable                   Enable the front-end RF amplifier (+14 dB).
+    --hackrf-lna-gain=<int>                   Set LNA (IF) gain in dB. (Optional, Default: 16)
+    --hackrf-vga-gain=<int>                   Set VGA (Baseband) gain in dB. (Optional, Default: 0)
+    --hackrf-amp-enable                       Enable the front-end RF amplifier (+14 dB).
 
 Airspy Input (airspy)
-    --airspy-gain-mode=<str>              Gain mode: 'linearity', 'sensitivity', or 'manual'. (Default: AGC)
-    --airspy-gain-value=<int>             Gain value for linearity/sensitivity modes (0-21). (Default: 10)
-    --airspy-lna-gain=<int>               Manual LNA gain (0-14). Only with manual mode. (Default: 5)
-    --airspy-mixer-gain=<int>             Manual Mixer gain (0-15). Only with manual mode. (Default: 5)
-    --airspy-vga-gain=<int>               Manual VGA gain (0-15). Only with manual mode. (Default: 5)
-    --airspy-sample-format=<str>          Sample format: 'cf32' or 'cs16'. (Default: cs16)
-    --airspy-serial=<int>                 Select device by serial number (hex, e.g., 0x123456789ABCDEF0).
-    --airspy-packing                      Enable bit-packing mode (12-bit samples).
+    --airspy-gain-mode=<str>                  Gain mode: 'linearity', 'sensitivity', or 'manual'. (Default: AGC)
+    --airspy-gain-value=<int>                 Gain value for linearity/sensitivity modes (0-21). (Default: 10)
+    --airspy-lna-gain=<int>                   Manual LNA gain (0-14). Only with manual mode. (Default: 5)
+    --airspy-mixer-gain=<int>                 Manual Mixer gain (0-15). Only with manual mode. (Default: 5)
+    --airspy-vga-gain=<int>                   Manual VGA gain (0-15). Only with manual mode. (Default: 5)
+    --airspy-sample-format=<str>              Sample format: 'cf32' or 'cs16'. (Default: cs16)
+    --airspy-serial=<int>                     Select device by serial number (hex, e.g., 0x123456789ABCDEF0).
+    --airspy-packing                          Enable bit-packing mode (12-bit samples).
 
 Airspy HF+ Input (airspyhf)
-    --airspyhf-agc=<str>                  AGC mode: 'off', 'low', or 'high'. (Default: high)
-    --airspyhf-attn=<flt>                 Attenuation in dB (0.0 to 48.0). (Default: 0.0)
-    --airspyhf-preamp                     Enable LNA/PreAmp.
-    --airspyhf-serial=<int>               Select device by serial number (hex, e.g., 0x123456789ABCDEF0).
-    --airspyhf-no-lib-dsp                 Disable library DSP processing (IQ correction, DC removal, etc).
+    --airspyhf-agc=<str>                      AGC mode: 'off', 'low', or 'high'. (Default: high)
+    --airspyhf-attn=<flt>                     Attenuation in dB (0.0 to 48.0). (Default: 0.0)
+    --airspyhf-preamp                         Enable LNA/PreAmp.
+    --airspyhf-serial=<int>                   Select device by serial number (hex, e.g., 0x123456789ABCDEF0).
+    --airspyhf-no-lib-dsp                     Disable library DSP processing (IQ correction, DC removal, etc).
 
 BladeRF Input (bladerf)
-    --bladerf-device-idx=<int>            Select specific BladeRF device by index (0-indexed). (Default: 0)
-    --bladerf-load-fpga=<str>             Load an FPGA bitstream from the specified file.
-    --bladerf-bandwidth=<flt>             Set analog bandwidth in Hz. (Not applicable in 8-bit high-speed mode)
-    --bladerf-gain=<int>                  Set overall manual gain in dB. Disables AGC.
-    --bladerf-channel=<int>               For BladeRF 2.0: Select RX channel 0 (RXA) or 1 (RXB). (Default: 0)
-    --bladerf-bit-depth=<int>             Set capture bit depth {8|12}. 8-bit mode is for BladeRF 2.0 only. (Default: 12, auto-switches to 8 for rates > 61.44 MHz on BladeRF 2.0)
+    --bladerf-device-idx=<int>                Select specific BladeRF device by index (0-indexed). (Default: 0)
+    --bladerf-load-fpga=<str>                 Load an FPGA bitstream from the specified file.
+    --bladerf-bandwidth=<flt>                 Set analog bandwidth in Hz. (Not applicable in 8-bit high-speed mode)
+    --bladerf-gain=<int>                      Set overall manual gain in dB. Disables AGC.
+    --bladerf-channel=<int>                   For BladeRF 2.0: Select RX channel 0 (RXA) or 1 (RXB). (Default: 0)
+    --bladerf-bit-depth=<int>                 Set capture bit depth {8|12}. 8-bit mode is for BladeRF 2.0 only. (Default: 12, auto-switches to 8 for rates > 61.44 MHz on BladeRF 2.0)
 
 SpyServer Client Input (spyserver-client)
-    --spyserver-client-host=<str>         Hostname or IP of the spyserver instance (Required).
-    --spyserver-client-port=<int>         Port number of the spyserver instance (Required).
-    --spyserver-client-gain=<int>         Set manual gain. Disables AGC. (Ignored on servers without gain control)
-    --spyserver-client-format=<str>       Select sample format {cu8|cs16|cs24|cf32}. Default is cu8.
+    --spyserver-client-host=<str>             Hostname or IP of the spyserver instance (Required).
+    --spyserver-client-port=<int>             Port number of the spyserver instance (Required).
+    --spyserver-client-gain=<int>             Set manual gain. Disables AGC. (Ignored on servers without gain control)
+    --spyserver-client-sample-format=<str>    Select sample format {cu8|cs16|cs24|cf32}. Default is cu8.
 
 NRSC5 Output (nrsc5)
-    --nrsc5-mode=<str>                    Set decoder mode {cs16-fm|cs16-am|cu8-fm|cu8-am}. (Default: cs16-fm)
-    --nrsc5-program=<int>                 Select HD program/subchannel (0-7). (Required)
+    --nrsc5-mode=<str>                        Set decoder mode {cs16-fm|cs16-am|cu8-fm|cu8-am}. (Default: cs16-fm)
+    --nrsc5-program=<int>                     Select HD program/subchannel (0-7). (Required)
 
 WFM Output (wfm)
-    --wfm-de-emphasis-time=<flt>          Set FM de-emphasis time constant in microseconds (default: 75.0).
-    --wfm-gain=<flt>                      Set audio output gain (linear).
-    --wfm-force-stereo                    Force stereo decoding regardless of signal quality.
-    --wfm-force-mono                      Force mono output.
-    --wfm-raw-mpx-stdout                  Pipe raw MPX data (S16 Mono) to stdout while playing audio.
-    --wfm-no-rds                          Disable RDS decoding (Enabled by default).
-    --wfm-rbds                            Enable US RBDS mode (Callsigns + US Program Types).
-    --wfm-rds-partial                     Show partial/noisy RDS text (PS/RT).
+    --wfm-de-emphasis-time=<flt>              Set FM de-emphasis time constant in microseconds (default: 75.0).
+    --wfm-gain=<flt>                          Set audio output gain (linear).
+    --wfm-force-stereo                        Force stereo decoding regardless of signal quality.
+    --wfm-force-mono                          Force mono output.
+    --wfm-raw-mpx-stdout                      Pipe raw MPX data (S16 Mono) to stdout while playing audio.
+    --wfm-no-rds                              Disable RDS decoding (Enabled by default).
+    --wfm-rbds                                Enable US RBDS mode (Callsigns + US Program Types).
+    --wfm-rds-partial                         Show partial/noisy RDS text (PS/RT).
 
 NFM Output (nfm)
-    --nfm-gain=<flt>                      Audio gain (default: 1.0)
-    --nfm-squelch=<flt>                   Squelch threshold in dB (default: -50.0)
-    --nfm-narrow                          Enable Narrow mode (2.5kHz dev). Default is Standard (5kHz dev).
-    --nfm-no-squelch                      Disable squelch (force open audio)
-    --nfm-no-discriminator-filter         Disable the discriminator filter.
+    --nfm-gain=<flt>                          Audio gain (default: 1.0)
+    --nfm-squelch=<flt>                       Squelch threshold in dB (default: -50.0)
+    --nfm-narrow                              Enable Narrow mode (2.5kHz dev). Default is Standard (5kHz dev).
+    --nfm-no-squelch                          Disable squelch (force open audio)
+    --nfm-no-discriminator-filter             Disable the discriminator filter.
 
 AM Output (am)
-    --am-gain=<flt>                       Set audio output gain (linear).
-    --am-cutoff=<flt>                     Set audio lowpass filter cutoff in Hz (default: 10000).
-    --am-envelope                         Disable Synchronous AM (PLL) and use Magnitude Envelope Detection.
+    --am-gain=<flt>                           Set audio output gain (linear).
+    --am-cutoff=<flt>                         Set audio lowpass filter cutoff in Hz (default: 10000).
+    --am-envelope                             Disable Synchronous AM (PLL) and use Magnitude Envelope Detection.
 
 Available Presets
-    cu8-nrsc5                             Sets sample type to cu8, rate to 1488375.0 Hz for piping to external nrsc5 (FM/AM). Use --output stdout
-    cu8-nrsc5-usb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates USB sideband (102-215kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
-    cu8-nrsc5-lsb                         Sets sample type to cu8, rate to 1488375.0 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
-    cs16-fm-nrsc5                         Sets sample type to cs16, rate to 744187.5 Hz for piping to external nrsc5 (FM). Use --output stdout
-    cs16-fm-nrsc5-usb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates USB sideband (102-215kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
-    cs16-fm-nrsc5-lsb                     Sets sample type to cs16, rate to 744187.5 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
-    cs16-am-nrsc5                         Sets sample type to cs16, rate to 46511.71875 Hz for piping to external nrsc5 (AM). Use --output stdout
+    cu8-nrsc5                                 Sets sample type to cu8, rate to 1488375.0 Hz for piping to external nrsc5 (FM/AM). Use --output stdout
+    cu8-nrsc5-usb                             Sets sample type to cu8, rate to 1488375.0 Hz, isolates USB sideband (102-215kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
+    cu8-nrsc5-lsb                             Sets sample type to cu8, rate to 1488375.0 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
+    cs16-fm-nrsc5                             Sets sample type to cs16, rate to 744187.5 Hz for piping to external nrsc5 (FM). Use --output stdout
+    cs16-fm-nrsc5-usb                         Sets sample type to cs16, rate to 744187.5 Hz, isolates USB sideband (102-215kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
+    cs16-fm-nrsc5-lsb                         Sets sample type to cs16, rate to 744187.5 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
+    cs16-am-nrsc5                             Sets sample type to cs16, rate to 46511.71875 Hz for piping to external nrsc5 (AM). Use --output stdout
 
 Help & Version
-    -v, --version                         show program's version number and exit
-    -h, --help                            show this help message and exit
+    -v, --version                             show program's version number and exit
+    -h, --help                                show this help message and exit
 ```
 
 #### Examples
