@@ -197,7 +197,7 @@ typedef struct {
 
 // --- CLI Options ---
 static const struct argparse_option spyserver_client_cli_options[] = {
-    OPT_GROUP("SpyServer Client Options"),
+    OPT_GROUP("SpyServer Client Input (spyserver-client)"),
     OPT_STRING(0, "spyserver-client-host", &s_spyserver_client_config.hostname, "Hostname or IP of the spyserver instance (Required).", NULL, 0, 0),
     OPT_INTEGER(0, "spyserver-client-port", &s_spyserver_client_config.port, "Port number of the spyserver instance (Required).", NULL, 0, 0),
     OPT_INTEGER(0, "spyserver-client-gain", &s_spyserver_client_config.gain, "Set manual gain. Disables AGC. (Ignored on servers without gain control)", NULL, 0, 0),

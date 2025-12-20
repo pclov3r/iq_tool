@@ -790,7 +790,7 @@ static void wfm_get_summary(const ModuleContext* ctx, OutputSummaryInfo* info) {
 }
 
 static const struct argparse_option wfm_cli_options[] = {
-    OPT_GROUP("WFM Output Options"),
+    OPT_GROUP("WFM Output (wfm)"),
     OPT_FLOAT(0, "wfm-de-emphasis-time", &s_wfm_config.deemph_us, "Set FM de-emphasis time constant in microseconds (default: 75.0).", NULL, 0, 0),
     OPT_FLOAT(0, "wfm-gain", &s_wfm_config.gain_val, "Set audio output gain (linear).", NULL, 0, 0),
     OPT_BOOLEAN(0, "wfm-force-stereo", &s_wfm_config.force_stereo, "Force stereo decoding regardless of signal quality.", NULL, 0, 0),

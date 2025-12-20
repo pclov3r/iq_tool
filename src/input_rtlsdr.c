@@ -53,7 +53,7 @@ void rtlsdr_set_default_config(AppConfig* config) {
 }
 
 static const struct argparse_option rtlsdr_cli_options[] = {
-    OPT_GROUP("RTL-SDR-Specific Options"),
+    OPT_GROUP("RTL-SDR Input (rtlsdr)"),
     OPT_INTEGER(0, "rtlsdr-device-idx", &s_rtlsdr_config.device_index, "Select specific RTL-SDR device by index (0-indexed). (Default: 0)", NULL, 0, 0),
     OPT_FLOAT(0, "rtlsdr-gain", &s_rtlsdr_config.rtlsdr_gain_db_arg, "Set manual tuner gain in dB (e.g., 28.0, 49.6). Disables AGC.", NULL, 0, 0),
     OPT_INTEGER(0, "rtlsdr-ppm", &s_rtlsdr_config.ppm, "Set frequency correction in parts-per-million. (Optional, Default: 0)", NULL, 0, 0),

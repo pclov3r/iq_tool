@@ -177,7 +177,7 @@ void bladerf_set_default_config(AppConfig* config) {
 }
 
 static const struct argparse_option bladerf_cli_options[] = {
-    OPT_GROUP("BladeRF-Specific Options"),
+    OPT_GROUP("BladeRF Input (bladerf)"),
     OPT_INTEGER(0, "bladerf-device-idx", &s_bladerf_config.device_index, "Select specific BladeRF device by index (0-indexed). (Default: 0)", NULL, 0, 0),
     OPT_STRING(0, "bladerf-load-fpga", &s_bladerf_config.fpga_file_path, "Load an FPGA bitstream from the specified file.", NULL, 0, 0),
     OPT_FLOAT(0, "bladerf-bandwidth", &s_bladerf_config.bladerf_bandwidth_hz_arg, "Set analog bandwidth in Hz. (Not applicable in 8-bit high-speed mode)", NULL, 0, 0),

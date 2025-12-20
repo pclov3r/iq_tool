@@ -369,11 +369,17 @@ argparse_usage(struct argparse *self)
     usage_opts_width += 4;      // 4 spaces prefix
 
     options = self->options;
+    int first_group = 1;  // Track if this is the first group
+
     for (; options->type != ARGPARSE_OPT_END; options++) {
         size_t pos = 0;
         size_t pad = 0;
         if (options->type == ARGPARSE_OPT_GROUP) {
-            fputc('\n', stdout);
+            // CHANGE: Only add newline if not the first group
+            if (!first_group) {
+                fputc('\n', stdout);
+            }
+            first_group = 0;
             fprintf(stdout, "%s", options->help);
             fputc('\n', stdout);
             continue;

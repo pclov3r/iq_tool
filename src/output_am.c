@@ -499,7 +499,7 @@ static void am_get_summary(const ModuleContext* ctx, OutputSummaryInfo* info) {
 }
 
 static const struct argparse_option am_cli_options[] = {
-    OPT_GROUP("AM Output Options"),
+    OPT_GROUP("AM Output (am)"),
     OPT_FLOAT(0, "am-gain", &s_am_config.gain_val, "Set audio output gain (linear).", NULL, 0, 0),
     OPT_FLOAT(0, "am-cutoff", &s_am_config.audio_cutoff, "Set audio lowpass filter cutoff in Hz (default: 10000).", NULL, 0, 0),
     OPT_BOOLEAN(0, "am-envelope", &s_am_config.force_envelope, "Disable Synchronous AM (PLL) and use Magnitude Envelope Detection.", NULL, 0, 0),

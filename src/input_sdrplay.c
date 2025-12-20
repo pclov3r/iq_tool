@@ -223,7 +223,7 @@ void sdrplay_set_default_config(AppConfig* config) {
 }
 
 static const struct argparse_option sdrplay_cli_options[] = {
-    OPT_GROUP("SDRplay-Specific Options"),
+    OPT_GROUP("SDRplay Input (sdrplay)"),
     OPT_FLOAT(0, "sdrplay-bandwidth", &s_sdrplay_config.sdrplay_bandwidth_hz_arg, "Set analog bandwidth in Hz. (Optional, Default: 1.536e6)", NULL, 0, 0),
     OPT_INTEGER(0, "sdrplay-device-idx", &s_sdrplay_config.device_index, "Select specific SDRplay device by index (0-indexed). (Default: 0)", NULL, 0, 0),
     OPT_INTEGER(0, "sdrplay-lna-state", &s_sdrplay_config.lna_state, "Set LNA state (0=min gain). Disables AGC.", NULL, 0, 0),

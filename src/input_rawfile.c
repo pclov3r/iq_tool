@@ -43,7 +43,7 @@ typedef struct {
 } RawfilePrivateData;
 
 static const struct argparse_option rawfile_cli_options[] = {
-    OPT_GROUP("Raw File Input Options"),
+    OPT_GROUP("Raw File Input (raw-file)"),
     OPT_FLOAT(0, "raw-file-input-rate", &s_rawfile_config.raw_file_sample_rate_hz_arg, "(Required) The sample rate of the RAW input file.", NULL, 0, 0),
     OPT_STRING(0, "raw-file-input-sample-format", &s_rawfile_config.format_str, "(Required) The sample format of the RAW input file.", NULL, 0, 0),
 };

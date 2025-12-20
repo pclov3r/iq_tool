@@ -367,7 +367,7 @@ static void nfm_get_summary(const ModuleContext* ctx, OutputSummaryInfo* info) {
 }
 
 static const struct argparse_option nfm_cli_options[] = {
-    OPT_GROUP("NFM Output Options"),
+    OPT_GROUP("NFM Output (nfm)"),
     OPT_FLOAT(0, "nfm-gain", &s_nfm_config.gain, "Audio gain (default: 1.0)", NULL, 0, 0),
     OPT_FLOAT(0, "nfm-squelch", &s_nfm_config.squelch_db, "Squelch threshold in dB (default: -50.0)", NULL, 0, 0),
     OPT_BOOLEAN(0, "nfm-narrow", &s_nfm_config.is_narrow, "Enable Narrow mode (2.5kHz dev). Default is Standard (5kHz dev).", NULL, 0, 0),

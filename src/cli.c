@@ -79,17 +79,14 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
 
     struct argparse_option generic_options[] = {
         OPT_GROUP("Required Input & Output"),
-        OPT_STRING('i', "input", &config->input.type_name, "Specifies the input type {wav|raw-file|rtlsdr|sdrplay|hackrf|bladerf|spyserver-client}", NULL, 0, 0),
-        OPT_STRING('o', "output", &config->output.module_name, "Specifies the output type {wav|raw|stdout} and optional file path", NULL, 0, 0),
+        OPT_STRING('i', "input", &config->input.type_name, "Specifies the input module.", NULL, 0, 0),
+        OPT_STRING('o', "output", &config->output.module_name, "Specifies the output module and optional file path", NULL, 0, 0),
         OPT_GROUP("Output Options"),
         OPT_STRING(0, "output-sample-format", &config->output.format_name, "Sample format for output data {cs8|cu8|cs16|...}", NULL, 0, 0),
         OPT_GROUP("Processing Options"),
         OPT_DOUBLE(0, "output-rate", &config->output_rate.user_arg, "Output sample rate in Hz.", NULL, 0, 0),
-
-        // CHANGE: Renamed input gain option and added output gain option
         OPT_FLOAT(0, "input-gain-multiplier", &config->dsp.input_gain, "Apply a linear gain multiplier to INPUT samples (before processing).", NULL, 0, 0),
         OPT_FLOAT(0, "output-gain-multiplier", &config->dsp.output_gain, "Apply a linear gain multiplier to OUTPUT samples (after processing).", NULL, 0, 0),
-
         OPT_DOUBLE(0, "freq-shift", &config->dsp.freq_shift_hz, "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0, 0),
         OPT_BOOLEAN(0, "shift-after-resample", &config->dsp.shift_after_resample, "Apply frequency shift AFTER resampling (default is before)", NULL, 0, 0),
         OPT_BOOLEAN(0, "raw-passthrough", &config->dsp.raw_passthrough, "Bypass all processing. Copies raw input bytes directly to output.", NULL, 0, 0),

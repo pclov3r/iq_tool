@@ -59,7 +59,7 @@ void hackrf_set_default_config(AppConfig* config) {
 }
 
 static const struct argparse_option hackrf_cli_options[] = {
-    OPT_GROUP("HackRF-Specific Options"),
+    OPT_GROUP("HackRF Input (hackrf)"),
     OPT_INTEGER(0, "hackrf-lna-gain", &s_hackrf_config.hackrf_lna_gain_arg, "Set LNA (IF) gain in dB. (Optional, Default: 16)", NULL, 0, 0),
     OPT_INTEGER(0, "hackrf-vga-gain", &s_hackrf_config.hackrf_vga_gain_arg, "Set VGA (Baseband) gain in dB. (Optional, Default: 0)", NULL, 0, 0),
     OPT_BOOLEAN(0, "hackrf-amp-enable", &s_hackrf_config.amp_enable, "Enable the front-end RF amplifier (+14 dB).", NULL, 0, 0),

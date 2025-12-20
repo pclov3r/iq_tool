@@ -218,7 +218,7 @@ void agc_destroy(AppContext* app) {
 
 int agc_populate_cli_options(struct argparse_option* buffer, struct AppConfig* config) {
     struct argparse_option options[] = {
-        OPT_GROUP("Output Automatic Gain Control (AGC)"),
+        OPT_GROUP("Output Automatic Gain Control"),
         OPT_BOOLEAN(0, "output-agc", &config->dsp.agc.enable, "Enable automatic gain control on the output.", NULL, 0, 0),
         OPT_STRING(0,  "agc-profile", &config->dsp.agc.profile_str_arg, "AGC profile {dx|local|digital}. (Default: local)", NULL, 0, 0),
         OPT_FLOAT(0,   "agc-target", &config->dsp.agc.target_level_arg, "AGC target magnitude (0.0 - 1.0). (Default: Profile Dependent)", NULL, 0, 0),
