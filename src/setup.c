@@ -371,8 +371,54 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
     app->pipeline.sdr_deserializer_temp_buffer = mem_arena_alloc(&app->pipeline.setup_arena, app->pipeline.sdr_deserializer_buffer_size, false);
     if (!app->pipeline.sdr_deserializer_temp_buffer) return false;
 
-    app->pipeline.writer_local_buffer = mem_arena_alloc(&app->pipeline.setup_arena, IO_OUTPUT_WRITER_CHUNK_SIZE, false);
+    app->pipeline.writer_local_buffer = mem_arena_alloc(&app->pipeline.setup_arena, OUTPUT_WRITER_CHUNK_SIZE, false);
     if (!app->pipeline.writer_local_buffer) return false;
+
+    // -------------------------------------------------------------------------
+    // 5. Calculate Dynamic Ring Buffer Sizes
+    // -------------------------------------------------------------------------
+
+    // Calculate input buffer size (for buffered mode)
+    if (app->pipeline_mode != PIPELINE_MODE_FILE_PROCESSING) {
+        size_t input_buffer_bytes = (size_t)(
+            input_rate *
+            INPUT_BUFFER_DURATION_SEC *
+            app->module.input_bytes_per_sample_pair
+        );
+
+        if (input_buffer_bytes < INPUT_BUFFER_MIN_BYTES)
+            input_buffer_bytes = INPUT_BUFFER_MIN_BYTES;
+        if (input_buffer_bytes > INPUT_BUFFER_MAX_BYTES)
+            input_buffer_bytes = INPUT_BUFFER_MAX_BYTES;
+
+        app->pipeline.input_buffer_size = input_buffer_bytes;
+
+        log_info("Input Buffer: Allocating %zu bytes (%.2f sec capacity) at %.0f Hz.",
+                 input_buffer_bytes,
+                 INPUT_BUFFER_DURATION_SEC,
+                 input_rate);
+    }
+
+    // Calculate output writer buffer size (for file output)
+    if (app->module.pacing_is_required) {
+        size_t writer_buffer_bytes = (size_t)(
+            config->output_rate.target_rate *
+            OUTPUT_WRITER_BUFFER_DURATION_SEC *
+            app->module.output_bytes_per_sample_pair
+        );
+
+        if (writer_buffer_bytes < OUTPUT_WRITER_BUFFER_MIN_BYTES)
+            writer_buffer_bytes = OUTPUT_WRITER_BUFFER_MIN_BYTES;
+        if (writer_buffer_bytes > OUTPUT_WRITER_BUFFER_MAX_BYTES)
+            writer_buffer_bytes = OUTPUT_WRITER_BUFFER_MAX_BYTES;
+
+        app->pipeline.output_writer_buffer_size = writer_buffer_bytes;
+
+        log_info("Output Writer Buffer: %zu MB (%.1f seconds at %.0f Hz)",
+                 writer_buffer_bytes / (1024 * 1024),
+                 OUTPUT_WRITER_BUFFER_DURATION_SEC,
+                 config->output_rate.target_rate);
+    }
 
     return true;
 }

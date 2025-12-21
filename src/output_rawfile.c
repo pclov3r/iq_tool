@@ -154,7 +154,7 @@ static void* raw_out_run_writer(ModuleContext* ctx) {
     }
 
     while (true) {
-        size_t bytes_read = ring_buffer_read(app->pipeline.writer_input_buffer, local_write_buffer, IO_OUTPUT_WRITER_CHUNK_SIZE);
+        size_t bytes_read = ring_buffer_read(app->pipeline.writer_input_buffer, local_write_buffer, OUTPUT_WRITER_CHUNK_SIZE);
         if (bytes_read == 0) {
             break; // End of stream
         }

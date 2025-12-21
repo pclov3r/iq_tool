@@ -215,12 +215,12 @@ static bool _init_queues_and_buffers(AppConfig* config, AppContext* app) {
     }
 
     if (app->pipeline_mode != PIPELINE_MODE_FILE_PROCESSING) {
-        app->pipeline.sdr_input_buffer = ring_buffer_create(IO_SDR_INPUT_BUFFER_BYTES);
+        app->pipeline.sdr_input_buffer = ring_buffer_create(app->pipeline.input_buffer_size);
         if (!app->pipeline.sdr_input_buffer) return false;
     }
-    
+
     if (app->module.pacing_is_required) {
-        app->pipeline.writer_input_buffer = ring_buffer_create(IO_OUTPUT_WRITER_BUFFER_BYTES);
+        app->pipeline.writer_input_buffer = ring_buffer_create(app->pipeline.output_writer_buffer_size);
         if (!app->pipeline.writer_input_buffer) return false;
     }
 

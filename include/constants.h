@@ -19,7 +19,6 @@
 #define PRESETS_FILENAME "iq_tool_presets.conf"
 
 // Defines the interval in seconds for printing progress updates to the console.
-// Set to 0 to disable progress updates entirely.
 #define PROGRESS_UPDATE_INTERVAL_SECONDS 1
 
 // =============================================================================
@@ -49,35 +48,68 @@
 #define MEM_ARENA_SIZE_BYTES (16 * 1024 * 1024) // 16 MB
 
 /**
- * @def IO_SDR_INPUT_BUFFER_BYTES
- * @brief The size of the ring buffer between the SDR capture thread and the reader thread.
+ * @def INPUT_BUFFER_DURATION_SEC
+ * @brief Target duration (in seconds) for the input ring buffer.
  *
- * Purpose: To absorb latency spikes from the OS or SDR driver and prevent sample
- * drops during heavy processing. Critical for stability in buffered SDR mode.
+ * Purpose: Provides consistent latency tolerance across all sample rates.
+ * The actual buffer size is calculated as: sample_rate × duration × bytes_per_sample
+ *
+ * Trade-off: 5 seconds provides good protection against driver hiccups while
+ * remaining reasonable in memory usage. At 2.4 MHz this is ~48 MB, at 20 MHz ~400 MB.
  */
-#define IO_SDR_INPUT_BUFFER_BYTES (256 * 1024 * 1024) // 256 MB
+#define INPUT_BUFFER_DURATION_SEC 5.0f
 
 /**
- * @def IO_OUTPUT_WRITER_BUFFER_BYTES
- * @brief The size of the ring buffer between the post-processor thread and the writer thread.
+ * @def INPUT_BUFFER_MIN_BYTES
+ * @brief Minimum size for the input buffer (safety floor).
  *
- * Purpose: A large size is critical for absorbing I/O latency spikes from the
- * filesystem (e.g., from antivirus scans), preventing the real-time pipeline from stalling.
+ * Prevents excessively small buffers on very low sample rate signals.
  */
-#define IO_OUTPUT_WRITER_BUFFER_BYTES (1024 * 1024 * 1024) // 1 GB
+#define INPUT_BUFFER_MIN_BYTES (4 * 1024 * 1024) // 4 MB
 
 /**
- * @def IO_OUTPUT_WRITER_CHUNK_SIZE
+ * @def INPUT_BUFFER_MAX_BYTES
+ * @brief Maximum size for the input buffer (safety ceiling).
+ *
+ * Prevents excessive RAM usage on very high sample rate signals.
+ */
+#define INPUT_BUFFER_MAX_BYTES (512 * 1024 * 1024) // 512 MB
+
+/**
+ * @def OUTPUT_WRITER_BUFFER_DURATION_SEC
+ * @brief Target duration (in seconds) for the output writer ring buffer.
+ *
+ * Purpose: Absorbs filesystem I/O latency spikes (antivirus scans, etc.)
+ * to prevent pipeline stalls. 5 seconds is sufficient for most disk systems.
+ */
+#define OUTPUT_WRITER_BUFFER_DURATION_SEC 5.0f
+
+/**
+ * @def OUTPUT_WRITER_BUFFER_MIN_BYTES
+ * @brief Minimum size for the output writer buffer (safety floor).
+ */
+#define OUTPUT_WRITER_BUFFER_MIN_BYTES (4 * 1024 * 1024) // 4 MB
+
+/**
+ * @def OUTPUT_WRITER_BUFFER_MAX_BYTES
+ * @brief Maximum size for the output writer buffer (safety ceiling).
+ *
+ * Prevents excessive RAM usage. 2 GB is a reasonable upper bound.
+ */
+#define OUTPUT_WRITER_BUFFER_MAX_BYTES (2ULL * 1024 * 1024 * 1024) // 2 GB
+
+/**
+ * @def OUTPUT_WRITER_CHUNK_SIZE
  * @brief The size of the local buffer in the writer thread for disk writes.
  */
-#define IO_OUTPUT_WRITER_CHUNK_SIZE (1024 * 1024) // 1 MB
+#define OUTPUT_WRITER_CHUNK_SIZE (1024 * 1024) // 1 MB
 
 /**
- * @def IO_WRITER_BUFFER_HIGH_WATER_MARK
+ * @def OUTPUT_WRITER_BUFFER_HIGH_WATER_MARK
  * @brief The fullness threshold (as a fraction, 0.0-1.0) for the writer buffer
  *        that triggers back-pressure on the reader thread.
  */
-#define IO_WRITER_BUFFER_HIGH_WATER_MARK 0.95f
+#define OUTPUT_WRITER_BUFFER_HIGH_WATER_MARK 0.95f
 
 /**
  * @def PIPELINE_TARGET_BLOCK_SAMPLES

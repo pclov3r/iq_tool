@@ -154,6 +154,9 @@ typedef struct PipelineInfrastructure {
     size_t       num_chunks;
     unsigned int max_out_samples;
 
+    size_t input_buffer_size;
+    size_t output_writer_buffer_size;
+
     void*  sdr_deserializer_temp_buffer;
     size_t sdr_deserializer_buffer_size;
     void*  writer_local_buffer;

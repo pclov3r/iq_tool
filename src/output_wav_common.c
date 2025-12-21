@@ -125,7 +125,7 @@ void* wav_common_run_writer(ModuleContext* ctx) {
 
     // Main writer loop: read from ring buffer, write to file.
     while (true) {
-        size_t bytes_read = ring_buffer_read(app->pipeline.writer_input_buffer, local_buffer, IO_OUTPUT_WRITER_CHUNK_SIZE);
+        size_t bytes_read = ring_buffer_read(app->pipeline.writer_input_buffer, local_buffer, OUTPUT_WRITER_CHUNK_SIZE);
         if (bytes_read == 0) break; // End of stream or shutdown signal.
 
         sf_count_t written = sf_write_raw(data->handle, local_buffer, bytes_read);

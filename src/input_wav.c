@@ -640,7 +640,7 @@ static void* wav_start_stream(ModuleContext* ctx) {
 
     // Pre-calculate the back-pressure threshold in bytes for efficiency.
     const size_t writer_buffer_capacity = pacing_required ? ring_buffer_get_capacity(app->pipeline.writer_input_buffer) : 0;
-    const size_t writer_buffer_threshold = (size_t)(writer_buffer_capacity * IO_WRITER_BUFFER_HIGH_WATER_MARK);
+    const size_t writer_buffer_threshold = (size_t)(writer_buffer_capacity * OUTPUT_WRITER_BUFFER_HIGH_WATER_MARK);
 
     while (!is_shutdown_requested() && !app->stats.error_occurred) {
         if (pacing_required && (ring_buffer_get_size(app->pipeline.writer_input_buffer) > writer_buffer_threshold)) {
