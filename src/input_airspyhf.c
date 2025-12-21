@@ -48,7 +48,7 @@ static struct {
 // --- Private Module State ---
 typedef struct {
     struct airspyhf_device* dev;
-} AirspyHFPrivateData;
+} AirspyHFContext;
 
 
 void airspyhf_set_default_config(AppConfig* config) {
@@ -246,7 +246,7 @@ static bool airspyhf_input_initialize(ModuleContext* ctx) {
     int result;
     bool success = false;
 
-    AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(AirspyHFPrivateData), true);
+    AirspyHFContext* private_data = (AirspyHFContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(AirspyHFContext), true);
     if (!private_data) {
         return false;
     }
@@ -440,7 +440,7 @@ cleanup:
 
 static void* airspyhf_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)app->module.input_private_data;
+    AirspyHFContext* private_data = (AirspyHFContext*)app->module.input_private_data;
     int result;
     airspyhf_sample_block_cb_fn callback_fn;
 
@@ -470,7 +470,7 @@ static void* airspyhf_input_start_stream(ModuleContext* ctx) {
 
 static void airspyhf_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)app->module.input_private_data;
+    AirspyHFContext* private_data = (AirspyHFContext*)app->module.input_private_data;
     if (private_data && private_data->dev && airspyhf_is_streaming(private_data->dev)) {
         log_info("Stopping Airspy HF+ stream...");
         int result = airspyhf_stop(private_data->dev);
@@ -483,7 +483,7 @@ static void airspyhf_input_stop_stream(ModuleContext* ctx) {
 static void airspyhf_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
-        AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)app->module.input_private_data;
+        AirspyHFContext* private_data = (AirspyHFContext*)app->module.input_private_data;
         if (private_data->dev) {
             log_info("Closing Airspy HF+ device...");
             airspyhf_close(private_data->dev);

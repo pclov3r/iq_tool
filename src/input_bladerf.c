@@ -168,7 +168,7 @@ typedef struct {
     char serial[33];
     char display_name[128];
     void* stream_temp_buffer;
-} BladerfPrivateData;
+} BladerfContext;
 
 
 void bladerf_set_default_config(AppConfig* config) {
@@ -292,7 +292,7 @@ static bool bladerf_input_initialize(ModuleContext* ctx) {
 
     log_info("Attempting to initialize BladeRF device...");
 
-    BladerfPrivateData* private_data = (BladerfPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(BladerfPrivateData), true);
+    BladerfContext* private_data = (BladerfContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(BladerfContext), true);
     if (!private_data) goto cleanup; // mem_arena_alloc logs the error
 
     // Initialize state variables that the main cleanup function will check.
@@ -450,7 +450,7 @@ cleanup:
 static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel) {
     AppConfig *config = (AppConfig*)ctx->config;
     AppContext* app = ctx->app;
-    BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;
+    BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
     int status;
     
     log_debug("Enabling BladeRF 2.0 oversample feature for high-speed sampling.");
@@ -491,7 +491,7 @@ static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf
 static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel) {
     AppConfig *config = (AppConfig*)ctx->config;
     AppContext* app = ctx->app;
-    BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;
+    BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
     int status;
     
     bladerf_sample_rate requested_rate = (bladerf_sample_rate)config->sdr_general.sample_rate_hz;
@@ -530,7 +530,7 @@ static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_c
 static void* bladerf_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     const AppConfig *config = ctx->config;
-    BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;
+    BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
     int status;
     bladerf_channel rx_channel;
     struct bladerf_metadata meta;
@@ -634,7 +634,7 @@ static void* bladerf_input_start_stream(ModuleContext* ctx) {
 
 static void bladerf_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;
+    BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
     if (private_data && private_data->dev) {
         bladerf_channel rx_channel;
         if (strcmp(private_data->board_name, "bladerf2") == 0) {
@@ -653,7 +653,7 @@ static void bladerf_input_stop_stream(ModuleContext* ctx) {
 static void bladerf_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
-        BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;
+        BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
         if (private_data->dev) {
             log_info("Closing BladeRF device...");
             bladerf_close(private_data->dev);
@@ -668,7 +668,7 @@ static void bladerf_input_cleanup(ModuleContext* ctx) {
 static void bladerf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     AppContext* app = ctx->app;
-    BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;
+    BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
     add_summary_item(info, "Input Source", "%s", private_data->display_name);
 
     if (s_bladerf_config.active_bit_depth == 8) add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");

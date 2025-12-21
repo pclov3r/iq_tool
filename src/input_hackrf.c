@@ -47,7 +47,7 @@ static struct {
 // --- Private Module State ---
 typedef struct {
     hackrf_device* dev;
-} HackrfPrivateData;
+} HackrfContext;
 
 
 void hackrf_set_default_config(AppConfig* config) {
@@ -186,7 +186,7 @@ static bool hackrf_input_initialize(ModuleContext* ctx) {
     int result;
     bool success = false; // Assume failure until the very end
 
-    HackrfPrivateData* private_data = (HackrfPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(HackrfPrivateData), true);
+    HackrfContext* private_data = (HackrfContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(HackrfContext), true);
     if (!private_data) {
         return false; // mem_arena_alloc logs error, no app to clean up yet
     }
@@ -267,7 +267,7 @@ cleanup:
 
 static void* hackrf_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    HackrfPrivateData* private_data = (HackrfPrivateData*)app->module.input_private_data;
+    HackrfContext* private_data = (HackrfContext*)app->module.input_private_data;
     int result;
     hackrf_sample_block_cb_fn callback_fn;
 
@@ -297,7 +297,7 @@ static void* hackrf_input_start_stream(ModuleContext* ctx) {
 
 static void hackrf_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    HackrfPrivateData* private_data = (HackrfPrivateData*)app->module.input_private_data;
+    HackrfContext* private_data = (HackrfContext*)app->module.input_private_data;
     if (private_data && private_data->dev && hackrf_is_streaming(private_data->dev) == HACKRF_TRUE) {
         log_info("Stopping HackRF stream...");
         int result = hackrf_stop_rx(private_data->dev);
@@ -310,7 +310,7 @@ static void hackrf_input_stop_stream(ModuleContext* ctx) {
 static void hackrf_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
-        HackrfPrivateData* private_data = (HackrfPrivateData*)app->module.input_private_data;
+        HackrfContext* private_data = (HackrfContext*)app->module.input_private_data;
         if (private_data->dev) {
             log_info("Closing HackRF device...");
             hackrf_close(private_data->dev);

@@ -21,13 +21,13 @@ struct AppConfig;
 // --- Shared Data Structure ---
 
 /**
- * @struct WavCommonData
+ * @struct WavCommonContext
  * @brief Holds the private state for any libsndfile-based writer.
  */
 typedef struct {
     SNDFILE* handle;
     long long total_bytes_written;
-} WavCommonData;
+} WavCommonContext;
 
 
 // --- Shared Function Declarations ---

@@ -77,7 +77,7 @@ typedef struct {
     struct airspy_device* dev;
     enum airspy_sample_type sample_type;
     const char* board_name;         // "Airspy R2", "Airspy Mini", etc.
-} AirspyPrivateData;
+} AirspyContext;
 
 
 void airspy_set_default_config(AppConfig* config) {
@@ -321,7 +321,7 @@ static int airspy_input_buffered_stream_callback(airspy_transfer* transfer) {
 static void airspy_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppContext* app = ctx->app;
-    AirspyPrivateData* private_data = (AirspyPrivateData*)app->module.input_private_data;
+    AirspyContext* private_data = (AirspyContext*)app->module.input_private_data;
 
     // Use dynamic board name if available, else fallback
     const char* source_name = (private_data && private_data->board_name) ? private_data->board_name : "Airspy (Unknown)";
@@ -368,7 +368,7 @@ static bool airspy_input_initialize(ModuleContext* ctx) {
     int result;
     bool success = false;
 
-    AirspyPrivateData* private_data = (AirspyPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(AirspyPrivateData), true);
+    AirspyContext* private_data = (AirspyContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(AirspyContext), true);
     if (!private_data) {
         return false;
     }
@@ -610,7 +610,7 @@ cleanup:
 
 static void* airspy_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    AirspyPrivateData* private_data = (AirspyPrivateData*)app->module.input_private_data;
+    AirspyContext* private_data = (AirspyContext*)app->module.input_private_data;
     int result;
     airspy_sample_block_cb_fn callback_fn;
 
@@ -640,7 +640,7 @@ static void* airspy_input_start_stream(ModuleContext* ctx) {
 
 static void airspy_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    AirspyPrivateData* private_data = (AirspyPrivateData*)app->module.input_private_data;
+    AirspyContext* private_data = (AirspyContext*)app->module.input_private_data;
     if (private_data && private_data->dev && airspy_is_streaming(private_data->dev) == AIRSPY_TRUE) {
         log_info("Stopping Airspy stream...");
         int result = airspy_stop_rx(private_data->dev);
@@ -653,7 +653,7 @@ static void airspy_input_stop_stream(ModuleContext* ctx) {
 static void airspy_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
-        AirspyPrivateData* private_data = (AirspyPrivateData*)app->module.input_private_data;
+        AirspyContext* private_data = (AirspyContext*)app->module.input_private_data;
         if (private_data->dev) {
             log_info("Closing Airspy device...");
             airspy_close(private_data->dev);

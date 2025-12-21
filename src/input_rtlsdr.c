@@ -45,7 +45,7 @@ typedef struct {
     char product[256];
     char serial[256];
     unsigned char *passthrough_buffer;
-} RtlSdrPrivateData;
+} RtlSdrContext;
 
 
 void rtlsdr_set_default_config(AppConfig* config) {
@@ -205,7 +205,7 @@ static bool rtlsdr_input_initialize(ModuleContext* ctx) {
 
     log_info("Attempting to initialize RTL-SDR device...");
 
-    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RtlSdrPrivateData), true);
+    RtlSdrContext* private_data = (RtlSdrContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RtlSdrContext), true);
     if (!private_data) {
         return false;
     }
@@ -338,7 +338,7 @@ cleanup:
 
 static void* rtlsdr_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)app->module.input_private_data;
+    RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
     int result;
 
     switch (app->pipeline_mode) {
@@ -364,7 +364,7 @@ static void* rtlsdr_input_start_stream(ModuleContext* ctx) {
 
 static void rtlsdr_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)app->module.input_private_data;
+    RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
     if (private_data && private_data->dev) {
         log_info("Stopping RTL-SDR stream...");
         rtlsdr_cancel_async(private_data->dev);
@@ -374,7 +374,7 @@ static void rtlsdr_input_stop_stream(ModuleContext* ctx) {
 static void rtlsdr_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
-        RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)app->module.input_private_data;
+        RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
         if (private_data->dev) {
             log_info("Closing RTL-SDR device...");
             // Reset buffer to clear USB stalls before closing; prevents I2C errors
@@ -389,7 +389,7 @@ static void rtlsdr_input_cleanup(ModuleContext* ctx) {
 static void rtlsdr_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     AppContext* app = ctx->app;
-    RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)app->module.input_private_data;
+    RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
 
     char source_name_buf[775];
     snprintf(source_name_buf, sizeof(source_name_buf), "%s %s (S/N: %s)",

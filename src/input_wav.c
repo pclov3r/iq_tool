@@ -96,7 +96,7 @@ typedef struct {
     SNDFILE *infile;
     SdrMetadata sdr_info;
     bool sdr_info_present;
-} WavPrivateData;
+} WavInputContext;
 
 static void XMLCALL expat_start_element_handler(void *userData, const XML_Char *name, const XML_Char **atts);
 static bool _parse_auxi_xml_expat(const unsigned char *chunk_data, sf_count_t chunk_size, SdrMetadata *metadata);
@@ -469,7 +469,7 @@ InputModuleInterface* get_wav_input_module_api(void) {
 static void wav_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppContext* app = ctx->app;
-    WavPrivateData* private_data = (WavPrivateData*)app->module.input_private_data;
+    WavInputContext* private_data = (WavInputContext*)app->module.input_private_data;
 
     const char* display_path = config->input.path_arg;
 #ifdef _WIN32
@@ -540,7 +540,7 @@ static bool wav_input_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
     AppContext* app = ctx->app;
 
-    WavPrivateData* private_data = (WavPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(WavPrivateData), true);
+    WavInputContext* private_data = (WavInputContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(WavInputContext), true);
     if (!private_data) {
         return false;
     }
@@ -632,7 +632,7 @@ static bool wav_input_initialize(ModuleContext* ctx) {
 
 static void* wav_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    WavPrivateData* private_data = (WavPrivateData*)app->module.input_private_data;
+    WavInputContext* private_data = (WavInputContext*)app->module.input_private_data;
     const AppConfig *config = ctx->config;
 
     // This is now a clean, high-level check.
@@ -723,7 +723,7 @@ static void wav_input_stop_stream(ModuleContext* ctx) {
 static void wav_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
-        WavPrivateData* private_data = (WavPrivateData*)app->module.input_private_data;
+        WavInputContext* private_data = (WavInputContext*)app->module.input_private_data;
         if (private_data->infile) {
             log_info("Closing WAV input file.");
             sf_close(private_data->infile);
@@ -735,7 +735,7 @@ static void wav_input_cleanup(ModuleContext* ctx) {
 
 static bool wav_input_pre_stream_iq_correction(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
-    WavPrivateData* private_data = (WavPrivateData*)ctx->app->module.input_private_data;
+    WavInputContext* private_data = (WavInputContext*)ctx->app->module.input_private_data;
 
     // This routine is only necessary if I/Q correction is enabled.
     if (!config->dsp.iq_correction.enable) {

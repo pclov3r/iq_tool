@@ -19,14 +19,14 @@
 // --- Private Data ---
 typedef struct {
     long long total_bytes_written;
-} StdoutData;
+} StdoutContext;
 
 // --- Module Implementation ---
 
 static bool stdout_output_initialize(ModuleContext* ctx) {
     AppContext* app = ctx->app;
 
-    StdoutData* data = (StdoutData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(StdoutData), true);
+    StdoutContext* data = (StdoutContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(StdoutContext), true);
     if (!data) {
         return false;
     }
@@ -46,7 +46,7 @@ static bool stdout_output_initialize(ModuleContext* ctx) {
 
 static void* stdout_output_run_writer(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    StdoutData* data = (StdoutData*)app->module.output_private_data;
+    StdoutContext* data = (StdoutContext*)app->module.output_private_data;
 
     while (true) {
         SampleChunk* item = (SampleChunk*)queue_dequeue(app->pipeline.writer_input_queue);
@@ -88,7 +88,7 @@ static void* stdout_output_run_writer(ModuleContext* ctx) {
 
 static size_t stdout_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
     AppContext* app = ctx->app;
-    StdoutData* data = (StdoutData*)app->module.output_private_data;
+    StdoutContext* data = (StdoutContext*)app->module.output_private_data;
     if (!data) return 0;
 
     size_t written = fwrite(buffer, 1, bytes_to_write, stdout);
@@ -101,7 +101,7 @@ static size_t stdout_output_write_chunk(ModuleContext* ctx, const void* buffer, 
 static void stdout_output_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (!app->module.output_private_data) return;
-    StdoutData* data = (StdoutData*)app->module.output_private_data;
+    StdoutContext* data = (StdoutContext*)app->module.output_private_data;
 
     fflush(stdout);
     app->stats.final_output_size_bytes = data->total_bytes_written;

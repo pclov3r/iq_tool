@@ -192,7 +192,7 @@ typedef struct {
     // Scratch buffer for reading network payloads before stripping headers
     unsigned char* rx_buffer;
     size_t rx_buffer_size;
-} SpyServerClientPrivateData;
+} SpyServerClientContext;
 
 
 // --- CLI Options ---
@@ -277,7 +277,7 @@ static format_t get_internal_format_from_spyserver_enum(int spyserver_format) {
     return FORMAT_UNKNOWN;
 }
 
-static bool send_setting(SpyServerClientPrivateData* p, uint32_t setting, uint32_t value) {
+static bool send_setting(SpyServerClientContext* p, uint32_t setting, uint32_t value) {
     unsigned char command_buffer[sizeof(SpyServerCommandHeader) + sizeof(SpyServerSettingTarget)];
 
     SpyServerCommandHeader* header = (SpyServerCommandHeader*)command_buffer;
@@ -324,7 +324,7 @@ static bool spyserver_client_input_initialize(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
     AppContext* app = ctx->app;
 
-    SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(SpyServerClientPrivateData), true);
+    SpyServerClientContext* p = (SpyServerClientContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(SpyServerClientContext), true);
     if (!p) return false;
     app->module.input_private_data = p;
     p->net_ctx = NULL;
@@ -609,7 +609,7 @@ static void* spyserver_client_input_producer_thread(void* arg) {
 
     ModuleContext* ctx = (ModuleContext*)arg;
     AppContext* app = ctx->app;
-    SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->module.input_private_data;
+    SpyServerClientContext* p = (SpyServerClientContext*)app->module.input_private_data;
 
     while (!is_shutdown_requested()) {
         SpyServerMessageHeader header;
@@ -695,7 +695,7 @@ end_loop:;
 
 static void* spyserver_client_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->module.input_private_data;
+    SpyServerClientContext* p = (SpyServerClientContext*)app->module.input_private_data;
 
     if (!send_setting(p, SPYSERVER_SETTING_STREAMING_ENABLED, 1)) {
         handle_fatal_thread_error("Failed to start spyserver stream.", app);
@@ -799,7 +799,7 @@ static void* spyserver_client_input_start_stream(ModuleContext* ctx) {
 static void spyserver_client_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
-        SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->module.input_private_data;
+        SpyServerClientContext* p = (SpyServerClientContext*)app->module.input_private_data;
         if (p->stream_buffer) {
             ring_buffer_signal_shutdown(p->stream_buffer);
         }
@@ -809,7 +809,7 @@ static void spyserver_client_input_stop_stream(ModuleContext* ctx) {
 static void spyserver_client_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
-        SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->module.input_private_data;
+        SpyServerClientContext* p = (SpyServerClientContext*)app->module.input_private_data;
         if (p->stream_buffer) {
             ring_buffer_destroy(p->stream_buffer);
             p->stream_buffer = NULL;
@@ -825,7 +825,7 @@ static void spyserver_client_input_cleanup(ModuleContext* ctx) {
 }
 
 static void spyserver_client_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
-    const SpyServerClientPrivateData* p = (const SpyServerClientPrivateData*)ctx->app->module.input_private_data;
+    const SpyServerClientContext* p = (const SpyServerClientContext*)ctx->app->module.input_private_data;
     const AppContext* app = ctx->app;
     const AppConfig* config = ctx->config;
     char server_addr[256];

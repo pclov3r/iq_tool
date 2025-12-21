@@ -40,7 +40,7 @@ static struct {
 // This is the private data structure for the Raw File input module.
 typedef struct {
     SNDFILE *infile;
-} RawfilePrivateData;
+} RawfileInputContext;
 
 static const struct argparse_option rawfile_input_cli_options[] = {
     OPT_GROUP("Raw File Input (rawfile)"),
@@ -103,7 +103,7 @@ static bool rawfile_input_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
     AppContext* app = ctx->app;
 
-    RawfilePrivateData* private_data = (RawfilePrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RawfilePrivateData), true);
+    RawfileInputContext* private_data = (RawfileInputContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RawfileInputContext), true);
     if (!private_data) {
         return false;
     }
@@ -167,7 +167,7 @@ static bool rawfile_input_initialize(ModuleContext* ctx) {
 static void* rawfile_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     const AppConfig *config = ctx->config;
-    RawfilePrivateData* private_data = (RawfilePrivateData*)app->module.input_private_data;
+    RawfileInputContext* private_data = (RawfileInputContext*)app->module.input_private_data;
 
     if (config->dsp.raw_passthrough && app->module.input_format != config->output.format) {
         char error_buf[256];
@@ -265,7 +265,7 @@ static void rawfile_input_stop_stream(ModuleContext* ctx) {
 static void rawfile_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
-        RawfilePrivateData* private_data = (RawfilePrivateData*)app->module.input_private_data;
+        RawfileInputContext* private_data = (RawfileInputContext*)app->module.input_private_data;
         if (private_data->infile) {
             log_info("Closing RAW input file.");
             sf_close(private_data->infile);
@@ -297,7 +297,7 @@ static void rawfile_input_get_summary_info(const ModuleContext* ctx, InputSummar
 
 static bool rawfile_input_pre_stream_iq_correction(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
-    RawfilePrivateData* private_data = (RawfilePrivateData*)ctx->app->module.input_private_data;
+    RawfileInputContext* private_data = (RawfileInputContext*)ctx->app->module.input_private_data;
 
     // This routine is only necessary if I/Q correction is enabled.
     if (!config->dsp.iq_correction.enable) {

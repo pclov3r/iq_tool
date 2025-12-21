@@ -208,7 +208,7 @@ typedef struct {
     bool device_selected; // Tracks if SelectDevice was successful
     int16_t *interleave_buffer;
     bool is_streaming;
-} SdrplayPrivateData;
+} SdrplayContext;
 
 
 void sdrplay_set_default_config(AppConfig* config) {
@@ -404,7 +404,7 @@ static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz) {
 static void sdrplay_input_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext) {
     (void)params;
     AppContext* app = (AppContext*)cbContext;
-    SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->module.input_private_data;
+    SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
 
     // --- HEARTBEAT ---
     sdr_input_update_heartbeat(app);
@@ -443,7 +443,7 @@ static void sdrplay_input_buffered_stream_callback(short *xi, short *xq, sdrplay
 
 static void sdrplay_input_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext) {
     AppContext* app = (AppContext*)cbContext;
-    SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->module.input_private_data;
+    SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
 
     if (is_shutdown_requested() || app->stats.error_occurred) {
         return;
@@ -496,7 +496,7 @@ static void sdrplay_input_event_callback(sdrplay_api_EventT eventId, sdrplay_api
 static void sdrplay_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     AppContext* app = ctx->app;
-    SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->module.input_private_data;
+    SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
     if (!private_data || !private_data->sdr_device) return;
 
     char source_name_buf[128];
@@ -548,7 +548,7 @@ static bool sdrplay_input_initialize(ModuleContext* ctx) {
     sdrplay_api_ErrT err;
     bool success = false;
 
-    SdrplayPrivateData* private_data = (SdrplayPrivateData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(SdrplayPrivateData), true);
+    SdrplayContext* private_data = (SdrplayContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(SdrplayContext), true);
     if (!private_data) return false;
 
     // Allocate persistent scratch buffer for interleaving (64KB)
@@ -852,7 +852,7 @@ cleanup:
 
 static void* sdrplay_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->module.input_private_data;
+    SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
     sdrplay_api_CallbackFnsT cbFns;
     cbFns.StreamBCbFn = NULL;
     cbFns.EventCbFn = sdrplay_input_event_callback;
@@ -924,7 +924,7 @@ static void* sdrplay_input_start_stream(ModuleContext* ctx) {
 
 static void sdrplay_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->module.input_private_data;
+    SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
     if (private_data && private_data->sdr_device && private_data->is_streaming) {
         log_info("Stopping SDRplay stream...");
         private_data->is_streaming = false;
@@ -939,7 +939,7 @@ static void sdrplay_input_stop_stream(ModuleContext* ctx) {
 static void sdrplay_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
-        SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->module.input_private_data;
+        SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
         if (private_data->sdr_device && private_data->device_selected) {
             log_debug("Releasing SDRplay device handle...");
             sdrplay_api_ReleaseDevice(private_data->sdr_device);

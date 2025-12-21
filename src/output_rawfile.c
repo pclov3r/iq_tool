@@ -25,7 +25,7 @@
 typedef struct {
     FILE* handle;
     long long total_bytes_written;
-} RawOutData;
+} RawfileOutputContext;
 
 // --- Helper Functions (migrated from output_writer.c) ---
 static bool prompt_for_overwrite(const char* path_for_messages) {
@@ -122,7 +122,7 @@ static bool rawfile_output_initialize(ModuleContext* ctx) {
     const AppConfig* config = ctx->config;
     AppContext* app = ctx->app;
 
-    RawOutData* data = (RawOutData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RawOutData), true);
+    RawfileOutputContext* data = (RawfileOutputContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RawfileOutputContext), true);
     if (!data) {
         return false;
     }
@@ -145,7 +145,7 @@ static bool rawfile_output_initialize(ModuleContext* ctx) {
 
 static void* rawfile_output_run_writer(ModuleContext* ctx) {
     AppContext* app = ctx->app;
-    RawOutData* data = (RawOutData*)app->module.output_private_data;
+    RawfileOutputContext* data = (RawfileOutputContext*)app->module.output_private_data;
 
     unsigned char* local_write_buffer = (unsigned char*)app->pipeline.writer_local_buffer;
     if (!local_write_buffer) {
@@ -185,7 +185,7 @@ static void* rawfile_output_run_writer(ModuleContext* ctx) {
 
 static size_t rawfile_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
     AppContext* app = ctx->app;
-    RawOutData* data = (RawOutData*)app->module.output_private_data;
+    RawfileOutputContext* data = (RawfileOutputContext*)app->module.output_private_data;
     if (!data || !data->handle) return 0;
 
     size_t written = fwrite(buffer, 1, bytes_to_write, data->handle);
@@ -198,7 +198,7 @@ static size_t rawfile_output_write_chunk(ModuleContext* ctx, const void* buffer,
 static void rawfile_output_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (!app->module.output_private_data) return;
-    RawOutData* data = (RawOutData*)app->module.output_private_data;
+    RawfileOutputContext* data = (RawfileOutputContext*)app->module.output_private_data;
 
     if (data->handle) {
         fclose(data->handle);
