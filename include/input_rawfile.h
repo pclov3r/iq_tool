@@ -15,6 +15,6 @@ InputModuleInterface* get_raw_file_input_module_api(void);
 /**
  * @brief Returns the command-line options specific to the Raw File module.
  */
-const struct argparse_option* rawfile_get_cli_options(int* count);
+const struct argparse_option* raw_file_input_get_cli_options(int* count);
 
 #endif // INPUT_RAWFILE_H_

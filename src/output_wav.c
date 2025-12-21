@@ -32,6 +32,16 @@ static void wav_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* in
     add_summary_item(info, "Output Type", "WAV (Standard)");
 }
 
+static const struct argparse_option wav_output_cli_options[] = {
+    OPT_GROUP("WAV Output (wav)"),
+    OPT_GROUP("    (No module-specific options)"),
+};
+
+const struct argparse_option* wav_output_get_cli_options(int* count) {
+    *count = sizeof(wav_output_cli_options) / sizeof(wav_output_cli_options[0]);
+    return wav_output_cli_options;
+}
+
 /**
  * @brief The v-table (virtual function table) for the WAV output module.
  *
@@ -40,7 +50,7 @@ static void wav_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* in
  */
 static OutputModuleInterface wav_module_api = {
     .validate_options = wav_common_validate_options,  // Use common validation
-    .get_cli_options  = NULL,                         // No specific CLI options
+    .get_cli_options  = wav_output_get_cli_options,
     .initialize       = wav_initialize,               // Use our specific initializer
     .run_writer       = wav_common_run_writer,        // Use common writer thread loop
     .write_chunk      = wav_common_write_chunk,       // Use common direct-write function

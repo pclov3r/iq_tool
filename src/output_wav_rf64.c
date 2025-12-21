@@ -31,6 +31,16 @@ static void wav_rf64_get_summary_info(const ModuleContext* ctx, OutputSummaryInf
     add_summary_item(info, "Output Type", "WAV (RF64)");
 }
 
+static const struct argparse_option wav_rf64_output_cli_options[] = {
+    OPT_GROUP("WAV RF64 Output (wav-rf64)"),
+    OPT_GROUP("    (No module-specific options)"),
+};
+
+const struct argparse_option* wav_rf64_output_get_cli_options(int* count) {
+    *count = sizeof(wav_rf64_output_cli_options) / sizeof(wav_rf64_output_cli_options[0]);
+    return wav_rf64_output_cli_options;
+}
+
 /**
  * @brief The v-table for the WAV/RF64 output module.
  *
@@ -39,7 +49,7 @@ static void wav_rf64_get_summary_info(const ModuleContext* ctx, OutputSummaryInf
  */
 static OutputModuleInterface wav_rf64_module_api = {
     .validate_options = wav_common_validate_options,  // Use common validation
-    .get_cli_options  = NULL,                         // No specific CLI options
+    .get_cli_options  = wav_rf64_output_get_cli_options,
     .initialize       = wav_rf64_initialize,          // Use our specific initializer
     .run_writer       = wav_common_run_writer,        // Use common writer thread loop
     .write_chunk      = wav_common_write_chunk,       // Use common direct-write function

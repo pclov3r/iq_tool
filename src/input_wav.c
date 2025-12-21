@@ -438,7 +438,7 @@ static const struct argparse_option wav_cli_options[] = {
     OPT_FLOAT(0, "wav-center-target-freq", &s_wav_config.center_target_hz_arg, "Shift signal to a new target center frequency (e.g., 97.3e6)", NULL, 0, 0),
 };
 
-const struct argparse_option* wav_get_cli_options(int* count) {
+const struct argparse_option* wav_input_get_cli_options(int* count) {
     *count = sizeof(wav_cli_options) / sizeof(wav_cli_options[0]);
     return wav_cli_options;
 }

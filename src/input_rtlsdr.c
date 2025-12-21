@@ -52,7 +52,7 @@ void rtlsdr_set_default_config(AppConfig* config) {
     config->sdr_general.sample_rate_hz = RTLSDR_DEFAULT_SAMPLE_RATE;
 }
 
-static const struct argparse_option rtlsdr_cli_options[] = {
+static const struct argparse_option rtlsdr_input_cli_options[] = {
     OPT_GROUP("RTL-SDR Input (rtlsdr)"),
     OPT_INTEGER(0, "rtlsdr-device-idx", &s_rtlsdr_config.device_index, "Select specific RTL-SDR device by index (0-indexed). (Default: 0)", NULL, 0, 0),
     OPT_FLOAT(0, "rtlsdr-gain", &s_rtlsdr_config.rtlsdr_gain_db_arg, "Set manual tuner gain in dB (e.g., 28.0, 49.6). Disables AGC.", NULL, 0, 0),
@@ -60,9 +60,9 @@ static const struct argparse_option rtlsdr_cli_options[] = {
     OPT_INTEGER(0, "rtlsdr-direct-sampling", &s_rtlsdr_config.direct_sampling_mode, "Enable direct sampling mode for HF reception (1=I-branch, 2=Q-branch)", NULL, 0, 0),
 };
 
-const struct argparse_option* rtlsdr_get_cli_options(int* count) {
-    *count = sizeof(rtlsdr_cli_options) / sizeof(rtlsdr_cli_options[0]);
-    return rtlsdr_cli_options;
+const struct argparse_option* rtlsdr_input_get_cli_options(int* count) {
+    *count = sizeof(rtlsdr_input_cli_options) / sizeof(rtlsdr_input_cli_options[0]);
+    return rtlsdr_input_cli_options;
 }
 
 static bool rtlsdr_initialize(ModuleContext* ctx);

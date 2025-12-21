@@ -55,7 +55,7 @@ void airspyhf_set_default_config(AppConfig* config) {
     config->sdr_general.sample_rate_hz = AIRSPYHF_DEFAULT_SAMPLE_RATE;
 }
 
-static const struct argparse_option airspyhf_cli_options[] = {
+static const struct argparse_option airspyhf_input_cli_options[] = {
     OPT_GROUP("Airspy HF+ Input (airspyhf)"),
     OPT_STRING(0, "airspyhf-agc", &s_airspyhf_config.agc_mode, "AGC mode: 'off', 'low', or 'high'. (Default: high)", NULL, 0, 0),
     OPT_FLOAT(0, "airspyhf-attn", &s_airspyhf_config.attenuation, "Attenuation in dB (0.0 to 48.0). (Default: 0.0)", NULL, 0, 0),
@@ -64,9 +64,9 @@ static const struct argparse_option airspyhf_cli_options[] = {
     OPT_BOOLEAN(0, "airspyhf-no-lib-dsp", &s_airspyhf_config.lib_dsp_disabled, "Disable library DSP processing (IQ correction, DC removal, etc).", NULL, 0, 0),
 };
 
-const struct argparse_option* airspyhf_get_cli_options(int* count) {
-    *count = sizeof(airspyhf_cli_options) / sizeof(airspyhf_cli_options[0]);
-    return airspyhf_cli_options;
+const struct argparse_option* airspyhf_input_get_cli_options(int* count) {
+    *count = sizeof(airspyhf_input_cli_options) / sizeof(airspyhf_input_cli_options[0]);
+    return airspyhf_input_cli_options;
 }
 
 static bool airspyhf_initialize(ModuleContext* ctx);

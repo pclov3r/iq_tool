@@ -212,10 +212,20 @@ static void raw_out_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo
     add_summary_item(info, "Output Type", "RAW");
 }
 
+static const struct argparse_option raw_file_output_cli_options[] = {
+    OPT_GROUP("RAW File Output (raw-file)"),
+    OPT_GROUP("    (No module-specific options)"),
+};
+
+const struct argparse_option* raw_file_output_get_cli_options(int* count) {
+    *count = sizeof(raw_file_output_cli_options) / sizeof(raw_file_output_cli_options[0]);
+    return raw_file_output_cli_options;
+}
+
 // --- The V-Table ---
 static OutputModuleInterface raw_output_module_api = {
     .validate_options = NULL,
-    .get_cli_options = NULL,
+    .get_cli_options = raw_file_output_get_cli_options,
     .initialize = raw_out_initialize,
     .run_writer = raw_out_run_writer,
     .write_chunk = raw_out_write_chunk,

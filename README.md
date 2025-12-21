@@ -250,6 +250,22 @@ SpyServer Client Input (spyserver-client)
     --spyserver-client-gain=<int>             Set manual gain. Disables AGC. (Ignored on servers without gain control)
     --spyserver-client-sample-format=<str>    Select sample format {cu8|cs16|cs24|cf32}. Default is cu8.
 
+RAW File Output (raw-file)
+
+    (No module-specific options)
+
+WAV Output (wav)
+
+    (No module-specific options)
+
+WAV RF64 Output (wav-rf64)
+
+    (No module-specific options)
+
+Standard Output (stdout)
+
+    (No module-specific options)
+
 NRSC5 Output (nrsc5)
     --nrsc5-mode=<str>                        Set decoder mode {cs16-fm|cs16-am|cu8-fm|cu8-am}. (Default: cs16-fm)
     --nrsc5-program=<int>                     Select HD program/subchannel (0-7). (Required)

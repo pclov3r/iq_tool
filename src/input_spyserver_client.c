@@ -196,7 +196,7 @@ typedef struct {
 
 
 // --- CLI Options ---
-static const struct argparse_option spyserver_client_cli_options[] = {
+static const struct argparse_option spyserver_client_input_cli_options[] = {
     OPT_GROUP("SpyServer Client Input (spyserver-client)"),
     OPT_STRING(0, "spyserver-client-host", &s_spyserver_client_config.hostname, "Hostname or IP of the spyserver instance (Required).", NULL, 0, 0),
     OPT_INTEGER(0, "spyserver-client-port", &s_spyserver_client_config.port, "Port number of the spyserver instance (Required).", NULL, 0, 0),
@@ -204,9 +204,9 @@ static const struct argparse_option spyserver_client_cli_options[] = {
     OPT_STRING(0, "spyserver-client-sample-format", &s_spyserver_client_config.sample_format_str, "Select sample format {cu8|cs16|cs24|cf32}. Default is cu8.", NULL, 0, 0),
 };
 
-const struct argparse_option* spyserver_client_get_cli_options(int* count) {
-    *count = sizeof(spyserver_client_cli_options) / sizeof(spyserver_client_cli_options[0]);
-    return spyserver_client_cli_options;
+const struct argparse_option* spyserver_client_input_get_cli_options(int* count) {
+    *count = sizeof(spyserver_client_input_cli_options) / sizeof(spyserver_client_input_cli_options[0]);
+    return spyserver_client_input_cli_options;
 }
 
 // --- Default Configuration ---

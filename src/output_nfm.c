@@ -366,7 +366,7 @@ static void nfm_get_summary(const ModuleContext* ctx, OutputSummaryInfo* info) {
     add_summary_item(info, "Squelch", "%.0f dB", s_nfm_config.squelch_db);
 }
 
-static const struct argparse_option nfm_cli_options[] = {
+static const struct argparse_option nfm_output_cli_options[] = {
     OPT_GROUP("NFM Output (nfm)"),
     OPT_FLOAT(0, "nfm-gain", &s_nfm_config.gain, "Audio gain (default: 1.0)", NULL, 0, 0),
     OPT_FLOAT(0, "nfm-squelch", &s_nfm_config.squelch_db, "Squelch threshold in dB (default: -50.0)", NULL, 0, 0),
@@ -375,9 +375,9 @@ static const struct argparse_option nfm_cli_options[] = {
     OPT_BOOLEAN(0, "nfm-no-discriminator-filter", &s_nfm_config.disable_discriminator_filter, "Disable the discriminator filter.", NULL, 0, 0),
 };
 
-const struct argparse_option* nfm_get_cli_options(int* count) {
-    *count = sizeof(nfm_cli_options) / sizeof(nfm_cli_options[0]);
-    return nfm_cli_options;
+const struct argparse_option* nfm_output_get_cli_options(int* count) {
+    *count = sizeof(nfm_output_cli_options) / sizeof(nfm_output_cli_options[0]);
+    return nfm_output_cli_options;
 }
 
 static OutputModuleInterface nfm_api = {
@@ -386,7 +386,7 @@ static OutputModuleInterface nfm_api = {
     .finalize_output = nfm_finalize,
     .get_summary_info = nfm_get_summary,
     .validate_options = nfm_validate_options,
-    .get_cli_options = nfm_get_cli_options,
+    .get_cli_options = nfm_output_get_cli_options,
     .write_chunk = NULL
 };
 

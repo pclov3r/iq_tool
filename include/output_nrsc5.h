@@ -21,6 +21,6 @@ OutputModuleInterface* get_nrsc5_output_module_api(void);
  * @param[out] count A pointer to an integer that will be filled with the number of options.
  * @return A pointer to the array of argparse_option structs.
  */
-const struct argparse_option* nrsc5_get_cli_options(int* count);
+const struct argparse_option* nrsc5_output_get_cli_options(int* count);
 
 #endif // OUTPUT_NRSC5_H_

@@ -176,7 +176,7 @@ void bladerf_set_default_config(AppConfig* config) {
     s_bladerf_config.bandwidth_hz = BLADERF_DEFAULT_BANDWIDTH_HZ;
 }
 
-static const struct argparse_option bladerf_cli_options[] = {
+static const struct argparse_option bladerf_input_cli_options[] = {
     OPT_GROUP("BladeRF Input (bladerf)"),
     OPT_INTEGER(0, "bladerf-device-idx", &s_bladerf_config.device_index, "Select specific BladeRF device by index (0-indexed). (Default: 0)", NULL, 0, 0),
     OPT_STRING(0, "bladerf-load-fpga", &s_bladerf_config.fpga_file_path, "Load an FPGA bitstream from the specified file.", NULL, 0, 0),
@@ -186,9 +186,9 @@ static const struct argparse_option bladerf_cli_options[] = {
     OPT_INTEGER(0, "bladerf-bit-depth", &s_bladerf_config.bit_depth_arg, "Set capture bit depth {8|12}. 8-bit mode is for BladeRF 2.0 only. (Default: 12, auto-switches to 8 for rates > 61.44 MHz on BladeRF 2.0)", NULL, 0, 0),
 };
 
-const struct argparse_option* bladerf_get_cli_options(int* count) {
-    *count = sizeof(bladerf_cli_options) / sizeof(bladerf_cli_options[0]);
-    return bladerf_cli_options;
+const struct argparse_option* bladerf_input_get_cli_options(int* count) {
+    *count = sizeof(bladerf_input_cli_options) / sizeof(bladerf_input_cli_options[0]);
+    return bladerf_input_cli_options;
 }
 
 // Forward declarations for static functions

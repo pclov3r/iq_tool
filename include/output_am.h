@@ -8,6 +8,6 @@
 OutputModuleInterface* get_am_output_module_api(void);
 
 // CLI Options Getter (Needed for module registration)
-const struct argparse_option* am_get_cli_options(int* count);
+const struct argparse_option* am_output_get_cli_options(int* count);
 
 #endif // OUTPUT_AM_H

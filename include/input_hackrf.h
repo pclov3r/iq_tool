@@ -18,7 +18,7 @@ InputModuleInterface* get_hackrf_input_module_api(void);
 /**
  * @brief Returns the command-line options specific to the HackRF module.
  */
-const struct argparse_option* hackrf_get_cli_options(int* count);
+const struct argparse_option* hackrf_input_get_cli_options(int* count);
 
 /**
  * @brief Sets the default configuration values for the HackRF module.

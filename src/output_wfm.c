@@ -789,7 +789,7 @@ static void wfm_get_summary(const ModuleContext* ctx, OutputSummaryInfo* info) {
     add_summary_item(info, "Stereo Mode", "%s", mode);
 }
 
-static const struct argparse_option wfm_cli_options[] = {
+static const struct argparse_option wfm_output_cli_options[] = {
     OPT_GROUP("WFM Output (wfm)"),
     OPT_FLOAT(0, "wfm-de-emphasis-time", &s_wfm_config.deemph_us, "Set FM de-emphasis time constant in microseconds (default: 75.0).", NULL, 0, 0),
     OPT_FLOAT(0, "wfm-gain", &s_wfm_config.gain_val, "Set audio output gain (linear).", NULL, 0, 0),
@@ -803,9 +803,9 @@ static const struct argparse_option wfm_cli_options[] = {
 #endif
 };
 
-const struct argparse_option* wfm_get_cli_options(int* count) {
-    *count = sizeof(wfm_cli_options) / sizeof(wfm_cli_options[0]);
-    return wfm_cli_options;
+const struct argparse_option* wfm_output_get_cli_options(int* count) {
+    *count = sizeof(wfm_output_cli_options) / sizeof(wfm_output_cli_options[0]);
+    return wfm_output_cli_options;
 }
 
 static OutputModuleInterface wfm_api = {
@@ -814,7 +814,7 @@ static OutputModuleInterface wfm_api = {
     .finalize_output = wfm_finalize,
     .get_summary_info = wfm_get_summary,
     .validate_options = wfm_validate_options,
-    .get_cli_options = wfm_get_cli_options,
+    .get_cli_options = wfm_output_get_cli_options,
     .write_chunk = NULL
 };
 

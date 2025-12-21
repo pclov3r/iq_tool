@@ -112,10 +112,20 @@ static void stdout_out_get_summary_info(const ModuleContext* ctx, OutputSummaryI
     add_summary_item(info, "Output Type", "RAW Stream");
 }
 
+static const struct argparse_option stdout_output_cli_options[] = {
+    OPT_GROUP("Standard Output (stdout)"),
+    OPT_GROUP("    (No module-specific options)"),
+};
+
+const struct argparse_option* stdout_output_get_cli_options(int* count) {
+    *count = sizeof(stdout_output_cli_options) / sizeof(stdout_output_cli_options[0]);
+    return stdout_output_cli_options;
+}
+
 // --- The V-Table ---
 static OutputModuleInterface stdout_output_module_api = {
     .validate_options = NULL,
-    .get_cli_options = NULL,
+    .get_cli_options = stdout_output_get_cli_options,
     .initialize = stdout_out_initialize,
     .run_writer = stdout_out_run_writer,
     .write_chunk = stdout_out_write_chunk,

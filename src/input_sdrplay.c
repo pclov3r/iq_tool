@@ -222,7 +222,7 @@ void sdrplay_set_default_config(AppConfig* config) {
     s_sdrplay_config.notch_am = false;
 }
 
-static const struct argparse_option sdrplay_cli_options[] = {
+static const struct argparse_option sdrplay_input_cli_options[] = {
     OPT_GROUP("SDRplay Input (sdrplay)"),
     OPT_FLOAT(0, "sdrplay-bandwidth", &s_sdrplay_config.sdrplay_bandwidth_hz_arg, "Set analog bandwidth in Hz. (Optional, Default: 1.536e6)", NULL, 0, 0),
     OPT_INTEGER(0, "sdrplay-device-idx", &s_sdrplay_config.device_index, "Select specific SDRplay device by index (0-indexed). (Default: 0)", NULL, 0, 0),
@@ -237,9 +237,9 @@ static const struct argparse_option sdrplay_cli_options[] = {
     OPT_BOOLEAN(0, "sdrplay-notch-am", &s_sdrplay_config.notch_am, "Enable MW/AM Notch Filter (RSPduo Tuner A only).", NULL, 0, 0),
 };
 
-const struct argparse_option* sdrplay_get_cli_options(int* count) {
-    *count = sizeof(sdrplay_cli_options) / sizeof(sdrplay_cli_options[0]);
-    return sdrplay_cli_options;
+const struct argparse_option* sdrplay_input_get_cli_options(int* count) {
+    *count = sizeof(sdrplay_input_cli_options) / sizeof(sdrplay_input_cli_options[0]);
+    return sdrplay_input_cli_options;
 }
 
 static bool sdrplay_initialize(ModuleContext* ctx);

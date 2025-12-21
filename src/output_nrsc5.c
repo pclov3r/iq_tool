@@ -560,21 +560,21 @@ static void nrsc5_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* 
 }
 
 // --- CLI Options ---
-static const struct argparse_option nrsc5_cli_options[] = {
+static const struct argparse_option nrsc5_output_cli_options[] = {
     OPT_GROUP("NRSC5 Output (nrsc5)"),
     OPT_STRING(0, "nrsc5-mode", &s_nrsc5_config.mode_str, "Set decoder mode {cs16-fm|cs16-am|cu8-fm|cu8-am}. (Default: cs16-fm)", NULL, 0, 0),
     OPT_INTEGER(0, "nrsc5-program", &s_nrsc5_config.program_id, "Select HD program/subchannel (0-7). (Required)", NULL, 0, 0),
 };
 
-const struct argparse_option* nrsc5_get_cli_options(int* count) {
-    *count = sizeof(nrsc5_cli_options) / sizeof(nrsc5_cli_options[0]);
-    return nrsc5_cli_options;
+const struct argparse_option* nrsc5_output_get_cli_options(int* count) {
+    *count = sizeof(nrsc5_output_cli_options) / sizeof(nrsc5_output_cli_options[0]);
+    return nrsc5_output_cli_options;
 }
 
 // --- The V-Table ---
 static OutputModuleInterface nrsc5_module_api = {
     .validate_options = nrsc5_validate_options,
-    .get_cli_options  = nrsc5_get_cli_options,
+    .get_cli_options  = nrsc5_output_get_cli_options,
     .initialize       = nrsc5_initialize,
     .run_writer       = nrsc5_run_writer,
     .write_chunk      = NULL, // Not used, we use ring buffer

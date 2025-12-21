@@ -19,7 +19,7 @@ InputModuleInterface* get_sdrplay_input_module_api(void);
 /**
  * @brief Returns the command-line options specific to the SDRplay module.
  */
-const struct argparse_option* sdrplay_get_cli_options(int* count);
+const struct argparse_option* sdrplay_input_get_cli_options(int* count);
 
 /**
  * @brief Sets the default configuration values for the SDRplay module.

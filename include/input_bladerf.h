@@ -18,7 +18,7 @@ InputModuleInterface* get_bladerf_input_module_api(void);
 /**
  * @brief Returns the command-line options specific to the BladeRF module.
  */
-const struct argparse_option* bladerf_get_cli_options(int* count);
+const struct argparse_option* bladerf_input_get_cli_options(int* count);
 
 /**
  * @brief Sets the default configuration values for the BladeRF module.

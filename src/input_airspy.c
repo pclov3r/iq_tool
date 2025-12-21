@@ -92,7 +92,7 @@ void airspy_set_default_config(AppConfig* config) {
     s_airspy_config.airspy_vga_gain_arg = AIRSPY_DEFAULT_VGA_GAIN;
 }
 
-static const struct argparse_option airspy_cli_options[] = {
+static const struct argparse_option airspy_input_cli_options[] = {
     OPT_GROUP("Airspy Input (airspy)"),
     OPT_STRING(0, "airspy-gain-mode", &s_airspy_config.gain_mode, "Gain mode: 'linearity', 'sensitivity', or 'manual'. (Default: AGC)", NULL, 0, 0),
     OPT_INTEGER(0, "airspy-gain-value", &s_airspy_config.airspy_gain_value_arg, "Gain value for linearity/sensitivity modes (0-21). (Default: 10)", NULL, 0, 0),
@@ -104,9 +104,9 @@ static const struct argparse_option airspy_cli_options[] = {
     OPT_BOOLEAN(0, "airspy-packing", &s_airspy_config.packing_enabled, "Enable bit-packing mode (12-bit samples).", NULL, 0, 0),
 };
 
-const struct argparse_option* airspy_get_cli_options(int* count) {
-    *count = sizeof(airspy_cli_options) / sizeof(airspy_cli_options[0]);
-    return airspy_cli_options;
+const struct argparse_option* airspy_input_get_cli_options(int* count) {
+    *count = sizeof(airspy_input_cli_options) / sizeof(airspy_input_cli_options[0]);
+    return airspy_input_cli_options;
 }
 
 static bool airspy_initialize(ModuleContext* ctx);

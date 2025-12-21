@@ -498,16 +498,16 @@ static void am_get_summary(const ModuleContext* ctx, OutputSummaryInfo* info) {
     add_summary_item(info, "Filter Cutoff", "%.0f Hz", s_am_config.audio_cutoff);
 }
 
-static const struct argparse_option am_cli_options[] = {
+static const struct argparse_option am_output_cli_options[] = {
     OPT_GROUP("AM Output (am)"),
     OPT_FLOAT(0, "am-gain", &s_am_config.gain_val, "Set audio output gain (linear).", NULL, 0, 0),
     OPT_FLOAT(0, "am-cutoff", &s_am_config.audio_cutoff, "Set audio lowpass filter cutoff in Hz (default: 10000).", NULL, 0, 0),
     OPT_BOOLEAN(0, "am-envelope", &s_am_config.force_envelope, "Disable Synchronous AM (PLL) and use Magnitude Envelope Detection.", NULL, 0, 0),
 };
 
-const struct argparse_option* am_get_cli_options(int* count) {
-    *count = sizeof(am_cli_options) / sizeof(am_cli_options[0]);
-    return am_cli_options;
+const struct argparse_option* am_output_get_cli_options(int* count) {
+    *count = sizeof(am_output_cli_options) / sizeof(am_output_cli_options[0]);
+    return am_output_cli_options;
 }
 
 static OutputModuleInterface am_api = {
@@ -516,7 +516,7 @@ static OutputModuleInterface am_api = {
     .finalize_output = am_finalize,
     .get_summary_info = am_get_summary,
     .validate_options = am_validate_options,
-    .get_cli_options = am_get_cli_options,
+    .get_cli_options = am_output_get_cli_options,
     .write_chunk = NULL
 };
 
