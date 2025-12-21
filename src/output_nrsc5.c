@@ -319,7 +319,7 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
 
 // --- Module Interface Implementation ---
 
-static bool nrsc5_initialize(ModuleContext* ctx) {
+static bool nrsc5_output_initialize(ModuleContext* ctx) {
     AppContext* app = ctx->app;
 
     Nrsc5Context* p = (Nrsc5Context*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(Nrsc5Context), true);
@@ -386,7 +386,7 @@ static bool nrsc5_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* nrsc5_run_writer(ModuleContext* ctx) {
+static void* nrsc5_output_run_writer(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     Nrsc5Context* p = (Nrsc5Context*)app->module.output_private_data;
 
@@ -459,7 +459,7 @@ cleanup:
     return NULL;
 }
 
-static void nrsc5_finalize_output(ModuleContext* ctx) {
+static void nrsc5_output_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (!app->module.output_private_data) return;
     Nrsc5Context* p = (Nrsc5Context*)app->module.output_private_data;
@@ -479,7 +479,7 @@ static void nrsc5_finalize_output(ModuleContext* ctx) {
     }
 }
 
-static bool nrsc5_validate_options(AppConfig* config) {
+static bool nrsc5_output_validate_options(AppConfig* config) {
     // 1. Resolve Mode
     if (!s_nrsc5_config.mode_str) {
         s_nrsc5_config.active_mode = NRSC5_MODE_CS16_FM; // Default
@@ -544,7 +544,7 @@ static bool nrsc5_validate_options(AppConfig* config) {
     return true;
 }
 
-static void nrsc5_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
+static void nrsc5_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
     (void)ctx;
     add_summary_item(info, "Output Type", "NRSC5 (HD Radio Player)");
 
@@ -572,16 +572,16 @@ const struct argparse_option* nrsc5_output_get_cli_options(int* count) {
 }
 
 // --- The V-Table ---
-static OutputModuleInterface nrsc5_module_api = {
-    .validate_options = nrsc5_validate_options,
-    .get_cli_options  = nrsc5_output_get_cli_options,
-    .initialize       = nrsc5_initialize,
-    .run_writer       = nrsc5_run_writer,
-    .write_chunk      = NULL, // Not used, we use ring buffer
-    .finalize_output  = nrsc5_finalize_output,
-    .get_summary_info = nrsc5_get_summary_info,
+static OutputModuleInterface s_nrsc5_output_api = {
+    .validate_options = nrsc5_output_validate_options,
+    .get_cli_options = nrsc5_output_get_cli_options,
+    .initialize = nrsc5_output_initialize,
+    .run_writer = nrsc5_output_run_writer,
+    .write_chunk = NULL, // Not used, we use ring buffer
+    .cleanup = nrsc5_output_cleanup,
+    .get_summary_info = nrsc5_output_get_summary_info,
 };
 
 OutputModuleInterface* get_nrsc5_output_module_api(void) {
-    return &nrsc5_module_api;
+    return &s_nrsc5_output_api;
 }

@@ -42,42 +42,42 @@ typedef struct {
     SNDFILE *infile;
 } RawfilePrivateData;
 
-static const struct argparse_option raw_file_input_cli_options[] = {
-    OPT_GROUP("Raw File Input (raw-file)"),
+static const struct argparse_option rawfile_input_cli_options[] = {
+    OPT_GROUP("Raw File Input (rawfile)"),
     OPT_FLOAT(0, "raw-file-input-rate", &s_rawfile_config.raw_file_sample_rate_hz_arg, "(Required) The sample rate of the RAW input file.", NULL, 0, 0),
     OPT_STRING(0, "raw-file-input-sample-format", &s_rawfile_config.format_str, "(Required) The sample format of the RAW input file.", NULL, 0, 0),
 };
 
-const struct argparse_option* raw_file_input_get_cli_options(int* count) {
-    *count = sizeof(raw_file_input_cli_options) / sizeof(raw_file_input_cli_options[0]);
-    return raw_file_input_cli_options;
+const struct argparse_option* rawfile_input_get_cli_options(int* count) {
+    *count = sizeof(rawfile_input_cli_options) / sizeof(rawfile_input_cli_options[0]);
+    return rawfile_input_cli_options;
 }
 
-static bool rawfile_initialize(ModuleContext* ctx);
-static void* rawfile_start_stream(ModuleContext* ctx);
-static void rawfile_stop_stream(ModuleContext* ctx);
-static void rawfile_cleanup(ModuleContext* ctx);
-static void rawfile_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
-static bool rawfile_validate_options(AppConfig* config);
-static bool rawfile_pre_stream_iq_correction(ModuleContext* ctx);
+static bool rawfile_input_initialize(ModuleContext* ctx);
+static void* rawfile_input_start_stream(ModuleContext* ctx);
+static void rawfile_input_stop_stream(ModuleContext* ctx);
+static void rawfile_input_cleanup(ModuleContext* ctx);
+static void rawfile_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
+static bool rawfile_input_validate_options(AppConfig* config);
+static bool rawfile_input_pre_stream_iq_correction(ModuleContext* ctx);
 
-static InputModuleInterface raw_file_module_api = {
-    .initialize = rawfile_initialize,
-    .start_stream = rawfile_start_stream,
-    .stop_stream = rawfile_stop_stream,
-    .cleanup = rawfile_cleanup,
-    .get_summary_info = rawfile_get_summary_info,
-    .validate_options = rawfile_validate_options,
+static InputModuleInterface s_rawfile_input_api = {
+    .initialize = rawfile_input_initialize,
+    .start_stream = rawfile_input_start_stream,
+    .stop_stream = rawfile_input_stop_stream,
+    .cleanup = rawfile_input_cleanup,
+    .get_summary_info = rawfile_input_get_summary_info,
+    .validate_options = rawfile_input_validate_options,
     .has_known_length = _input_source_has_known_length_true,
     .validate_generic_options = NULL,
-    .pre_stream_iq_correction = rawfile_pre_stream_iq_correction,
+    .pre_stream_iq_correction = rawfile_input_pre_stream_iq_correction,
 };
 
-InputModuleInterface* get_raw_file_input_module_api(void) {
-    return &raw_file_module_api;
+InputModuleInterface* get_rawfile_input_module_api(void) {
+    return &s_rawfile_input_api;
 }
 
-static bool rawfile_validate_options(AppConfig* config) {
+static bool rawfile_input_validate_options(AppConfig* config) {
     (void)config;
     if (s_rawfile_config.raw_file_sample_rate_hz_arg > 0.0f) {
         s_rawfile_config.sample_rate_hz = (double)s_rawfile_config.raw_file_sample_rate_hz_arg;
@@ -99,7 +99,7 @@ static bool rawfile_validate_options(AppConfig* config) {
     return true;
 }
 
-static bool rawfile_initialize(ModuleContext* ctx) {
+static bool rawfile_input_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
     AppContext* app = ctx->app;
 
@@ -137,7 +137,7 @@ static bool rawfile_initialize(ModuleContext* ctx) {
         case CU32: format_code |= SF_FORMAT_PCM_32; break;
         case CF32: format_code |= SF_FORMAT_FLOAT;  break;
         default:
-            log_fatal("Internal error: unhandled format enum in rawfile_initialize.");
+            log_fatal("Internal error: unhandled format enum in rawfile_input_initialize.");
             return false;
     }
     sfinfo.format = format_code;
@@ -164,7 +164,7 @@ static bool rawfile_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* rawfile_start_stream(ModuleContext* ctx) {
+static void* rawfile_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     const AppConfig *config = ctx->config;
     RawfilePrivateData* private_data = (RawfilePrivateData*)app->module.input_private_data;
@@ -258,11 +258,11 @@ static void* rawfile_start_stream(ModuleContext* ctx) {
     return NULL;
 }
 
-static void rawfile_stop_stream(ModuleContext* ctx) {
+static void rawfile_input_stop_stream(ModuleContext* ctx) {
     (void)ctx;
 }
 
-static void rawfile_cleanup(ModuleContext* ctx) {
+static void rawfile_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
         RawfilePrivateData* private_data = (RawfilePrivateData*)app->module.input_private_data;
@@ -275,7 +275,7 @@ static void rawfile_cleanup(ModuleContext* ctx) {
     }
 }
 
-static void rawfile_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
+static void rawfile_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppContext* app = ctx->app;
     const char* display_path = config->input.path_arg;
@@ -295,7 +295,7 @@ static void rawfile_get_summary_info(const ModuleContext* ctx, InputSummaryInfo*
     add_summary_item(info, "Input File Size", "%s", format_file_size(file_size_bytes, size_buf, sizeof(size_buf)));
 }
 
-static bool rawfile_pre_stream_iq_correction(ModuleContext* ctx) {
+static bool rawfile_input_pre_stream_iq_correction(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
     RawfilePrivateData* private_data = (RawfilePrivateData*)ctx->app->module.input_private_data;
 

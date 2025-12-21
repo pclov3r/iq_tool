@@ -220,29 +220,29 @@ void spyserver_client_set_default_config(struct AppConfig* config) {
 }
 
 // --- Function Prototypes ---
-static void* spyserver_client_producer_thread(void* arg);
-static bool spyserver_client_initialize(ModuleContext* ctx);
-static void* spyserver_client_start_stream(ModuleContext* ctx);
-static void spyserver_client_stop_stream(ModuleContext* ctx);
-static void spyserver_client_cleanup(ModuleContext* ctx);
-static void spyserver_client_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
-static bool spyserver_client_validate_options(AppConfig* config);
+static void* spyserver_client_input_producer_thread(void* arg);
+static bool spyserver_client_input_initialize(ModuleContext* ctx);
+static void* spyserver_client_input_start_stream(ModuleContext* ctx);
+static void spyserver_client_input_stop_stream(ModuleContext* ctx);
+static void spyserver_client_input_cleanup(ModuleContext* ctx);
+static void spyserver_client_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
+static bool spyserver_client_input_validate_options(AppConfig* config);
 
 // --- The InputModuleInterface V-Table ---
-static InputModuleInterface spyserver_client_module_api = {
-    .initialize = spyserver_client_initialize,
-    .start_stream = spyserver_client_start_stream,
-    .stop_stream = spyserver_client_stop_stream,
-    .cleanup = spyserver_client_cleanup,
-    .get_summary_info = spyserver_client_get_summary_info,
-    .validate_options = spyserver_client_validate_options,
+static InputModuleInterface s_spyserver_client_input_api = {
+    .initialize = spyserver_client_input_initialize,
+    .start_stream = spyserver_client_input_start_stream,
+    .stop_stream = spyserver_client_input_stop_stream,
+    .cleanup = spyserver_client_input_cleanup,
+    .get_summary_info = spyserver_client_input_get_summary_info,
+    .validate_options = spyserver_client_input_validate_options,
     .validate_generic_options = NULL,
     .has_known_length = _input_source_has_known_length_false,
     .pre_stream_iq_correction = NULL
 };
 
 InputModuleInterface* get_spyserver_client_input_module_api(void) {
-    return &spyserver_client_module_api;
+    return &s_spyserver_client_input_api;
 }
 
 // --- Helper Functions for Protocol and Logic ---
@@ -292,7 +292,7 @@ static bool send_setting(SpyServerClientPrivateData* p, uint32_t setting, uint32
 }
 
 // --- Validation Function ---
-static bool spyserver_client_validate_options(AppConfig* config) {
+static bool spyserver_client_input_validate_options(AppConfig* config) {
     (void)config;
     if (s_spyserver_client_config.hostname == NULL) {
         log_fatal("Missing required argument: --spyserver-client-host <address>");
@@ -320,7 +320,7 @@ static bool spyserver_client_validate_options(AppConfig* config) {
 }
 
 // --- Main Module Implementations ---
-static bool spyserver_client_initialize(ModuleContext* ctx) {
+static bool spyserver_client_input_initialize(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
     AppContext* app = ctx->app;
 
@@ -604,7 +604,7 @@ static bool spyserver_client_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* spyserver_client_producer_thread(void* arg) {
+static void* spyserver_client_input_producer_thread(void* arg) {
     platform_set_thread_priority(PRIORITY_REALTIME, "SpyServer Producer");
 
     ModuleContext* ctx = (ModuleContext*)arg;
@@ -693,7 +693,7 @@ end_loop:;
     return NULL;
 }
 
-static void* spyserver_client_start_stream(ModuleContext* ctx) {
+static void* spyserver_client_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->module.input_private_data;
 
@@ -703,7 +703,7 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
     }
 
     pthread_t producer_thread_id;
-    if (pthread_create(&producer_thread_id, NULL, spyserver_client_producer_thread, ctx) != 0) {
+    if (pthread_create(&producer_thread_id, NULL, spyserver_client_input_producer_thread, ctx) != 0) {
         handle_fatal_thread_error("Failed to create spyserver producer thread.", app);
         return NULL;
     }
@@ -796,7 +796,7 @@ static void* spyserver_client_start_stream(ModuleContext* ctx) {
     return NULL;
 }
 
-static void spyserver_client_stop_stream(ModuleContext* ctx) {
+static void spyserver_client_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
         SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->module.input_private_data;
@@ -806,7 +806,7 @@ static void spyserver_client_stop_stream(ModuleContext* ctx) {
     }
 }
 
-static void spyserver_client_cleanup(ModuleContext* ctx) {
+static void spyserver_client_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
         SpyServerClientPrivateData* p = (SpyServerClientPrivateData*)app->module.input_private_data;
@@ -824,7 +824,7 @@ static void spyserver_client_cleanup(ModuleContext* ctx) {
     log_info("Exiting SpyServer client...");
 }
 
-static void spyserver_client_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
+static void spyserver_client_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const SpyServerClientPrivateData* p = (const SpyServerClientPrivateData*)ctx->app->module.input_private_data;
     const AppContext* app = ctx->app;
     const AppConfig* config = ctx->config;

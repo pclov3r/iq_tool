@@ -169,7 +169,7 @@ typedef struct OutputModuleInterface {
     size_t (*write_chunk)(struct ModuleContext* ctx, const void* buffer, size_t bytes_to_write);
 
     // Finalizes the output (e.g., updates WAV headers) and closes handles
-    void (*finalize_output)(struct ModuleContext* ctx);
+    void (*cleanup)(struct ModuleContext* ctx);
 
     // Populates a summary struct with output details
     // CHANGE THIS LINE to use the new type.

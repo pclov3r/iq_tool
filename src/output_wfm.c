@@ -255,7 +255,7 @@ static void miniaudio_data_callback(ma_device* pDevice, void* pOutput, const voi
 
 // --- Module Interface Implementation ---
 
-static bool wfm_validate_options(AppConfig* config) {
+static bool wfm_output_validate_options(AppConfig* config) {
     // 1. Force Pipeline Format to CF32
     // We need high-precision float I/Q for the FM demodulator.
     config->output.format = CF32; 
@@ -286,7 +286,7 @@ static bool wfm_validate_options(AppConfig* config) {
     return true;
 }
 
-static bool wfm_initialize(ModuleContext* ctx) {
+static bool wfm_output_initialize(ModuleContext* ctx) {
     AppContext* res = ctx->app;
 
     // Windows: stdout defaults to text mode (\n -> \r\n), which corrupts binary I/Q data.
@@ -420,7 +420,7 @@ static bool wfm_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* wfm_run_writer(ModuleContext* ctx) {
+static void* wfm_output_run_writer(ModuleContext* ctx) {
     AppContext* res = ctx->app;
     WfmContext* p = (WfmContext*)res->module.output_private_data;
 
@@ -746,7 +746,7 @@ cleanup:
     return NULL;
 }
 
-static void wfm_finalize(ModuleContext* ctx) {
+static void wfm_output_cleanup(ModuleContext* ctx) {
     AppContext* res = ctx->app;
     if (!res->module.output_private_data) return;
     WfmContext* p = (WfmContext*)res->module.output_private_data;
@@ -777,7 +777,7 @@ static void wfm_finalize(ModuleContext* ctx) {
 #endif
 }
 
-static void wfm_get_summary(const ModuleContext* ctx, OutputSummaryInfo* info) {
+static void wfm_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
     (void)ctx;
     add_summary_item(info, "Output Type", "WFM Stereo Audio");
     add_summary_item(info, "Audio Rate", "%d Hz", AUDIO_SAMPLE_RATE);
@@ -808,16 +808,16 @@ const struct argparse_option* wfm_output_get_cli_options(int* count) {
     return wfm_output_cli_options;
 }
 
-static OutputModuleInterface wfm_api = {
-    .initialize = wfm_initialize,
-    .run_writer = wfm_run_writer,
-    .finalize_output = wfm_finalize,
-    .get_summary_info = wfm_get_summary,
-    .validate_options = wfm_validate_options,
+static OutputModuleInterface s_wfm_output_api = {
+    .initialize = wfm_output_initialize,
+    .run_writer = wfm_output_run_writer,
+    .cleanup = wfm_output_cleanup,
+    .get_summary_info = wfm_output_get_summary_info,
+    .validate_options = wfm_output_validate_options,
     .get_cli_options = wfm_output_get_cli_options,
     .write_chunk = NULL
 };
 
 OutputModuleInterface* get_wfm_output_module_api(void) {
-    return &wfm_api;
+    return &s_wfm_output_api;
 }

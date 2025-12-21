@@ -58,6 +58,6 @@ size_t wav_common_write_chunk(ModuleContext* ctx, const void* buffer, size_t byt
 /**
  * @brief Finalizes the WAV/RF64 file by closing the handle and updating final size.
  */
-void wav_common_finalize_output(ModuleContext* ctx);
+void wav_common_cleanup(ModuleContext* ctx);
 
 #endif // OUTPUT_WAV_COMMON_H_

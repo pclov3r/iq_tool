@@ -23,7 +23,7 @@ typedef struct {
 
 // --- Module Implementation ---
 
-static bool stdout_out_initialize(ModuleContext* ctx) {
+static bool stdout_output_initialize(ModuleContext* ctx) {
     AppContext* app = ctx->app;
 
     StdoutData* data = (StdoutData*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(StdoutData), true);
@@ -44,7 +44,7 @@ static bool stdout_out_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* stdout_out_run_writer(ModuleContext* ctx) {
+static void* stdout_output_run_writer(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     StdoutData* data = (StdoutData*)app->module.output_private_data;
 
@@ -86,7 +86,7 @@ static void* stdout_out_run_writer(ModuleContext* ctx) {
     return NULL;
 }
 
-static size_t stdout_out_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
+static size_t stdout_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
     AppContext* app = ctx->app;
     StdoutData* data = (StdoutData*)app->module.output_private_data;
     if (!data) return 0;
@@ -98,7 +98,7 @@ static size_t stdout_out_write_chunk(ModuleContext* ctx, const void* buffer, siz
     return written;
 }
 
-static void stdout_out_finalize_output(ModuleContext* ctx) {
+static void stdout_output_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (!app->module.output_private_data) return;
     StdoutData* data = (StdoutData*)app->module.output_private_data;
@@ -107,7 +107,7 @@ static void stdout_out_finalize_output(ModuleContext* ctx) {
     app->stats.final_output_size_bytes = data->total_bytes_written;
 }
 
-static void stdout_out_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
+static void stdout_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
     (void)ctx;
     add_summary_item(info, "Output Type", "RAW Stream");
 }
@@ -123,17 +123,17 @@ const struct argparse_option* stdout_output_get_cli_options(int* count) {
 }
 
 // --- The V-Table ---
-static OutputModuleInterface stdout_output_module_api = {
+static OutputModuleInterface s_stdout_output_api = {
     .validate_options = NULL,
     .get_cli_options = stdout_output_get_cli_options,
-    .initialize = stdout_out_initialize,
-    .run_writer = stdout_out_run_writer,
-    .write_chunk = stdout_out_write_chunk,
-    .finalize_output = stdout_out_finalize_output,
-    .get_summary_info = stdout_out_get_summary_info,
+    .initialize = stdout_output_initialize,
+    .run_writer = stdout_output_run_writer,
+    .write_chunk = stdout_output_write_chunk,
+    .cleanup = stdout_output_cleanup,
+    .get_summary_info = stdout_output_get_summary_info,
 };
 
 // --- Public Getter ---
 OutputModuleInterface* get_stdout_output_module_api(void) {
-    return &stdout_output_module_api;
+    return &s_stdout_output_api;
 }

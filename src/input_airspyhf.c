@@ -69,33 +69,33 @@ const struct argparse_option* airspyhf_input_get_cli_options(int* count) {
     return airspyhf_input_cli_options;
 }
 
-static bool airspyhf_initialize(ModuleContext* ctx);
-static void* airspyhf_start_stream(ModuleContext* ctx);
-static void airspyhf_stop_stream(ModuleContext* ctx);
-static void airspyhf_cleanup(ModuleContext* ctx);
-static void airspyhf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
-static bool airspyhf_validate_options(AppConfig* config);
-static bool airspyhf_validate_generic_options(const AppConfig* config);
-static int airspyhf_buffered_stream_callback(airspyhf_transfer_t* transfer);
+static bool airspyhf_input_initialize(ModuleContext* ctx);
+static void* airspyhf_input_start_stream(ModuleContext* ctx);
+static void airspyhf_input_stop_stream(ModuleContext* ctx);
+static void airspyhf_input_cleanup(ModuleContext* ctx);
+static void airspyhf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
+static bool airspyhf_input_validate_options(AppConfig* config);
+static bool airspyhf_input_validate_generic_options(const AppConfig* config);
+static int airspyhf_input_buffered_stream_callback(airspyhf_transfer_t* transfer);
 
 
-static InputModuleInterface airspyhf_module_api = {
-    .initialize = airspyhf_initialize,
-    .start_stream = airspyhf_start_stream,
-    .stop_stream = airspyhf_stop_stream,
-    .cleanup = airspyhf_cleanup,
-    .get_summary_info = airspyhf_get_summary_info,
-    .validate_options = airspyhf_validate_options,
-    .validate_generic_options = airspyhf_validate_generic_options,
+static InputModuleInterface s_airspyhf_input_api = {
+    .initialize = airspyhf_input_initialize,
+    .start_stream = airspyhf_input_start_stream,
+    .stop_stream = airspyhf_input_stop_stream,
+    .cleanup = airspyhf_input_cleanup,
+    .get_summary_info = airspyhf_input_get_summary_info,
+    .validate_options = airspyhf_input_validate_options,
+    .validate_generic_options = airspyhf_input_validate_generic_options,
     .has_known_length = _input_source_has_known_length_false,
     .pre_stream_iq_correction = NULL
 };
 
 InputModuleInterface* get_airspyhf_input_module_api(void) {
-    return &airspyhf_module_api;
+    return &s_airspyhf_input_api;
 }
 
-static bool airspyhf_validate_generic_options(const AppConfig* config) {
+static bool airspyhf_input_validate_generic_options(const AppConfig* config) {
     if (!config->sdr_general.rf_freq_provided) {
         log_error("Airspy HF+ input requires the --sdr-rf-freq option.");
         return false;
@@ -103,7 +103,7 @@ static bool airspyhf_validate_generic_options(const AppConfig* config) {
     return true;
 }
 
-static bool airspyhf_validate_options(AppConfig* config) {
+static bool airspyhf_input_validate_options(AppConfig* config) {
     // AGC Mode Validation
     if (s_airspyhf_config.agc_mode) {
         s_airspyhf_config.agc_mode_provided = true;
@@ -175,7 +175,7 @@ static bool airspyhf_validate_options(AppConfig* config) {
     return true;
 }
 
-static int airspyhf_buffered_stream_callback(airspyhf_transfer_t* transfer) {
+static int airspyhf_input_buffered_stream_callback(airspyhf_transfer_t* transfer) {
     AppContext* app = (AppContext*)transfer->ctx;
 
     // --- HEARTBEAT ---
@@ -206,7 +206,7 @@ static int airspyhf_buffered_stream_callback(airspyhf_transfer_t* transfer) {
 
 
 
-static void airspyhf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
+static void airspyhf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppContext* app = ctx->app;
 
@@ -240,7 +240,7 @@ static void airspyhf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo
     add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
-static bool airspyhf_initialize(ModuleContext* ctx) {
+static bool airspyhf_input_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
     AppContext* app = ctx->app;
     int result;
@@ -433,12 +433,12 @@ static bool airspyhf_initialize(ModuleContext* ctx) {
 
 cleanup:
     if (!success) {
-        // Cleanup will be handled by airspyhf_cleanup()
+        // Cleanup will be handled by airspyhf_input_cleanup()
     }
     return success;
 }
 
-static void* airspyhf_start_stream(ModuleContext* ctx) {
+static void* airspyhf_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)app->module.input_private_data;
     int result;
@@ -446,7 +446,7 @@ static void* airspyhf_start_stream(ModuleContext* ctx) {
 
     // Logic unified to Buffered Mode
     log_info("Starting airspyhf stream...");
-    callback_fn = airspyhf_buffered_stream_callback;
+    callback_fn = airspyhf_input_buffered_stream_callback;
 
     result = airspyhf_start(private_data->dev, callback_fn, app);
     if (result != AIRSPYHF_SUCCESS) {
@@ -462,13 +462,13 @@ static void* airspyhf_start_stream(ModuleContext* ctx) {
     }
 
     if (!is_shutdown_requested()) {
-        airspyhf_stop_stream(ctx);
+        airspyhf_input_stop_stream(ctx);
     }
 
     return NULL;
 }
 
-static void airspyhf_stop_stream(ModuleContext* ctx) {
+static void airspyhf_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)app->module.input_private_data;
     if (private_data && private_data->dev && airspyhf_is_streaming(private_data->dev)) {
@@ -480,7 +480,7 @@ static void airspyhf_stop_stream(ModuleContext* ctx) {
     }
 }
 
-static void airspyhf_cleanup(ModuleContext* ctx) {
+static void airspyhf_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
         AirspyHFPrivateData* private_data = (AirspyHFPrivateData*)app->module.input_private_data;

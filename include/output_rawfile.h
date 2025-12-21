@@ -12,13 +12,13 @@
  * @brief Returns a pointer to the OutputModuleInterface struct that implements
  *        the output module interface for raw file output.
  */
-OutputModuleInterface* get_raw_file_output_module_api(void);
+OutputModuleInterface* get_rawfile_output_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the Raw File output module.
  * @param count Pointer to store the number of options returned.
  * @return Pointer to an array of argparse_option structs.
  */
-const struct argparse_option* raw_file_output_get_cli_options(int* count);
+const struct argparse_option* rawfile_output_get_cli_options(int* count);
 
 #endif // OUTPUT_RAW_FILE_H_

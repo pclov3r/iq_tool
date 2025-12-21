@@ -680,8 +680,8 @@ void cleanup_application(AppConfig *config, AppContext* app) {
     if (!app) return;
     ModuleContext ctx = { .config = config, .app = app };
 
-    if (app->module.output_api && app->module.output_api->finalize_output) {
-        app->module.output_api->finalize_output(&ctx);
+    if (app->module.output_api && app->module.output_api->cleanup) {
+        app->module.output_api->cleanup(&ctx);
     }
 
     if (app->pipeline.chunk_data_pool) {

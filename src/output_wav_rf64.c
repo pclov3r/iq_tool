@@ -18,7 +18,7 @@
  * This function's sole responsibility is to pass the specific format flag
  * for RF64 files to the shared initialization logic.
  */
-static bool wav_rf64_initialize(ModuleContext* ctx) {
+static bool wav_rf64_output_initialize(ModuleContext* ctx) {
     // Call the common implementation, specifying the RF64 format.
     return wav_common_initialize(ctx, SF_FORMAT_RF64);
 }
@@ -26,7 +26,7 @@ static bool wav_rf64_initialize(ModuleContext* ctx) {
 /**
  * @brief Populates the summary info for a WAV/RF64 output.
  */
-static void wav_rf64_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
+static void wav_rf64_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
     (void)ctx; // Unused in this simple implementation
     add_summary_item(info, "Output Type", "WAV (RF64)");
 }
@@ -47,19 +47,19 @@ const struct argparse_option* wav_rf64_output_get_cli_options(int* count) {
  * This struct wires up the public interface to the functions in this file
  * and the shared functions from the common WAV module.
  */
-static OutputModuleInterface wav_rf64_module_api = {
+static OutputModuleInterface s_wav_rf64_output_api = {
     .validate_options = wav_common_validate_options,  // Use common validation
     .get_cli_options  = wav_rf64_output_get_cli_options,
-    .initialize       = wav_rf64_initialize,          // Use our specific initializer
+    .initialize       = wav_rf64_output_initialize,          // Use our specific initializer
     .run_writer       = wav_common_run_writer,        // Use common writer thread loop
     .write_chunk      = wav_common_write_chunk,       // Use common direct-write function
-    .finalize_output  = wav_common_finalize_output,   // Use common finalizer
-    .get_summary_info = wav_rf64_get_summary_info,    // Use our specific summary function
+    .cleanup = wav_common_cleanup,   // Use common finalizer
+    .get_summary_info = wav_rf64_output_get_summary_info,    // Use our specific summary function
 };
 
 /**
  * @brief Public getter for the WAV/RF64 output module's interface.
  */
 OutputModuleInterface* get_wav_rf64_output_module_api(void) {
-    return &wav_rf64_module_api;
+    return &s_wav_rf64_output_api;
 }

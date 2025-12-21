@@ -443,30 +443,30 @@ const struct argparse_option* wav_input_get_cli_options(int* count) {
     return wav_cli_options;
 }
 
-static bool wav_initialize(ModuleContext* ctx);
-static void* wav_start_stream(ModuleContext* ctx);
-static void wav_stop_stream(ModuleContext* ctx);
-static void wav_cleanup(ModuleContext* ctx);
-static void wav_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
-static bool wav_pre_stream_iq_correction(ModuleContext* ctx);
+static bool wav_input_initialize(ModuleContext* ctx);
+static void* wav_input_start_stream(ModuleContext* ctx);
+static void wav_input_stop_stream(ModuleContext* ctx);
+static void wav_input_cleanup(ModuleContext* ctx);
+static void wav_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
+static bool wav_input_pre_stream_iq_correction(ModuleContext* ctx);
 
-static InputModuleInterface wav_module_api = {
-    .initialize = wav_initialize,
-    .start_stream = wav_start_stream,
-    .stop_stream = wav_stop_stream,
-    .cleanup = wav_cleanup,
-    .get_summary_info = wav_get_summary_info,
+static InputModuleInterface s_wav_input_api = {
+    .initialize = wav_input_initialize,
+    .start_stream = wav_input_start_stream,
+    .stop_stream = wav_input_stop_stream,
+    .cleanup = wav_input_cleanup,
+    .get_summary_info = wav_input_get_summary_info,
     .has_known_length = _input_source_has_known_length_true,
     .validate_options = NULL,
     .validate_generic_options = NULL,
-    .pre_stream_iq_correction = wav_pre_stream_iq_correction,
+    .pre_stream_iq_correction = wav_input_pre_stream_iq_correction,
 };
 
 InputModuleInterface* get_wav_input_module_api(void) {
-    return &wav_module_api;
+    return &s_wav_input_api;
 }
 
-static void wav_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
+static void wav_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppContext* app = ctx->app;
     WavPrivateData* private_data = (WavPrivateData*)app->module.input_private_data;
@@ -536,7 +536,7 @@ static void wav_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* inf
     }
 }
 
-static bool wav_initialize(ModuleContext* ctx) {
+static bool wav_input_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
     AppContext* app = ctx->app;
 
@@ -630,7 +630,7 @@ static bool wav_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* wav_start_stream(ModuleContext* ctx) {
+static void* wav_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     WavPrivateData* private_data = (WavPrivateData*)app->module.input_private_data;
     const AppConfig *config = ctx->config;
@@ -716,11 +716,11 @@ static void* wav_start_stream(ModuleContext* ctx) {
     return NULL;
 }
 
-static void wav_stop_stream(ModuleContext* ctx) {
+static void wav_input_stop_stream(ModuleContext* ctx) {
     (void)ctx;
 }
 
-static void wav_cleanup(ModuleContext* ctx) {
+static void wav_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
         WavPrivateData* private_data = (WavPrivateData*)app->module.input_private_data;
@@ -733,7 +733,7 @@ static void wav_cleanup(ModuleContext* ctx) {
     }
 }
 
-static bool wav_pre_stream_iq_correction(ModuleContext* ctx) {
+static bool wav_input_pre_stream_iq_correction(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
     WavPrivateData* private_data = (WavPrivateData*)ctx->app->module.input_private_data;
 

@@ -192,35 +192,35 @@ const struct argparse_option* bladerf_input_get_cli_options(int* count) {
 }
 
 // Forward declarations for static functions
-static bool bladerf_initialize(ModuleContext* ctx);
-static void* bladerf_start_stream(ModuleContext* ctx);
-static void bladerf_stop_stream(ModuleContext* ctx);
-static void bladerf_cleanup(ModuleContext* ctx);
-static void bladerf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
-static bool bladerf_validate_options(AppConfig* config);
-static bool bladerf_validate_generic_options(const AppConfig* config);
+static bool bladerf_input_initialize(ModuleContext* ctx);
+static void* bladerf_input_start_stream(ModuleContext* ctx);
+static void bladerf_input_stop_stream(ModuleContext* ctx);
+static void bladerf_input_cleanup(ModuleContext* ctx);
+static void bladerf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
+static bool bladerf_input_validate_options(AppConfig* config);
+static bool bladerf_input_validate_generic_options(const AppConfig* config);
 static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev);
 static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel);
 static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel);
 
 
-static InputModuleInterface bladerf_module_api = {
-    .initialize = bladerf_initialize,
-    .start_stream = bladerf_start_stream,
-    .stop_stream = bladerf_stop_stream,
-    .cleanup = bladerf_cleanup,
-    .get_summary_info = bladerf_get_summary_info,
-    .validate_options = bladerf_validate_options,
-    .validate_generic_options = bladerf_validate_generic_options,
+static InputModuleInterface s_bladerf_input_api = {
+    .initialize = bladerf_input_initialize,
+    .start_stream = bladerf_input_start_stream,
+    .stop_stream = bladerf_input_stop_stream,
+    .cleanup = bladerf_input_cleanup,
+    .get_summary_info = bladerf_input_get_summary_info,
+    .validate_options = bladerf_input_validate_options,
+    .validate_generic_options = bladerf_input_validate_generic_options,
     .has_known_length = _input_source_has_known_length_false,
     .pre_stream_iq_correction = NULL
 };
 
 InputModuleInterface* get_bladerf_input_module_api(void) {
-    return &bladerf_module_api;
+    return &s_bladerf_input_api;
 }
 
-static bool bladerf_validate_generic_options(const AppConfig* config) {
+static bool bladerf_input_validate_generic_options(const AppConfig* config) {
     if (!config->sdr_general.rf_freq_provided) {
         log_fatal("BladeRF input requires the --sdr-rf-freq option.");
         return false;
@@ -228,7 +228,7 @@ static bool bladerf_validate_generic_options(const AppConfig* config) {
     return true;
 }
 
-static bool bladerf_validate_options(AppConfig* config) {
+static bool bladerf_input_validate_options(AppConfig* config) {
     if (s_bladerf_config.bladerf_gain_arg != 0) {
         s_bladerf_config.gain = (int)s_bladerf_config.bladerf_gain_arg;
         s_bladerf_config.gain_provided = true;
@@ -283,7 +283,7 @@ static bool bladerf_validate_options(AppConfig* config) {
     return true;
 }
 
-static bool bladerf_initialize(ModuleContext* ctx) {
+static bool bladerf_input_initialize(ModuleContext* ctx) {
     AppConfig *config = (AppConfig*)ctx->config;
     AppContext* app = ctx->app;
     int status;
@@ -527,7 +527,7 @@ static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_c
 }
 
 
-static void* bladerf_start_stream(ModuleContext* ctx) {
+static void* bladerf_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     const AppConfig *config = ctx->config;
     BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;
@@ -628,11 +628,11 @@ static void* bladerf_start_stream(ModuleContext* ctx) {
         }
     }
     
-    if (!is_shutdown_requested()) bladerf_stop_stream(ctx);
+    if (!is_shutdown_requested()) bladerf_input_stop_stream(ctx);
     return NULL;
 }
 
-static void bladerf_stop_stream(ModuleContext* ctx) {
+static void bladerf_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;
     if (private_data && private_data->dev) {
@@ -650,7 +650,7 @@ static void bladerf_stop_stream(ModuleContext* ctx) {
     }
 }
 
-static void bladerf_cleanup(ModuleContext* ctx) {
+static void bladerf_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
         BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;
@@ -665,7 +665,7 @@ static void bladerf_cleanup(ModuleContext* ctx) {
 #endif
 }
 
-static void bladerf_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
+static void bladerf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     AppContext* app = ctx->app;
     BladerfPrivateData* private_data = (BladerfPrivateData*)app->module.input_private_data;

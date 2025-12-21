@@ -162,7 +162,7 @@ size_t wav_common_write_chunk(ModuleContext* ctx, const void* buffer, size_t byt
     return (size_t)written;
 }
 
-void wav_common_finalize_output(ModuleContext* ctx) {
+void wav_common_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (!app->module.output_private_data) return;
     WavCommonData* data = (WavCommonData*)app->module.output_private_data;

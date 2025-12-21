@@ -65,14 +65,14 @@ const struct argparse_option* rtlsdr_input_get_cli_options(int* count) {
     return rtlsdr_input_cli_options;
 }
 
-static bool rtlsdr_initialize(ModuleContext* ctx);
-static void* rtlsdr_start_stream(ModuleContext* ctx);
-static void rtlsdr_stop_stream(ModuleContext* ctx);
-static void rtlsdr_cleanup(ModuleContext* ctx);
-static void rtlsdr_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
-static bool rtlsdr_validate_options(AppConfig* config);
-static bool rtlsdr_validate_generic_options(const AppConfig* config);
-static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ctx);
+static bool rtlsdr_input_initialize(ModuleContext* ctx);
+static void* rtlsdr_input_start_stream(ModuleContext* ctx);
+static void rtlsdr_input_stop_stream(ModuleContext* ctx);
+static void rtlsdr_input_cleanup(ModuleContext* ctx);
+static void rtlsdr_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
+static bool rtlsdr_input_validate_options(AppConfig* config);
+static bool rtlsdr_input_validate_generic_options(const AppConfig* config);
+static void rtlsdr_input_stream_callback(unsigned char *buf, uint32_t len, void *cb_ctx);
 
 static int rtlsdr_find_nearest_gain(rtlsdr_dev_t *dev,
                                     int requested_gain_tenths,
@@ -118,23 +118,23 @@ static const char* get_tuner_name_from_enum(enum rtlsdr_tuner tuner_type) {
     }
 }
 
-static InputModuleInterface rtlsdr_module_api = {
-    .initialize = rtlsdr_initialize,
-    .start_stream = rtlsdr_start_stream,
-    .stop_stream = rtlsdr_stop_stream,
-    .cleanup = rtlsdr_cleanup,
-    .get_summary_info = rtlsdr_get_summary_info,
-    .validate_options = rtlsdr_validate_options,
-    .validate_generic_options = rtlsdr_validate_generic_options,
+static InputModuleInterface s_rtlsdr_input_api = {
+    .initialize = rtlsdr_input_initialize,
+    .start_stream = rtlsdr_input_start_stream,
+    .stop_stream = rtlsdr_input_stop_stream,
+    .cleanup = rtlsdr_input_cleanup,
+    .get_summary_info = rtlsdr_input_get_summary_info,
+    .validate_options = rtlsdr_input_validate_options,
+    .validate_generic_options = rtlsdr_input_validate_generic_options,
     .has_known_length = _input_source_has_known_length_false,
     .pre_stream_iq_correction = NULL
 };
 
 InputModuleInterface* get_rtlsdr_input_module_api(void) {
-    return &rtlsdr_module_api;
+    return &s_rtlsdr_input_api;
 }
 
-static bool rtlsdr_validate_generic_options(const AppConfig* config) {
+static bool rtlsdr_input_validate_generic_options(const AppConfig* config) {
     if (!config->sdr_general.rf_freq_provided) {
         log_fatal("RTL-SDR input requires the --sdr-rf-freq option.");
         return false;
@@ -142,7 +142,7 @@ static bool rtlsdr_validate_generic_options(const AppConfig* config) {
     return true;
 }
 
-static bool rtlsdr_validate_options(AppConfig* config) {
+static bool rtlsdr_input_validate_options(AppConfig* config) {
     if (s_rtlsdr_config.rtlsdr_gain_db_arg != 0.0f) {
         s_rtlsdr_config.gain = (int)(s_rtlsdr_config.rtlsdr_gain_db_arg * 10.0f);
         s_rtlsdr_config.gain_provided = true;
@@ -170,7 +170,7 @@ static bool rtlsdr_validate_options(AppConfig* config) {
     return true;
 }
 
-static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ctx) {
+static void rtlsdr_input_stream_callback(unsigned char *buf, uint32_t len, void *cb_ctx) {
     AppContext* app = (AppContext*)cb_ctx;
 
     // --- HEARTBEAT ---
@@ -195,7 +195,7 @@ static void rtlsdr_stream_callback(unsigned char *buf, uint32_t len, void *cb_ct
     }
 }
 
-static bool rtlsdr_initialize(ModuleContext* ctx) {
+static bool rtlsdr_input_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
     AppContext* app = ctx->app;
     int result;
@@ -336,7 +336,7 @@ cleanup:
     return success;
 }
 
-static void* rtlsdr_start_stream(ModuleContext* ctx) {
+static void* rtlsdr_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)app->module.input_private_data;
     int result;
@@ -345,7 +345,7 @@ static void* rtlsdr_start_stream(ModuleContext* ctx) {
         case PIPELINE_MODE_BUFFERED_INPUT:
             log_info("Starting RTL-SDR stream");
             // NOTE: rtlsdr_read_async BLOCKS until the stream stops or is cancelled.
-            result = rtlsdr_read_async(private_data->dev, rtlsdr_stream_callback, app, 0, 0);
+            result = rtlsdr_read_async(private_data->dev, rtlsdr_input_stream_callback, app, 0, 0);
 
             if (result < 0) {
                 char error_buf[256];
@@ -362,7 +362,7 @@ static void* rtlsdr_start_stream(ModuleContext* ctx) {
     return NULL;
 }
 
-static void rtlsdr_stop_stream(ModuleContext* ctx) {
+static void rtlsdr_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)app->module.input_private_data;
     if (private_data && private_data->dev) {
@@ -371,7 +371,7 @@ static void rtlsdr_stop_stream(ModuleContext* ctx) {
     }
 }
 
-static void rtlsdr_cleanup(ModuleContext* ctx) {
+static void rtlsdr_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
         RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)app->module.input_private_data;
@@ -386,7 +386,7 @@ static void rtlsdr_cleanup(ModuleContext* ctx) {
     }
 }
 
-static void rtlsdr_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
+static void rtlsdr_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     AppContext* app = ctx->app;
     RtlSdrPrivateData* private_data = (RtlSdrPrivateData*)app->module.input_private_data;

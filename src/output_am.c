@@ -148,7 +148,7 @@ static void miniaudio_data_callback(ma_device* pDevice, void* pOutput, const voi
 
 // --- Module Interface Implementation ---
 
-static bool am_validate_options(AppConfig* config) {
+static bool am_output_validate_options(AppConfig* config) {
     config->output.format = CF32;
 
     if (config->output_rate.target_rate == 0.0) {
@@ -169,7 +169,7 @@ static bool am_validate_options(AppConfig* config) {
     return true;
 }
 
-static bool am_initialize(ModuleContext* ctx) {
+static bool am_output_initialize(ModuleContext* ctx) {
     AppContext* res = ctx->app;
 
     AmContext* p = (AmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(AmContext), true);
@@ -274,7 +274,7 @@ static bool am_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* am_run_writer(ModuleContext* ctx) {
+static void* am_output_run_writer(ModuleContext* ctx) {
     AppContext* res = ctx->app;
     AmContext* p = (AmContext*)res->module.output_private_data;
 
@@ -476,7 +476,7 @@ cleanup:
     return NULL;
 }
 
-static void am_finalize(ModuleContext* ctx) {
+static void am_output_cleanup(ModuleContext* ctx) {
     AppContext* res = ctx->app;
     if (!res->module.output_private_data) return;
     AmContext* p = (AmContext*)res->module.output_private_data;
@@ -490,7 +490,7 @@ static void am_finalize(ModuleContext* ctx) {
     if (p->resamp_out) msresamp_rrrf_destroy(p->resamp_out);
 }
 
-static void am_get_summary(const ModuleContext* ctx, OutputSummaryInfo* info) {
+static void am_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
     (void)ctx;
     add_summary_item(info, "Output Type", "AM Audio");
     add_summary_item(info, "Mode", "%s", s_am_config.force_envelope ? "Envelope (Mag)" : "Synchronous (PLL)");
@@ -510,16 +510,16 @@ const struct argparse_option* am_output_get_cli_options(int* count) {
     return am_output_cli_options;
 }
 
-static OutputModuleInterface am_api = {
-    .initialize = am_initialize,
-    .run_writer = am_run_writer,
-    .finalize_output = am_finalize,
-    .get_summary_info = am_get_summary,
-    .validate_options = am_validate_options,
+static OutputModuleInterface s_am_output_api = {
+    .initialize = am_output_initialize,
+    .run_writer = am_output_run_writer,
+    .cleanup = am_output_cleanup,
+    .get_summary_info = am_output_get_summary_info,
+    .validate_options = am_output_validate_options,
     .get_cli_options = am_output_get_cli_options,
     .write_chunk = NULL
 };
 
 OutputModuleInterface* get_am_output_module_api(void) {
-    return &am_api;
+    return &s_am_output_api;
 }

@@ -242,35 +242,35 @@ const struct argparse_option* sdrplay_input_get_cli_options(int* count) {
     return sdrplay_input_cli_options;
 }
 
-static bool sdrplay_initialize(ModuleContext* ctx);
-static void* sdrplay_start_stream(ModuleContext* ctx);
-static void sdrplay_stop_stream(ModuleContext* ctx);
-static void sdrplay_cleanup(ModuleContext* ctx);
-static void sdrplay_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
-static bool sdrplay_validate_options(AppConfig* config);
-static bool sdrplay_validate_generic_options(const AppConfig* config);
+static bool sdrplay_input_initialize(ModuleContext* ctx);
+static void* sdrplay_input_start_stream(ModuleContext* ctx);
+static void sdrplay_input_stop_stream(ModuleContext* ctx);
+static void sdrplay_input_cleanup(ModuleContext* ctx);
+static void sdrplay_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
+static bool sdrplay_input_validate_options(AppConfig* config);
+static bool sdrplay_input_validate_generic_options(const AppConfig* config);
 static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz);
-static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext);
-static void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext);
+static void sdrplay_input_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext);
+static void sdrplay_input_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext);
 
 
-static InputModuleInterface sdrplay_module_api = {
-    .initialize = sdrplay_initialize,
-    .start_stream = sdrplay_start_stream,
-    .stop_stream = sdrplay_stop_stream,
-    .cleanup = sdrplay_cleanup,
-    .get_summary_info = sdrplay_get_summary_info,
-    .validate_options = sdrplay_validate_options,
-    .validate_generic_options = sdrplay_validate_generic_options,
+static InputModuleInterface s_sdrplay_input_api = {
+    .initialize = sdrplay_input_initialize,
+    .start_stream = sdrplay_input_start_stream,
+    .stop_stream = sdrplay_input_stop_stream,
+    .cleanup = sdrplay_input_cleanup,
+    .get_summary_info = sdrplay_input_get_summary_info,
+    .validate_options = sdrplay_input_validate_options,
+    .validate_generic_options = sdrplay_input_validate_generic_options,
     .has_known_length = _input_source_has_known_length_false,
     .pre_stream_iq_correction = NULL
 };
 
 InputModuleInterface* get_sdrplay_input_module_api(void) {
-    return &sdrplay_module_api;
+    return &s_sdrplay_input_api;
 }
 
-static bool sdrplay_validate_generic_options(const AppConfig* config) {
+static bool sdrplay_input_validate_generic_options(const AppConfig* config) {
     if (!config->sdr_general.rf_freq_provided) {
         log_error("SDRplay input requires the --sdr-rf-freq option.");
         return false;
@@ -278,7 +278,7 @@ static bool sdrplay_validate_generic_options(const AppConfig* config) {
     return true;
 }
 
-static bool sdrplay_validate_options(AppConfig* config) {
+static bool sdrplay_input_validate_options(AppConfig* config) {
     if (s_sdrplay_config.lna_state != 0) {
         s_sdrplay_config.lna_state_provided = true;
     } else {
@@ -401,7 +401,7 @@ static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz) {
 // sdrplay_realtime_stream_callback removed by refactor
 
 
-static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext) {
+static void sdrplay_input_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext) {
     (void)params;
     AppContext* app = (AppContext*)cbContext;
     SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->module.input_private_data;
@@ -441,7 +441,7 @@ static void sdrplay_buffered_stream_callback(short *xi, short *xq, sdrplay_api_S
     }
 }
 
-static void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext) {
+static void sdrplay_input_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext) {
     AppContext* app = (AppContext*)cbContext;
     SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->module.input_private_data;
 
@@ -493,7 +493,7 @@ static void sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api_Tuner
     }
 }
 
-static void sdrplay_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
+static void sdrplay_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     AppContext* app = ctx->app;
     SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->module.input_private_data;
@@ -542,7 +542,7 @@ static void sdrplay_get_summary_info(const ModuleContext* ctx, InputSummaryInfo*
     add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
-static bool sdrplay_initialize(ModuleContext* ctx) {
+static bool sdrplay_input_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
     AppContext* app = ctx->app;
     sdrplay_api_ErrT err;
@@ -841,7 +841,7 @@ cleanup:
         }
         if (private_data && private_data->sdr_api_is_open) {
             sdrplay_api_Close();
-            private_data->sdr_api_is_open = false; // Prevent double close in sdrplay_cleanup
+            private_data->sdr_api_is_open = false; // Prevent double close in sdrplay_input_cleanup
         }
 #if defined(_WIN32)
         sdrplay_unload_api();
@@ -850,16 +850,16 @@ cleanup:
     return success;
 }
 
-static void* sdrplay_start_stream(ModuleContext* ctx) {
+static void* sdrplay_input_start_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->module.input_private_data;
     sdrplay_api_CallbackFnsT cbFns;
     cbFns.StreamBCbFn = NULL;
-    cbFns.EventCbFn = sdrplay_event_callback;
+    cbFns.EventCbFn = sdrplay_input_event_callback;
 
     // Logic unified to Buffered Mode
     log_info("Starting sdrplay stream...");
-    cbFns.StreamACbFn = sdrplay_buffered_stream_callback;
+    cbFns.StreamACbFn = sdrplay_input_buffered_stream_callback;
 
     sdrplay_api_ErrT err = sdrplay_api_Init(private_data->sdr_device->dev, &cbFns, app);
     if (err == sdrplay_api_Success) private_data->is_streaming = true;
@@ -916,13 +916,13 @@ static void* sdrplay_start_stream(ModuleContext* ctx) {
     }
 
     if (!is_shutdown_requested()) {
-        sdrplay_stop_stream(ctx);
+        sdrplay_input_stop_stream(ctx);
     }
 
     return NULL;
 }
 
-static void sdrplay_stop_stream(ModuleContext* ctx) {
+static void sdrplay_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->module.input_private_data;
     if (private_data && private_data->sdr_device && private_data->is_streaming) {
@@ -936,7 +936,7 @@ static void sdrplay_stop_stream(ModuleContext* ctx) {
     }
 }
 
-static void sdrplay_cleanup(ModuleContext* ctx) {
+static void sdrplay_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
         SdrplayPrivateData* private_data = (SdrplayPrivateData*)app->module.input_private_data;

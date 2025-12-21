@@ -108,7 +108,7 @@ static void miniaudio_data_callback(ma_device* pDevice, void* pOutput, const voi
 
 // --- Module Interface ---
 
-static bool nfm_validate_options(AppConfig* config) {
+static bool nfm_output_validate_options(AppConfig* config) {
     config->output.format = CF32;
 
     // 1. Default to NFM_DEFAULT_INPUT_RATE (48k) if not specified
@@ -128,7 +128,7 @@ static bool nfm_validate_options(AppConfig* config) {
     return true;
 }
 
-static bool nfm_initialize(ModuleContext* ctx) {
+static bool nfm_output_initialize(ModuleContext* ctx) {
     AppContext* res = ctx->app;
     NfmContext* p = (NfmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(NfmContext), true);
     res->module.output_private_data = p;
@@ -191,7 +191,7 @@ static bool nfm_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* nfm_run_writer(ModuleContext* ctx) {
+static void* nfm_output_run_writer(ModuleContext* ctx) {
     AppContext* res = ctx->app;
     NfmContext* p = (NfmContext*)res->module.output_private_data;
 
@@ -341,7 +341,7 @@ cleanup:
     return NULL;
 }
 
-static void nfm_finalize(ModuleContext* ctx) {
+static void nfm_output_cleanup(ModuleContext* ctx) {
     AppContext* res = ctx->app;
     if (!res->module.output_private_data) return;
     NfmContext* p = (NfmContext*)res->module.output_private_data;
@@ -354,7 +354,7 @@ static void nfm_finalize(ModuleContext* ctx) {
     if (p->resampler) msresamp_rrrf_destroy(p->resampler);
 }
 
-static void nfm_get_summary(const ModuleContext* ctx, OutputSummaryInfo* info) {
+static void nfm_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
     (void)ctx;
     const char* mode = s_nfm_config.is_narrow ? "Narrow (2.5k Dev)" : "Standard (5k Dev)";
     // Fixed typo here: Eiscriminator -> Discriminator
@@ -380,16 +380,16 @@ const struct argparse_option* nfm_output_get_cli_options(int* count) {
     return nfm_output_cli_options;
 }
 
-static OutputModuleInterface nfm_api = {
-    .initialize = nfm_initialize,
-    .run_writer = nfm_run_writer,
-    .finalize_output = nfm_finalize,
-    .get_summary_info = nfm_get_summary,
-    .validate_options = nfm_validate_options,
+static OutputModuleInterface s_nfm_output_api = {
+    .initialize = nfm_output_initialize,
+    .run_writer = nfm_output_run_writer,
+    .cleanup = nfm_output_cleanup,
+    .get_summary_info = nfm_output_get_summary_info,
+    .validate_options = nfm_output_validate_options,
     .get_cli_options = nfm_output_get_cli_options,
     .write_chunk = NULL
 };
 
 OutputModuleInterface* get_nfm_output_module_api(void) {
-    return &nfm_api;
+    return &s_nfm_output_api;
 }
