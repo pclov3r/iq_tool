@@ -189,8 +189,8 @@ set(COMPILE_WITH_FFAST_MATH_SOURCES
     src/agc.c
     src/dc_block.c
     src/filter.c
-    src/frequency_shift.c
-    src/iq_correct.c
+    src/freq_shift.c
+    src/iq_correction.c
     src/output_am.c
     src/output_nfm.c
     src/output_wfm.c
@@ -206,11 +206,12 @@ set(OTHER_SOURCES
     src/argparse.c
     src/cli.c
     src/config.c
+    src/initialization.c
     src/input_rawfile.c
     src/input_wav.c
     src/log.c
     src/main.c
-    src/memory_arena.c
+    src/mem_arena.c
     src/miniaudio.c
     src/module_manager.c
     src/networking.c
@@ -227,7 +228,6 @@ set(OTHER_SOURCES
     src/queue.c
     src/ring_buffer.c
     src/sdr_packet_serializer.c
-    src/setup.c
     src/signal_handler.c
     src/thread_manager.c
     src/utility_threads.c

@@ -4,7 +4,7 @@
 #include "app_context.h"
 #include "utils.h"
 #include "platform.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -234,7 +234,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
     int line_num = 0;
     while (fgets(line, sizeof(line), fp)) {
         line_num++;
-        char* trimmed_line = trim_whitespace(line);
+        char* trimmed_line = utils_trim_whitespace(line);
 
         if (trimmed_line[0] == '#' || trimmed_line[0] == ';' || trimmed_line[0] == '\0') {
             continue;
@@ -263,7 +263,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
             char* name_end = strchr(name_start, ']');
             if (name_end) {
                 *name_end = '\0';
-                current_preset->name = arena_strdup(arena, trim_whitespace(name_start));
+                current_preset->name = arena_strdup(arena, utils_trim_whitespace(name_start));
                 if (!current_preset->name) {
                     fclose(fp);
                     return false;
@@ -280,8 +280,8 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
                 log_warn("Malformed key-value pair at line %d.", line_num);
                 continue;
             }
-            key = trim_whitespace(key);
-            value = trim_whitespace(value);
+            key = utils_trim_whitespace(key);
+            value = utils_trim_whitespace(value);
 
             bool key_found = false;
             for (size_t i = 0; i < num_key_handlers; ++i) {

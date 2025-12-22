@@ -1,7 +1,7 @@
 #include "pre_processor.h"
 #include "dc_block.h"
-#include "iq_correct.h"
-#include "frequency_shift.h"
+#include "iq_correction.h"
+#include "freq_shift.h"
 #include "sample_convert.h"
 #include "filter.h"
 #include "signal_handler.h"
@@ -19,7 +19,7 @@ void pre_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
 
     // Step 1: Convert sample block to complex float
     // UPDATED: Use input_gain instead of gain
-    if (!convert_block_to_cf32(item->raw_input_data, item->current_output_buffer,
+    if (!sample_convert_block_to_cf32(item->raw_input_data, item->current_output_buffer,
                                item->frames_read, item->packet_sample_format, config->dsp.input_gain)) {
         log_fatal("Pre-Processor: Failed to convert samples.");
         item->frames_read = 0;
@@ -33,7 +33,7 @@ void pre_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
 
     // Step 3: I/Q Imbalance Correction (if enabled)
     if (config->dsp.iq_correction.enable) {
-        iq_correct_apply(dsp, item->current_output_buffer, item->frames_read);
+        iq_correction_apply(dsp, item->current_output_buffer, item->frames_read);
     }
 
     // Step 4: Pre-Resample Frequency Shifting (if enabled)

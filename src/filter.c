@@ -7,7 +7,7 @@
 #include "constants.h"
 #include "log.h"
 #include "app_context.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -47,7 +47,7 @@ static bool _configure_filter_stage(AppConfig *config, AppContext* app) {
         return true;
     }
 
-    double input_rate = (double)app->module.source_info.samplerate;
+    double input_rate = (double)app->module.source_info.sample_rate;
     double output_rate = config->output_rate.target_rate;
 
     // This optimization is only relevant if we are downsampling.
@@ -102,13 +102,13 @@ static unsigned int
 _execute_fft_filter_pass(
     void* filter_object,
     FilterImplementationType filter_type,
-    const complex_float_t* input_buffer,
+    const ComplexFloat* input_buffer,
     unsigned int frames_in,
-    complex_float_t* output_buffer,
-    complex_float_t* remainder_buffer,
+    ComplexFloat* output_buffer,
+    ComplexFloat* remainder_buffer,
     unsigned int* remainder_len_ptr,
     unsigned int block_size,
-    complex_float_t* scratch_buffer
+    ComplexFloat* scratch_buffer
 );
 
 static liquid_float_complex* convolve_complex_taps(
@@ -159,7 +159,7 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
 
     double sample_rate_for_design = config->dsp.filter.apply_post_resample
                                       ? config->output_rate.target_rate
-                                      : (double)app->module.source_info.samplerate;
+                                      : (double)app->module.source_info.sample_rate;
 
     bool is_final_filter_complex = false;
     bool normalize_by_peak = false;
@@ -350,9 +350,9 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
         // We add a small safety pad (+64) just to be safe.
         size_t scratch_needed = app->pipeline.alloc_size_samples + master_taps_len + 64;
 
-        app->dsp.filter.fft_scratch_buffer = (complex_float_t*)mem_arena_alloc(
+        app->dsp.filter.fft_scratch_buffer = (ComplexFloat*)mem_arena_alloc(
             arena,
-            scratch_needed * sizeof(complex_float_t),
+            scratch_needed * sizeof(ComplexFloat),
             true // Zero initialize
         );
 
@@ -383,9 +383,9 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
         app->dsp.filter.type_actual == FILTER_IMPL_FFT_ASYMMETRIC))
     {
         if (config->dsp.filter.apply_post_resample) {
-            app->dsp.filter.post_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
+            app->dsp.filter.post_fft_remainder_buffer = (ComplexFloat*)mem_arena_alloc(
                 arena,
-                app->dsp.filter.block_size * sizeof(complex_float_t),
+                app->dsp.filter.block_size * sizeof(ComplexFloat),
                 true
             );
             app->dsp.filter.post_fft_remainder_len = 0;
@@ -393,9 +393,9 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
                 goto cleanup;
             }
         } else {
-            app->dsp.filter.pre_fft_remainder_buffer = (complex_float_t*)mem_arena_alloc(
+            app->dsp.filter.pre_fft_remainder_buffer = (ComplexFloat*)mem_arena_alloc(
                 arena,
-                app->dsp.filter.block_size * sizeof(complex_float_t),
+                app->dsp.filter.block_size * sizeof(ComplexFloat),
                 true
             );
             app->dsp.filter.pre_fft_remainder_len = 0;
@@ -483,7 +483,7 @@ unsigned int filter_apply(DspContext* dsp, SampleChunk* item, bool is_post_resam
         case FILTER_IMPL_FFT_SYMMETRIC:
         case FILTER_IMPL_FFT_ASYMMETRIC:
         {
-            complex_float_t* remainder_buffer = is_post_resample ? dsp->filter.post_fft_remainder_buffer : dsp->filter.pre_fft_remainder_buffer;
+            ComplexFloat* remainder_buffer = is_post_resample ? dsp->filter.post_fft_remainder_buffer : dsp->filter.pre_fft_remainder_buffer;
             unsigned int* remainder_len_ptr = is_post_resample ? &dsp->filter.post_fft_remainder_len : &dsp->filter.pre_fft_remainder_len;
             
             unsigned int output_frames = _execute_fft_filter_pass(
@@ -511,19 +511,19 @@ static unsigned int
 _execute_fft_filter_pass(
     void* filter_object,
     FilterImplementationType filter_type,
-    const complex_float_t* input_buffer,
+    const ComplexFloat* input_buffer,
     unsigned int frames_in,
-    complex_float_t* output_buffer,
-    complex_float_t* remainder_buffer,
+    ComplexFloat* output_buffer,
+    ComplexFloat* remainder_buffer,
     unsigned int* remainder_len_ptr,
     unsigned int block_size,
-    complex_float_t* scratch_buffer
+    ComplexFloat* scratch_buffer
 ) {
     unsigned int old_remainder_len = *remainder_len_ptr;
     unsigned int total_frames_to_process = old_remainder_len + frames_in;
 
-    memcpy(scratch_buffer, remainder_buffer, old_remainder_len * sizeof(complex_float_t));
-    memmove(scratch_buffer + old_remainder_len, input_buffer, frames_in * sizeof(complex_float_t));
+    memcpy(scratch_buffer, remainder_buffer, old_remainder_len * sizeof(ComplexFloat));
+    memmove(scratch_buffer + old_remainder_len, input_buffer, frames_in * sizeof(ComplexFloat));
 
     unsigned int processed_frames = 0;
     unsigned int total_output_frames = 0;
@@ -538,7 +538,7 @@ _execute_fft_filter_pass(
     }
 
     unsigned int new_remainder_len = total_frames_to_process - processed_frames;
-    memmove(remainder_buffer, scratch_buffer + processed_frames, new_remainder_len * sizeof(complex_float_t));
+    memmove(remainder_buffer, scratch_buffer + processed_frames, new_remainder_len * sizeof(ComplexFloat));
     *remainder_len_ptr = new_remainder_len;
 
     return total_output_frames;

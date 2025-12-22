@@ -72,7 +72,7 @@ bool agc_create(AppConfig* config, AppContext* app) {
     return true;
 }
 
-void agc_apply(DspContext* dsp, complex_float_t* samples, unsigned int num_samples) {
+void agc_apply(DspContext* dsp, ComplexFloat* samples, unsigned int num_samples) {
     if (!dsp->config->dsp.agc.enable || num_samples == 0) return;
 
     // --- A. ANALOG PROFILES (Liquid DSP) ---

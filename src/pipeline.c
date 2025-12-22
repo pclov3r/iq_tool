@@ -22,8 +22,8 @@
 #include "pre_processor.h"
 #include "post_processor.h"
 #include "dc_block.h"
-#include "iq_correct.h"
-#include "frequency_shift.h"
+#include "iq_correction.h"
+#include "freq_shift.h"
 #include "resampler.h"
 #include "filter.h"
 #include "agc.h" // Added for Output AGC
@@ -98,22 +98,22 @@ bool pipeline_run(PipelineContext* context) {
     log_debug("Spawning pipeline threads...");
     bool threads_ok = true;
     if (app->pipeline_mode != PIPELINE_MODE_FILE_PROCESSING) {
-        if (!thread_manager_spawn_thread(&manager, "SDR Capture", sdr_capture_thread_func)) threads_ok = false;
+        if (!thread_manager_spawn_thread(&manager, "SDR Capture", pipeline_thread_sdr_capture)) threads_ok = false;
     }
-    if (threads_ok && !thread_manager_spawn_thread(&manager, "Reader", reader_thread_func)) threads_ok = false;
+    if (threads_ok && !thread_manager_spawn_thread(&manager, "Reader", pipeline_thread_reader)) threads_ok = false;
     if (threads_ok && !config->dsp.raw_passthrough) {
-        if (!thread_manager_spawn_thread(&manager, "Pre-Processor", pre_processor_thread_func)) threads_ok = false;
+        if (!thread_manager_spawn_thread(&manager, "Pre-Processor", pipeline_thread_pre_processor)) threads_ok = false;
         if (threads_ok && !app->dsp.is_passthrough) {
-            if (!thread_manager_spawn_thread(&manager, "Resampler", resampler_thread_func)) threads_ok = false;
+            if (!thread_manager_spawn_thread(&manager, "Resampler", pipeline_thread_resampler)) threads_ok = false;
         }
-        if (threads_ok && !thread_manager_spawn_thread(&manager, "Post-Processor", post_processor_thread_func)) threads_ok = false;
+        if (threads_ok && !thread_manager_spawn_thread(&manager, "Post-Processor", pipeline_thread_post_processor)) threads_ok = false;
     }
-    if (threads_ok && !thread_manager_spawn_thread(&manager, "Writer", writer_thread_func)) threads_ok = false;
+    if (threads_ok && !thread_manager_spawn_thread(&manager, "Writer", pipeline_thread_writer)) threads_ok = false;
     if (threads_ok && config->dsp.iq_correction.enable) {
-        if (!thread_manager_spawn_thread(&manager, "I/Q Optimizer", iq_optimization_thread_func)) threads_ok = false;
+        if (!thread_manager_spawn_thread(&manager, "I/Q Optimizer", pipeline_thread_iq_optimizer)) threads_ok = false;
     }
     if (threads_ok && module_manager_is_sdr_module(config->input.type_name, &app->pipeline.setup_arena)) {
-        if (!thread_manager_spawn_thread(&manager, "SDR Watchdog", watchdog_thread_func)) threads_ok = false;
+        if (!thread_manager_spawn_thread(&manager, "SDR Watchdog", pipeline_thread_watchdog)) threads_ok = false;
     }
 
     if (!threads_ok) {
@@ -138,7 +138,7 @@ bool pipeline_run(PipelineContext* context) {
 
 static bool _create_dsp_components(AppConfig* config, AppContext* app, float resample_ratio) {
     if (!dc_block_create(config, app)) return false;
-    if (!iq_correct_init(config, app, &app->pipeline.setup_arena)) return false;
+    if (!iq_correction_init(config, app, &app->pipeline.setup_arena)) return false;
     if (!freq_shift_create(config, app)) return false;
     app->dsp.resampler = create_resampler(config, app, resample_ratio);
     if (!app->dsp.resampler && !app->dsp.is_passthrough) return false;
@@ -160,7 +160,7 @@ static void _destroy_dsp_components(AppContext* app) {
     destroy_resampler(app->dsp.resampler);
     app->dsp.resampler = NULL;
     freq_shift_destroy_ncos(app);
-    iq_correct_destroy(app);
+    iq_correction_destroy(app);
     dc_block_destroy(app);
 }
 
@@ -248,7 +248,7 @@ static void _destroy_queues_and_buffers(AppContext* app) {
 
 // --- Pipeline Thread Function Implementations (Private to this module) ---
 
-void* sdr_capture_thread_func(void* arg) {
+void* pipeline_thread_sdr_capture(void* arg) {
     platform_set_thread_priority(PRIORITY_REALTIME, "SDR Capture");
 
     PipelineContext* args = (PipelineContext*)arg;
@@ -265,7 +265,7 @@ void* sdr_capture_thread_func(void* arg) {
     return NULL;
 }
 
-void* reader_thread_func(void* arg) {
+void* pipeline_thread_reader(void* arg) {
     platform_set_thread_priority(PRIORITY_NORMAL, "Reader");
 
     PipelineContext* args = (PipelineContext*)arg;
@@ -363,7 +363,7 @@ void* reader_thread_func(void* arg) {
     return NULL;
 }
 
-void* writer_thread_func(void* arg) {
+void* pipeline_thread_writer(void* arg) {
     platform_set_thread_priority(PRIORITY_HIGHEST, "Writer");
 
     PipelineContext* args = (PipelineContext*)arg;
@@ -377,7 +377,7 @@ void* writer_thread_func(void* arg) {
     return NULL;
 }
 
-void* pre_processor_thread_func(void* arg) {
+void* pipeline_thread_pre_processor(void* arg) {
     platform_set_thread_priority(PRIORITY_HIGH, "Pre-Processor");
 
     PipelineContext* args = (PipelineContext*)arg;
@@ -413,7 +413,7 @@ void* pre_processor_thread_func(void* arg) {
             if (item->frames_read >= IQ_CORRECTION_FFT_SIZE && !item->stream_discontinuity_event) {
                 SampleChunk* opt_item = (SampleChunk*)queue_try_dequeue(app->pipeline.free_sample_chunk_queue);
                 if (opt_item) {
-                    memcpy(opt_item->complex_sample_buffer_a, item->complex_sample_buffer_a, IQ_CORRECTION_FFT_SIZE * sizeof(complex_float_t));
+                    memcpy(opt_item->complex_sample_buffer_a, item->complex_sample_buffer_a, IQ_CORRECTION_FFT_SIZE * sizeof(ComplexFloat));
                     queue_enqueue(app->pipeline.iq_optimization_data_queue, opt_item);
                 }
             }
@@ -435,7 +435,7 @@ void* pre_processor_thread_func(void* arg) {
     return NULL;
 }
 
-void* resampler_thread_func(void* arg) {
+void* pipeline_thread_resampler(void* arg) {
     platform_set_thread_priority(PRIORITY_NORMAL, "Resampler");
 
     PipelineContext* args = (PipelineContext*)arg;
@@ -467,7 +467,7 @@ void* resampler_thread_func(void* arg) {
         if (app->dsp.is_passthrough) {
             output_frames_this_chunk = (unsigned int)item->frames_read;
             // In passthrough, we must copy the data to the output buffer
-            memcpy(item->current_output_buffer, item->current_input_buffer, output_frames_this_chunk * sizeof(complex_float_t));
+            memcpy(item->current_output_buffer, item->current_input_buffer, output_frames_this_chunk * sizeof(ComplexFloat));
         } else {
             // --- UPDATED CALL WITH CAPACITY CHECK ---
             resampler_execute(app->dsp.resampler,
@@ -492,7 +492,7 @@ void* resampler_thread_func(void* arg) {
     return NULL;
 }
 
-void* post_processor_thread_func(void* arg) {
+void* pipeline_thread_post_processor(void* arg) {
     platform_set_thread_priority(PRIORITY_HIGH, "Post-Processor");
 
     PipelineContext* args = (PipelineContext*)arg;

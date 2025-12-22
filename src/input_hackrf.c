@@ -4,11 +4,11 @@
 #include "app_context.h"
 #include "signal_handler.h"
 #include "log.h"
-#include "frequency_shift.h"
+#include "freq_shift.h"
 #include "utils.h"
 #include "sample_convert.h"
 #include "input_common.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include "queue.h"
 #include "sdr_packet_serializer.h"
 #include "argparse.h"
@@ -92,7 +92,7 @@ static InputModuleInterface s_hackrf_input_api = {
     .pre_stream_iq_correction = NULL
 };
 
-InputModuleInterface* get_hackrf_input_module_api(void) {
+InputModuleInterface* input_hackrf_get_module_api(void) {
     return &s_hackrf_input_api;
 }
 
@@ -170,7 +170,7 @@ static void hackrf_input_get_summary_info(const ModuleContext* ctx, InputSummary
     const AppContext* app = ctx->app;
     add_summary_item(info, "Input Source", "HackRF One");
     add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
-    add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.samplerate);
+    add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.sample_rate);
     add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
     // as HackRF does not have a true hardware AGC. The gain is always fixed.
@@ -246,8 +246,8 @@ static bool hackrf_input_initialize(ModuleContext* ctx) {
     }
 
     app->module.input_format = CS8;
-    app->module.input_bytes_per_sample_pair = get_bytes_per_sample(app->module.input_format);
-    app->module.source_info.samplerate = (int)config->sdr_general.sample_rate_hz;
+    app->module.input_bytes_per_sample_pair = sample_convert_bytes_per_sample(app->module.input_format);
+    app->module.source_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
     app->module.source_info.frames = -1;
 
     if (config->dsp.raw_passthrough && app->module.input_format != config->output.format) {

@@ -13,7 +13,7 @@
 #define AGC_H_
 
 #include <stdbool.h>
-#include "app_context.h" // Provides AppConfig, AppContext, and complex_float_t
+#include "app_context.h" // Provides AppConfig, AppContext, and ComplexFloat
 #include "argparse.h"    // Provides struct argparse_option
 
 // --- Function Declarations ---
@@ -43,7 +43,7 @@ bool agc_create(AppConfig* config, AppContext* app);
  * @param samples Pointer to the complex float samples (modified in-place).
  * @param num_samples The number of complex samples in the block.
  */
-void agc_apply(DspContext* dsp, complex_float_t* samples, unsigned int num_samples);
+void agc_apply(DspContext* dsp, ComplexFloat* samples, unsigned int num_samples);
 
 /**
  * @brief Resets the internal state of the AGC.

@@ -1,6 +1,6 @@
 #include "post_processor.h"
 #include "filter.h"
-#include "frequency_shift.h"
+#include "freq_shift.h"
 #include "agc.h" // Added for Output AGC
 #include "sample_convert.h"
 #include "signal_handler.h"
@@ -16,7 +16,7 @@ void post_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
         // - item->current_output_buffer points to the free buffer, to be used as scratch space.
 
         // We use a local pointer to track the location of the valid data as it moves.
-        complex_float_t* current_data_ptr = item->current_input_buffer;
+        ComplexFloat* current_data_ptr = item->current_input_buffer;
 
         // Step 1: Post-Resample Filtering (if enabled)
         if (dsp->filter.object && config->dsp.filter.apply_post_resample) {
@@ -38,7 +38,7 @@ void post_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
         if (dsp->post_resample_nco) {
             // This is always an out-of-place operation. It reads from where the
             // valid data currently is (current_data_ptr) and writes to the other buffer.
-            complex_float_t* destination_buffer = (current_data_ptr == item->complex_sample_buffer_a)
+            ComplexFloat* destination_buffer = (current_data_ptr == item->complex_sample_buffer_a)
                                                 ? item->complex_sample_buffer_b
                                                 : item->complex_sample_buffer_a;
 
@@ -67,7 +67,7 @@ void post_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
 
         // Step 4: Final Sample Format Conversion
         // The current_data_ptr now points to the final, fully processed complex float data.
-        if (!convert_cf32_to_block(current_data_ptr,
+        if (!sample_convert_cf32_to_block(current_data_ptr,
                                    item->final_output_data,
                                    item->frames_to_write,
                                    config->output.format)) {

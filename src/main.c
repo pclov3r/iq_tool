@@ -40,12 +40,12 @@
 #include "module.h"
 #include "pipeline_context.h"
 #include "cli.h"
-#include "setup.h"
+#include "initialization.h"
 #include "utils.h"
 #include "module_manager.h"
 #include "presets_loader.h"
 #include "platform.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include "pipeline.h"
 #include <stdlib.h>
 #include <string.h>
@@ -170,13 +170,13 @@ int main(int argc, char *argv[]) {
     }
 
     if (argc <= 1) {
-        print_usage(argv[0], &config, &app.pipeline.setup_arena);
+        cli_print_usage(argv[0], &config, &app.pipeline.setup_arena);
         exit_status = EXIT_SUCCESS;
         goto cleanup;
     }
 
     // Phase 2: Call the main parser.
-    if (!parse_arguments(argc, argv, &config, &app.pipeline.setup_arena)) {
+    if (!cli_parse(argc, argv, &config, &app.pipeline.setup_arena)) {
         goto cleanup;
     }
 
@@ -277,9 +277,9 @@ static void print_final_summary(const AppConfig *config, const AppContext* app, 
     char size_buf[40];
     char duration_buf[40];
 
-    format_file_size(app->stats.final_output_size_bytes, size_buf, sizeof(size_buf));
+    utils_format_size(app->stats.final_output_size_bytes, size_buf, sizeof(size_buf));
     double duration_secs = difftime(time(NULL), app->stats.start_time);
-    format_duration(duration_secs, duration_buf, sizeof(duration_buf));
+    utils_format_duration(duration_secs, duration_buf, sizeof(duration_buf));
 
     unsigned long long total_input_samples = app->stats.total_frames_read * 2;
     unsigned long long total_output_samples = app->stats.total_output_frames * 2;
@@ -351,7 +351,7 @@ static void application_progress_callback(unsigned long long current_output_fram
     static double last_progress_log_time = 0.0;
     static long long last_bytes_written = 0;
 
-    double current_time = get_monotonic_time_sec();
+    double current_time = utils_get_time();
 
     if (current_time - last_progress_log_time >= PROGRESS_UPDATE_INTERVAL_SECONDS) {
         double rate_mb_per_sec = 0.0;

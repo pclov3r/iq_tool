@@ -60,6 +60,6 @@ static OutputModuleInterface s_wav_rf64_output_api = {
 /**
  * @brief Public getter for the WAV/RF64 output module's interface.
  */
-OutputModuleInterface* get_wav_rf64_output_module_api(void) {
+OutputModuleInterface* output_wav_rf64_get_module_api(void) {
     return &s_wav_rf64_output_api;
 }

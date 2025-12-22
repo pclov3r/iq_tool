@@ -15,7 +15,7 @@
 #include <stddef.h>
 #include "app_context.h"
 #include "module.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include "ring_buffer.h"
 
 // --- Function Declarations ---
@@ -24,12 +24,12 @@
  * @brief Gets a high-resolution monotonic time in seconds.
  * @return The time in seconds as a double.
  */
-double get_monotonic_time_sec(void);
+double utils_get_time(void);
 
 /**
  * @brief Clears the standard input buffer up to the next newline or EOF.
  */
-void clear_stdin_buffer(void);
+void utils_clear_stdin(void);
 
 /**
  * @brief Formats a file size in bytes into a human-readable string (B, KB, MB, GB).
@@ -38,7 +38,7 @@ void clear_stdin_buffer(void);
  * @param buffer_size The size of the character buffer.
  * @return A pointer to the provided buffer containing the formatted string.
  */
-const char* format_file_size(long long size_bytes, char* buffer, size_t buffer_size);
+const char* utils_format_size(long long size_bytes, char* buffer, size_t buffer_size);
 
 /**
  * @brief Platform-independent helper to get the base filename from a full path.
@@ -64,7 +64,7 @@ void add_summary_item(InputSummaryInfo* info, const char* label, const char* val
  * @param str The string to trim.
  * @return A pointer to the beginning of the trimmed content within the original string.
  */
-char* trim_whitespace(char* str);
+char* utils_trim_whitespace(char* str);
 
 /**
  * @brief Formats a duration in seconds into a human-readable HH:MM:SS string.
@@ -72,21 +72,21 @@ char* trim_whitespace(char* str);
  * @param buffer A character buffer to store the formatted string.
  * @param buffer_size The size of the character buffer.
  */
-void format_duration(double total_seconds, char* buffer, size_t buffer_size);
+void utils_format_duration(double total_seconds, char* buffer, size_t buffer_size);
 
 /**
- * @brief Converts a sample format name string (e.g., "cs16") to its corresponding format_t enum.
+ * @brief Converts a sample format name string (e.g., "cs16") to its corresponding SampleFormat enum.
  * @param name The string name of the format.
- * @return The format_t enum value, or FORMAT_UNKNOWN if not found.
+ * @return The SampleFormat enum value, or FORMAT_UNKNOWN if not found.
  */
-format_t utils_get_format_from_string(const char *name);
+SampleFormat utils_get_format_from_string(const char *name);
 
 /**
- * @brief Converts a format_t enum value to its full, human-readable description.
+ * @brief Converts a SampleFormat enum value to its full, human-readable description.
  * @param format The enum value.
  * @return A constant string with the full description.
  */
-const char* utils_get_format_description_string(format_t format);
+const char* utils_get_format_description_string(SampleFormat format);
 
 /**
  * @brief Checks if a given frequency exceeds the Nyquist frequency for a sample rate and warns the user.

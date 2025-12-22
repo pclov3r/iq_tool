@@ -7,11 +7,11 @@
 #include "platform.h"
 #include "sample_convert.h"
 #include "input_common.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include "queue.h"
 #include "ring_buffer.h"
 #include "argparse.h"
-#include "iq_correct.h"
+#include "iq_correction.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -73,7 +73,7 @@ static InputModuleInterface s_rawfile_input_api = {
     .pre_stream_iq_correction = rawfile_input_pre_stream_iq_correction,
 };
 
-InputModuleInterface* get_rawfile_input_module_api(void) {
+InputModuleInterface* input_rawfile_get_module_api(void) {
     return &s_rawfile_input_api;
 }
 
@@ -115,7 +115,7 @@ static bool rawfile_input_initialize(ModuleContext* ctx) {
         return false;
     }
 
-    app->module.input_bytes_per_sample_pair = get_bytes_per_sample(app->module.input_format);
+    app->module.input_bytes_per_sample_pair = sample_convert_bytes_per_sample(app->module.input_format);
     if (app->module.input_bytes_per_sample_pair == 0) {
         log_fatal("Internal error: could not determine sample size for format '%s'.", s_rawfile_config.format_str);
         return false;
@@ -156,7 +156,7 @@ static bool rawfile_input_initialize(ModuleContext* ctx) {
     }
 
     sf_command(private_data->infile, SFC_GET_CURRENT_SF_INFO, &sfinfo, sizeof(sfinfo));
-    app->module.source_info.samplerate = sfinfo.samplerate;
+    app->module.source_info.sample_rate = sfinfo.samplerate;
     app->module.source_info.frames = sfinfo.frames;
 
     app->pipeline_mode = PIPELINE_MODE_FILE_PROCESSING;
@@ -292,7 +292,7 @@ static void rawfile_input_get_summary_info(const ModuleContext* ctx, InputSummar
 
     char size_buf[40];
     long long file_size_bytes = app->module.source_info.frames * app->module.input_bytes_per_sample_pair;
-    add_summary_item(info, "Input File Size", "%s", format_file_size(file_size_bytes, size_buf, sizeof(size_buf)));
+    add_summary_item(info, "Input File Size", "%s", utils_format_size(file_size_bytes, size_buf, sizeof(size_buf)));
 }
 
 static bool rawfile_input_pre_stream_iq_correction(ModuleContext* ctx) {
@@ -305,5 +305,5 @@ static bool rawfile_input_pre_stream_iq_correction(ModuleContext* ctx) {
     }
 
     // The module's only job is to call the calibration service with its private file handle.
-    return iq_correct_run_initial_calibration(ctx, private_data->infile);
+    return iq_correction_run_initial_calibration(ctx, private_data->infile);
 }

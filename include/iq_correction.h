@@ -29,12 +29,12 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
  * imbalances by analyzing the signal spectrum.
  */
 
-#ifndef IQ_CORRECT_H_
-#define IQ_CORRECT_H_
+#ifndef IQ_CORRECTION_H_
+#define IQ_CORRECTION_H_
 
 #include <stdbool.h>
 #include "app_context.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include <sndfile.h> // Needed for the SNDFILE* type in the function signature
 
 // --- Function Declarations ---
@@ -49,7 +49,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
  * @param arena The memory arena to use for all buffer allocations.
  * @return true on success or if disabled, false on failure.
  */
-bool iq_correct_init(AppConfig* config, AppContext* app, MemoryArena* arena);
+bool iq_correction_init(AppConfig* config, AppContext* app, MemoryArena* arena);
 
 /**
  * @brief Applies the current I/Q imbalance correction to a block of samples.
@@ -62,7 +62,7 @@ bool iq_correct_init(AppConfig* config, AppContext* app, MemoryArena* arena);
  * @param samples Pointer to the complex float samples (modified in-place).
  * @param num_samples The number of complex samples in the block.
  */
-void iq_correct_apply(DspContext* dsp, complex_float_t* samples, int num_samples);
+void iq_correction_apply(DspContext* dsp, ComplexFloat* samples, int num_samples);
 
 /**
  * @brief Runs the I/Q imbalance optimization/estimation algorithm.
@@ -75,14 +75,14 @@ void iq_correct_apply(DspContext* dsp, complex_float_t* samples, int num_samples
  * @param app Pointer to the application app.
  * @param optimization_data Pointer to the block of complex float samples to analyze.
  */
-void iq_correct_run_optimization(DspContext* dsp, const complex_float_t* optimization_data);
+void iq_correction_run_optimization(DspContext* dsp, const ComplexFloat* optimization_data);
 
 /**
  * @brief Cleans up app allocated by the I/Q correction module.
  *
  * @param app Pointer to the application app.
  */
-void iq_correct_destroy(AppContext* app);
+void iq_correction_destroy(AppContext* app);
 
 /**
  * @brief Performs a synchronous, one-shot I/Q calibration pass for file-based inputs.
@@ -91,6 +91,6 @@ void iq_correct_destroy(AppContext* app);
  * @param infile The handle to the open input file (e.g., from libsndfile).
  * @return true on success, false on a critical failure.
  */
-bool iq_correct_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile);
+bool iq_correction_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile);
 
-#endif // IQ_CORRECT_H_
+#endif // IQ_CORRECTION_H_

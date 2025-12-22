@@ -5,7 +5,7 @@
 #include "queue.h"
 #include "signal_handler.h"
 #include "utils.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -134,6 +134,6 @@ static OutputModuleInterface s_stdout_output_api = {
 };
 
 // --- Public Getter ---
-OutputModuleInterface* get_stdout_output_module_api(void) {
+OutputModuleInterface* output_stdout_get_module_api(void) {
     return &s_stdout_output_api;
 }

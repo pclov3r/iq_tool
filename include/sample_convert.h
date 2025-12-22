@@ -17,7 +17,7 @@
  * @param format The sample format.
  * @return The size in bytes, or 0 for unknown formats.
  */
-size_t get_bytes_per_sample(format_t format);
+size_t sample_convert_bytes_per_sample(SampleFormat format);
 
 /**
  * @brief Converts a block of samples from a source format to complex float (cf32).
@@ -33,7 +33,7 @@ size_t get_bytes_per_sample(format_t format);
  * @param gain The linear gain multiplier to apply.
  * @return true on success, false if the input format is unhandled.
  */
-bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* restrict output_buffer, size_t num_frames, format_t input_format, float gain);
+bool sample_convert_block_to_cf32(const void* restrict input_buffer, ComplexFloat* restrict output_buffer, size_t num_frames, SampleFormat input_format, float gain);
 
 /**
  * @brief Converts a block of complex float (cf32) samples to a target output format.
@@ -48,7 +48,7 @@ bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* r
  * @param output_format The target format for the output data.
  * @return true on success, false if the output format is unhandled.
  */
-bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* restrict output_buffer, size_t num_frames, format_t output_format);
+bool sample_convert_cf32_to_block(const ComplexFloat* restrict input_buffer, void* restrict output_buffer, size_t num_frames, SampleFormat output_format);
 
 // --- Interleaving Helpers (Input: Integer -> Integer) ---
 // These functions are used by Input Modules (e.g., SDRplay) that receive Planar data

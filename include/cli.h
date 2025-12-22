@@ -30,7 +30,7 @@ struct MemoryArena;
  * @param arena Pointer to the memory arena for setup-time allocations.
  * @return true on successful parsing, false on a syntax error or an invalid value format.
  */
-bool parse_arguments(int argc, char *argv[], struct AppConfig *config, struct MemoryArena* arena);
+bool cli_parse(int argc, char *argv[], struct AppConfig *config, struct MemoryArena* arena);
 
 /**
  * @brief Prints detailed usage instructions for the application to stderr.
@@ -39,6 +39,6 @@ bool parse_arguments(int argc, char *argv[], struct AppConfig *config, struct Me
  * @param config A pointer to the AppConfig struct (needed for presets).
  * @param arena A pointer to an initialized memory arena (needed for module list).
  */
-void print_usage(const char *prog_name, struct AppConfig *config, struct MemoryArena* arena);
+void cli_print_usage(const char *prog_name, struct AppConfig *config, struct MemoryArena* arena);
 
 #endif // CLI_H_

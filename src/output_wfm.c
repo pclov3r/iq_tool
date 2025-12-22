@@ -70,7 +70,7 @@
 #endif
 
 // --- Constants from demux.h ---
-#define WFM_BUFLEN              8192
+#define WFM_BUFFER_SIZE         8192
 #define WFM_PILOT_HZ            19000.0f
 #define WFM_PLL_BW_HZ           10.0f
 #define WFM_PILOT_FIR_USEC      740.0f
@@ -86,7 +86,7 @@
 // --- Gain Staging ---
 // Scaling factor applied to the MPX signal after demodulation.
 // Standard FM deviation (75kHz) maps to 1.0 in freqdem.
-// We scale this down (~ -16.5 dB) to create headroom for the Pilot tone, 
+// We scale this down (~ -16.5 dB) to create headroom for the Pilot tone,
 // Stereo Matrix (Sum + Diff), and De-emphasis filters.
 #define WFM_MPX_SCALING_FACTOR  0.15f
 
@@ -103,7 +103,7 @@
 // --- Internal Structures ---
 
 typedef struct {
-    float buffer[WFM_BUFLEN];
+    float buffer[WFM_BUFFER_SIZE];
     float sum;
     int idx;
 } RunningAverage;
@@ -155,7 +155,7 @@ typedef struct {
 
     // RDS
     RedseaHandle redsea;
-    rds_state_t last_rds_state;
+    RdsState last_rds_state;
     size_t rds_display_counter;
     size_t rds_display_threshold;
 } WfmContext;
@@ -187,8 +187,8 @@ static struct {
 
 // --- Helpers ---
 
-static float angular_freq(float hertz, float samplerate) {
-    return hertz * 2.0f * (float)M_PI / samplerate;
+static float angular_freq(float hertz, float sample_rate) {
+    return hertz * 2.0f * (float)M_PI / sample_rate;
 }
 
 static void running_average_init(RunningAverage* ra) {
@@ -196,11 +196,11 @@ static void running_average_init(RunningAverage* ra) {
     ra->sum = 0.0f;
     ra->idx = 0;
     // Pre-fill as done in demux.cpp
-    for (int i = 0; i < WFM_BUFLEN; i++) {
+    for (int i = 0; i < WFM_BUFFER_SIZE; i++) {
         ra->sum -= ra->buffer[ra->idx];
         ra->buffer[ra->idx] = 9.0f;
         ra->sum += ra->buffer[ra->idx];
-        ra->idx = (ra->idx + 1) % WFM_BUFLEN;
+        ra->idx = (ra->idx + 1) % WFM_BUFFER_SIZE;
     }
 }
 
@@ -208,15 +208,15 @@ static void running_average_push(RunningAverage* ra, float val) {
     ra->sum -= ra->buffer[ra->idx];
     ra->buffer[ra->idx] = val;
     ra->sum += ra->buffer[ra->idx];
-    ra->idx = (ra->idx + 1) % WFM_BUFLEN;
+    ra->idx = (ra->idx + 1) % WFM_BUFFER_SIZE;
 }
 
 static float running_average_get(RunningAverage* ra) {
-    return ra->sum / (float)WFM_BUFLEN;
+    return ra->sum / (float)WFM_BUFFER_SIZE;
 }
 
-static void deemphasis_init(DeEmphasis* de, float time_constant_us, float samplerate) {
-    float cutoff = (1.0f / (2.0f * (float)M_PI * time_constant_us * 1e-6f)) / samplerate;
+static void deemphasis_init(DeEmphasis* de, float time_constant_us, float sample_rate) {
+    float cutoff = (1.0f / (2.0f * (float)M_PI * time_constant_us * 1e-6f)) / sample_rate;
 
     liquid_iirdes(LIQUID_IIRDES_BUTTER, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS,
                   WFM_DEEMPH_ORDER, cutoff, 0.0f, 10.0f, 10.0f,
@@ -399,7 +399,7 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
     // 6. Initialize RDS (Enabled unless disabled)
     if (!s_wfm_config.rds_disable) {
         p->redsea = redsea_init(p->input_samplerate, s_wfm_config.rds_us_mode, s_wfm_config.rds_partial);
-        memset(&p->last_rds_state, 0, sizeof(rds_state_t));
+        memset(&p->last_rds_state, 0, sizeof(RdsState));
 
         p->rds_display_counter = 0;
         p->rds_display_threshold = (size_t)(p->input_samplerate * 1.0); // 1 second
@@ -472,7 +472,7 @@ static void* wfm_output_run_writer(ModuleContext* ctx) {
         }
 
         if (item->frames_to_write > 0) {
-            complex_float_t* iq_in = (complex_float_t*)item->final_output_data;
+            ComplexFloat* iq_in = (ComplexFloat*)item->final_output_data;
             unsigned int num_frames = item->frames_to_write;
 
             // --- STATS PRE-CALCULATION (Raw I/Q) ---
@@ -513,7 +513,7 @@ static void* wfm_output_run_writer(ModuleContext* ctx) {
 #ifdef WITH_REDSEA
             // --- STAGE 1.6: RDS Decoding ---
             if (p->redsea) {
-                rds_state_t current;
+                RdsState current;
                 redsea_process_mpx(p->redsea, p->mpx_buffer, num_frames, &current);
 
                 // Increment counter
@@ -818,6 +818,6 @@ static OutputModuleInterface s_wfm_output_api = {
     .write_chunk = NULL
 };
 
-OutputModuleInterface* get_wfm_output_module_api(void) {
+OutputModuleInterface* output_wfm_get_module_api(void) {
     return &s_wfm_output_api;
 }

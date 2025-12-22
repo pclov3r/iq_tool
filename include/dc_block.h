@@ -12,7 +12,7 @@
 #define DC_BLOCK_H_
 
 #include <stdbool.h>
-#include "app_context.h" // Provides AppConfig, AppContext, and complex_float_t
+#include "app_context.h" // Provides AppConfig, AppContext, and ComplexFloat
 
 // --- Function Declarations ---
 
@@ -48,7 +48,7 @@ void dc_block_reset(DspContext* dsp);
  * @param samples Pointer to the complex float samples (modified in-place).
  * @param num_samples The number of complex samples in the block.
  */
-void dc_block_apply(DspContext* dsp, complex_float_t* samples, int num_samples);
+void dc_block_apply(DspContext* dsp, ComplexFloat* samples, int num_samples);
 
 /**
  * @brief Cleans up app allocated by the DC block module.

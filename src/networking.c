@@ -11,7 +11,7 @@
 #include "networking.h"
 #include "constants.h" // Added for NETWORK_SOCKET_TIMEOUT_MS
 #include "log.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -46,7 +46,7 @@ struct NetworkingContext {
 
 // --- Public API Implementation ---
 
-bool networking_initialize_module(void) {
+bool networking_init(void) {
     if (g_networking_ref_count > 0) {
         g_networking_ref_count++;
         log_debug("Networking subsystem reference count increased to %d.", g_networking_ref_count);
@@ -67,7 +67,7 @@ bool networking_initialize_module(void) {
     return true;
 }
 
-void networking_cleanup_module(void) {
+void networking_cleanup(void) {
     if (g_networking_ref_count <= 0) {
         return; // Nothing to clean up or already cleaned up.
     }
@@ -90,7 +90,7 @@ NetworkingContext* networking_connect(const char* hostname, int port, struct Mem
     }
  
     // This function acts as the gatekeeper, ensuring the subsystem is ready.
-    if (!networking_initialize_module()) {
+    if (!networking_init()) {
         log_error("Cannot connect because networking subsystem failed to initialize.");
         return NULL;
     }
@@ -106,7 +106,7 @@ NetworkingContext* networking_connect(const char* hostname, int port, struct Mem
 
     if ((status = getaddrinfo(hostname, port_str, &hints, &res)) != 0) {
         log_error("getaddrinfo for '%s' failed: %s", hostname, gai_strerror(status));
-        networking_cleanup_module(); // Decrement ref count on failure.
+        networking_cleanup(); // Decrement ref count on failure.
         return NULL;
     }
 
@@ -114,7 +114,7 @@ NetworkingContext* networking_connect(const char* hostname, int port, struct Mem
     if (!ctx) {
         // mem_arena_alloc already logged the fatal error.
         freeaddrinfo(res);
-        networking_cleanup_module(); // Decrement ref count on failure.
+        networking_cleanup(); // Decrement ref count on failure.
         return NULL;
     }
 
@@ -169,7 +169,7 @@ NetworkingContext* networking_connect(const char* hostname, int port, struct Mem
 #endif
         log_error("Failed to connect to %s:%d", hostname, port);
         // We don't free(ctx) because it's in the arena. The arena will be destroyed on app cleanup.
-        networking_cleanup_module(); // Decrement ref count on failure.
+        networking_cleanup(); // Decrement ref count on failure.
         return NULL;
     }
 

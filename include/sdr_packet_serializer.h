@@ -59,7 +59,7 @@ typedef struct {
     uint32_t magic;        ///< Synchronization marker (IQPK_MAGIC).
     uint32_t num_samples;  ///< The number of I/Q pairs in the following payload.
     uint8_t  flags;        ///< Bitmask of stream status flags (e.g. RESET).
-    uint8_t  format_id;    ///< The format_t enum value of the sample data.
+    uint8_t  format_id;    ///< The SampleFormat enum value of the sample data.
     uint8_t  reserved[22];
 } SdrInputChunkHeader;
 #pragma pack(pop)
@@ -73,7 +73,7 @@ typedef struct {
  */
 typedef struct {
     uint32_t samples_remaining_in_packet; ///< How many samples are left in the current ring buffer packet.
-    format_t current_packet_format;       ///< The sample format of the current packet.
+    SampleFormat current_packet_format;       ///< The sample format of the current packet.
 } SerializerState;
 
 
@@ -92,7 +92,7 @@ typedef struct {
  * @param format The format of the samples (e.g., CU8, CS16).
  * @return true if written successfully, false if dropped due to lack of space.
  */
-bool sdr_packet_serializer_write_block(struct RingBuffer* buffer, uint32_t num_samples, const void* sample_data, format_t format);
+bool sdr_packet_serializer_write_block(struct RingBuffer* buffer, uint32_t num_samples, const void* sample_data, SampleFormat format);
 
 /**
  * @brief Writes a "Stream Reset" event packet to the buffer.

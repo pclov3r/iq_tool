@@ -28,7 +28,7 @@ static bool prompt_for_overwrite(const char* path_for_messages) {
     fprintf(stderr, "\nOutput file %s exists.\nOverwrite? (y/n): ", path_for_messages);
     int response = getchar();
     if (response != '\n' && response != EOF) {
-        clear_stdin_buffer();
+        utils_clear_stdin();
     }
     response = tolower(response);
     if (response != 'y') {

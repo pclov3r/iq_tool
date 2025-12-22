@@ -25,7 +25,7 @@
  */
 
 #include "sample_convert.h"
-#include "common_types.h" // Provides format_t, complex_float_t
+#include "common_types.h" // Provides SampleFormat, ComplexFloat
 #include "log.h"
 #include <string.h>
 #include <math.h>
@@ -100,7 +100,7 @@
 /**
  * @brief Gets the number of bytes for a single sample of the given format.
  */
-size_t get_bytes_per_sample(format_t format) {
+size_t sample_convert_bytes_per_sample(SampleFormat format) {
     switch (format) {
         case S8:   return sizeof(int8_t);
         case U8:   return sizeof(uint8_t);
@@ -116,7 +116,7 @@ size_t get_bytes_per_sample(format_t format) {
         case CS24: return 3 * 2;
         case CS32: return sizeof(int32_t) * 2;
         case CU32: return sizeof(uint32_t) * 2;
-        case CF32: return sizeof(complex_float_t);
+        case CF32: return sizeof(ComplexFloat);
         case SC16Q11: return sizeof(int16_t) * 2;
         default:   return 0;
     }
@@ -125,7 +125,7 @@ size_t get_bytes_per_sample(format_t format) {
 /**
  * @brief Converts a block of samples from a source format to complex float (cf32).
  */
-bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* restrict output_buffer, size_t num_frames, format_t input_format, float gain) {
+bool sample_convert_block_to_cf32(const void* restrict input_buffer, ComplexFloat* restrict output_buffer, size_t num_frames, SampleFormat input_format, float gain) {
     // Add robustness checks for debug builds. These compile to nothing in release builds.
     assert(input_buffer != NULL && "Input buffer cannot be null.");
     assert(output_buffer != NULL && "Output buffer cannot be null.");
@@ -231,7 +231,7 @@ bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* r
         }
         case CF32: {
             // This case is a direct copy and gain multiplication, no normalization needed.
-            const complex_float_t* in = (const complex_float_t*)input_buffer;
+            const ComplexFloat* in = (const ComplexFloat*)input_buffer;
             for (size_t i = 0; i < num_frames; ++i) {
                 output_buffer[i] = in[i] * gain;
             }
@@ -247,7 +247,7 @@ bool convert_block_to_cf32(const void* restrict input_buffer, complex_float_t* r
 /**
  * @brief Converts a block of complex float (cf32) samples to a target output format.
  */
-bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* restrict output_buffer, size_t num_frames, format_t output_format) {
+bool sample_convert_cf32_to_block(const ComplexFloat* restrict input_buffer, void* restrict output_buffer, size_t num_frames, SampleFormat output_format) {
     // Add robustness checks for debug builds.
     assert(input_buffer != NULL && "Input buffer cannot be null.");
     assert(output_buffer != NULL && "Output buffer cannot be null.");
@@ -406,7 +406,7 @@ bool convert_cf32_to_block(const complex_float_t* restrict input_buffer, void* r
             break;
         }
         case CF32:
-            memcpy(output_buffer, input_buffer, num_frames * sizeof(complex_float_t));
+            memcpy(output_buffer, input_buffer, num_frames * sizeof(ComplexFloat));
             break;
         default:
             log_error("Unhandled output format: %d", output_format);

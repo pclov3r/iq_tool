@@ -1,6 +1,6 @@
 #include "utils.h"
 #include "log.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include "app_context.h"
 #include "signal_handler.h"
 #include "ring_buffer.h"
@@ -24,7 +24,7 @@
 
 // --- The Single Source of Truth for Sample Formats ---
 typedef struct {
-    format_t format_enum;
+    SampleFormat format_enum;
     const char* name_str;
     const char* description_str;
 } SampleFormatInfo;
@@ -49,7 +49,7 @@ static const SampleFormatInfo format_table[] = {
 };
 static const int num_formats = sizeof(format_table) / sizeof(format_table[0]);
 
-double get_monotonic_time_sec(void) {
+double utils_get_time(void) {
 #ifdef _WIN32
     LARGE_INTEGER freq, count;
     if (QueryPerformanceFrequency(&freq) && QueryPerformanceCounter(&count)) {
@@ -67,12 +67,12 @@ double get_monotonic_time_sec(void) {
 #endif
 }
 
-void clear_stdin_buffer(void) {
+void utils_clear_stdin(void) {
     int c;
     while ((c = getchar()) != '\n' && c != EOF);
 }
 
-const char* format_file_size(long long size_bytes, char* buffer, size_t buffer_size) {
+const char* utils_format_size(long long size_bytes, char* buffer, size_t buffer_size) {
     static const char* error_msg = "(N/A)";
     if (!buffer || buffer_size == 0) return error_msg;
     if (size_bytes < 0) {
@@ -135,7 +135,7 @@ void add_summary_item(InputSummaryInfo* info, const char* label, const char* val
     info->count++;
 }
 
-char* trim_whitespace(char* str) {
+char* utils_trim_whitespace(char* str) {
     if (!str) return NULL;
     char* end;
     while (isspace((unsigned char)*str)) str++;
@@ -148,7 +148,7 @@ char* trim_whitespace(char* str) {
     return str;
 }
 
-void format_duration(double total_seconds, char* buffer, size_t buffer_size) {
+void utils_format_duration(double total_seconds, char* buffer, size_t buffer_size) {
     if (!isfinite(total_seconds) || total_seconds < 0) {
         snprintf(buffer, buffer_size, "N/A");
         return;
@@ -166,7 +166,7 @@ void format_duration(double total_seconds, char* buffer, size_t buffer_size) {
     snprintf(buffer, buffer_size, "%02d:%02d:%02d", hours, minutes, seconds);
 }
 
-format_t utils_get_format_from_string(const char *name) {
+SampleFormat utils_get_format_from_string(const char *name) {
     if (!name) return FORMAT_UNKNOWN;
     for (int i = 0; i < num_formats; ++i) {
         if (strcasecmp(name, format_table[i].name_str) == 0) {
@@ -176,7 +176,7 @@ format_t utils_get_format_from_string(const char *name) {
     return FORMAT_UNKNOWN;
 }
 
-const char* utils_get_format_description_string(format_t format) {
+const char* utils_get_format_description_string(SampleFormat format) {
     for (int i = 0; i < num_formats; ++i) {
         if (format == format_table[i].format_enum) {
             return format_table[i].description_str;
@@ -205,7 +205,7 @@ bool utils_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz,
                 fprintf(stderr, "\nEOF detected. Cancelling.\n");
                 return false;
             }
-            clear_stdin_buffer();
+            utils_clear_stdin();
             response = tolower(response);
             if (response == 'n') {
                 log_debug("Operation cancelled by user.");

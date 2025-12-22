@@ -390,6 +390,6 @@ static OutputModuleInterface s_nfm_output_api = {
     .write_chunk = NULL
 };
 
-OutputModuleInterface* get_nfm_output_module_api(void) {
+OutputModuleInterface* output_nfm_get_module_api(void) {
     return &s_nfm_output_api;
 }

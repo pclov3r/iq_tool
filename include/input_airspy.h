@@ -13,7 +13,7 @@ struct AppConfig;
  * @brief Returns a pointer to the InputModuleInterface struct that implements
  *        the input source interface for Airspy device input.
  */
-InputModuleInterface* get_airspy_input_module_api(void);
+InputModuleInterface* input_airspy_get_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the Airspy module.

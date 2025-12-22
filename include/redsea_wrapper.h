@@ -50,7 +50,7 @@ typedef struct {
     // Validity Check
     bool valid;             // True if PI code is acquired (Decoder is synced)
 
-} rds_state_t;
+} RdsState;
 
 /**
  * @brief Initialize a new Redsea decoder instance.
@@ -77,7 +77,7 @@ void redsea_free(RedseaHandle ctx);
  * @param num_samples Number of samples in the buffer.
  * @param out_state Pointer to a struct where the decoded state will be written.
  */
-void redsea_process_mpx(RedseaHandle ctx, const float* mpx_data, int num_samples, rds_state_t* out_state);
+void redsea_process_mpx(RedseaHandle ctx, const float* mpx_data, int num_samples, RdsState* out_state);
 
 #ifdef __cplusplus
 }

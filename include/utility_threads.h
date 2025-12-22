@@ -14,13 +14,13 @@
  * @param arg A void pointer to the PipelineContext struct.
  * @return NULL.
  */
-void* iq_optimization_thread_func(void* arg);
+void* pipeline_thread_iq_optimizer(void* arg);
 
 /**
  * @brief The main function for the SDR Watchdog utility thread.
  * @param arg A void pointer to the PipelineContext struct.
  * @return NULL.
  */
-void* watchdog_thread_func(void* arg);
+void* pipeline_thread_watchdog(void* arg);
 
 #endif // UTILITY_THREADS_H_

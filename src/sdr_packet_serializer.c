@@ -19,8 +19,8 @@ static bool _has_space_for(RingBuffer* buffer, size_t bytes_needed) {
 
 // --- WRITE IMPLEMENTATION ---
 
-bool sdr_packet_serializer_write_block(RingBuffer* buffer, uint32_t num_samples, const void* sample_data, format_t format) {
-    size_t bytes_per_sample = get_bytes_per_sample(format);
+bool sdr_packet_serializer_write_block(RingBuffer* buffer, uint32_t num_samples, const void* sample_data, SampleFormat format) {
+    size_t bytes_per_sample = sample_convert_bytes_per_sample(format);
     size_t data_size = num_samples * bytes_per_sample;
     size_t total_needed = sizeof(SdrInputChunkHeader) + data_size;
 
@@ -92,7 +92,7 @@ int64_t sdr_packet_serializer_read_packet(RingBuffer* buffer,
         }
 
         state->samples_remaining_in_packet = header.num_samples;
-        state->current_packet_format = (format_t)header.format_id;
+        state->current_packet_format = (SampleFormat)header.format_id;
     }
 
     // 2. Read Payload
@@ -102,7 +102,7 @@ int64_t sdr_packet_serializer_read_packet(RingBuffer* buffer,
     }
 
     // Validate format
-    size_t bpp = get_bytes_per_sample(state->current_packet_format);
+    size_t bpp = sample_convert_bytes_per_sample(state->current_packet_format);
     if (bpp == 0) return -1;
 
     // Validate capacity

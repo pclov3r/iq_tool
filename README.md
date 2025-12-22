@@ -185,14 +185,14 @@ Filter Implementation Options
 
 SDR General Options
     --sdr-rf-freq=<flt>                       (Required for SDR) Tuner center frequency in Hz
-    --sdr-frequency-offset=<flt>              Frequency offset in Hz (e.g. 125e6 for HamItUp).
+    --sdr-freq-offset=<flt>                   Frequency offset in Hz (e.g. 125e6 for HamItUp).
     --sdr-sample-rate=<flt>                   Set sample rate in Hz. (Device-specific default)
     --sdr-bias-t                              (Optional) Enable Bias-T power.
 
 WAV Input (wav)
     --wav-center-target-freq=<flt>            Shift signal to a new target center frequency (e.g., 97.3e6)
 
-Raw File Input (raw-file)
+Raw File Input (rawfile)
     --raw-file-input-rate=<flt>               (Required) The sample rate of the RAW input file.
     --raw-file-input-sample-format=<str>      (Required) The sample format of the RAW input file.
 
@@ -250,7 +250,7 @@ SpyServer Client Input (spyserver-client)
     --spyserver-client-gain=<int>             Set manual gain. Disables AGC. (Ignored on servers without gain control)
     --spyserver-client-sample-format=<str>    Select sample format {cu8|cs16|cs24|cf32}. Default is cu8.
 
-RAW File Output (raw-file)
+RAW File Output (rawfile)
 
     (No module-specific options)
 

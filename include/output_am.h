@@ -5,7 +5,7 @@
 #include "argparse.h" // Ensure argparse struct is visible
 
 // API Getter
-OutputModuleInterface* get_am_output_module_api(void);
+OutputModuleInterface* output_am_get_module_api(void);
 
 // CLI Options Getter (Needed for module registration)
 const struct argparse_option* am_output_get_cli_options(int* count);

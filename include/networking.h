@@ -19,12 +19,12 @@ typedef struct NetworkingContext NetworkingContext;
 /**
  * @brief Initializes the networking subsystem (e.g., WSAStartup on Windows).
  */
-bool networking_initialize_module(void);
+bool networking_init(void);
 
 /**
  * @brief Cleans up the networking subsystem.
  */
-void networking_cleanup_module(void);
+void networking_cleanup(void);
 
 /**
  * @brief Connects to a remote host and returns a handle.

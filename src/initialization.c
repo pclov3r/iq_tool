@@ -3,7 +3,7 @@
  * @brief Declares the high-level functions for application initialization and cleanup.
  */
 
-#include "setup.h"
+#include "initialization.h"
 #include "sample_convert.h"
 #include "constants.h"
 #include "platform.h"
@@ -104,12 +104,12 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppContext* app, f
     // --- Step 1: Handle Smart Default (Missing Rate) ---
     // If the user didn't specify a rate (0), use the hardware/file input rate.
     if (config->output_rate.target_rate <= 0.0) {
-        config->output_rate.target_rate = (double)app->module.source_info.samplerate;
+        config->output_rate.target_rate = (double)app->module.source_info.sample_rate;
         log_info("No output rate specified. Defaulting to native input rate: %.0f Hz", config->output_rate.target_rate);
     }
 
     // --- Step 2: Calculate Ratio ---
-    double input_rate_d = (double)app->module.source_info.samplerate;
+    double input_rate_d = (double)app->module.source_info.sample_rate;
     float r = (float)(config->output_rate.target_rate / input_rate_d);
 
     // --- Step 3: Check for Passthrough Conditions ---
@@ -152,7 +152,7 @@ bool validate_and_configure_filter_stage(struct AppConfig *config, struct AppCon
         return true;
     }
 
-    double input_rate = (double)app->module.source_info.samplerate;
+    double input_rate = (double)app->module.source_info.sample_rate;
     double output_rate = config->output_rate.target_rate;
 
     // Optimization: If downsampling, filtering AFTER resampling might be more efficient
@@ -281,7 +281,7 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
     // -------------------------------------------------------------------------
     // 4. Calculate Dynamic Pipeline Depth ("Trays")
     // -------------------------------------------------------------------------
-    double input_rate = (double)app->module.source_info.samplerate;
+    double input_rate = (double)app->module.source_info.sample_rate;
 
     // FAIL FAST: If the input rate is unknown or invalid, we cannot safely configure the pipeline.
     if (input_rate <= 0.0) {
@@ -313,8 +313,8 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
 
     // Calculate raw byte sizes
     size_t raw_input_bytes = app->pipeline.alloc_size_samples * app->module.input_bytes_per_sample_pair;
-    size_t complex_bytes = app->pipeline.alloc_size_samples * sizeof(complex_float_t);
-    app->module.output_bytes_per_sample_pair = get_bytes_per_sample(config->output.format);
+    size_t complex_bytes = app->pipeline.alloc_size_samples * sizeof(ComplexFloat);
+    app->module.output_bytes_per_sample_pair = sample_convert_bytes_per_sample(config->output.format);
     size_t final_output_bytes = app->pipeline.alloc_size_samples * app->module.output_bytes_per_sample_pair;
 
     // Calculate Strides (Aligned to 32 bytes)
@@ -355,8 +355,8 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
 
         // Set pointers using the aligned strides
         item->raw_input_data = chunk_base;
-        item->complex_sample_buffer_a = (complex_float_t*)(chunk_base + raw_stride);
-        item->complex_sample_buffer_b = (complex_float_t*)(chunk_base + raw_stride + complex_stride);
+        item->complex_sample_buffer_a = (ComplexFloat*)(chunk_base + raw_stride);
+        item->complex_sample_buffer_b = (ComplexFloat*)(chunk_base + raw_stride + complex_stride);
         item->final_output_data = (unsigned char*)(chunk_base + raw_stride + (complex_stride * 2));
 
         // Set capacities (using the actual usable byte count, not the stride padding)

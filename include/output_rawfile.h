@@ -12,7 +12,7 @@
  * @brief Returns a pointer to the OutputModuleInterface struct that implements
  *        the output module interface for raw file output.
  */
-OutputModuleInterface* get_rawfile_output_module_api(void);
+OutputModuleInterface* output_rawfile_get_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the Raw File output module.

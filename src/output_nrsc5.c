@@ -496,7 +496,7 @@ static bool nrsc5_output_validate_options(AppConfig* config) {
 
     // 2. Enforce Format and Rate based on Mode
     double required_rate = 0.0;
-    format_t required_format = FORMAT_UNKNOWN;
+    SampleFormat required_format = FORMAT_UNKNOWN;
 
     switch (s_nrsc5_config.active_mode) {
         case NRSC5_MODE_CS16_FM:
@@ -582,6 +582,6 @@ static OutputModuleInterface s_nrsc5_output_api = {
     .get_summary_info = nrsc5_output_get_summary_info,
 };
 
-OutputModuleInterface* get_nrsc5_output_module_api(void) {
+OutputModuleInterface* output_nrsc5_get_module_api(void) {
     return &s_nrsc5_output_api;
 }

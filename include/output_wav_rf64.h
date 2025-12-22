@@ -12,7 +12,7 @@
  * @brief Returns a pointer to the OutputModuleInterface struct that implements
  *        the output module interface for WAV RF64 file output.
  */
-OutputModuleInterface* get_wav_rf64_output_module_api(void);
+OutputModuleInterface* output_wav_rf64_get_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the WAV RF64 output module.

@@ -9,7 +9,7 @@
 #include "common_types.h"
 #include "pipeline_types.h"
 #include "module.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include "presets_loader.h"
 #include "constants.h"
 #include "resampler.h"
@@ -69,7 +69,7 @@ typedef struct AppConfig {
         char* type_name;
         bool  type_provided;
         OutputType type;
-        format_t   format;
+        SampleFormat   format;
     #ifdef _WIN32
         wchar_t effective_path_w[MAX_PATH_BUFFER];
         char    effective_path_utf8[MAX_PATH_BUFFER];
@@ -183,7 +183,7 @@ typedef struct ModuleState {
     InputModuleInterface*  input_api;
     void*                  input_private_data;
     InputSourceInfo        source_info;
-    format_t               input_format;
+    SampleFormat               input_format;
     size_t                 input_bytes_per_sample_pair;
 
     OutputModuleInterface* output_api;
@@ -207,11 +207,11 @@ typedef struct FilterContext {
     void*            object;
     int              type_actual;
     unsigned int     block_size;
-    complex_float_t* pre_fft_remainder_buffer;
+    ComplexFloat* pre_fft_remainder_buffer;
     unsigned int     pre_fft_remainder_len;
-    complex_float_t* post_fft_remainder_buffer;
+    ComplexFloat* post_fft_remainder_buffer;
     unsigned int     post_fft_remainder_len;
-    complex_float_t* fft_scratch_buffer;
+    ComplexFloat* fft_scratch_buffer;
 } FilterContext;
 
 typedef struct IqCorrectionResources {
@@ -231,7 +231,7 @@ typedef struct DspContext {
     AgcContext            agc;
     FilterContext         filter;
 
-    resampler_t* resampler;
+    Resampler* resampler;
     void*        pre_resample_nco;
     void*        post_resample_nco;
 

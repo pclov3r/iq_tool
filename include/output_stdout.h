@@ -12,7 +12,7 @@
  * @brief Returns a pointer to the OutputModuleInterface struct that implements
  *        the output module interface for stdout output.
  */
-OutputModuleInterface* get_stdout_output_module_api(void);
+OutputModuleInterface* output_stdout_get_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the Stdout output module.

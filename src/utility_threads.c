@@ -17,7 +17,7 @@
 #include "utils.h"
 #include "signal_handler.h"
 #include "log.h"
-#include "iq_correct.h"
+#include "iq_correction.h"
 #include "queue.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,13 +32,13 @@
  * @param arg A void pointer to the PipelineContext struct.
  * @return NULL.
  */
-void* iq_optimization_thread_func(void* arg) {
+void* pipeline_thread_iq_optimizer(void* arg) {
     PipelineContext* args = (PipelineContext*)arg;
     AppContext* app = args->app;
 
     SampleChunk* item;
     while ((item = (SampleChunk*)queue_dequeue(app->pipeline.iq_optimization_data_queue)) != NULL) {
-        iq_correct_run_optimization(&app->dsp, item->complex_sample_buffer_a);
+        iq_correction_run_optimization(&app->dsp, item->complex_sample_buffer_a);
         // Return the chunk to the free pool for reuse
         queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
     }
@@ -55,7 +55,7 @@ void* iq_optimization_thread_func(void* arg) {
  * @param arg A void pointer to the PipelineContext struct.
  * @return NULL.
  */
-void* watchdog_thread_func(void* arg) {
+void* pipeline_thread_watchdog(void* arg) {
     PipelineContext* args = (PipelineContext*)arg;
     AppContext* app = args->app;
     AppConfig* config = args->config;
@@ -74,7 +74,7 @@ void* watchdog_thread_func(void* arg) {
         sleep(WATCHDOG_INTERVAL_MS / 1000);
 #endif
 
-        double current_time = get_monotonic_time_sec();
+        double current_time = utils_get_time();
         bool timed_out = false;
 
         pthread_mutex_lock(&app->stats.mutex);

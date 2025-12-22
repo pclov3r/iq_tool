@@ -1,6 +1,6 @@
 #include "module_manager.h"
 #include "app_context.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include "log.h"
 #include <string.h>
 #include <stdlib.h>
@@ -63,7 +63,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "wav",
             .type = MODULE_TYPE_INPUT,
-            .api = get_wav_input_module_api(),
+            .api = input_wav_get_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = wav_input_get_cli_options,
@@ -73,7 +73,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "rawfile",
             .type = MODULE_TYPE_INPUT,
-            .api = get_rawfile_input_module_api(),
+            .api = input_rawfile_get_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = rawfile_input_get_cli_options,
@@ -84,7 +84,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "rtlsdr",
             .type = MODULE_TYPE_INPUT,
-            .api = get_rtlsdr_input_module_api(),
+            .api = input_rtlsdr_get_module_api(),
             .is_sdr = true,
             .set_default_config = rtlsdr_set_default_config,
             .get_cli_options = rtlsdr_input_get_cli_options,
@@ -96,7 +96,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "sdrplay",
             .type = MODULE_TYPE_INPUT,
-            .api = get_sdrplay_input_module_api(),
+            .api = input_sdrplay_get_module_api(),
             .is_sdr = true,
             .set_default_config = sdrplay_set_default_config,
             .get_cli_options = sdrplay_input_get_cli_options,
@@ -108,7 +108,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "hackrf",
             .type = MODULE_TYPE_INPUT,
-            .api = get_hackrf_input_module_api(),
+            .api = input_hackrf_get_module_api(),
             .is_sdr = true,
             .set_default_config = hackrf_set_default_config,
             .get_cli_options = hackrf_input_get_cli_options,
@@ -120,7 +120,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "airspy",
             .type = MODULE_TYPE_INPUT,
-            .api = get_airspy_input_module_api(),
+            .api = input_airspy_get_module_api(),
             .is_sdr = true,
             .set_default_config = airspy_set_default_config,
             .get_cli_options = airspy_input_get_cli_options,
@@ -132,7 +132,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "airspyhf",
             .type = MODULE_TYPE_INPUT,
-            .api = get_airspyhf_input_module_api(),
+            .api = input_airspyhf_get_module_api(),
             .is_sdr = true,
             .set_default_config = airspyhf_set_default_config,
             .get_cli_options = airspyhf_input_get_cli_options,
@@ -144,7 +144,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "bladerf",
             .type = MODULE_TYPE_INPUT,
-            .api = get_bladerf_input_module_api(),
+            .api = input_bladerf_get_module_api(),
             .is_sdr = true,
             .set_default_config = bladerf_set_default_config,
             .get_cli_options = bladerf_input_get_cli_options,
@@ -155,7 +155,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "spyserver-client",
             .type = MODULE_TYPE_INPUT,
-            .api = get_spyserver_client_input_module_api(),
+            .api = input_spyserver_client_get_module_api(),
             .is_sdr = true,
             .set_default_config = spyserver_client_set_default_config,
             .get_cli_options = spyserver_client_input_get_cli_options,
@@ -167,7 +167,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .name = "rawfile",
             .type = MODULE_TYPE_OUTPUT,
             .output_type = OUTPUT_TYPE_RAW,
-            .api = get_rawfile_output_module_api(),
+            .api = output_rawfile_get_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = rawfile_output_get_cli_options,
@@ -178,7 +178,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .name = "wav", // The command for the standard WAV format
             .type = MODULE_TYPE_OUTPUT,
             .output_type = OUTPUT_TYPE_WAV,
-            .api = get_wav_output_module_api(),
+            .api = output_wav_get_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = wav_output_get_cli_options,
@@ -189,7 +189,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .name = "wav-rf64", // The command for the modern RF64 format
             .type = MODULE_TYPE_OUTPUT,
             .output_type = OUTPUT_TYPE_WAV_RF64,
-            .api = get_wav_rf64_output_module_api(),
+            .api = output_wav_rf64_get_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = wav_rf64_output_get_cli_options,
@@ -200,7 +200,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .name = "stdout",
             .type = MODULE_TYPE_OUTPUT,
             .output_type = OUTPUT_TYPE_RAW,
-            .api = get_stdout_output_module_api(),
+            .api = output_stdout_get_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = stdout_output_get_cli_options,
@@ -212,7 +212,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .name = "nrsc5",
             .type = MODULE_TYPE_OUTPUT,
             .output_type = OUTPUT_TYPE_RAW, // Consumes raw I/Q from pipeline
-            .api = get_nrsc5_output_module_api(),
+            .api = output_nrsc5_get_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = nrsc5_output_get_cli_options,
@@ -225,7 +225,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .name = "wfm",
             .type = MODULE_TYPE_OUTPUT,
             .output_type = OUTPUT_TYPE_RAW,
-            .api = get_wfm_output_module_api(),
+            .api = output_wfm_get_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = wfm_output_get_cli_options,
@@ -237,7 +237,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .name = "nfm",
             .type = MODULE_TYPE_OUTPUT,
             .output_type = OUTPUT_TYPE_RAW,
-            .api = get_nfm_output_module_api(),
+            .api = output_nfm_get_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = nfm_output_get_cli_options,
@@ -249,7 +249,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .name = "am",
             .type = MODULE_TYPE_OUTPUT,
             .output_type = OUTPUT_TYPE_RAW,
-            .api = get_am_output_module_api(),
+            .api = output_am_get_module_api(),
             .is_sdr = false,
             .set_default_config = NULL,
             .get_cli_options = am_output_get_cli_options,

@@ -1,5 +1,5 @@
-#ifndef MEMORY_ARENA_H_
-#define MEMORY_ARENA_H_
+#ifndef MEM_ARENA_H_
+#define MEM_ARENA_H_
 
 #include <stddef.h>
 #include <stdbool.h>
@@ -51,4 +51,4 @@ void* mem_arena_alloc(MemoryArena* arena, size_t size, bool zero_memory);
  */
 void mem_arena_destroy(MemoryArena* arena);
 
-#endif // MEMORY_ARENA_H_
+#endif // MEM_ARENA_H_

@@ -12,11 +12,11 @@
 
 // --- Data Pipeline Stage Functions ---
 
-void* sdr_capture_thread_func(void* arg);
-void* reader_thread_func(void* arg);
-void* pre_processor_thread_func(void* arg);
-void* resampler_thread_func(void* arg);
-void* post_processor_thread_func(void* arg);
-void* writer_thread_func(void* arg);
+void* pipeline_thread_sdr_capture(void* arg);
+void* pipeline_thread_reader(void* arg);
+void* pipeline_thread_pre_processor(void* arg);
+void* pipeline_thread_resampler(void* arg);
+void* pipeline_thread_post_processor(void* arg);
+void* pipeline_thread_writer(void* arg);
 
 #endif // PIPELINE_THREADS_H_

@@ -7,7 +7,7 @@
 #include "utils.h"
 #include "sample_convert.h"
 #include "input_common.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include "queue.h"
 #include "sdr_packet_serializer.h"
 #include "argparse.h"
@@ -130,7 +130,7 @@ static InputModuleInterface s_rtlsdr_input_api = {
     .pre_stream_iq_correction = NULL
 };
 
-InputModuleInterface* get_rtlsdr_input_module_api(void) {
+InputModuleInterface* input_rtlsdr_get_module_api(void) {
     return &s_rtlsdr_input_api;
 }
 
@@ -256,7 +256,7 @@ static bool rtlsdr_input_initialize(ModuleContext* ctx) {
     }
     uint32_t actual_rate = rtlsdr_get_sample_rate(private_data->dev);
     log_info("RTL-SDR: Requested sample rate %.0f Hz, actual rate set to %u Hz.", config->sdr_general.sample_rate_hz, actual_rate);
-    app->module.source_info.samplerate = actual_rate;
+    app->module.source_info.sample_rate = actual_rate;
 
     result = rtlsdr_set_center_freq(private_data->dev, (uint32_t)config->sdr_general.rf_freq_hz);
     if (result < 0) {
@@ -313,7 +313,7 @@ static bool rtlsdr_input_initialize(ModuleContext* ctx) {
     }
 
     app->module.input_format = CU8;
-    app->module.input_bytes_per_sample_pair = get_bytes_per_sample(app->module.input_format);
+    app->module.input_bytes_per_sample_pair = sample_convert_bytes_per_sample(app->module.input_format);
     app->module.source_info.frames = -1;
 
     if (config->dsp.raw_passthrough && app->module.input_format != config->output.format) {
@@ -399,7 +399,7 @@ static void rtlsdr_input_get_summary_info(const ModuleContext* ctx, InputSummary
 
     add_summary_item(info, "Input Source", "%s", source_name_buf);
     add_summary_item(info, "Input Format", "8-bit Unsigned Complex (cu8)");
-    add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.samplerate);
+    add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.sample_rate);
     add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
     if (s_rtlsdr_config.gain_provided) {
         add_summary_item(info, "Gain", "%.1f dB (Manual)", (float)s_rtlsdr_config.gain / 10.0f);

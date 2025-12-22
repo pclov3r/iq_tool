@@ -1,4 +1,4 @@
-#include "frequency_shift.h"
+#include "freq_shift.h"
 #include "constants.h"
 #include "app_context.h"
 #include "utils.h"
@@ -41,7 +41,7 @@ bool freq_shift_create(AppConfig *config, AppContext* app) {
 
     // --- Create Pre-Resample NCO ---
     if (!config->dsp.shift_after_resample) {
-        double rate_for_nco = (double)app->module.source_info.samplerate;
+        double rate_for_nco = (double)app->module.source_info.sample_rate;
         if (fabs(app->dsp.nco_shift_hz) > (SHIFT_FACTOR_LIMIT * rate_for_nco)) {
             log_error("Requested frequency shift %.2f Hz exceeds sanity limit for the pre-resample rate of %.1f Hz.", app->dsp.nco_shift_hz, rate_for_nco);
             return false;
@@ -78,7 +78,7 @@ bool freq_shift_create(AppConfig *config, AppContext* app) {
 /**
  * @brief Applies the frequency shift to a block of complex samples using a specific NCO.
  */
-void freq_shift_apply(void* nco, double shift_hz, complex_float_t* input_buffer, complex_float_t* output_buffer, unsigned int num_frames) {
+void freq_shift_apply(void* nco, double shift_hz, ComplexFloat* input_buffer, ComplexFloat* output_buffer, unsigned int num_frames) {
     if (!nco || num_frames == 0) {
         return;
     }

@@ -15,7 +15,7 @@
 
 #include <stdbool.h>
 #include "app_context.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include "pipeline_types.h" // For SampleChunk
 #include "argparse.h"       // For struct argparse_option
 

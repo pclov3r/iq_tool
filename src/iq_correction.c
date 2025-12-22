@@ -48,11 +48,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "iq_correct.h"
+#include "iq_correction.h"
 #include "constants.h"
 #include "log.h"
 #include "app_context.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include "utils.h"
 #include "pre_processor.h" // Needed for initial calibration chain
 #include "sample_convert.h" // Needed for byte size calculations
@@ -150,7 +150,7 @@ static void estimate_imbalance(IqState *st, const complex float* restrict iq, in
 // == Public API Implementation
 // ============================================================================
 
-bool iq_correct_init(AppConfig* config, AppContext* app, MemoryArena* arena) {
+bool iq_correction_init(AppConfig* config, AppContext* app, MemoryArena* arena) {
     if (!config->dsp.iq_correction.enable) {
         app->dsp.iq_correct.internal_state = NULL;
         return true;
@@ -221,7 +221,7 @@ bool iq_correct_init(AppConfig* config, AppContext* app, MemoryArena* arena) {
     return true;
 }
 
-void iq_correct_apply(DspContext* dsp, complex_float_t* samples, int num_samples) {
+void iq_correction_apply(DspContext* dsp, ComplexFloat* samples, int num_samples) {
     if (!dsp->config->dsp.iq_correction.enable || !dsp->iq_correct.internal_state) return;
 
     IqState* st = (IqState*)dsp->iq_correct.internal_state;
@@ -260,10 +260,10 @@ void iq_correct_apply(DspContext* dsp, complex_float_t* samples, int num_samples
     st->last_amplitude = current_amp;
 }
 
-void iq_correct_run_optimization(DspContext* dsp, const complex_float_t* optimization_data) {
+void iq_correction_run_optimization(DspContext* dsp, const ComplexFloat* optimization_data) {
     if (!dsp->config->dsp.iq_correction.enable || !dsp->iq_correct.internal_state) return;
 
-    dsp->iq_correct.last_optimization_time = get_monotonic_time_sec();
+    dsp->iq_correct.last_optimization_time = utils_get_time();
     IqState* st = (IqState*)dsp->iq_correct.internal_state;
 
     // Snapshot current values under lock.
@@ -299,7 +299,7 @@ void iq_correct_run_optimization(DspContext* dsp, const complex_float_t* optimiz
     pthread_mutex_unlock(&dsp->iq_correct.iq_factors_mutex);
 }
 
-void iq_correct_destroy(AppContext* app) {
+void iq_correction_destroy(AppContext* app) {
     if (app->dsp.iq_correct.internal_state) {
         IqState* st = (IqState*)app->dsp.iq_correct.internal_state;
         if (st->fft_plan) fft_destroy_plan(st->fft_plan);
@@ -309,7 +309,7 @@ void iq_correct_destroy(AppContext* app) {
     pthread_mutex_destroy(&app->dsp.iq_correct.iq_factors_mutex);
 }
 
-bool iq_correct_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile) {
+bool iq_correction_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile) {
     AppContext* app = ctx->app;
 
     if (!infile) {
@@ -327,7 +327,7 @@ bool iq_correct_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile) {
     // Allocate temporary buffers from the setup arena.
     size_t raw_buffer_size = FFTBins * app->module.input_bytes_per_sample_pair;
     void* raw_buffer = mem_arena_alloc(&app->pipeline.setup_arena, raw_buffer_size, false);
-    complex_float_t* cf32_buffer = (complex_float_t*)mem_arena_alloc(&app->pipeline.setup_arena, FFTBins * sizeof(complex_float_t), false);
+    ComplexFloat* cf32_buffer = (ComplexFloat*)mem_arena_alloc(&app->pipeline.setup_arena, FFTBins * sizeof(ComplexFloat), false);
 
     if (!raw_buffer || !cf32_buffer) {
         log_fatal("Failed to allocate temporary buffers for I/Q calibration.");
@@ -357,7 +357,7 @@ bool iq_correct_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile) {
 
     // Run the optimization algorithm synchronously on the processed data multiple times to converge
     for(int i=0; i<64; i++) {
-        iq_correct_run_optimization(&app->dsp, temp_chunk.current_output_buffer);
+        iq_correction_run_optimization(&app->dsp, temp_chunk.current_output_buffer);
         // Force timestamp update so the loop doesn't get rate-limited internally
         app->dsp.iq_correct.last_optimization_time = 0.0;
     }

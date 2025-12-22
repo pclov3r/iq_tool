@@ -14,7 +14,7 @@ struct AppConfig;
  * @brief Returns a pointer to the InputModuleInterface struct that implements
  *        the input source interface for SDRplay device input.
  */
-InputModuleInterface* get_sdrplay_input_module_api(void);
+InputModuleInterface* input_sdrplay_get_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the SDRplay module.

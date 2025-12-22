@@ -13,7 +13,7 @@
  * @brief Returns a pointer to the OutputModuleInterface struct that implements
  *        the output module interface for NRSC5 playback.
  */
-OutputModuleInterface* get_nrsc5_output_module_api(void);
+OutputModuleInterface* output_nrsc5_get_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the NRSC5 output module.

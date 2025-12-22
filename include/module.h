@@ -42,7 +42,7 @@ struct ModuleContext;
  */
 typedef struct InputSourceInfo {
     int64_t frames;     ///< Total number of I/Q frames in the source. -1 for a live stream.
-    int     samplerate; ///< The native sample rate of the source in Hz.
+    int     sample_rate; ///< The native sample rate of the source in Hz.
 } InputSourceInfo;
 
 /**

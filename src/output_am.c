@@ -318,7 +318,7 @@ static void* am_output_run_writer(ModuleContext* ctx) {
         }
 
         if (item->frames_to_write > 0) {
-            complex_float_t* iq_in = (complex_float_t*)item->final_output_data;
+            ComplexFloat* iq_in = (ComplexFloat*)item->final_output_data;
             unsigned int num_frames = item->frames_to_write;
             liquid_float_complex* iq_ptr = (liquid_float_complex*)iq_in;
 
@@ -520,6 +520,6 @@ static OutputModuleInterface s_am_output_api = {
     .write_chunk = NULL
 };
 
-OutputModuleInterface* get_am_output_module_api(void) {
+OutputModuleInterface* output_am_get_module_api(void) {
     return &s_am_output_api;
 }

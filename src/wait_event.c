@@ -4,7 +4,7 @@
  */
 
 #include "wait_event.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include "log.h"
 #include <stdlib.h>
 

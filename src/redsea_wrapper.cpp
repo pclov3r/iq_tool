@@ -105,7 +105,7 @@ void redsea_free(RedseaHandle ctx) {
     if (ctx) delete ctx;
 }
 
-void redsea_process_mpx(RedseaHandle ctx, const float* mpx_data, int num_samples, rds_state_t* out) {
+void redsea_process_mpx(RedseaHandle ctx, const float* mpx_data, int num_samples, RdsState* out) {
     if (!ctx || !mpx_data || !out || num_samples <= 0) return;
 
     // 1. Wrap C buffer into Redsea's MPXBuffer container

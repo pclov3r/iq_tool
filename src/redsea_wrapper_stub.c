@@ -19,7 +19,7 @@ void redsea_free(RedseaHandle ctx) {
     (void)ctx;
 }
 
-void redsea_process_mpx(RedseaHandle ctx, const float* mpx_data, int num_samples, rds_state_t* out_state) {
+void redsea_process_mpx(RedseaHandle ctx, const float* mpx_data, int num_samples, RdsState* out_state) {
     (void)ctx;
     (void)mpx_data;
     (void)num_samples;

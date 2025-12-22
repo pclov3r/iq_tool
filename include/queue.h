@@ -15,7 +15,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include "pipeline_types.h" // Provides the full definition for the Queue struct
-#include "memory_arena.h"   // Provides the full definition for the MemoryArena struct
+#include "mem_arena.h"   // Provides the full definition for the MemoryArena struct
 
 // --- Function Declarations ---
 

@@ -1,6 +1,6 @@
 // memory_arena.c
 
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include "log.h"
 #include "constants.h"
 #include <stdlib.h>

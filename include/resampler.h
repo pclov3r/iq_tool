@@ -23,24 +23,24 @@ struct AppContext;
 // implementation (which is liquid-dsp's msresamp_crcf) from any file
 // that includes this header.
 struct resampler_s;
-typedef struct resampler_s resampler_t;
+typedef struct resampler_s Resampler;
 
 // --- Function Declarations ---
 
 /**
  * @brief Creates and initializes a resampler object.
  */
-resampler_t* create_resampler(const struct AppConfig *config, struct AppContext* app, float resample_ratio);
+Resampler* create_resampler(const struct AppConfig *config, struct AppContext* app, float resample_ratio);
 
 /**
  * @brief Destroys a resampler object and frees all associated memory.
  */
-void destroy_resampler(resampler_t* resampler);
+void destroy_resampler(Resampler* resampler);
 
 /**
  * @brief Resets the internal state of the resampler object.
  */
-void resampler_reset(resampler_t* resampler);
+void resampler_reset(Resampler* resampler);
 
 /**
  * @brief Executes the resampler on a block of samples.
@@ -52,7 +52,7 @@ void resampler_reset(resampler_t* resampler);
  * @param max_output_capacity The maximum number of samples the output buffer can hold (Guard Rail).
  * @param num_output_frames Pointer to store the actual number of frames produced.
  */
-void resampler_execute(resampler_t* resampler, complex_float_t* input, unsigned int num_input_frames, complex_float_t* output, size_t max_output_capacity, unsigned int* num_output_frames);
+void resampler_execute(Resampler* resampler, ComplexFloat* input, unsigned int num_input_frames, ComplexFloat* output, size_t max_output_capacity, unsigned int* num_output_frames);
 
 
 #endif // RESAMPLER_H_

@@ -11,7 +11,7 @@
 #include <complex.h>
 
 // --- Core Data Types ---
-typedef float complex complex_float_t;
+typedef float complex ComplexFloat;
 
 // --- Enumerations ---
 
@@ -34,7 +34,7 @@ typedef enum {
     FORMAT_UNKNOWN,
     U8, S8, U16, S16, U32, S32, F32,
     CU8, CS8, CU16, CS16, CS24, CU32, CS32, CF32, SC16Q11
-} format_t;
+} SampleFormat;
 
 typedef enum {
     OUTPUT_TYPE_RAW,

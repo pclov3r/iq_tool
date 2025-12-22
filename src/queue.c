@@ -1,6 +1,6 @@
 #include "queue.h"
 #include "log.h"
-#include "memory_arena.h" // For mem_arena_alloc
+#include "mem_arena.h" // For mem_arena_alloc
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>

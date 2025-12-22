@@ -4,7 +4,7 @@
 #include "log.h"
 #include "signal_handler.h"
 #include "app_context.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include "utils.h"
 #include "sample_convert.h"
 #include "platform.h"
@@ -216,7 +216,7 @@ static InputModuleInterface s_bladerf_input_api = {
     .pre_stream_iq_correction = NULL
 };
 
-InputModuleInterface* get_bladerf_input_module_api(void) {
+InputModuleInterface* input_bladerf_get_module_api(void) {
     return &s_bladerf_input_api;
 }
 
@@ -398,7 +398,7 @@ static bool bladerf_input_initialize(ModuleContext* ctx) {
         if (!bladerf_configure_standard_rate_and_rf(ctx, rx_channel)) goto cleanup;
     }
 
-    if (app->module.source_info.samplerate == 0) {
+    if (app->module.source_info.sample_rate == 0) {
         log_fatal("BladeRF failed to set the sample rate. The actual rate was reported as 0 Hz.");
         goto cleanup;
     }
@@ -429,7 +429,7 @@ static bool bladerf_input_initialize(ModuleContext* ctx) {
     }
 
     app->module.input_format = (s_bladerf_config.active_bit_depth == 8) ? CS8 : SC16Q11;
-    app->module.input_bytes_per_sample_pair = get_bytes_per_sample(app->module.input_format);
+    app->module.input_bytes_per_sample_pair = sample_convert_bytes_per_sample(app->module.input_format);
 
     // Note: We intentionally allocate a large enough temp buffer for max transfer size,
     // not just the chunk size, to handle whatever the hardware gives us in Buffered Mode.
@@ -474,8 +474,8 @@ static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf
         return false;
     }
     double actual_rate_double = (double)actual_rate_from_device.integer + ((double)actual_rate_from_device.num / (double)actual_rate_from_device.den);
-    app->module.source_info.samplerate = (int)actual_rate_double;
-    log_info("BladeRF: Requested sample rate %.0f Hz, actual rate set to %d Hz.", config->sdr_general.sample_rate_hz, app->module.source_info.samplerate);
+    app->module.source_info.sample_rate = (int)actual_rate_double;
+    log_info("BladeRF: Requested sample rate %.0f Hz, actual rate set to %d Hz.", config->sdr_general.sample_rate_hz, app->module.source_info.sample_rate);
 
     status = bladerf_set_frequency(private_data->dev, rx_channel, config->sdr_general.rf_freq_hz);
     if (is_shutdown_requested()) { return false; }
@@ -503,7 +503,7 @@ static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_c
         return false;
     }
     log_info("BladeRF: Requested sample rate %u Hz, actual rate set to %u Hz.", requested_rate, actual_rate);
-    app->module.source_info.samplerate = (int)actual_rate;
+    app->module.source_info.sample_rate = (int)actual_rate;
 
     bladerf_bandwidth requested_bw = s_bladerf_config.bandwidth_hz;
     bladerf_bandwidth actual_bw;
@@ -538,12 +538,12 @@ static void* bladerf_input_start_stream(ModuleContext* ctx) {
     if (!private_data) return NULL;
 
     // Profile Selection
-    if (app->module.source_info.samplerate >= 5000000) {
+    if (app->module.source_info.sample_rate >= 5000000) {
         log_debug("BladeRF: Using High-Throughput profile for sample rate >= 5 MSPS.");
         s_bladerf_config.num_buffers = BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_BUFFERS;
         s_bladerf_config.buffer_size = BLADERF_PROFILE_HIGHTHROUGHPUT_BUFFER_SIZE;
         s_bladerf_config.num_transfers = BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS;
-    } else if (app->module.source_info.samplerate >= 1000000) {
+    } else if (app->module.source_info.sample_rate >= 1000000) {
         log_debug("BladeRF: Using Balanced profile for sample rate between 1 and 5 MSPS.");
         s_bladerf_config.num_buffers = BLADERF_PROFILE_BALANCED_NUM_BUFFERS;
         s_bladerf_config.buffer_size = BLADERF_PROFILE_BALANCED_BUFFER_SIZE;
@@ -589,7 +589,7 @@ static void* bladerf_input_start_stream(ModuleContext* ctx) {
         return NULL;
     }
 
-    unsigned int samples_per_transfer = (unsigned int)(app->module.source_info.samplerate * BLADERF_TRANSFER_SIZE_SECONDS);
+    unsigned int samples_per_transfer = (unsigned int)(app->module.source_info.sample_rate * BLADERF_TRANSFER_SIZE_SECONDS);
     if (samples_per_transfer > 65536) samples_per_transfer = 65536; 
     samples_per_transfer = (samples_per_transfer / 1024) * 1024;
     
@@ -677,7 +677,7 @@ static void bladerf_input_get_summary_info(const ModuleContext* ctx, InputSummar
     if (strcmp(private_data->board_name, "bladerf2") == 0) add_summary_item(info, "Channel", "%d (RXA)", s_bladerf_config.channel);
     else add_summary_item(info, "Antenna Port", "Automatic");
 
-    add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.samplerate);
+    add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.sample_rate);
     add_summary_item(info, "Bandwidth", "%u Hz", s_bladerf_config.bandwidth_hz);
     add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 

@@ -27,7 +27,7 @@ bool freq_shift_create_ncos(AppConfig *config, AppContext* app);
  * @param output_buffer The destination buffer for the shifted complex samples.
  * @param num_frames The number of frames to process.
  */
-void freq_shift_apply(nco_crcf nco, double shift_hz, complex_float_t* input_buffer, complex_float_t* output_buffer, unsigned int num_frames);
+void freq_shift_apply(nco_crcf nco, double shift_hz, ComplexFloat* input_buffer, ComplexFloat* output_buffer, unsigned int num_frames);
 
 /**
  * @brief Resets the internal state of a specific NCO.

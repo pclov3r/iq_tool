@@ -15,7 +15,7 @@
 #ifndef PIPELINE_TYPES_H_
 #define PIPELINE_TYPES_H_
 
-#include "common_types.h" // For complex_float_t, etc.
+#include "common_types.h" // For ComplexFloat, etc.
 #include <pthread.h>
 #include <stddef.h>
 
@@ -32,13 +32,13 @@
 typedef struct SampleChunk {
     // --- Buffers ---
     void*            raw_input_data;              ///< Buffer for raw data from the source.
-    complex_float_t* complex_sample_buffer_a;     ///< Generic complex float sample buffer #1 for ping-pong.
-    complex_float_t* complex_sample_buffer_b;     ///< Generic complex float sample buffer #2 for ping-pong.
+    ComplexFloat* complex_sample_buffer_a;     ///< Generic complex float sample buffer #1 for ping-pong.
+    ComplexFloat* complex_sample_buffer_b;     ///< Generic complex float sample buffer #2 for ping-pong.
     unsigned char*   final_output_data;           ///< Buffer for the final, converted output data.
 
     // --- State Pointers for Data Flow ---
-    complex_float_t* current_input_buffer;        ///< Points to the buffer containing valid data for the current stage.
-    complex_float_t* current_output_buffer;       ///< Points to the buffer where the current stage should write its output.
+    ComplexFloat* current_input_buffer;        ///< Points to the buffer containing valid data for the current stage.
+    ComplexFloat* current_output_buffer;       ///< Points to the buffer where the current stage should write its output.
 
     // --- Capacities ---
     size_t raw_input_capacity_bytes;        ///< The max size of the raw_input_data buffer.
@@ -47,7 +47,7 @@ typedef struct SampleChunk {
 
     // --- State Variables ---
     int64_t      frames_read;                 ///< Number of valid frames read from the source.
-    format_t     packet_sample_format;        ///< The sample format of the raw data in this chunk (for SDRs).
+    SampleFormat     packet_sample_format;        ///< The sample format of the raw data in this chunk (for SDRs).
     unsigned int frames_to_write;             ///< Number of valid frames to be written to the output.
     bool         is_last_chunk;               ///< Flag indicating this is the final chunk in a stream.
     bool         stream_discontinuity_event;  ///< Flag indicating a stream reset (e.g., SDR overrun).

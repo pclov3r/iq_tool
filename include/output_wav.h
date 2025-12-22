@@ -12,7 +12,7 @@
  * @brief Returns a pointer to the OutputModuleInterface struct that implements
  *        the output module interface for WAV file output.
  */
-OutputModuleInterface* get_wav_output_module_api(void);
+OutputModuleInterface* output_wav_get_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the WAV output module.

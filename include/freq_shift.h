@@ -9,8 +9,8 @@
  * stages of the pipeline.
  */
 
-#ifndef FREQUENCY_SHIFT_H_
-#define FREQUENCY_SHIFT_H_
+#ifndef FREQ_SHIFT_H_
+#define FREQ_SHIFT_H_
 
 #include <stdbool.h>
 #include "app_context.h"
@@ -39,7 +39,7 @@ bool freq_shift_create(AppConfig *config, AppContext* app);
  * @param output_buffer The destination buffer for the shifted complex samples. Can be the same as input_buffer.
  * @param num_frames The number of frames (I/Q pairs) to process.
  */
-void freq_shift_apply(void* nco, double shift_hz, complex_float_t* input_buffer, complex_float_t* output_buffer, unsigned int num_frames);
+void freq_shift_apply(void* nco, double shift_hz, ComplexFloat* input_buffer, ComplexFloat* output_buffer, unsigned int num_frames);
 
 /**
  * @brief Resets the internal phase of a specific NCO.
@@ -58,4 +58,4 @@ void freq_shift_reset_nco(void* nco);
 void freq_shift_destroy_ncos(AppContext* app);
 
 
-#endif // FREQUENCY_SHIFT_H_
+#endif // FREQ_SHIFT_H_

@@ -7,11 +7,11 @@
 #include "platform.h"
 #include "sample_convert.h"
 #include "input_common.h"
-#include "memory_arena.h"
+#include "mem_arena.h"
 #include "queue.h"
 #include "ring_buffer.h"
 #include "argparse.h"
-#include "iq_correct.h"
+#include "iq_correction.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -462,7 +462,7 @@ static InputModuleInterface s_wav_input_api = {
     .pre_stream_iq_correction = wav_input_pre_stream_iq_correction,
 };
 
-InputModuleInterface* get_wav_input_module_api(void) {
+InputModuleInterface* input_wav_get_module_api(void) {
     return &s_wav_input_api;
 }
 
@@ -487,7 +487,7 @@ static void wav_input_get_summary_info(const ModuleContext* ctx, InputSummaryInf
         default:   format_str = "Unknown PCM"; break;
     }
     add_summary_item(info, "Input Format", "%s", format_str);
-    add_summary_item(info, "Input Rate", "%.0f Hz", (double)app->module.source_info.samplerate);
+    add_summary_item(info, "Input Rate", "%.0f Hz", (double)app->module.source_info.sample_rate);
 
     long long input_file_size = -1LL;
 #ifdef _WIN32
@@ -500,7 +500,7 @@ static void wav_input_get_summary_info(const ModuleContext* ctx, InputSummaryInf
         input_file_size = stat_buf.st_size;
 #endif
     char size_buf[40];
-    add_summary_item(info, "Input File Size", "%s", format_file_size(input_file_size, size_buf, sizeof(size_buf)));
+    add_summary_item(info, "Input File Size", "%s", utils_format_size(input_file_size, size_buf, sizeof(size_buf)));
 
     if (private_data->sdr_info_present) {
         if (private_data->sdr_info.timestamp_unix_present) {
@@ -582,7 +582,7 @@ static bool wav_input_initialize(ModuleContext* ctx) {
             return false;
     }
 
-    app->module.input_bytes_per_sample_pair = get_bytes_per_sample(app->module.input_format);
+    app->module.input_bytes_per_sample_pair = sample_convert_bytes_per_sample(app->module.input_format);
 
     if (sfinfo.samplerate <= 0) {
         log_fatal("Error: Invalid input sample rate (%d Hz).", sfinfo.samplerate);
@@ -595,7 +595,7 @@ static bool wav_input_initialize(ModuleContext* ctx) {
         log_warn("Warning: Input file appears to be empty (0 frames).");
     }
 
-    app->module.source_info.samplerate = sfinfo.samplerate;
+    app->module.source_info.sample_rate = sfinfo.samplerate;
     app->module.source_info.frames = sfinfo.frames;
 
     init_sdr_metadata(&private_data->sdr_info);
@@ -743,5 +743,5 @@ static bool wav_input_pre_stream_iq_correction(ModuleContext* ctx) {
     }
     
     // The module's only job is to call the calibration service with its private file handle.
-    return iq_correct_run_initial_calibration(ctx, private_data->infile);
+    return iq_correction_run_initial_calibration(ctx, private_data->infile);
 }

@@ -43,7 +43,7 @@ static int preset_flag_warning_cb(struct argparse *self, const struct argparse_o
     return 0;
 }
 
-void print_usage(const char *prog_name, AppConfig *config, MemoryArena* arena) {
+void cli_print_usage(const char *prog_name, AppConfig *config, MemoryArena* arena) {
     (void)prog_name;
     struct argparse argparse;
     struct argparse_option all_options[MAX_TOTAL_OPTIONS];
@@ -98,7 +98,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
     struct argparse_option sdr_general_options[] = {
         OPT_GROUP("SDR General Options"),
         OPT_DOUBLE(0, "sdr-rf-freq", &config->sdr_general.rf_freq_hz_arg, "(Required for SDR) Tuner center frequency in Hz", NULL, 0, 0),
-        OPT_DOUBLE(0, "sdr-frequency-offset", &config->sdr_general.frequency_offset_arg, "Frequency offset in Hz (e.g. 125e6 for HamItUp).", NULL, 0, 0),
+        OPT_DOUBLE(0, "sdr-freq-offset", &config->sdr_general.frequency_offset_arg, "Frequency offset in Hz (e.g. 125e6 for HamItUp).", NULL, 0, 0),
         OPT_DOUBLE(0, "sdr-sample-rate", &config->sdr_general.sample_rate_hz_arg, "Set sample rate in Hz. (Device-specific default)", NULL, 0, 0),
         OPT_BOOLEAN(0, "sdr-bias-t", &config->sdr_general.bias_t_enable, "(Optional) Enable Bias-T power.", NULL, 0, 0),
     };
@@ -166,7 +166,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
 }
 
 
-bool parse_arguments(int argc, char *argv[], AppConfig *config, MemoryArena* arena) {
+bool cli_parse(int argc, char *argv[], AppConfig *config, MemoryArena* arena) {
     g_original_argc = argc;
     g_original_argv = (const char**)argv;
 
