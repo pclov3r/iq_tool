@@ -1,5 +1,5 @@
 /**
- * @file module_manager.h
+ * @file module_registry.h
  * @brief Defines the interface for managing all available application modules.
  *
  * This module acts as a registry for all the different pluggable modules that have
@@ -8,8 +8,8 @@
  * configurations, and retrieve the list of all available modules.
  */
 
-#ifndef MODULE_MANAGER_H_
-#define MODULE_MANAGER_H_
+#ifndef MODULE_REGISTRY_H_
+#define MODULE_REGISTRY_H_
 
 #include "module.h" // Provides the core InputModuleInterface interface definition
 #include "argparse.h"     // Provides the argparse_option struct for CLI options
@@ -48,7 +48,7 @@ typedef struct Module {
  * @param arena The memory arena, needed to initialize the module list on first call.
  * @return A pointer to the corresponding InputModuleInterface struct, or NULL if not found.
  */
-InputModuleInterface* module_manager_get_input_interface_by_name(const char* name, struct MemoryArena* arena);
+const Module* module_get(const char* name, ModuleType type, struct MemoryArena* arena);
 
 /**
  * @brief Finds an OUTPUT module by name and returns its full registration struct.
@@ -56,7 +56,7 @@ InputModuleInterface* module_manager_get_input_interface_by_name(const char* nam
  * @param arena The memory arena, needed to initialize the module list on first call.
  * @return A read-only pointer to the Module struct, or NULL if not found.
  */
-const Module* module_manager_get_output_module_by_name(const char* name, struct MemoryArena* arena);
+
 
 /**
  * @brief Finds a module by name and returns its full registration struct.
@@ -64,7 +64,6 @@ const Module* module_manager_get_output_module_by_name(const char* name, struct 
  * @param arena The memory arena, needed to initialize the module list on first call.
  * @return A read-only pointer to the Module struct, or NULL if not found.
  */
-const Module* module_manager_get_module_by_name(const char* name, struct MemoryArena* arena);
 
 /**
  * @brief Gets a list of all registered and compiled-in modules.
@@ -72,14 +71,14 @@ const Module* module_manager_get_module_by_name(const char* name, struct MemoryA
  * @param arena The memory arena, needed to initialize the module list on first call.
  * @return A constant pointer to the array of Module structs.
  */
-const Module* module_manager_get_all_modules(int* count, struct MemoryArena* arena);
+const Module* module_get_all(int* count, struct MemoryArena* arena);
 
 /**
  * @brief Iterates through all registered modules and applies their default settings.
  * @param config The application configuration struct to be modified.
  * @param arena The memory arena, needed to initialize the module list on first call.
  */
-void module_manager_apply_defaults(struct AppConfig* config, struct MemoryArena* arena);
+void module_apply_defaults(struct AppConfig* config, struct MemoryArena* arena);
 
 /**
  * @brief Checks if a given module name corresponds to an SDR device.
@@ -87,7 +86,7 @@ void module_manager_apply_defaults(struct AppConfig* config, struct MemoryArena*
  * @param arena The memory arena, needed to initialize the module list on first call.
  * @return true if the module exists and is an SDR, false otherwise.
  */
-bool module_manager_is_sdr_module(const char* name, struct MemoryArena* arena);
+bool module_is_sdr(const char* name, struct MemoryArena* arena);
 
 /**
  * @brief Populates a buffer with the CLI options from all registered modules.
@@ -102,7 +101,7 @@ bool module_manager_is_sdr_module(const char* name, struct MemoryArena* arena);
  * @param active_input_type The name of the currently active input module.
  * @param arena The memory arena, needed to initialize the module list.
  */
-void module_manager_populate_cli_options(
+void module_populate_cli_options(
     struct argparse_option* dest_buffer,
     int* total_opts_ptr,
     int max_opts,
@@ -110,4 +109,4 @@ void module_manager_populate_cli_options(
     struct MemoryArena* arena
 );
 
-#endif // MODULE_MANAGER_H_
+#endif // MODULE_REGISTRY_H_

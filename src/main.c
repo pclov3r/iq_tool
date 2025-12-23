@@ -1,7 +1,7 @@
 /*
- * This file is part of iq_resample_tool.
+ * This file is part of iq_tool.
  *
- * Copyright (C) 2025 iq_resample_tool
+ * Copyright (C) 2025 iq_tool
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,7 +42,7 @@
 #include "cli.h"
 #include "initialization.h"
 #include "utils.h"
-#include "module_manager.h"
+#include "module_registry.h"
 #include "presets_loader.h"
 #include "platform.h"
 #include "mem_arena.h"
@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
     if (input_type) {
         config.input.type_name = (char*)input_type;
         int num_modules = 0;
-        const Module* modules = module_manager_get_all_modules(&num_modules, &app.pipeline.setup_arena);
+        const Module* modules = module_get_all(&num_modules, &app.pipeline.setup_arena);
         for (int i = 0; i < num_modules; ++i) {
             if (strcasecmp(input_type, modules[i].name) == 0) {
                 if (modules[i].set_default_config) {
@@ -180,7 +180,7 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    app.module.input_api = module_manager_get_input_interface_by_name(config.input.type_name, &app.pipeline.setup_arena);
+    const Module* _mod = module_get(config.input.type_name, MODULE_TYPE_INPUT, &app.pipeline.setup_arena); app.module.input_api = (_mod) ? (InputModuleInterface*)_mod->api : NULL;
     if (!app.module.input_api) {
         log_fatal("Input type '%s' is not supported or not enabled in this build.", config.input.type_name);
         goto cleanup;

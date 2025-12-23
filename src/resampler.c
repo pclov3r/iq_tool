@@ -11,7 +11,7 @@ struct resampler_s {
     msresamp_crcf liquid_object;
 };
 
-Resampler* create_resampler(const AppConfig *config, AppContext* app, float resample_ratio) {
+Resampler* resampler_create(const AppConfig *config, AppContext* app, float resample_ratio) {
     (void)config; // config is not used here but kept for API consistency
     if (app->dsp.is_passthrough) {
         return NULL; // No resampler needed in passthrough mode.
@@ -27,7 +27,7 @@ Resampler* create_resampler(const AppConfig *config, AppContext* app, float resa
     return resampler;
 }
 
-void destroy_resampler(Resampler* resampler) {
+void resampler_destroy(Resampler* resampler) {
     if (resampler) {
         // We cast our opaque type back to the liquid-dsp type to destroy it.
         msresamp_crcf_destroy((msresamp_crcf)resampler);

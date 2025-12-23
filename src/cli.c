@@ -5,7 +5,7 @@
 #include "log.h"
 #include "utils.h"
 #include "argparse.h"
-#include "module_manager.h"
+#include "module_registry.h"
 #include "agc.h"              // NEW: For agc_populate_cli_options
 #include "filter.h"           // NEW: For filter_populate_cli_options
 #include <stdio.h>
@@ -131,7 +131,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], sdr_general_options, sizeof(sdr_general_options) / sizeof(sdr_general_options[0]));
 
     // 4. Delegate to Modules (Inputs/Outputs)
-    module_manager_populate_cli_options(
+    module_populate_cli_options(
         options_buffer,
         &total_opts,
         max_options,
@@ -205,7 +205,7 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
     }
 
     // Lookup the full module definition to check capabilities/requirements
-    const Module* selected_input_module = module_manager_get_module_by_name(config->input.type_name, arena);
+    const Module* selected_input_module = module_get(config->input.type_name, MODULE_TYPE_INPUT, arena);
 
     if (!selected_input_module || selected_input_module->type != MODULE_TYPE_INPUT) {
         log_error("Invalid input type '%s'.", config->input.type_name);
@@ -233,7 +233,7 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
         return false;
     }
 
-    const Module* selected_output_module = module_manager_get_output_module_by_name(config->output.module_name, arena);
+    const Module* selected_output_module = module_get(config->output.module_name, MODULE_TYPE_OUTPUT, arena);
     if (!selected_output_module) {
         log_fatal("Invalid value for --output: '%s'.", config->output.module_name);
         return false;
@@ -314,7 +314,7 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
     // We look up the output module again to get its API.
     // This allows modules like 'nrsc5' to check for missing flags (program_id)
     // AND override the sample rate/format set in Step 2 if necessary.
-    const Module* out_mod_val = module_manager_get_output_module_by_name(config->output.module_name, arena);
+    const Module* out_mod_val = module_get(config->output.module_name, MODULE_TYPE_OUTPUT, arena);
     if (out_mod_val) {
         OutputModuleInterface* out_api = (OutputModuleInterface*)out_mod_val->api;
         if (out_api->validate_options) {

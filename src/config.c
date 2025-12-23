@@ -2,7 +2,7 @@
 #include "app_context.h" // Provides the full definition for AppConfig
 #include "constants.h"
 #include "log.h"
-#include "module_manager.h"
+#include "module_registry.h"
 #include "utils.h"
 #include <string.h>
 #include <stdlib.h>
@@ -149,7 +149,7 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
 
     // --- Step 3: Determine Output Container Type ---
     // We retrieve the module definition here to check its properties
-    const Module* out_mod = module_manager_get_module_by_name(config->output.module_name, NULL);
+    const Module* out_mod = module_get(config->output.module_name, MODULE_TYPE_OUTPUT, NULL);
     if (out_mod) {
         config->output.type = out_mod->output_type;
     }

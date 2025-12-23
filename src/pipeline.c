@@ -18,7 +18,7 @@
 #include "platform.h" // Added for thread priority abstraction
 #include "signal_handler.h"
 #include "log.h"
-#include "module_manager.h"
+#include "module_registry.h"
 #include "pre_processor.h"
 #include "post_processor.h"
 #include "dc_block.h"
@@ -112,7 +112,7 @@ bool pipeline_run(PipelineContext* context) {
     if (threads_ok && config->dsp.iq_correction.enable) {
         if (!thread_manager_spawn_thread(&manager, "I/Q Optimizer", pipeline_thread_iq_optimizer)) threads_ok = false;
     }
-    if (threads_ok && module_manager_is_sdr_module(config->input.type_name, &app->pipeline.setup_arena)) {
+    if (threads_ok && module_is_sdr(config->input.type_name, &app->pipeline.setup_arena)) {
         if (!thread_manager_spawn_thread(&manager, "SDR Watchdog", pipeline_thread_watchdog)) threads_ok = false;
     }
 
@@ -140,7 +140,7 @@ static bool _create_dsp_components(AppConfig* config, AppContext* app, float res
     if (!dc_block_create(config, app)) return false;
     if (!iq_correction_init(config, app, &app->pipeline.setup_arena)) return false;
     if (!freq_shift_create(config, app)) return false;
-    app->dsp.resampler = create_resampler(config, app, resample_ratio);
+    app->dsp.resampler = resampler_create(config, app, resample_ratio);
     if (!app->dsp.resampler && !app->dsp.is_passthrough) return false;
     if (!filter_create(config, app, &app->pipeline.setup_arena)) return false;
     if (!agc_create(config, app)) return false;
@@ -157,7 +157,7 @@ static bool _create_dsp_components(AppConfig* config, AppContext* app, float res
 static void _destroy_dsp_components(AppContext* app) {
     agc_destroy(app);
     filter_destroy(app);
-    destroy_resampler(app->dsp.resampler);
+    resampler_destroy(app->dsp.resampler);
     app->dsp.resampler = NULL;
     freq_shift_destroy_ncos(app);
     iq_correction_destroy(app);

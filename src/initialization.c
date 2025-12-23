@@ -10,7 +10,7 @@
 #include "utils.h"
 #include "log.h"
 #include "module.h"
-#include "module_manager.h"
+#include "module_registry.h"
 #include "pipeline.h"
 #include "app_context.h"
 #include <stdio.h>
@@ -610,7 +610,7 @@ bool initialize_application(AppConfig *config, AppContext* app) {
     ModuleContext ctx = { .config = config, .app = app };
 
     // --- STEP 1: Look up the selected output module ---
-    const Module* selected_output_module = module_manager_get_output_module_by_name(config->output.module_name, &app->pipeline.setup_arena);
+    const Module* selected_output_module = module_get(config->output.module_name, MODULE_TYPE_OUTPUT, &app->pipeline.setup_arena);
     if (!selected_output_module) {
         log_fatal("Internal error: Could not retrieve selected output module '%s'.", config->output.module_name);
         return false;

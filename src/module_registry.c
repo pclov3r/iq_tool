@@ -1,4 +1,4 @@
-#include "module_manager.h"
+#include "module_registry.h"
 #include "app_context.h"
 #include "mem_arena.h"
 #include "log.h"
@@ -288,7 +288,7 @@ static const Module* _find_module_by_name_and_type(const char* name, ModuleType 
 /**
  * @brief Iterates through all registered modules and applies their default settings.
  */
-void module_manager_apply_defaults(AppConfig* config, MemoryArena* arena) {
+void module_apply_defaults(AppConfig* config, MemoryArena* arena) {
     initialize_modules_list(arena); // Ensure the list is ready
     if (!all_modules) return;
 
@@ -299,30 +299,20 @@ void module_manager_apply_defaults(AppConfig* config, MemoryArena* arena) {
     }
 }
 
-InputModuleInterface* module_manager_get_input_interface_by_name(const char* name, MemoryArena* arena) {
-    const Module* found_module = _find_module_by_name_and_type(name, MODULE_TYPE_INPUT, arena);
-    if (found_module) {
-        return (InputModuleInterface*)found_module->api;
-    }
-    return NULL;
-}
 
-const Module* module_manager_get_output_module_by_name(const char* name, MemoryArena* arena) {
-    return _find_module_by_name_and_type(name, MODULE_TYPE_OUTPUT, arena);
-}
 
-const Module* module_manager_get_all_modules(int* count, MemoryArena* arena) {
+const Module* module_get_all(int* count, MemoryArena* arena) {
     initialize_modules_list(arena); // Ensure the list is ready
     *count = num_all_modules;
     return all_modules;
 }
 
-bool module_manager_is_sdr_module(const char* name, MemoryArena* arena) {
+bool module_is_sdr(const char* name, MemoryArena* arena) {
     const Module* mod = _find_module_by_name_and_type(name, MODULE_TYPE_INPUT, arena);
     return (mod != NULL && mod->is_sdr);
 }
 
-void module_manager_populate_cli_options(
+void module_populate_cli_options(
     struct argparse_option* dest_buffer,
     int* total_opts_ptr,
     int max_opts,
@@ -358,13 +348,6 @@ void module_manager_populate_cli_options(
     }
 }
 
-const Module* module_manager_get_module_by_name(const char* name, MemoryArena* arena) {
-    initialize_modules_list(arena);
-    if (!name || !all_modules) return NULL;
-    for (int i = 0; i < num_all_modules; ++i) {
-        if (strcasecmp(name, all_modules[i].name) == 0) {
-            return &all_modules[i];
-        }
-    }
-    return NULL;
+const Module* module_get(const char* name, ModuleType type, MemoryArena* arena) {
+    return _find_module_by_name_and_type(name, type, arena);
 }

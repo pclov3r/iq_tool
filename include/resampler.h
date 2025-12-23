@@ -30,12 +30,12 @@ typedef struct resampler_s Resampler;
 /**
  * @brief Creates and initializes a resampler object.
  */
-Resampler* create_resampler(const struct AppConfig *config, struct AppContext* app, float resample_ratio);
+Resampler* resampler_create(const struct AppConfig *config, struct AppContext* app, float resample_ratio);
 
 /**
  * @brief Destroys a resampler object and frees all associated memory.
  */
-void destroy_resampler(Resampler* resampler);
+void resampler_destroy(Resampler* resampler);
 
 /**
  * @brief Resets the internal state of the resampler object.
