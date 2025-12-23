@@ -213,7 +213,7 @@ set(OTHER_SOURCES
     src/main.c
     src/mem_arena.c
     src/miniaudio.c
-    src/module_manager.c
+    src/module_registry.c
     src/networking.c
     src/output_rawfile.c
     src/output_stdout.c
