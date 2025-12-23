@@ -45,6 +45,7 @@ typedef struct {
     char product[256];
     char serial[256];
     unsigned char *passthrough_buffer;
+    pthread_mutex_t driver_mutex;
 } RtlSdrContext;
 
 
@@ -212,6 +213,11 @@ static bool rtlsdr_input_initialize(ModuleContext* ctx) {
 
     // Allocate persistent buffer for realtime passthrough (16KB)
     private_data->passthrough_buffer = (unsigned char*)mem_arena_alloc(&app->pipeline.setup_arena, RTLSDR_PASSTHROUGH_BUFFER_SIZE, false);
+
+    if (pthread_mutex_init(&private_data->driver_mutex, NULL) != 0) {
+        log_error("Failed to init driver mutex.");
+        return false;
+    }
     if (!private_data->passthrough_buffer) {
         return false;
     }
@@ -375,6 +381,7 @@ static void rtlsdr_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
         RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
+        pthread_mutex_lock(&private_data->driver_mutex);
         if (private_data->dev) {
             log_info("Closing RTL-SDR device...");
             // Reset buffer to clear USB stalls before closing; prevents I2C errors
@@ -382,6 +389,8 @@ static void rtlsdr_input_cleanup(ModuleContext* ctx) {
             rtlsdr_close(private_data->dev);
             private_data->dev = NULL;
         }
+        pthread_mutex_unlock(&private_data->driver_mutex);
+        pthread_mutex_destroy(&private_data->driver_mutex);
         app->module.input_private_data = NULL;
     }
 }

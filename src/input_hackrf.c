@@ -47,6 +47,7 @@ static struct {
 // --- Private Module State ---
 typedef struct {
     hackrf_device* dev;
+    pthread_mutex_t driver_mutex;
 } HackrfContext;
 
 
@@ -190,7 +191,12 @@ static bool hackrf_input_initialize(ModuleContext* ctx) {
     if (!private_data) {
         return false; // mem_arena_alloc logs error, no app to clean up yet
     }
-    private_data->dev = NULL; // Initialize resource state
+    private_data->dev = NULL;
+
+    if (pthread_mutex_init(&private_data->driver_mutex, NULL) != 0) {
+        log_error("Failed to init driver mutex.");
+        return false;
+    } // Initialize resource state
     app->module.input_private_data = private_data;
 
     result = hackrf_init();
@@ -298,6 +304,8 @@ static void* hackrf_input_start_stream(ModuleContext* ctx) {
 static void hackrf_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     HackrfContext* private_data = (HackrfContext*)app->module.input_private_data;
+    if (private_data) {
+    pthread_mutex_lock(&private_data->driver_mutex);
     if (private_data && private_data->dev && hackrf_is_streaming(private_data->dev) == HACKRF_TRUE) {
         log_info("Stopping HackRF stream...");
         int result = hackrf_stop_rx(private_data->dev);
@@ -305,17 +313,22 @@ static void hackrf_input_stop_stream(ModuleContext* ctx) {
             log_error("Failed to stop HackRF RX: %s (%d)", hackrf_error_name(result), result);
         }
     }
+    pthread_mutex_unlock(&private_data->driver_mutex);
+}
 }
 
 static void hackrf_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
         HackrfContext* private_data = (HackrfContext*)app->module.input_private_data;
+        pthread_mutex_lock(&private_data->driver_mutex);
         if (private_data->dev) {
             log_info("Closing HackRF device...");
             hackrf_close(private_data->dev);
             private_data->dev = NULL;
         }
+        pthread_mutex_unlock(&private_data->driver_mutex);
+        pthread_mutex_destroy(&private_data->driver_mutex);
         app->module.input_private_data = NULL;
     }
     log_info("Exiting HackRF library...");

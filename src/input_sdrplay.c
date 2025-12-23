@@ -208,6 +208,7 @@ typedef struct {
     bool device_selected; // Tracks if SelectDevice was successful
     int16_t *interleave_buffer;
     bool is_streaming;
+    pthread_mutex_t driver_mutex;
 } SdrplayContext;
 
 
@@ -553,6 +554,11 @@ static bool sdrplay_input_initialize(ModuleContext* ctx) {
 
     // Allocate persistent scratch buffer for interleaving (64KB)
     size_t conversion_buf_size = MAX_SDRPLAY_CONVERSION_SAMPLES * 2 * sizeof(int16_t);
+
+    if (pthread_mutex_init(&private_data->driver_mutex, NULL) != 0) {
+        log_error("Failed to init driver mutex.");
+        return false;
+    }
     private_data->interleave_buffer = (int16_t*)mem_arena_alloc(&app->pipeline.setup_arena, conversion_buf_size, false);
     if (!private_data->interleave_buffer) return false;
 
@@ -925,6 +931,8 @@ static void* sdrplay_input_start_stream(ModuleContext* ctx) {
 static void sdrplay_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
+    if (private_data) {
+    pthread_mutex_lock(&private_data->driver_mutex);
     if (private_data && private_data->sdr_device && private_data->is_streaming) {
         log_info("Stopping SDRplay stream...");
         private_data->is_streaming = false;
@@ -934,12 +942,15 @@ static void sdrplay_input_stop_stream(ModuleContext* ctx) {
             log_error("Failed to uninitialize SDRplay device: %s", sdrplay_api_GetErrorString(err));
         }
     }
+    pthread_mutex_unlock(&private_data->driver_mutex);
+}
 }
 
 static void sdrplay_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
         SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
+        pthread_mutex_lock(&private_data->driver_mutex);
         if (private_data->sdr_device && private_data->device_selected) {
             log_debug("Releasing SDRplay device handle...");
             sdrplay_api_ReleaseDevice(private_data->sdr_device);
@@ -955,6 +966,8 @@ static void sdrplay_input_cleanup(ModuleContext* ctx) {
             sdrplay_api_Close();
             private_data->sdr_api_is_open = false;
         }
+        pthread_mutex_unlock(&private_data->driver_mutex);
+        pthread_mutex_destroy(&private_data->driver_mutex);
         app->module.input_private_data = NULL;
     }
 #if defined(_WIN32)

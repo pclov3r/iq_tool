@@ -168,6 +168,7 @@ typedef struct {
     char serial[33];
     char display_name[128];
     void* stream_temp_buffer;
+    pthread_mutex_t driver_mutex;
 } BladerfContext;
 
 
@@ -297,6 +298,11 @@ static bool bladerf_input_initialize(ModuleContext* ctx) {
 
     // Initialize state variables that the main cleanup function will check.
     private_data->dev = NULL;
+
+    if (pthread_mutex_init(&private_data->driver_mutex, NULL) != 0) {
+        log_error("Failed to init driver mutex.");
+        return false;
+    }
     app->module.input_private_data = private_data;
 
 #if defined(_WIN32) && defined(WITH_BLADERF)
@@ -654,10 +660,13 @@ static void bladerf_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
         BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
+        pthread_mutex_lock(&private_data->driver_mutex);
         if (private_data->dev) {
             log_info("Closing BladeRF device...");
             bladerf_close(private_data->dev);
         }
+        pthread_mutex_unlock(&private_data->driver_mutex);
+        pthread_mutex_destroy(&private_data->driver_mutex);
         app->module.input_private_data = NULL;
     }
 #if defined(_WIN32) && defined(WITH_BLADERF)

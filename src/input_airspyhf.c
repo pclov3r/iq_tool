@@ -48,6 +48,7 @@ static struct {
 // --- Private Module State ---
 typedef struct {
     struct airspyhf_device* dev;
+    pthread_mutex_t driver_mutex;
 } AirspyHFContext;
 
 
@@ -251,6 +252,11 @@ static bool airspyhf_input_initialize(ModuleContext* ctx) {
         return false;
     }
     private_data->dev = NULL;
+
+    if (pthread_mutex_init(&private_data->driver_mutex, NULL) != 0) {
+        log_error("Failed to init driver mutex.");
+        return false;
+    }
 
     app->module.input_private_data = private_data;
 
@@ -471,6 +477,8 @@ static void* airspyhf_input_start_stream(ModuleContext* ctx) {
 static void airspyhf_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     AirspyHFContext* private_data = (AirspyHFContext*)app->module.input_private_data;
+    if (private_data) {
+    pthread_mutex_lock(&private_data->driver_mutex);
     if (private_data && private_data->dev && airspyhf_is_streaming(private_data->dev)) {
         log_info("Stopping Airspy HF+ stream...");
         int result = airspyhf_stop(private_data->dev);
@@ -478,17 +486,22 @@ static void airspyhf_input_stop_stream(ModuleContext* ctx) {
             log_error("Failed to stop Airspy HF+ RX: %d", result);
         }
     }
+    pthread_mutex_unlock(&private_data->driver_mutex);
+}
 }
 
 static void airspyhf_input_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     if (app->module.input_private_data) {
         AirspyHFContext* private_data = (AirspyHFContext*)app->module.input_private_data;
+        pthread_mutex_lock(&private_data->driver_mutex);
         if (private_data->dev) {
             log_info("Closing Airspy HF+ device...");
             airspyhf_close(private_data->dev);
             private_data->dev = NULL;
         }
+        pthread_mutex_unlock(&private_data->driver_mutex);
+        pthread_mutex_destroy(&private_data->driver_mutex);
         app->module.input_private_data = NULL;
     }
 }
