@@ -135,6 +135,11 @@ static bool nfm_output_initialize(ModuleContext* ctx) {
 
     // 1. Audio Buffer
     p->audio_ring_buffer = ring_buffer_create(NFM_BUFFER_SIZE);
+    if (p->audio_ring_buffer) {
+        double bytes_per_sec = (double)NFM_AUDIO_RATE * NFM_AUDIO_CHANNELS * sizeof(int16_t);
+        double duration = (double)NFM_BUFFER_SIZE / bytes_per_sec;
+        log_info("NFM: Audio Ring Buffer created: %zu bytes (%.2f seconds)", (size_t)NFM_BUFFER_SIZE, duration);
+    }
 
     // 2. Miniaudio
     ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);

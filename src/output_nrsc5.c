@@ -333,6 +333,11 @@ static bool nrsc5_output_initialize(ModuleContext* ctx) {
 
     // Initialize Ring Buffer
     p->audio_ring_buffer = ring_buffer_create(NRSC5_AUDIO_BUFFER_SIZE);
+    if (p->audio_ring_buffer) {
+        double bytes_per_sec = (double)NRSC5_AUDIO_SAMPLE_RATE * NRSC5_AUDIO_CHANNELS * sizeof(int16_t);
+        double duration = (double)NRSC5_AUDIO_BUFFER_SIZE / bytes_per_sec;
+        log_info("NRSC5: Audio Ring Buffer created: %zu bytes (%.2f seconds)", (size_t)NRSC5_AUDIO_BUFFER_SIZE, duration);
+    }
     if (!p->audio_ring_buffer) return false;
 
     // Initialize Miniaudio

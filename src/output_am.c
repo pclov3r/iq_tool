@@ -178,6 +178,11 @@ static bool am_output_initialize(ModuleContext* ctx) {
 
     // 1. Setup Audio Ring Buffer
     p->audio_ring_buffer = ring_buffer_create(AUDIO_BUFFER_SIZE);
+    if (p->audio_ring_buffer) {
+        double bytes_per_sec = (double)AUDIO_SAMPLE_RATE * AUDIO_CHANNELS * sizeof(int16_t);
+        double duration = (double)AUDIO_BUFFER_SIZE / bytes_per_sec;
+        log_info("AM: Audio Ring Buffer created: %zu bytes (%.2f seconds)", (size_t)AUDIO_BUFFER_SIZE, duration);
+    }
     if (!p->audio_ring_buffer) return false;
 
     // 2. Setup Miniaudio

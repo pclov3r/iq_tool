@@ -121,7 +121,6 @@ RingBuffer* ring_buffer_create(size_t capacity) {
     iob->event_signaled = false;
 #endif
 
-    log_info("I/O buffer created with %zu bytes capacity.", capacity);
     return iob;
 }
 
