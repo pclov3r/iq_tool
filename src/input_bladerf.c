@@ -632,10 +632,13 @@ static void* bladerf_input_start_stream(ModuleContext* ctx) {
     }
 
     unsigned int samples_per_buffer = (unsigned int)(app->module.source_info.sample_rate * BLADERF_TRANSFER_SIZE_SECONDS);
-    if (samples_per_buffer > 65536) samples_per_buffer = 65536;
-    samples_per_buffer = (samples_per_buffer / 1024) * 1024;
 
-    log_debug("BladeRF: Using buffer size of %u samples.", samples_per_buffer);
+    // Apply limits and alignment
+    if (samples_per_buffer > 65536) samples_per_buffer = 65536;
+    samples_per_buffer = (samples_per_buffer / 2048) * 2048;
+    if (samples_per_buffer < 2048) samples_per_buffer = 2048;
+
+    log_info("BladeRF: Driver transfer size aligned to %u samples.", samples_per_buffer);
 
     private_data->samples_per_buffer = samples_per_buffer;
     private_data->num_stream_buffers = s_bladerf_config.num_buffers;
