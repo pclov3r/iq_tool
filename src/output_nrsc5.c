@@ -56,9 +56,12 @@ typedef struct {
     float ber_sum;
     float ber_count;
 
-    // Bitrate Stats
-    unsigned int audio_packets;
-    unsigned int audio_bytes;
+    // Bitrate & Error Stats
+    unsigned int audio_packets;       // Total packets in current batch
+    unsigned int audio_packets_valid; // Packets passing CRC (for bitrate)
+    unsigned int audio_bytes;         // Bytes from valid packets
+    unsigned int audio_errors;        // Recent CRC errors
+    unsigned int total_audio_errors;  // Total CRC errors since sync
 } Nrsc5Context;
 
 // --- CLI Configuration Storage ---
@@ -128,6 +131,7 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
             ctx->ber_max = 0.0f;
             ctx->ber_sum = 0.0f;
             ctx->ber_count = 0.0f;
+            ctx->total_audio_errors = 0;
             break;
 
         case NRSC5_EVENT_LOST_SYNC:
@@ -144,14 +148,33 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
 
         case NRSC5_EVENT_HDC:
             if (evt->hdc.program == ctx->active_program) {
-                ctx->audio_packets++;
                 ctx->audio_bytes += evt->hdc.count;
-                if (ctx->audio_packets >= 32) {
+                ctx->audio_packets++;
+
+                if (evt->hdc.flags & NRSC5_PKT_FLAGS_CRC_ERROR) {
+                    ctx->audio_errors++;
+                    ctx->total_audio_errors++;
+                } else {
+                    ctx->audio_packets_valid++;
+                }
+
+                // Trigger 1: Bitrate (Based on 32 VALID packets)
+                if (ctx->audio_packets_valid >= 32) {
                     float kbps = (float)ctx->audio_bytes * 8.0f * NRSC5_SAMPLE_RATE_AUDIO /
-                                 NRSC5_AUDIO_FRAME_SAMPLES / ctx->audio_packets / 1000.0f;
+                                 NRSC5_AUDIO_FRAME_SAMPLES / ctx->audio_packets_valid / 1000.0f;
                     log_info("NRSC5: Audio bit rate: %.1f kbps", kbps);
-                    ctx->audio_packets = 0;
+                    ctx->audio_packets_valid = 0;
                     ctx->audio_bytes = 0;
+                }
+
+                // Trigger 2: Errors (Based on 32 TOTAL packets)
+                if (ctx->audio_packets >= 32) {
+                    if (ctx->audio_errors > 0) {
+                        log_warn("NRSC5: Audio CRC errors (recent): %d", ctx->audio_errors);
+                        log_warn("NRSC5: Audio CRC errors (total): %d", ctx->total_audio_errors);
+                    }
+                    ctx->audio_packets = 0;
+                    ctx->audio_errors = 0;
                 }
             }
             break;
