@@ -80,7 +80,10 @@ static const char* find_input_type_arg(int argc, char *argv[]);
 
 
 // --- Main Application Entry Point ---
+#include <locale.h>
+
 int main(int argc, char *argv[]) {
+    setlocale(LC_NUMERIC, "C");
 #ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
 #endif

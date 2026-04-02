@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <stdatomic.h>
 
 // --- Struct Definition ---
 
@@ -17,8 +18,7 @@
 typedef struct MemoryArena {
     void*  memory;      ///< Pointer to the start of the large allocated memory block.
     size_t capacity;    ///< The total size in bytes of the memory block.
-    size_t offset;      ///< The current offset in bytes for the next allocation (the "bump pointer").
-    pthread_mutex_t mutex; ///< Mutex to make allocations thread-safe.
+    atomic_size_t offset;      ///< C11 Atomic offset for wait-free allocations.
 } MemoryArena;
 
 

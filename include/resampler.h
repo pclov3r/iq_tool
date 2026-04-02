@@ -52,7 +52,7 @@ void resampler_reset(Resampler* resampler);
  * @param max_output_capacity The maximum number of samples the output buffer can hold (Guard Rail).
  * @param num_output_frames Pointer to store the actual number of frames produced.
  */
-void resampler_execute(Resampler* resampler, ComplexFloat* input, unsigned int num_input_frames, ComplexFloat* output, size_t max_output_capacity, unsigned int* num_output_frames);
+void resampler_execute(Resampler* resampler, ComplexFloat* input, unsigned int num_input_frames, ComplexFloat* output, unsigned int* num_output_frames);
 
 
 #endif // RESAMPLER_H_

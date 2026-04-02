@@ -32,6 +32,7 @@
 #include "ring_buffer.h"
 #include "sdr_packet_serializer.h"
 #include "wait_event.h"
+#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -124,7 +125,7 @@ bool pipeline_run(PipelineContext* context) {
     // --- Step 6: Wait for all spawned threads to complete ---
     thread_manager_join_all(&manager);
     log_debug("All pipeline threads have completed.");
-    success = !app->stats.error_occurred;
+    success = !atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed);
 
     // --- Step 7: Clean up all pipeline-specific app ---
     _destroy_queues_and_buffers(app);
@@ -281,7 +282,7 @@ void* pipeline_thread_reader(void* arg) {
             SerializerState state;
             memset(&state, 0, sizeof(state));
 
-            while (!is_shutdown_requested() && !app->stats.error_occurred) {
+            while (!is_shutdown_requested() && !atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed)) {
                 SampleChunk* item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
                 if (!item) break;
 
@@ -349,7 +350,7 @@ void* pipeline_thread_reader(void* arg) {
 
     if (!is_shutdown_requested()) {
         log_debug("Reader thread finished naturally. End of stream reached.");
-        app->stats.end_of_stream_reached = true;
+        atomic_store_explicit(&app->stats.end_of_stream_reached, true, memory_order_release);
     } else {
         SampleChunk *last_item = (SampleChunk*)queue_try_dequeue(app->pipeline.free_sample_chunk_queue);
         if (last_item) {
@@ -469,12 +470,16 @@ void* pipeline_thread_resampler(void* arg) {
             // In passthrough, we must copy the data to the output buffer
             memcpy(item->current_output_buffer, item->current_input_buffer, output_frames_this_chunk * sizeof(ComplexFloat));
         } else {
-            // --- UPDATED CALL WITH CAPACITY CHECK ---
+            // Estimate maximum output length mathematically prior to execution
+            unsigned int estimated_out = (unsigned int)((item->frames_read + 32) * app->dsp.resample_ratio) + 64;
+            if (estimated_out > item->complex_buffer_capacity_samples) {
+                handle_fatal_thread_error("Resampler input chunk is too large for ping-pong buffers!", app);
+                break;
+            }
             resampler_execute(app->dsp.resampler,
                               item->current_input_buffer,
                               (unsigned int)item->frames_read,
                               item->current_output_buffer,
-                              item->complex_buffer_capacity_samples, // Pass capacity
                               &output_frames_this_chunk);
         }
         item->frames_to_write = output_frames_this_chunk;

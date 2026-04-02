@@ -40,18 +40,8 @@ void resampler_reset(Resampler* resampler) {
     }
 }
 
-void resampler_execute(Resampler* resampler, ComplexFloat* input, unsigned int num_input_frames, ComplexFloat* output, size_t max_output_capacity, unsigned int* num_output_frames) {
+void resampler_execute(Resampler* resampler, ComplexFloat* input, unsigned int num_input_frames, ComplexFloat* output, unsigned int* num_output_frames) {
     if (resampler) {
         msresamp_crcf_execute((msresamp_crcf)resampler, (liquid_float_complex*)input, num_input_frames, (liquid_float_complex*)output, num_output_frames);
-
-        // --- MEMORY SAFETY GUARD RAIL ---
-        // If liquid-dsp wrote more samples than we allocated space for, we have corrupted the heap.
-        // We must crash immediately to prevent undefined behavior downstream.
-        if (*num_output_frames > max_output_capacity) {
-            log_fatal("CRITICAL: Resampler buffer overflow detected!");
-            log_fatal("Wrote %u samples, but buffer capacity is %zu.", *num_output_frames, max_output_capacity);
-            log_fatal("Forcing Exit");
-            exit(EXIT_FAILURE);
-        }
     }
 }

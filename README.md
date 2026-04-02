@@ -60,7 +60,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
 ### Getting Started: Building from Source
 
 **Dependencies:**
-*   **A C99 compiler:** (GCC, Clang)
+*   **A C11 compiler:** (GCC, Clang)
 *   **CMake:** (version 3.10 or higher)
 *   **libsndfile**
 *   **liquid-dsp**

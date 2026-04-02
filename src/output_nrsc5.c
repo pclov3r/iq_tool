@@ -92,8 +92,8 @@ static void miniaudio_data_callback(ma_device* pDevice, void* pOutput, const voi
     size_t available = ring_buffer_get_size(ctx->audio_ring_buffer);
 
     if (available < bytes_needed) {
-        // Underrun or Startup: Output silence
-        memset(pOutput, 0, bytes_needed);
+        if (available > 0) ring_buffer_read(ctx->audio_ring_buffer, pOutput, available);
+        memset((uint8_t*)pOutput + available, 0, bytes_needed - available);
         return;
     }
 

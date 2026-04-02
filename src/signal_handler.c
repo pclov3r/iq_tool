@@ -23,7 +23,8 @@
 extern pthread_mutex_t g_console_mutex;
 
 static AppContext *g_resources_for_signal_handler = NULL;
-static volatile sig_atomic_t g_shutdown_flag = 0;
+#include <stdatomic.h>
+static atomic_bool g_shutdown_flag = ATOMIC_VAR_INIT(false);
 
 #ifdef _WIN32
 static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
@@ -108,18 +109,18 @@ void setup_signal_handlers(AppContext* app) {
 }
 
 bool is_shutdown_requested(void) {
-    return g_shutdown_flag != 0;
+    return atomic_load_explicit(&g_shutdown_flag, memory_order_relaxed);
 }
 
 void reset_shutdown_flag(void) {
-    g_shutdown_flag = 0;
+    atomic_store_explicit(&g_shutdown_flag, false, memory_order_relaxed);
 }
 
 void request_shutdown(void) {
-    if (g_shutdown_flag) {
+    bool expected = false;
+    if (!atomic_compare_exchange_strong(&g_shutdown_flag, &expected, true)) {
         return;
     }
-    g_shutdown_flag = 1;
 
     if (g_resources_for_signal_handler) {
         AppContext* r = g_resources_for_signal_handler;
@@ -160,14 +161,9 @@ void request_shutdown(void) {
 }
 
 void handle_fatal_thread_error(const char* context_msg, AppContext* app) {
-    pthread_mutex_lock(&app->stats.mutex);
-    if (app->stats.error_occurred) {
-        pthread_mutex_unlock(&app->stats.mutex);
-        return;
+    bool expected = false;
+    if (atomic_compare_exchange_strong(&app->stats.error_occurred, &expected, true)) {
+        log_fatal("%s", context_msg);
+        request_shutdown();
     }
-    app->stats.error_occurred = true;
-    pthread_mutex_unlock(&app->stats.mutex);
-
-    log_fatal("%s", context_msg);
-    request_shutdown();
 }

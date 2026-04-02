@@ -243,12 +243,13 @@ typedef struct DspContext {
 // --- 4. Runtime Context (Metrics & Telemetry) ---
 typedef void (*ProgressUpdateFn)(unsigned long long current_output_frames, long long total_output_frames, unsigned long long current_bytes_written, void* udata);
 
+
 typedef struct RuntimeState {
     pthread_mutex_t mutex;
 
     double last_sdr_heartbeat_time;
-    bool   error_occurred;
-    bool   end_of_stream_reached;
+    atomic_bool   error_occurred;
+    atomic_bool   end_of_stream_reached;
 
     unsigned long long total_frames_read;
     unsigned long long total_output_frames;

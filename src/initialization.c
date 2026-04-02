@@ -329,15 +329,8 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
     // CRITICAL: We now use the dynamically calculated pipeline_num_chunks
     size_t pool_total_size = app->pipeline.num_chunks * total_bytes_per_chunk;
 
-#ifdef _WIN32
-    app->pipeline.chunk_data_pool = _aligned_malloc(pool_total_size, MEM_ARENA_ALIGNMENT);
-#else
-    int align_ret = posix_memalign(&app->pipeline.chunk_data_pool, MEM_ARENA_ALIGNMENT, pool_total_size);
-    if (align_ret != 0) {
-        app->pipeline.chunk_data_pool = NULL; // Mark as failed
-        log_fatal("posix_memalign failed with error: %d", align_ret);
-    }
-#endif
+    size_t aligned_pool_total_size = ALIGN_UP(pool_total_size, MEM_ARENA_ALIGNMENT);
+    app->pipeline.chunk_data_pool = aligned_alloc(MEM_ARENA_ALIGNMENT, aligned_pool_total_size);
 
     if (!app->pipeline.chunk_data_pool) {
         log_fatal("Error: Failed to allocate aligned pipeline chunk data pool (%zu bytes).", pool_total_size);
@@ -685,11 +678,7 @@ void cleanup_application(AppConfig *config, AppContext* app) {
     }
 
     if (app->pipeline.chunk_data_pool) {
-#ifdef _WIN32
-        _aligned_free(app->pipeline.chunk_data_pool);
-#else
         free(app->pipeline.chunk_data_pool);
-#endif
         app->pipeline.chunk_data_pool = NULL;
     }
 

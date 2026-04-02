@@ -5,6 +5,8 @@
 #include <string.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <stdatomic.h> // C11 Atomics
+#include <stdalign.h>  // C11 Alignment
 #include "log.h"
 
 #ifdef _WIN32
@@ -19,27 +21,16 @@ struct RingBuffer {
     unsigned char* buffer;
     size_t capacity;
 
-    // --- PADDING 1 ---
-    // Isolates the read-only configuration from the write position.
-    char _pad1[64];
+    // C11 Lock-Free Implementation:
+    // alignas(128) pushes 'write_pos' and 'read_pos' into completely different
+    // cache lines (and prevents spatial prefetcher collisions).
+    // This permanently eliminates False Sharing between Producer and Consumer cores.
+    alignas(128) atomic_size_t write_pos;
+    alignas(128) atomic_size_t read_pos;
 
-    // C99 Lock-Free Implementation:
-    // Volatile prevents register caching.
-    volatile size_t write_pos;
-
-    // --- PADDING 2 ---
-    // Pushes 'read_pos' into a completely different cache line
-    // than 'write_pos'. Prevents False Sharing between Producer and Consumer cores.
-    char _pad2[64];
-
-    volatile size_t read_pos;
-
-    // --- PADDING 3 ---
     // Isolates the reader index from the flags and mutexes below.
-    char _pad3[64];
-
-    volatile bool end_of_stream;
-    volatile bool shutting_down;
+    alignas(128) atomic_bool end_of_stream;
+    atomic_bool shutting_down;
 
     // Synchronization for Backpressure (Producer Waiting)
     // These are NOT used by the lock-free writer (SDR hardware thread).
@@ -66,15 +57,7 @@ RingBuffer* ring_buffer_create(size_t capacity) {
         return NULL;
     }
 
-#ifdef _WIN32
-    iob->buffer = (unsigned char*)_aligned_malloc(capacity, MEM_ARENA_ALIGNMENT);
-#else
-    void* ptr = NULL;
-    if (posix_memalign(&ptr, MEM_ARENA_ALIGNMENT, capacity) != 0) {
-        ptr = NULL;
-    }
-    iob->buffer = (unsigned char*)ptr;
-#endif
+iob->buffer = (unsigned char*)aligned_alloc(MEM_ARENA_ALIGNMENT, capacity);
 
     if (!iob->buffer) {
         log_fatal("Failed to allocate memory for RingBuffer data buffer of size %zu bytes.", capacity);
@@ -83,10 +66,10 @@ RingBuffer* ring_buffer_create(size_t capacity) {
     }
 
     iob->capacity = capacity;
-    iob->write_pos = 0;
-    iob->read_pos = 0;
-    iob->end_of_stream = false;
-    iob->shutting_down = false;
+    atomic_init(&iob->write_pos, 0);
+    atomic_init(&iob->read_pos, 0);
+    atomic_init(&iob->end_of_stream, false);
+    atomic_init(&iob->shutting_down, false);
 
     pthread_mutex_init(&iob->sync_mutex, NULL);
     pthread_cond_init(&iob->space_free_cond, NULL);
@@ -139,11 +122,7 @@ void ring_buffer_destroy(RingBuffer* iob) {
 #endif
 
     if (iob->buffer) {
-#ifdef _WIN32
-        _aligned_free(iob->buffer);
-#else
-        free(iob->buffer);
-#endif
+free(iob->buffer);
     }
     free(iob);
 }
@@ -152,8 +131,8 @@ void ring_buffer_destroy(RingBuffer* iob) {
 size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes) {
     if (!iob || !data || bytes == 0) return 0;
 
-    size_t w = iob->write_pos;
-    size_t r = iob->read_pos;
+    size_t w = atomic_load_explicit(&iob->write_pos, memory_order_relaxed);
+    size_t r = atomic_load_explicit(&iob->read_pos, memory_order_acquire);
     size_t cap = iob->capacity;
 
     size_t size = (w >= r) ? (w - r) : (cap - (r - w));
@@ -171,9 +150,7 @@ size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes) {
         memcpy(iob->buffer, (const unsigned char*)data + first_chunk_size, second_chunk_size);
     }
 
-    MEMORY_BARRIER();
-
-    iob->write_pos = (w + bytes) % cap;
+    atomic_store_explicit(&iob->write_pos, (w + bytes) % cap, memory_order_release);
 
     // Wake up the reader immediately (Non-blocking signal)
 #ifdef _WIN32
@@ -188,6 +165,60 @@ size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes) {
     return bytes;
 }
 
+// PRODUCER: High Priority, Lock-Free, Scatter-Gather
+size_t ring_buffer_write_packet(RingBuffer* iob, const void* header, size_t h_len, const void* payload, size_t p_len) {
+    if (!iob || !header) return 0;
+
+    size_t total_bytes = h_len + p_len;
+    size_t w = atomic_load_explicit(&iob->write_pos, memory_order_relaxed);
+    size_t r = atomic_load_explicit(&iob->read_pos, memory_order_acquire);
+    size_t cap = iob->capacity;
+
+    size_t size = (w >= r) ? (w - r) : (cap - (r - w));
+    size_t available = (cap - 1) - size;
+
+    if (total_bytes > available) {
+        return 0; // Drop packet
+    }
+
+    // 1. Write Header
+    size_t h_chunk1 = (w + h_len > cap) ? (cap - w) : h_len;
+    memcpy(iob->buffer + w, header, h_chunk1);
+
+    size_t h_chunk2 = h_len - h_chunk1;
+    if (h_chunk2 > 0) {
+        memcpy(iob->buffer, (const unsigned char*)header + h_chunk1, h_chunk2);
+    }
+    w = (w + h_len) % cap;
+
+    // 2. Write Payload (if exists)
+    if (payload && p_len > 0) {
+        size_t p_chunk1 = (w + p_len > cap) ? (cap - w) : p_len;
+        memcpy(iob->buffer + w, payload, p_chunk1);
+
+        size_t p_chunk2 = p_len - p_chunk1;
+        if (p_chunk2 > 0) {
+            memcpy(iob->buffer, (const unsigned char*)payload + p_chunk1, p_chunk2);
+        }
+        w = (w + p_len) % cap;
+    }
+
+    // 3. Update write_pos and signal ONCE
+    atomic_store_explicit(&iob->write_pos, w, memory_order_release);
+
+    // Wake up the reader immediately (Non-blocking signal)
+#ifdef _WIN32
+    SetEvent(iob->block_ready_event);
+#else
+    pthread_mutex_lock(&iob->event_mutex);
+    iob->event_signaled = true; // Latch the signal
+    pthread_cond_signal(&iob->event_cond);
+    pthread_mutex_unlock(&iob->event_mutex);
+#endif
+
+    return total_bytes;
+}
+
 // CONSUMER: Low Priority, Blocking (Sleeps if empty)
 size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes) {
     if (!iob || !buffer || max_bytes == 0) return 0;
@@ -195,11 +226,11 @@ size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes) {
     size_t w, r, cap, available;
 
     while (true) {
-        w = iob->write_pos;
-        r = iob->read_pos;
+        w = atomic_load_explicit(&iob->write_pos, memory_order_acquire);
+        r = atomic_load_explicit(&iob->read_pos, memory_order_relaxed);
         cap = iob->capacity;
 
-        if (iob->shutting_down) return 0;
+        if (atomic_load_explicit(&iob->shutting_down, memory_order_relaxed)) return 0;
 
         available = (w >= r) ? (w - r) : (cap - (r - w));
 
@@ -207,7 +238,7 @@ size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes) {
             break;
         }
 
-        if (iob->end_of_stream) {
+        if (atomic_load_explicit(&iob->end_of_stream, memory_order_acquire)) {
             return 0;
         }
 
@@ -244,8 +275,6 @@ size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes) {
 
     size_t bytes_to_read = (max_bytes > available) ? available : max_bytes;
 
-    MEMORY_BARRIER();
-
     size_t first_chunk_size = (r + bytes_to_read > cap) ? (cap - r) : bytes_to_read;
     memcpy(buffer, iob->buffer + r, first_chunk_size);
 
@@ -254,9 +283,7 @@ size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes) {
         memcpy((unsigned char*)buffer + first_chunk_size, iob->buffer, second_chunk_size);
     }
 
-    MEMORY_BARRIER();
-
-    iob->read_pos = (r + bytes_to_read) % cap;
+    atomic_store_explicit(&iob->read_pos, (r + bytes_to_read) % cap, memory_order_release);
 
     // Signal Backpressure: Wake up any waiting producers (File Readers)
     pthread_mutex_lock(&iob->sync_mutex);
@@ -271,7 +298,7 @@ void ring_buffer_wait_for_threshold(RingBuffer* iob, size_t target_size) {
     if (!iob) return;
 
     pthread_mutex_lock(&iob->sync_mutex);
-    while (!iob->shutting_down && ring_buffer_get_size(iob) > target_size) {
+    while (!atomic_load_explicit(&iob->shutting_down, memory_order_relaxed) && ring_buffer_get_size(iob) > target_size) {
         pthread_cond_wait(&iob->space_free_cond, &iob->sync_mutex);
     }
     pthread_mutex_unlock(&iob->sync_mutex);
@@ -279,7 +306,7 @@ void ring_buffer_wait_for_threshold(RingBuffer* iob, size_t target_size) {
 
 void ring_buffer_signal_end_of_stream(RingBuffer* iob) {
     if (!iob) return;
-    iob->end_of_stream = true;
+    atomic_store_explicit(&iob->end_of_stream, true, memory_order_release);
 
     // Wake up backpressure waiters
     pthread_mutex_lock(&iob->sync_mutex);
@@ -299,7 +326,7 @@ void ring_buffer_signal_end_of_stream(RingBuffer* iob) {
 
 void ring_buffer_signal_shutdown(RingBuffer* iob) {
     if (!iob) return;
-    iob->shutting_down = true;
+    atomic_store_explicit(&iob->shutting_down, true, memory_order_release);
 
     pthread_mutex_lock(&iob->sync_mutex);
     pthread_cond_broadcast(&iob->space_free_cond);
@@ -318,8 +345,8 @@ void ring_buffer_signal_shutdown(RingBuffer* iob) {
 
 size_t ring_buffer_get_size(RingBuffer* iob) {
     if (!iob) return 0;
-    size_t w = iob->write_pos;
-    size_t r = iob->read_pos;
+    size_t w = atomic_load_explicit(&iob->write_pos, memory_order_acquire);
+    size_t r = atomic_load_explicit(&iob->read_pos, memory_order_acquire);
     if (w >= r) return w - r;
     return iob->capacity - (r - w);
 }

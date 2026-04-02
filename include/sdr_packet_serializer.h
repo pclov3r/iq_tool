@@ -54,6 +54,8 @@ struct SampleChunk;
  * the payload immediately following this header starts on a 32-byte aligned boundary
  * (assuming the ring buffer itself is aligned), which is critical for SIMD/AVX performance.
  */
+#include <assert.h>
+
 #pragma pack(push, 1)
 typedef struct {
     uint32_t magic;        ///< Synchronization marker (IQPK_MAGIC).
@@ -63,6 +65,8 @@ typedef struct {
     uint8_t  reserved[22];
 } SdrInputChunkHeader;
 #pragma pack(pop)
+
+static_assert(sizeof(SdrInputChunkHeader) == 32, "SdrInputChunkHeader MUST be exactly 32 bytes for SIMD alignment");
 
 /**
  * @brief Tracks the state of the current packet being read by the consumer.

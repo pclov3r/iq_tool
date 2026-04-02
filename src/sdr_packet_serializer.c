@@ -38,10 +38,7 @@ bool sdr_packet_serializer_write_block(RingBuffer* buffer, uint32_t num_samples,
     // Ensure padding bytes are zeroed for deterministic behavior and future compatibility
     memset(header.reserved, 0, sizeof(header.reserved));
 
-    ring_buffer_write(buffer, &header, sizeof(header));
-    ring_buffer_write(buffer, sample_data, data_size);
-
-    return true;
+    return ring_buffer_write_packet(buffer, &header, sizeof(header), sample_data, data_size) > 0;
 }
 
 bool sdr_packet_serializer_write_reset_event(RingBuffer* buffer) {
@@ -56,8 +53,7 @@ bool sdr_packet_serializer_write_reset_event(RingBuffer* buffer) {
     // Ensure padding bytes are zeroed
     memset(header.reserved, 0, sizeof(header.reserved));
 
-    ring_buffer_write(buffer, &header, sizeof(header));
-    return true;
+    return ring_buffer_write_packet(buffer, &header, sizeof(header), NULL, 0) > 0;
 }
 
 // --- READ IMPLEMENTATION ---
