@@ -2,6 +2,7 @@
 #include "mem_arena.h"
 #include "log.h"
 #include "constants.h"
+#include "platform.h"
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>

@@ -1,20 +1,23 @@
 #ifndef PLATFORM_H_
 #define PLATFORM_H_
-
 #include <stdbool.h>
 #include <stddef.h>
 
 #ifdef _WIN32
 // Includes required for Windows-specific function signatures below
 #include <windows.h>
+#include <malloc.h>
 // Windows implementation
-#define MEMORY_BARRIER() MemoryBarrier()
 #define SLEEP_MS(x) Sleep(x)
+// MinGW doesn't expose aligned_alloc - provide a compatibility shim via macro.
+// Note: _aligned_malloc argument order is (size, alignment), opposite of aligned_alloc.
+#define aligned_alloc(alignment, size) _aligned_malloc((size), (alignment))
+#define aligned_free(ptr) _aligned_free((ptr))
 #elif defined(__GNUC__) || defined(__clang__)
 #include <unistd.h>
 // GCC/Clang (Linux/macOS) implementation
-#define MEMORY_BARRIER() __sync_synchronize()
 #define SLEEP_MS(x) usleep((x) * 1000)
+#define aligned_free(ptr) free((ptr))
 #else
 #error "Compiler not supported for lock-free primitives."
 #endif
@@ -43,7 +46,6 @@ typedef enum {
  * @param thread_name A human-readable name for the thread, used for logging warnings.
  */
 void platform_set_thread_priority(ThreadPriority priority, const char* thread_name);
-
 
 // --- Platform Specific Helpers ---
 

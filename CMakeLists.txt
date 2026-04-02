@@ -283,7 +283,7 @@ add_executable(iq_tool ${COMPILE_WITH_FFAST_MATH_SOURCES} ${NETWORK_SOURCES} ${O
 
 # Manually apply definitions to the target to ensure they aren't lost
 if(MINGW)
-    target_compile_definitions(iq_tool PRIVATE __USE_MINGW_ANSI_STDIO=1)
+    target_compile_definitions(iq_tool PRIVATE __USE_MINGW_ANSI_STDIO=1 _ISOC11_SOURCE)
 endif()
 
 if(WITH_REDSEA)
