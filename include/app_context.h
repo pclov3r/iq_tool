@@ -195,12 +195,10 @@ typedef struct ModuleState {
 // --- 3. DSP Context (Math & Signal Processing) ---
 
 typedef struct AgcContext {
-    void*    object;
-    bool     is_locked;
-    float    current_gain;
-    float    peak_memory;
-    uint64_t samples_seen;
-    double   last_strong_peak_time;
+    void*    object;        /* liquid-dsp agc_crcf handle. DX/LOCAL profiles only. */
+    void*    harris_object; /* Harris/LMS state block. DIGITAL profile only.       */
+    float    current_gain;  /* Most recently applied linear gain scalar.           */
+    uint64_t samples_seen;  /* Total samples processed. Used for log interval.     */
 } AgcContext;
 
 typedef struct FilterContext {

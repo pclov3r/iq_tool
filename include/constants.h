@@ -193,60 +193,115 @@
 
 // --- Output AGC Tuning Parameters ---
 
-// 1. DX Profile (RMS-Based)
-// Strategy: Slow tracking to compensate for atmospheric fading.
-// Target: 0.5 (-6 dBFS RMS). Safe for general analog signals.
+// 1. DX Profile
+// Strategy: Very slow RMS tracking to ride out atmospheric fading on weak signals.
+// Target: 0.5 (-6 dBFS RMS). Safe headroom for general analog content.
 #define AGC_DX_BANDWIDTH         1e-4f
 #define AGC_DX_TARGET            0.5f
 
-// 2. Local Profile (RMS-Based)
-// Strategy: Fast tracking for strong analog signals (Voice/Music).
+// 2. Local Profile
+// Strategy: Fast RMS tracking for strong, stable analog signals (voice/music).
 // Target: 0.5 (-6 dBFS RMS).
 #define AGC_LOCAL_BANDWIDTH      1e-2f
 #define AGC_LOCAL_TARGET         0.5f
 
-// 3. Digital Profile (Adaptive Tracking)
-// Strategy: Smart Limiter with Hysteresis.
-// Goal: Keep peaks within a "Stability Window" to preserve MER.
+// 3. Digital Profile
+// Strategy: Harris/LMS block-level AGC operating in the dB domain.
+//           Inspired by Fred Harris & Gregory Smith, "On the Design,
+//           Implementation, and Performance of a Microprocessor-Controlled
+//           AGC System for a Digital Receiver", and documented in
+//           Richard G. Lyons, "Understanding Digital Signal Processing",
+//           3rd ed., Section 13.30.
+//
+// The algorithm operates entirely in dB (treating the AGC as a linear
+// system), applies a deadband so signals already in a good range are
+// passed through untouched, and applies only a clean linear gain scalar
+// to the samples — no nonlinear soft limiting.
+//
+// Signal chain:
+//   [1] Pre-AGC impulse blanker  — zeros samples whose magnitude exceeds
+//                                   AGC_DIGITAL_BLANKER_THRESHOLD.
+//   [2] Harris/LMS gain loop     — block RMS measurement, dB-domain LMS
+//                                   update with deadband and gain rails.
+//                                   Output is always a linear multiply.
 
-// The default target peak level (0.9 = -1 dB).
-// This leaves slight headroom for inter-sample peaks during DAC reconstruction.
-#define AGC_DIGITAL_PEAK_TARGET       0.9f
+/**
+ * @def AGC_DIGITAL_HARRIS_TARGET_DBFS
+ * @brief Target RMS output level in dBFS for the Harris/LMS AGC.
+ *
+ * -18 dBFS gives high-PAPR OFDM signals (10-13 dB PAPR) comfortable
+ * headroom below full scale. A signal arriving at -14 dBFS with a 6 dB
+ * deadband has an error of +4 dB which falls inside the deadband, so
+ * the gain stays at 0 dB and the signal passes through untouched.
+ *
+ */
+#define AGC_DIGITAL_HARRIS_TARGET_DBFS      -18.0f
 
-// The lower bound of the stability window, as a fraction of the target.
-// 0.6 = -4.4 dB relative to target (-5.4 dB total).
-// Gain will NOT change if the signal is between Target and (Target * 0.6).
-#define AGC_DIGITAL_STABILITY_WINDOW  0.6f
+/**
+ * @def AGC_DIGITAL_HARRIS_DEADBAND_DB
+ * @brief Deadband half-width in dB for the Harris/LMS AGC.
+ *
+ * If |error| <= deadband, gain is frozen and samples pass through with
+ * the current gain unchanged. Signals within [TARGET-DEADBAND, TARGET+DEADBAND]
+ * dBFS receive no gain adjustment at all.
+ *
+ * With the default target of -18 dBFS and deadband of 6 dB, signals
+ * in the range [-24, -12] dBFS are passed through untouched. This covers
+ * most well-received digital signals without any intervention.
+ *
+ * Harris's original paper used 1 dB for discrete hardware VGA steps.
+ * A wider deadband is appropriate for software AGC with infinite gain
+ * resolution — err on the side of not touching the signal.
+ */
+#define AGC_DIGITAL_HARRIS_DEADBAND_DB       6.0f
 
-// The noise floor threshold, as a fraction of the target.
-// 0.1 = -20 dB relative to target.
-// If signal drops below this, AGC assumes silence and holds gain (Noise Gate).
-#define AGC_DIGITAL_NOISE_THRESHOLD   0.1f
+/**
+ * @def AGC_DIGITAL_HARRIS_ALPHA
+ * @brief LMS loop filter coefficient for the Harris/LMS AGC (0 < alpha < 1).
+ *
+ * Controls convergence speed. Smaller = slower and more stable.
+ *
+ * This AGC operates once per block rather than once per sample, so it
+ * ticks many times per second at typical block sizes. A much smaller
+ * value than Harris's original 0.8 (for infrequently-called hardware
+ * VGA) is therefore appropriate.
+ *
+ * At alpha 0.2 and a 20 dB error (very weak signal), gain moves 4 dB
+ * per block — converging in roughly 5 blocks. For a 6 dB error (just
+ * outside the deadband), gain moves 1.2 dB per block.
+ */
+#define AGC_DIGITAL_HARRIS_ALPHA             0.2f
 
-// The "Slew Rate" (Tracking Speed).
-// Defines how fast the gain moves towards the target when outside the window.
-// 0.01 = Adjusts 1% of the error per block.
-#define AGC_DIGITAL_SLEW_RATE         0.5f
+/**
+ * @def AGC_DIGITAL_HARRIS_GAIN_MIN_DB
+ * @brief Minimum gain the Harris/LMS AGC may apply, in dB.
+ *
+ * Negative values allow attenuation of hot signals.
+ * -20 dB allows meaningful attenuation without the loop going to extremes.
+ */
+#define AGC_DIGITAL_HARRIS_GAIN_MIN_DB      -20.0f
 
-// Startup Transient Detection
-// If Crest Factor (Peak/Average) > 3.0, the block is considered to have a transient.
-#define AGC_DIGITAL_CREST_FACTOR_THRESHOLD 3.0f
+/**
+ * @def AGC_DIGITAL_HARRIS_GAIN_MAX_DB
+ * @brief Maximum gain the Harris/LMS AGC may apply, in dB.
+ *
+ * +40 dB (100x linear) is enough to rescue a genuinely weak signal.
+ * Caps gain to prevent amplifying a noise floor into something a decoder
+ * mistakes for a signal.
+ */
+#define AGC_DIGITAL_HARRIS_GAIN_MAX_DB       40.0f
 
-// Robust Average Calculation
-// When a transient is detected, we exclude samples > (Average * 1.5).
-#define AGC_DIGITAL_ROBUST_EXCLUSION_FACTOR 1.5f
+// Impulse blanker threshold (absolute IQ magnitude).
+// Any sample whose magnitude exceeds this value is zeroed before entering
+// the AGC. Legitimate normalised signals should never exceed 1.0; hardware
+// impulse artefacts commonly exceed 5-10. A value of 2.0 gives comfortable
+// margin between the two without risk of blanking valid signal content.
+#define AGC_DIGITAL_BLANKER_THRESHOLD        2.0f
 
-// Robust Average Multiplier
-// Scales the Robust Average to estimate the effective peak amplitude of the signal body.
-// The value 2.1904f was derived empirically from real-world I/Q recordings containing
-// a significant startup transient. This calibration attempt to targets optimal gain for
-// digital modes but may require future refinement to generalize across all signal conditions.
-#define AGC_DIGITAL_ROBUST_AVG_MULTIPLIER   2.1904f
-
-// Runtime Safety Clamp
-// We allow peaks to saturate up to 3.0x (300%) before triggering an emergency gain cut.
-// This prevents the AGC from reacting to short transients during operation.
-#define AGC_DIGITAL_SAFETY_CLAMP            3.0f
+// How often to emit periodic AGC runtime status at debug level (seconds).
+// Applies to all profiles. 5 seconds is frequent enough to observe gain
+// riding during a fade without flooding the log during normal operation.
+#define AGC_LOG_INTERVAL_SEC                 5.0f
 
 // =============================================================================
 // == Tier 4: SDR Hardware Interaction & Tuning

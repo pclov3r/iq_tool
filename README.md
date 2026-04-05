@@ -45,8 +45,8 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
         *   **AM:** Demodulates AM signals using a Synchronous (PLL) detector, or standard Envelope detection.
         *   **NRSC5 (HD Radio):** Integrated support for demodulating and playing HD Radio streams (via `libnrsc5`).
     *   **Automatic Gain Control (AGC):** 
-        *   **DX/Local:** RMS-based tracking for analog signals.
-        *   **Digital:** Adaptive tracking with hysteresis to preserve MER for digital signals.
+        *   **DX/Local:** Employs an RMS-tracking AGC from `liquid-dsp`. `DX` provides slow tracking for weak/fading analog signals, while `LOCAL` offers fast tracking for strong ones.
+        *   **Digital:** A custom Harris/LMS block-level AGC for digital signals. Features a crucial **deadband** that allows strong, stable signals to pass through untouched, preserving Modulation Error Ratio (MER).
     *   **Filtering:**
         *   Apply low-pass, high-pass, band-pass, or notch FIR filters.
         *   Offers two processing methods: a `FIR` (time-domain) method and an `FFT` (frequency-domain) method and will attempt to automatically default to the most suitable method.

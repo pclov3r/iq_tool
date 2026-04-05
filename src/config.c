@@ -332,9 +332,6 @@ bool validate_option_combinations(AppConfig *config) {
         } else {
             // Select default based on profile
             switch (config->dsp.agc.profile) {
-                case AGC_PROFILE_DIGITAL:
-                    config->dsp.agc.target_level = AGC_DIGITAL_PEAK_TARGET;
-                    break;
                 case AGC_PROFILE_LOCAL:
                     config->dsp.agc.target_level = AGC_LOCAL_TARGET;
                     break;
