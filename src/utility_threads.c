@@ -77,12 +77,10 @@ void* pipeline_thread_watchdog(void* arg) {
         double current_time = utils_get_time();
         bool timed_out = false;
 
-        pthread_mutex_lock(&app->stats.mutex);
-        double last_heartbeat = app->stats.last_sdr_heartbeat_time;
+        double last_heartbeat = atomic_load_explicit(&app->stats.last_sdr_heartbeat_time, memory_order_relaxed);
         if (last_heartbeat > 0 && (current_time - last_heartbeat) > (WATCHDOG_TIMEOUT_MS / 1000.0)) {
             timed_out = true;
         }
-        pthread_mutex_unlock(&app->stats.mutex);
 
         if (timed_out) {
             const char* input_device_name = config->input.type_name ? config->input.type_name : "SDR";

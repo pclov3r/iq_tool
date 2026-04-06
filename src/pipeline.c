@@ -323,9 +323,7 @@ void* pipeline_thread_reader(void* arg) {
                 }
 
                 if (item->frames_read > 0) {
-                    pthread_mutex_lock(&app->stats.mutex);
-                    app->stats.total_frames_read += item->frames_read;
-                    pthread_mutex_unlock(&app->stats.mutex);
+                    atomic_fetch_add_explicit(&app->stats.total_frames_read, item->frames_read, memory_order_relaxed);
                 }
 
                 if (!queue_enqueue(app->pipeline.reader_output_queue, item)) {

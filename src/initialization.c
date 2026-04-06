@@ -1,5 +1,5 @@
 /**
- * @file setup.c
+ * @file initialization.c
  * @brief Declares the high-level functions for application initialization and cleanup.
  */
 
@@ -136,7 +136,7 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppContext* app, f
     *out_ratio = r;
 
     if (app->module.source_info.frames > 0) {
-        app->stats.expected_total_output_frames = (long long)round((double)app->module.source_info.frames * (double)r);
+        atomic_store_explicit(&app->stats.expected_total_output_frames, (long long)round((double)app->module.source_info.frames * (double)r), memory_order_relaxed);
     } else {
         app->stats.expected_total_output_frames = -1;
     }
@@ -418,9 +418,8 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
 
 bool create_threading_components(AppConfig *config, AppContext* app) {
     (void)config;
-    if (pthread_mutex_init(&app->stats.mutex, NULL) != 0) {
-        return false;
-    }
+    (void)app;
+
     return true;
 }
 

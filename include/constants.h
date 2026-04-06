@@ -37,6 +37,9 @@
  */
 #define MEM_ARENA_ALIGNMENT 32
 
+// Ensure arena alignment is a power of 2 for aligned_alloc
+_Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_ARENA_ALIGNMENT must be a power of 2");
+
 /**
  * @def MEM_ARENA_SIZE_BYTES
  * @brief The size of the single memory arena for all startup allocations.

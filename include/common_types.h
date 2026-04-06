@@ -13,6 +13,9 @@
 // --- Core Data Types ---
 typedef float complex ComplexFloat;
 
+// Enforce 8-byte sizing for binary compatibility with Liquid-DSP
+_Static_assert(sizeof(ComplexFloat) == 8, "ComplexFloat must be exactly 8 bytes (2x 32-bit floats)");
+
 // --- Enumerations ---
 
 typedef enum {

@@ -54,6 +54,7 @@
 #include <time.h>
 #include <math.h>
 #include <errno.h>
+#include <locale.h>
 
 #ifndef _WIN32
 #include <strings.h>
@@ -80,7 +81,6 @@ static const char* find_input_type_arg(int argc, char *argv[]);
 
 
 // --- Main Application Entry Point ---
-#include <locale.h>
 
 int main(int argc, char *argv[]) {
     setlocale(LC_NUMERIC, "C");
@@ -284,8 +284,8 @@ static void print_final_summary(const AppConfig *config, const AppContext* app, 
     double duration_secs = difftime(time(NULL), app->stats.start_time);
     utils_format_duration(duration_secs, duration_buf, sizeof(duration_buf));
 
-    unsigned long long total_input_samples = app->stats.total_frames_read * 2;
-    unsigned long long total_output_samples = app->stats.total_output_frames * 2;
+    unsigned long long total_input_samples = (unsigned long long)atomic_load(&app->stats.total_frames_read) * 2;
+    unsigned long long total_output_samples = (unsigned long long)atomic_load(&app->stats.total_output_frames) * 2;
 
     double avg_write_speed_mbps = 0.0;
     if (duration_secs > 0.001) {
@@ -295,16 +295,16 @@ static void print_final_summary(const AppConfig *config, const AppContext* app, 
     fprintf(stderr, "\n--- Final Summary ---\n");
     if (!success) {
         fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Stopped Due to Error");
-        if (app->stats.total_frames_read > 0) {
-            log_error("Processing stopped after %llu input frames.", app->stats.total_frames_read);
+        if ((unsigned long long)atomic_load(&app->stats.total_frames_read) > 0) {
+            log_error("Processing stopped after %llu input frames.", (unsigned long long)atomic_load(&app->stats.total_frames_read));
         }
         fprintf(stderr, "%-*s %s (possibly incomplete)\n", label_width, "Output File Size:", size_buf);
     } else if (app->stats.end_of_stream_reached) {
         fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Completed Successfully");
         fprintf(stderr, "%-*s %s\n", label_width, "Processing Duration:", duration_buf);
-        fprintf(stderr, "%-*s %llu / %lld (100.0%%)\n", label_width, "Input Frames Read:", app->stats.total_frames_read, (long long)app->module.source_info.frames);
+        fprintf(stderr, "%-*s %llu / %lld (100.0%%)\n", label_width, "Input Frames Read:", (unsigned long long)atomic_load(&app->stats.total_frames_read), (long long)app->module.source_info.frames);
         fprintf(stderr, "%-*s %llu\n", label_width, "Input Samples Read:", total_input_samples);
-        fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", app->stats.total_output_frames);
+        fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", (unsigned long long)atomic_load(&app->stats.total_output_frames));
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Written:", total_output_samples);
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
         fprintf(stderr, "%-*s %.2f MB/s\n", label_width, "Average Write Speed:", avg_write_speed_mbps);
@@ -318,17 +318,17 @@ static void print_final_summary(const AppConfig *config, const AppContext* app, 
         const char* duration_label = !source_has_known_length ? "Capture Duration:" : "Processing Duration:";
         fprintf(stderr, "%-*s %s\n", label_width, duration_label, duration_buf);
         if (!source_has_known_length) {
-            fprintf(stderr, "%-*s %llu\n", label_width, "Input Frames Read:", app->stats.total_frames_read);
+            fprintf(stderr, "%-*s %llu\n", label_width, "Input Frames Read:", (unsigned long long)atomic_load(&app->stats.total_frames_read));
             fprintf(stderr, "%-*s %llu\n", label_width, "Input Samples Read:", total_input_samples);
         } else {
             double percentage = 0.0;
             if (app->module.source_info.frames > 0) {
-                percentage = ((double)app->stats.total_frames_read / (double)app->module.source_info.frames) * 100.0;
+                percentage = ((double)(unsigned long long)atomic_load(&app->stats.total_frames_read) / (double)app->module.source_info.frames) * 100.0;
             }
-            fprintf(stderr, "%-*s %llu / %lld (%.1f%%)\n", label_width, "Input Frames Read:", app->stats.total_frames_read, (long long)app->module.source_info.frames, percentage);
+            fprintf(stderr, "%-*s %llu / %lld (%.1f%%)\n", label_width, "Input Frames Read:", (unsigned long long)atomic_load(&app->stats.total_frames_read), (long long)app->module.source_info.frames, percentage);
             fprintf(stderr, "%-*s %llu\n", label_width, "Input Samples Read:", total_input_samples);
         }
-        fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", app->stats.total_output_frames);
+        fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:", (unsigned long long)atomic_load(&app->stats.total_output_frames));
         fprintf(stderr, "%-*s %llu\n", label_width, "Output Samples Written:", total_output_samples);
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
         fprintf(stderr, "%-*s %.2f MB/s\n", label_width, "Average Write Speed:", avg_write_speed_mbps);

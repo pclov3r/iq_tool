@@ -14,6 +14,7 @@
 #include "constants.h"
 #include "resampler.h"
 #include "wait_event.h"
+#include <stdatomic.h>
 
 // --- Forward Declarations ---
 struct RingBuffer;
@@ -213,9 +214,9 @@ typedef struct FilterContext {
 } FilterContext;
 
 typedef struct IqCorrectionResources {
-    pthread_mutex_t iq_factors_mutex;
+    // Mutex removed for C11 Lock-Free Atomics
     void*           internal_state;
-    double          last_optimization_time;
+    _Atomic double          last_optimization_time;
 } IqCorrectionResources;
 
 typedef struct DcBlockResources {
@@ -243,16 +244,16 @@ typedef void (*ProgressUpdateFn)(unsigned long long current_output_frames, long 
 
 
 typedef struct RuntimeState {
-    pthread_mutex_t mutex;
+    // Mutex removed for C11 Lock-Free Atomics
 
-    double last_sdr_heartbeat_time;
+    _Atomic double last_sdr_heartbeat_time;
     atomic_bool   error_occurred;
     atomic_bool   end_of_stream_reached;
 
-    unsigned long long total_frames_read;
-    unsigned long long total_output_frames;
-    long long          final_output_size_bytes;
-    long long          expected_total_output_frames;
+    atomic_uint_least64_t total_frames_read;
+    atomic_uint_least64_t total_output_frames;
+    atomic_int_least64_t final_output_size_bytes;
+    atomic_int_least64_t expected_total_output_frames;
     time_t             start_time;
 
     ProgressUpdateFn   progress_callback;

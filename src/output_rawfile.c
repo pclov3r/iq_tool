@@ -173,10 +173,8 @@ static void* rawfile_output_run_writer(ModuleContext* ctx) {
 
         if (app->stats.progress_callback) {
             unsigned long long current_frames = data->total_bytes_written / app->module.output_bytes_per_sample_pair;
-            pthread_mutex_lock(&app->stats.mutex);
-            app->stats.total_output_frames = current_frames;
-            pthread_mutex_unlock(&app->stats.mutex);
-            app->stats.progress_callback(current_frames, app->stats.expected_total_output_frames, data->total_bytes_written, app->stats.progress_callback_udata);
+            atomic_store_explicit(&app->stats.total_output_frames, current_frames, memory_order_relaxed);
+            app->stats.progress_callback(current_frames, atomic_load_explicit(&app->stats.expected_total_output_frames, memory_order_relaxed), data->total_bytes_written, app->stats.progress_callback_udata);
         }
     }
     log_debug("Raw-file output writer thread is exiting.");

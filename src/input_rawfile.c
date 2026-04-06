@@ -217,9 +217,7 @@ static void* rawfile_input_start_stream(ModuleContext* ctx) {
 
         if (bytes_read < 0) {
             log_fatal("libsndfile read error: %s", sf_strerror(private_data->infile));
-            pthread_mutex_lock(&app->stats.mutex);
-            app->stats.error_occurred = true;
-            pthread_mutex_unlock(&app->stats.mutex);
+            atomic_store_explicit(&app->stats.error_occurred, true, memory_order_release);
             request_shutdown();
             queue_enqueue(app->pipeline.free_sample_chunk_queue, current_item);
             break;
@@ -240,9 +238,7 @@ static void* rawfile_input_start_stream(ModuleContext* ctx) {
 
 
         if (current_item->frames_read > 0) {
-            pthread_mutex_lock(&app->stats.mutex);
-            app->stats.total_frames_read += current_item->frames_read;
-            pthread_mutex_unlock(&app->stats.mutex);
+            atomic_fetch_add_explicit(&app->stats.total_frames_read, current_item->frames_read, memory_order_relaxed);
         }
 
         if (!queue_enqueue(app->pipeline.reader_output_queue, current_item)) {

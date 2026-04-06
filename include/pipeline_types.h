@@ -18,6 +18,7 @@
 #include "common_types.h" // For ComplexFloat, etc.
 #include <pthread.h>
 #include <stddef.h>
+#include <stdalign.h>
 
 // --- Struct Definitions ---
 
@@ -52,7 +53,7 @@ typedef struct SampleChunk {
     bool         is_last_chunk;               ///< Flag indicating this is the final chunk in a stream.
     bool         stream_discontinuity_event;  ///< Flag indicating a stream reset (e.g., SDR overrun).
     size_t       input_bytes_per_sample_pair; ///< The size of a single I/Q pair from the source.
-} SampleChunk;
+} __attribute__((aligned(64))) SampleChunk;
 
 /**
  * @struct Queue

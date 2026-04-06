@@ -55,7 +55,8 @@
 #include "mem_arena.h"
 #include "utils.h"
 #include "pre_processor.h" // Needed for initial calibration chain
-#include "sample_convert.h" // Needed for byte size calculations
+#include "sample_convert.h"
+#include <stdatomic.h> // Needed for byte size calculations
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -96,8 +97,8 @@ static bool __boost_initialized = false;
 // --- Internal State Structure ---
 typedef struct {
     // Shared State (Protected by Mutex)
-    float phase;
-    float amplitude;
+    _Atomic float phase;
+    _Atomic float amplitude;
 
     // Apply-Only State (Accessed only by DSP thread, no lock needed)
     float last_phase;
@@ -156,10 +157,7 @@ bool iq_correction_init(AppConfig* config, AppContext* app, MemoryArena* arena) 
         return true;
     }
 
-    if (pthread_mutex_init(&app->dsp.iq_correct.iq_factors_mutex, NULL) != 0) {
-        log_fatal("Failed to initialize I/Q correction mutex.");
-        return false;
-    }
+
 
     // Allocate internal state
     IqState* st = (IqState*)mem_arena_alloc(arena, sizeof(IqState), true);
@@ -228,11 +226,8 @@ void iq_correction_apply(DspContext* dsp, ComplexFloat* samples, int num_samples
 
     // Lock briefly to read shared values.
     // This allows the optimizer to update them safely without tearing.
-    float current_phase, current_amp;
-    pthread_mutex_lock(&dsp->iq_correct.iq_factors_mutex);
-    current_phase = st->phase;
-    current_amp = st->amplitude;
-    pthread_mutex_unlock(&dsp->iq_correct.iq_factors_mutex);
+    float current_phase = atomic_load_explicit(&st->phase, memory_order_relaxed);
+    float current_amp = atomic_load_explicit(&st->amplitude, memory_order_relaxed);
 
     float scale = 1.0f / (num_samples - 1);
     float last_phase = st->last_phase;
@@ -263,15 +258,12 @@ void iq_correction_apply(DspContext* dsp, ComplexFloat* samples, int num_samples
 void iq_correction_run_optimization(DspContext* dsp, const ComplexFloat* optimization_data) {
     if (!dsp->config->dsp.iq_correction.enable || !dsp->iq_correct.internal_state) return;
 
-    dsp->iq_correct.last_optimization_time = utils_get_time();
+    atomic_store_explicit(&dsp->iq_correct.last_optimization_time, utils_get_time(), memory_order_relaxed);
     IqState* st = (IqState*)dsp->iq_correct.internal_state;
 
-    // Snapshot current values under lock.
-    float start_phase, start_amp;
-    pthread_mutex_lock(&dsp->iq_correct.iq_factors_mutex);
-    start_phase = st->phase;
-    start_amp = st->amplitude;
-    pthread_mutex_unlock(&dsp->iq_correct.iq_factors_mutex);
+    // Snapshot current values lock-free.
+    float start_phase = atomic_load_explicit(&st->phase, memory_order_relaxed);
+    float start_amp = atomic_load_explicit(&st->amplitude, memory_order_relaxed);
 
     // Perform heavy calculation UNLOCKED using local variables.
     // This prevents stalling the high-priority DSP thread.
@@ -280,23 +272,22 @@ void iq_correction_run_optimization(DspContext* dsp, const ComplexFloat* optimiz
 
     estimate_imbalance(st, optimization_data, FFTBins, start_phase, start_amp, &new_phase, &new_amp);
 
-    // Lock only to update the shared state.
-    pthread_mutex_lock(&dsp->iq_correct.iq_factors_mutex);
-    st->phase = new_phase;
-    st->amplitude = new_amp;
+    // Lock-free commit.
+    atomic_store_explicit(&st->phase, new_phase, memory_order_relaxed);
+    atomic_store_explicit(&st->amplitude, new_amp, memory_order_relaxed);
 
     // Debug logging (rate limited)
     static double last_debug_log_time = 0.0;
-    if (dsp->iq_correct.last_optimization_time - last_debug_log_time >= 1.0) {
-        float phase_deg = st->phase * (180.0f / (float)M_PI);
-        float amp_pct = st->amplitude * 100.0f;
+    double current_opt_time = atomic_load_explicit(&dsp->iq_correct.last_optimization_time, memory_order_relaxed);
+    if (current_opt_time - last_debug_log_time >= 1.0) {
+        float phase_deg = new_phase * (180.0f / (float)M_PI);
+        float amp_pct = new_amp * 100.0f;
         float image_db = 10.0f * log10f((float)st->integrated_image_power + 1e-12f);
 
         log_debug("IQ Correct: Phase: %+.3f deg | Amp: %+.3f %% | Image Pwr: %.1f dB",
                  phase_deg, amp_pct, image_db);
-        last_debug_log_time = dsp->iq_correct.last_optimization_time;
+        last_debug_log_time = current_opt_time;
     }
-    pthread_mutex_unlock(&dsp->iq_correct.iq_factors_mutex);
 }
 
 void iq_correction_destroy(AppContext* app) {
@@ -306,7 +297,6 @@ void iq_correction_destroy(AppContext* app) {
         // Arena handles memory free
         app->dsp.iq_correct.internal_state = NULL;
     }
-    pthread_mutex_destroy(&app->dsp.iq_correct.iq_factors_mutex);
 }
 
 bool iq_correction_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile) {

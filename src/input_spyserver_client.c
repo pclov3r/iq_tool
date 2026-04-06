@@ -55,6 +55,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <stdatomic.h>
 
 // --- Platform-Specific Includes ---
 #ifdef _WIN32
@@ -776,9 +777,7 @@ static void* spyserver_client_input_start_stream(ModuleContext* ctx) {
         item->input_bytes_per_sample_pair = sample_convert_bytes_per_sample(item->packet_sample_format);
 
         if (item->frames_read > 0) {
-            pthread_mutex_lock(&app->stats.mutex);
-            app->stats.total_frames_read += item->frames_read;
-            pthread_mutex_unlock(&app->stats.mutex);
+            atomic_fetch_add_explicit(&app->stats.total_frames_read, item->frames_read, memory_order_relaxed);
         }
 
         if (!queue_enqueue(app->pipeline.reader_output_queue, item)) {
