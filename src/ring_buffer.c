@@ -122,7 +122,7 @@ void ring_buffer_destroy(RingBuffer* iob) {
 #endif
 
     if (iob->buffer) {
-free(iob->buffer);
+        aligned_free(iob->buffer);
     }
     free(iob);
 }

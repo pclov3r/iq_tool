@@ -68,7 +68,7 @@ void* mem_arena_alloc(MemoryArena* arena, size_t size, bool zero_memory) {
 void mem_arena_destroy(MemoryArena* arena) {
     if (arena) {
         if (arena->memory) {
-        free(arena->memory);
+        aligned_free(arena->memory);
             arena->memory = NULL;
         }
         arena->capacity = 0;

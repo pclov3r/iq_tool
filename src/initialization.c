@@ -678,7 +678,7 @@ void cleanup_application(AppConfig *config, AppContext* app) {
     }
 
     if (app->pipeline.chunk_data_pool) {
-        free(app->pipeline.chunk_data_pool);
+        aligned_free(app->pipeline.chunk_data_pool);
         app->pipeline.chunk_data_pool = NULL;
     }
 
