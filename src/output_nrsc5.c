@@ -385,16 +385,26 @@ static bool nrsc5_output_initialize(ModuleContext* ctx) {
         return false;
     }
 
-    // Set Mode
-    log_debug("NRSC5: Setting mode...");
+    // Set and log active mode
     int decoder_mode = NRSC5_MODE_FM;
-    if (s_nrsc5_config.active_mode == NRSC5_MODE_CS16_AM || s_nrsc5_config.active_mode == NRSC5_MODE_CU8_AM) {
+    if (s_nrsc5_config.active_mode == NRSC5_MODE_CS16_AM ||
+        s_nrsc5_config.active_mode == NRSC5_MODE_CU8_AM) {
         decoder_mode = NRSC5_MODE_AM;
     }
+
     if (nrsc5_set_mode(p->nrsc5_inst, decoder_mode) != 0) {
         log_fatal("NRSC5: Failed to set decoder mode.");
         return false;
     }
+
+    const char* mode_desc = "Unknown";
+    switch (s_nrsc5_config.active_mode) {
+        case NRSC5_MODE_CS16_FM: mode_desc = "cs16-fm (FM HD)"; break;
+        case NRSC5_MODE_CS16_AM: mode_desc = "cs16-am (AM HD)"; break;
+        case NRSC5_MODE_CU8_FM:  mode_desc = "cu8-fm (FM HD)"; break;
+        case NRSC5_MODE_CU8_AM:  mode_desc = "cu8-am (AM HD)"; break;
+    }
+    log_info("NRSC5: Using mode: %s", mode_desc);
 
     // Set Callback
     p->active_program = (unsigned int)s_nrsc5_config.program_id;
