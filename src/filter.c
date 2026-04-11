@@ -192,6 +192,13 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
             current_taps_len = estimate_req_filter_len(normalized_tw, attenuation_db);
             if (current_taps_len % 2 == 0) current_taps_len++;
             if (current_taps_len < FILTER_MINIMUM_TAPS) current_taps_len = FILTER_MINIMUM_TAPS;
+
+            // --- PROTECT L2 CACHE & PIPELINE BUFFERS ---
+            if (current_taps_len > FILTER_MAXIMUM_AUTO_TAPS) {
+                log_warn("Auto-calculated filter requires %u taps (transition too sharp).", current_taps_len);
+                log_warn("Clamping to %d taps to protect CPU cache and pipeline stability.", FILTER_MAXIMUM_AUTO_TAPS);
+                current_taps_len = FILTER_MAXIMUM_AUTO_TAPS;
+            }
         }
 
         liquid_float_complex* current_taps = (liquid_float_complex*)mem_arena_alloc(arena, current_taps_len * sizeof(liquid_float_complex), false);

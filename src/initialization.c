@@ -217,9 +217,10 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
         estimated_taps = FILTER_SAFETY_DEFAULT_TAPS;
     }
 
+    size_t req_block_size = 0;
     if (estimated_taps > 0) {
         // Calculate the FFT block size logic used by liquid-dsp/filter.c
-        size_t req_block_size = 1;
+        req_block_size = 1;
         while (req_block_size < estimated_taps) {
             req_block_size *= 2;
         }
@@ -230,12 +231,13 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
 
         // If the filter needs huge blocks (e.g. 32k for 15k taps), expand the pipeline chunks.
         if (req_block_size > target_block_samples) {
+            log_info("FFT filter block size (%zu) exceeds optimal pipeline target (%zu).", req_block_size, target_block_samples);
+            log_info("Expanding internal chunk size to accommodate FFT bursts (may reduce CPU cache efficiency).");
             target_block_samples = req_block_size;
         }
     }
 
     size_t calculated_input_samples = 0;
-    size_t sample_allocation_count = 0;
 
     if (upsampling) {
         // --- CASE A: UPSAMPLING ---
@@ -249,29 +251,41 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
         } else {
             calculated_input_samples = raw_input_calc;
         }
-
-        // We must allocate enough memory to hold the *Result* of this input chunk.
-        // Allocation = (Input * Ratio) + Safety Margin.
-        sample_allocation_count = (size_t)ceil((double)calculated_input_samples * resample_ratio) + PIPELINE_BUFFER_PADDING_SAMPLES;
     }
     else {
         // --- CASE B: DOWNSAMPLING / PASSTHROUGH ---
         // The Input is pinned to the Target.
         calculated_input_samples = target_block_samples;
-
-        // Allocation = Input Size + Safety Margin.
-        // (Since output shrinks, the input buffer determines the required memory pool size).
-        sample_allocation_count = target_block_samples + PIPELINE_BUFFER_PADDING_SAMPLES;
     }
+
+    // --- Calculate Elastic Maximum Buffer Size ---
+    // The filter object processes in blocks. If a remainder exists from a previous chunk,
+    // the output of the filter can momentarily exceed the input size by up to the FFT block size.
+    size_t max_pre_resample_samples = calculated_input_samples;
+    if (config->dsp.filter.count > 0 && !config->dsp.filter.apply_post_resample) {
+        max_pre_resample_samples += req_block_size;
+    }
+
+    // Determine the absolute maximum number of samples that could exist post-resampling
+    size_t max_post_resample_samples = (size_t)ceil((double)(max_pre_resample_samples + 32) * resample_ratio) + 64;
+
+    if (config->dsp.filter.count > 0 && config->dsp.filter.apply_post_resample) {
+        max_post_resample_samples += req_block_size;
+    }
+
+    // The buffer must be large enough to hold the maximum size at ANY stage of the pipeline
+    size_t sample_allocation_count = (max_pre_resample_samples > max_post_resample_samples) ? max_pre_resample_samples : max_post_resample_samples;
+    sample_allocation_count += PIPELINE_BUFFER_PADDING_SAMPLES;
 
     // Store the results for runtime usage
     app->pipeline.read_chunk_size = calculated_input_samples;
     app->pipeline.alloc_size_samples = sample_allocation_count;
 
-    // 3. FFT Limit Safety Check
-    if (app->pipeline.alloc_size_samples > MAX_ALLOWED_FFT_BLOCK_SIZE) {
-        log_fatal("Calculated pipeline buffer size (%zu) exceeds maximum allowed FFT size (%d).",
-                  app->pipeline.alloc_size_samples, MAX_ALLOWED_FFT_BLOCK_SIZE);
+    // 3. Absolute Chunk Limit Safety Check
+    if (app->pipeline.alloc_size_samples > PIPELINE_MAX_CHUNK_SAMPLES) {
+        log_fatal("Calculated pipeline chunk size (%zu samples) exceeds safety limit (%d).",
+                  app->pipeline.alloc_size_samples, PIPELINE_MAX_CHUNK_SAMPLES);
+        log_fatal("Try reducing the output sample rate or manually lowering --filter-taps.");
         return false;
     }
 

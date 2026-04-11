@@ -159,10 +159,10 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 
 /**
  * @def PIPELINE_BUFFER_PADDING_SAMPLES
- * @brief Safety padding for resampler bursts and to prevent write overflows.
- * Take caution if you reduce this!
+ * @brief Safety padding to absorb SIMD/AVX pre-fetches and floating point
+ * rounding jitter. (Resampler bursts and FFT blocks are explicitly calculated).
  */
-#define PIPELINE_BUFFER_PADDING_SAMPLES  384
+#define PIPELINE_BUFFER_PADDING_SAMPLES  64
 
 // =============================================================================
 // == Tier 3: DSP Algorithm Quality & Tuning
@@ -182,7 +182,14 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 
 // --- Filter Design & Analysis Tuning ---
 #define FILTER_MINIMUM_TAPS 21
-#define FILTER_SAFETY_DEFAULT_TAPS 4096
+
+// Hard limit for auto-calculated filters. Prevents the auto-designer from
+// generating massive FFT blocks that blow out the L2 cache and pipeline buffers.
+#define FILTER_MAXIMUM_AUTO_TAPS 8192
+
+// Used by initialization.c to budget memory when taps aren't explicitly defined.
+#define FILTER_SAFETY_DEFAULT_TAPS FILTER_MAXIMUM_AUTO_TAPS
+
 #define FILTER_GAIN_ZERO_THRESHOLD 1e-9f
 #define FILTER_FREQ_RESPONSE_POINTS 2048
 
@@ -393,7 +400,10 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 #define MAX_PRESETS               128
 #define MAX_LINE_LENGTH           1024
 #define MAX_SUMMARY_ITEMS         16
-#define MAX_ALLOWED_FFT_BLOCK_SIZE (1024 * 1024)
+
+// The absolute maximum number of samples allowed in a single pipeline chunk.
+// Prevents OOM crashes if user requests extreme upsampling + extreme filter taps.
+#define PIPELINE_MAX_CHUNK_SAMPLES (4 * 1024 * 1024)
 #define MAX_PATH_BUFFER           4096
 
 // =============================================================================
