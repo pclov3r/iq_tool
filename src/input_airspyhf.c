@@ -9,8 +9,6 @@
 #include "utils.h"
 #include "input_common.h"
 #include "mem_arena.h"
-#include "queue.h"
-#include "sdr_packet_serializer.h"
 #include "argparse.h"
 #include "wait_event.h"
 #include <stdio.h>
@@ -71,7 +69,7 @@ const struct argparse_option* airspyhf_input_get_cli_options(int* count) {
 }
 
 static bool airspyhf_input_initialize(ModuleContext* ctx);
-static void* airspyhf_input_start_stream(ModuleContext* ctx);
+static void* airspyhf_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
 static void airspyhf_input_stop_stream(ModuleContext* ctx);
 static void airspyhf_input_cleanup(ModuleContext* ctx);
 static void airspyhf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
@@ -180,7 +178,6 @@ static int airspyhf_input_buffered_stream_callback(airspyhf_transfer_t* transfer
     AppContext* app = (AppContext*)transfer->ctx;
 
     // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(app);
 
     if (is_shutdown_requested() || app->stats.error_occurred) {
         return -1;
@@ -191,11 +188,7 @@ static int airspyhf_input_buffered_stream_callback(airspyhf_transfer_t* transfer
     }
 
     // Airspy HF+ always outputs CF32
-    if (!sdr_packet_serializer_write_block(
-            app->pipeline.sdr_input_buffer,
-            transfer->sample_count,
-            transfer->samples,
-            CF32)) {
+    if (!app->module.queue_samples(app->module.pipeline_ctx, transfer->samples, transfer->sample_count, CF32)) {
         log_warn("SDR input buffer overrun! Dropped data.");
     }
 
@@ -444,7 +437,9 @@ cleanup:
     return success;
 }
 
-static void* airspyhf_input_start_stream(ModuleContext* ctx) {
+static void* airspyhf_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
+    ctx->app->module.queue_samples = queue_samples;
+    ctx->app->module.pipeline_ctx = pipeline_ctx;
     AppContext* app = ctx->app;
     AirspyHFContext* private_data = (AirspyHFContext*)app->module.input_private_data;
     int result;

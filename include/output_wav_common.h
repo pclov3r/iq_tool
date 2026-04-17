@@ -48,7 +48,7 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag);
 /**
  * @brief The main writer thread loop, common to both WAV and RF64.
  */
-void* wav_common_run_writer(ModuleContext* ctx);
+
 
 /**
  * @brief Writes a single chunk of raw data to the open file handle. (Used for passthrough mode).

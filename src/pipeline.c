@@ -12,6 +12,7 @@
 #include "pipeline_context.h"
 #include "thread_manager.h"
 #include "utility_threads.h"
+#include "input_common.h"
 #include "constants.h"
 #include "app_context.h"
 #include "utils.h"
@@ -30,7 +31,7 @@
 #include "sample_convert.h"
 #include "queue.h"
 #include "ring_buffer.h"
-#include "sdr_packet_serializer.h"
+#include "packet_serializer.h"
 #include "wait_event.h"
 #include <stdatomic.h>
 #include <stdio.h>
@@ -220,10 +221,7 @@ static bool _init_queues_and_buffers(AppConfig* config, AppContext* app) {
         if (!app->pipeline.sdr_input_buffer) return false;
     }
 
-    if (app->module.pacing_is_required) {
-        app->pipeline.writer_input_buffer = ring_buffer_create(app->pipeline.output_writer_buffer_size);
-        if (!app->pipeline.writer_input_buffer) return false;
-    }
+
 
     return true;
 }
@@ -236,7 +234,6 @@ static void _destroy_queues_and_buffers(AppContext* app) {
     }
 
     if (app->pipeline.sdr_input_buffer) ring_buffer_destroy(app->pipeline.sdr_input_buffer);
-    if (app->pipeline.writer_input_buffer) ring_buffer_destroy(app->pipeline.writer_input_buffer);
 
     if(app->pipeline.free_sample_chunk_queue) queue_destroy(app->pipeline.free_sample_chunk_queue);
     if(app->pipeline.reader_output_queue) queue_destroy(app->pipeline.reader_output_queue);
@@ -249,6 +246,19 @@ static void _destroy_queues_and_buffers(AppContext* app) {
 
 // --- Pipeline Thread Function Implementations (Private to this module) ---
 
+// Universal Ingest Callback
+static bool pipeline_queue_samples(void* ctx, const void* data, size_t num_samples, SampleFormat format) {
+    AppContext* app = (AppContext*)ctx;
+    sdr_input_update_heartbeat(app);
+    if (is_shutdown_requested() || atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed)) return false;
+
+    if (!packet_serializer_write_block(app->pipeline.sdr_input_buffer, num_samples, data, format)) {
+        log_warn("Pipeline input overrun! Dropped %zu samples.", num_samples);
+        return false;
+    }
+    return true;
+}
+
 void* pipeline_thread_sdr_capture(void* arg) {
     platform_set_thread_priority(PRIORITY_REALTIME, "SDR Capture");
 
@@ -256,7 +266,7 @@ void* pipeline_thread_sdr_capture(void* arg) {
     AppContext* app = args->app;
     ModuleContext ctx = { .config = args->config, .app = app };
 
-    app->module.input_api->start_stream(&ctx);
+    app->module.input_api->start_stream(&ctx, pipeline_queue_samples, app);
 
     if (app->pipeline.sdr_input_buffer) {
         ring_buffer_signal_end_of_stream(app->pipeline.sdr_input_buffer);
@@ -289,7 +299,7 @@ void* pipeline_thread_reader(void* arg) {
                 bool is_reset = false;
 
                 // Call the serializer with the state and the calculated elastic request size
-                int64_t frames_read = sdr_packet_serializer_read_packet(
+                int64_t frames_read = packet_serializer_read_packet(
                     app->pipeline.sdr_input_buffer,
                     item,
                     &state,
@@ -338,10 +348,41 @@ void* pipeline_thread_reader(void* arg) {
         }
 
         case PIPELINE_MODE_FILE_PROCESSING: {
-            // These modes manage their own chunking inside their start_stream functions,
-            // which have already been updated to use 'pipeline_read_chunk_size'.
             ModuleContext ctx = { .config = config, .app = app };
-            app->module.input_api->start_stream(&ctx);
+            InputModuleInterface* in_api = app->module.input_api;
+            
+            if (!in_api->read_chunk) {
+                handle_fatal_thread_error("Reader: File input module missing read_chunk.", app);
+            } else {
+                while (!is_shutdown_requested() && !atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed)) {
+                    SampleChunk* item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
+                    if (!item) break;
+
+                    size_t bytes_requested = app->pipeline.read_chunk_size * app->module.input_bytes_per_sample_pair;
+                    size_t capacity_bytes = item->raw_input_capacity_bytes;
+                    if (bytes_requested > capacity_bytes) bytes_requested = capacity_bytes;
+
+                    void* target_buffer = config->dsp.raw_passthrough ? item->final_output_data : item->raw_input_data;
+                    size_t bytes_read = in_api->read_chunk(&ctx, target_buffer, bytes_requested);
+
+                    item->frames_read = bytes_read / app->module.input_bytes_per_sample_pair;
+                    item->frames_to_write = (unsigned int)item->frames_read;
+                    item->packet_sample_format = app->module.input_format;
+                    item->input_bytes_per_sample_pair = app->module.input_bytes_per_sample_pair;
+                    item->stream_discontinuity_event = false;
+                    item->is_last_chunk = (bytes_read < bytes_requested); // EOF reached
+
+                    if (item->frames_read > 0) {
+                        atomic_fetch_add_explicit(&app->stats.total_frames_read, item->frames_read, memory_order_relaxed);
+                    }
+
+                    if (!queue_enqueue(app->pipeline.reader_output_queue, item)) {
+                        queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
+                        break;
+                    }
+                    if (item->is_last_chunk) break;
+                }
+            }
             break;
         }
     }
@@ -366,13 +407,56 @@ void* pipeline_thread_writer(void* arg) {
     platform_set_thread_priority(PRIORITY_HIGHEST, "Writer");
 
     PipelineContext* args = (PipelineContext*)arg;
-    ModuleContext ctx = { .config = args->config, .app = args->app };
+    AppContext* app = args->app;
+    OutputModuleInterface* out_api = app->module.output_api;
+    ModuleContext ctx = { .config = args->config, .app = app };
 
-    if (args->app->module.output_api && args->app->module.output_api->run_writer) {
-        return args->app->module.output_api->run_writer(&ctx);
+    if (!out_api || !out_api->write_chunk) {
+        log_fatal("Output module does not implement write_chunk.");
+        return NULL;
     }
 
-    log_fatal("Writer thread started with no output module selected or run_writer is NULL.");
+    while (true) {
+        SampleChunk* item = (SampleChunk*)queue_dequeue(app->pipeline.writer_input_queue);
+        if (!item) break; // Shutdown signaled
+
+        // 1. Process payload FIRST if it exists
+        // This ensures the partial "tail" of a file is written before we exit.
+        if (item->frames_to_write > 0 && !item->stream_discontinuity_event) {
+            size_t bytes_to_write = item->frames_to_write * app->module.output_bytes_per_sample_pair;
+            size_t written = out_api->write_chunk(&ctx, item->final_output_data, bytes_to_write);
+
+            // Stats & Progress Reporting (Only for file outputs)
+            if (args->config->output.path_arg != NULL && app->stats.progress_callback && written > 0) {
+                atomic_fetch_add_explicit(&app->stats.total_output_frames, item->frames_to_write, memory_order_relaxed);
+                // Correctly track bytes and signal progress
+                int64_t total_bytes = atomic_fetch_add_explicit(&app->stats.final_output_size_bytes, (int64_t)written, memory_order_relaxed) + (int64_t)written;
+
+                app->stats.progress_callback(
+                    atomic_load_explicit(&app->stats.total_output_frames, memory_order_relaxed),
+                    atomic_load_explicit(&app->stats.expected_total_output_frames, memory_order_relaxed),
+                    total_bytes,
+                    app->stats.progress_callback_udata);
+            }
+        }
+
+        // 2. Handle Reset Event (SDR Overrun)
+        if (item->stream_discontinuity_event) {
+            if (out_api->reset) out_api->reset(&ctx);
+        }
+
+        // 3. Handle End-of-Stream
+        if (item->is_last_chunk) {
+            if (out_api->flush) out_api->flush(&ctx);
+            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
+            break; // Loop exit happens here, AFTER processing data/flush
+        }
+
+        // 4. Return regular chunks to the pool
+        if (!queue_enqueue(app->pipeline.free_sample_chunk_queue, item)) break;
+    }
+
+    log_debug("Generic Writer thread is exiting.");
     return NULL;
 }
 
@@ -505,15 +589,8 @@ void* pipeline_thread_post_processor(void* arg) {
     while ((item = (SampleChunk*)queue_dequeue(app->pipeline.post_processor_input_queue)) != NULL) {
 
         if (item->is_last_chunk) {
-            // If we are NOT using a paced buffer (e.g. stdout), we need to send the last_chunk marker to the writer.
-            if (!app->module.pacing_is_required) {
-                queue_enqueue(app->pipeline.writer_input_queue, item);
-            } else { // Otherwise, we signal the ring buffer and free the chunk.
-                if (app->pipeline.writer_input_buffer) {
-                    ring_buffer_signal_end_of_stream(app->pipeline.writer_input_buffer);
-                }
-                queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
-            }
+            // Unified: Always pass the chunk to the writer thread's queue.
+            queue_enqueue(app->pipeline.writer_input_queue, item);
             break;
         }
 
@@ -528,20 +605,10 @@ void* pipeline_thread_post_processor(void* arg) {
         post_processor_apply_chain(&app->dsp, item);
 
         if (item->frames_to_write > 0) {
-            // If we are NOT using a paced buffer, pass the chunk directly to the writer thread's queue.
-            if (!app->module.pacing_is_required) {
-                if (!queue_enqueue(app->pipeline.writer_input_queue, item)) {
-                    // Writer queue closed. Force return to pool.
-                    queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
-                    break;
-                }
-            } else { // Otherwise, write the data to the ring buffer and return the chunk to the free pool.
-                if (app->pipeline.writer_input_buffer) {
-                    size_t bytes_to_write = item->frames_to_write * app->module.output_bytes_per_sample_pair;
-                    ring_buffer_write(app->pipeline.writer_input_buffer, item->final_output_data, bytes_to_write);
-                }
-                // Always force return to pool after using ring buffer
+            // Unified: Backpressure is handled by the writer thread now.
+            if (!queue_enqueue(app->pipeline.writer_input_queue, item)) {
                 queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
+                break;
             }
         } else {
             // Empty frame, force return to pool

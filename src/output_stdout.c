@@ -2,7 +2,6 @@
 #include "module.h"
 #include "app_context.h"
 #include "log.h"
-#include "queue.h"
 #include "signal_handler.h"
 #include "utils.h"
 #include "mem_arena.h"
@@ -44,47 +43,7 @@ static bool stdout_output_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* stdout_output_run_writer(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
-    StdoutContext* data = (StdoutContext*)app->module.output_private_data;
 
-    while (true) {
-        SampleChunk* item = (SampleChunk*)queue_dequeue(app->pipeline.writer_input_queue);
-        if (!item) break; // Shutdown
-
-        if (item->stream_discontinuity_event) {
-            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
-            continue;
-        }
-
-        if (item->is_last_chunk) {
-            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
-            break; // End of stream
-        }
-
-        size_t output_bytes_this_chunk = item->frames_to_write * app->module.output_bytes_per_sample_pair;
-        if (output_bytes_this_chunk > 0) {
-            size_t written_bytes = fwrite(item->final_output_data, 1, output_bytes_this_chunk, stdout);
-            if (written_bytes > 0) {
-                data->total_bytes_written += written_bytes;
-            }
-            if (written_bytes != output_bytes_this_chunk) {
-                if (!is_shutdown_requested()) {
-                    log_debug("Writer (stdout): write error, consumer likely closed pipe: %s", strerror(errno));
-                    request_shutdown();
-                }
-                queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
-                break;
-            }
-        }
-
-        if (!queue_enqueue(app->pipeline.free_sample_chunk_queue, item)) {
-            break; // Shutdown
-        }
-    }
-    log_debug("Stdout output writer thread is exiting.");
-    return NULL;
-}
 
 static size_t stdout_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
     AppContext* app = ctx->app;
@@ -127,7 +86,8 @@ static OutputModuleInterface s_stdout_output_api = {
     .validate_options = NULL,
     .get_cli_options = stdout_output_get_cli_options,
     .initialize = stdout_output_initialize,
-    .run_writer = stdout_output_run_writer,
+    .reset = NULL,
+    .flush = NULL,
     .write_chunk = stdout_output_write_chunk,
     .cleanup = stdout_output_cleanup,
     .get_summary_info = stdout_output_get_summary_info,

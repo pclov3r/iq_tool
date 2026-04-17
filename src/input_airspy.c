@@ -9,8 +9,6 @@
 #include "utils.h"
 #include "input_common.h"
 #include "mem_arena.h"
-#include "queue.h"
-#include "sdr_packet_serializer.h"
 #include "argparse.h"
 #include "wait_event.h"
 #include <stdio.h>
@@ -111,7 +109,7 @@ const struct argparse_option* airspy_input_get_cli_options(int* count) {
 }
 
 static bool airspy_input_initialize(ModuleContext* ctx);
-static void* airspy_input_start_stream(ModuleContext* ctx);
+static void* airspy_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
 static void airspy_input_stop_stream(ModuleContext* ctx);
 static void airspy_input_cleanup(ModuleContext* ctx);
 static void airspy_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
@@ -260,7 +258,6 @@ static int airspy_input_buffered_stream_callback(airspy_transfer* transfer) {
     AppContext* app = (AppContext*)transfer->ctx;
 
     // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(app);
 
     if (is_shutdown_requested() || app->stats.error_occurred) {
         return -1;
@@ -274,23 +271,15 @@ static int airspy_input_buffered_stream_callback(airspy_transfer* transfer) {
     switch (transfer->sample_type) {
         case AIRSPY_SAMPLE_INT16_IQ:
             // When packing is enabled, the library unpacks to INT16_IQ automatically
-            if (!sdr_packet_serializer_write_block(
-                    app->pipeline.sdr_input_buffer,
-                    transfer->sample_count,
-                    transfer->samples,
-                    CS16)) {
-                log_warn("SDR input buffer overrun! Dropped data.");
-            }
+            if (!app->module.queue_samples(app->module.pipeline_ctx, transfer->samples, transfer->sample_count, CS16)) {
+        log_warn("SDR input buffer overrun! Dropped data.");
+    }
             break;
 
         case AIRSPY_SAMPLE_FLOAT32_IQ:
-            if (!sdr_packet_serializer_write_block(
-                    app->pipeline.sdr_input_buffer,
-                    transfer->sample_count,
-                    transfer->samples,
-                    CF32)) {
-                log_warn("SDR input buffer overrun! Dropped data.");
-            }
+            if (!app->module.queue_samples(app->module.pipeline_ctx, transfer->samples, transfer->sample_count, CF32)) {
+        log_warn("SDR input buffer overrun! Dropped data.");
+    }
             break;
 
         case AIRSPY_SAMPLE_RAW:
@@ -614,7 +603,9 @@ cleanup:
     return success;
 }
 
-static void* airspy_input_start_stream(ModuleContext* ctx) {
+static void* airspy_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
+    ctx->app->module.queue_samples = queue_samples;
+    ctx->app->module.pipeline_ctx = pipeline_ctx;
     AppContext* app = ctx->app;
     AirspyContext* private_data = (AirspyContext*)app->module.input_private_data;
     int result;

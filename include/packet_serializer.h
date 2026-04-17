@@ -1,5 +1,5 @@
 /**
- * @file sdr_packet_serializer.h
+ * @file packet_serializer.h
  * @brief Defines the data protocol for the ring buffer between SDR Capture and Reader threads.
  *
  * This module provides a standardized binary protocol for transmitting I/Q data
@@ -19,8 +19,8 @@
  * writing to this buffer.
  */
 
-#ifndef SDR_PACKET_SERIALIZER_H_
-#define SDR_PACKET_SERIALIZER_H_
+#ifndef PACKET_SERIALIZER_H_
+#define PACKET_SERIALIZER_H_
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -42,7 +42,7 @@ struct SampleChunk;
  * @brief Flag indicating a stream discontinuity (e.g., buffer overrun).
  *        Payload length is usually 0 when this is set.
  */
-#define SDR_CHUNK_FLAG_STREAM_RESET (1 << 0)
+#define PACKET_FLAG_STREAM_RESET (1 << 0)
 
 
 // --- Data Structures ---
@@ -63,10 +63,10 @@ typedef struct {
     uint8_t  flags;        ///< Bitmask of stream status flags (e.g. RESET).
     uint8_t  format_id;    ///< The SampleFormat enum value of the sample data.
     uint8_t  reserved[22];
-} SdrInputChunkHeader;
+} PacketHeader;
 #pragma pack(pop)
 
-static_assert(sizeof(SdrInputChunkHeader) == 32, "SdrInputChunkHeader MUST be exactly 32 bytes for SIMD alignment");
+static_assert(sizeof(PacketHeader) == 32, "PacketHeader MUST be exactly 32 bytes for SIMD alignment");
 
 /**
  * @brief Tracks the state of the current packet being read by the consumer.
@@ -96,18 +96,18 @@ typedef struct {
  * @param format The format of the samples (e.g., CU8, CS16).
  * @return true if written successfully, false if dropped due to lack of space.
  */
-bool sdr_packet_serializer_write_block(struct RingBuffer* buffer, uint32_t num_samples, const void* sample_data, SampleFormat format);
+bool packet_serializer_write_block(struct RingBuffer* buffer, uint32_t num_samples, const void* sample_data, SampleFormat format);
 
 /**
  * @brief Writes a "Stream Reset" event packet to the buffer.
  *
- * This packet has 0 payload bytes and the SDR_CHUNK_FLAG_STREAM_RESET flag set.
+ * This packet has 0 payload bytes and the PACKET_FLAG_STREAM_RESET flag set.
  * It tells the downstream pipeline to clear filters/buffers to avoid smearing glitches.
  *
  * @param buffer The target ring buffer.
  * @return true if written, false if buffer full.
  */
-bool sdr_packet_serializer_write_reset_event(struct RingBuffer* buffer);
+bool packet_serializer_write_reset_event(struct RingBuffer* buffer);
 
 
 // --- Deserialization Function (Reading from the Stream) ---
@@ -127,10 +127,10 @@ bool sdr_packet_serializer_write_reset_event(struct RingBuffer* buffer);
  * @return The actual number of samples read (may be less than requested if the
  *         packet ends), 0 if end-of-stream or reset event, or -1 on fatal error.
  */
-int64_t sdr_packet_serializer_read_packet(struct RingBuffer* buffer,
+int64_t packet_serializer_read_packet(struct RingBuffer* buffer,
                                           struct SampleChunk* target_chunk,
                                           SerializerState* state,
                                           bool* is_reset_event,
                                           size_t request_size_samples);
 
-#endif // SDR_PACKET_SERIALIZER_H_
+#endif // PACKET_SERIALIZER_H_

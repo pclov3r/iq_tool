@@ -280,207 +280,118 @@ static bool am_output_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* am_output_run_writer(ModuleContext* ctx) {
+
+static void am_output_reset(ModuleContext* ctx) { (void)ctx; /* TODO: Reset PLL state */ }
+static void am_output_flush(ModuleContext* ctx) {
+    AmContext* p = (AmContext*)ctx->app->module.output_private_data;
+    utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
+}
+static size_t am_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
     AppContext* res = ctx->app;
     AmContext* p = (AmContext*)res->module.output_private_data;
 
+    // --- RESTORE BACKPRESSURE ---
     const size_t THROTTLE_THRESHOLD = (size_t)(AUDIO_BUFFER_SIZE * 0.8);
-
-    size_t stat_counter = 0;
-    size_t stat_threshold = (size_t)(p->input_samplerate * AM_STATS_INTERVAL_SEC);
-    double accum_mag_sq_sum = 0.0;
-
-    // PLL stats
-    double accum_phase_err_sq_sum = 0.0;
-    double accum_carrier_freq_sum = 0.0;
-    double accum_carrier_strength_sum = 0.0;
-    double accum_inphase_sum = 0.0; // Track In-Phase energy for lock detection
-    size_t accum_pll_count = 0;
-
-    const size_t pll_lock_samples = (size_t)(p->input_samplerate * AM_PLL_LOCK_TIME);
-    p->pll_tracking_mode = false;
-    p->pll_lock_counter = 0;
+    if (p->audio_ring_buffer) {
+        ring_buffer_wait_for_threshold(p->audio_ring_buffer, THROTTLE_THRESHOLD);
+        if (is_shutdown_requested()) return 0;
+    }
 
     const float pcm_scale = 32767.0f;
 
-    while (true) {
-        if (p->audio_ring_buffer) {
-            ring_buffer_wait_for_threshold(p->audio_ring_buffer, THROTTLE_THRESHOLD);
-            if (is_shutdown_requested()) goto cleanup;
-        }
-
-        SampleChunk* item = (SampleChunk*)queue_dequeue(res->pipeline.writer_input_queue);
-        if (!item) break;
-
-        if (item->stream_discontinuity_event) {
-            queue_enqueue(res->pipeline.free_sample_chunk_queue, item);
-            continue;
-        }
-
-        if (item->is_last_chunk) {
-            utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
-            queue_enqueue(res->pipeline.free_sample_chunk_queue, item);
-            break;
-        }
-
-        if (item->frames_to_write > 0) {
-            ComplexFloat* iq_in = (ComplexFloat*)item->final_output_data;
-            unsigned int num_frames = item->frames_to_write;
-            liquid_float_complex* iq_ptr = (liquid_float_complex*)iq_in;
-
-            // Determine effective mode (Fall back to Envelope if PLL failed)
-            bool use_sync_mode = p->sync_mode && !p->fallback_mode;
-
-            // --- STAGE 1: Demodulation (Input Rate) ---
-            for (unsigned int i = 0; i < num_frames; i++) {
-                float raw_demod = 0.0f;
-                float mag = cabsf(iq_ptr[i]);
-                accum_mag_sq_sum += (mag * mag);
-
-                if (use_sync_mode) {
-                    // --- SYNC MODE (PLL) ---
-                    if (!p->pll_tracking_mode) {
-                        p->pll_lock_counter++;
-                        if (p->pll_lock_counter >= pll_lock_samples) {
-                            nco_crcf_pll_set_bandwidth(p->pll, AM_PLL_TRACKING_BW / p->input_samplerate);
-                            p->pll_tracking_mode = true;
-                        }
-                    }
-
-                    liquid_float_complex carrier;
-                    nco_crcf_cexpf(p->pll, &carrier);
-                    liquid_float_complex product = iq_ptr[i] * conjf(carrier);
-
-                    // Standard Costas Loop
-                    float phase_error = cimagf(product);
-                    nco_crcf_pll_step(p->pll, phase_error);
-                    nco_crcf_step(p->pll);
-
-                    raw_demod = crealf(product);
-
-                    if ((i & 3) == 0) {
-                        accum_phase_err_sq_sum += (phase_error * phase_error);
-                        accum_carrier_freq_sum += (nco_crcf_get_frequency(p->pll) / (2.0f * (float)M_PI)) * p->input_samplerate;
-                        accum_carrier_strength_sum += cabsf(product);
-                        accum_inphase_sum += raw_demod; // Accumulate Real part for Lock Check
-                        accum_pll_count++;
-                    }
-                } else {
-                    // --- ENVELOPE MODE (Or Fallback) ---
-                    raw_demod = mag;
-                }
-
-                // --- STAGE 2: Soft DC Removal ---
-                p->dc_integrator = (p->dc_alpha * p->dc_integrator) + ((1.0f - p->dc_alpha) * raw_demod);
-                p->mono_buffer[i] = raw_demod - p->dc_integrator;
-            }
-
-            stat_counter += num_frames;
-
-            // --- Stats & Lock Check ---
-            if (stat_counter >= stat_threshold) {
-                double avg_power = accum_mag_sq_sum / (double)stat_counter;
-                float rssi_db = 10.0f * log10f((float)avg_power + 1e-10f);
-                float agc_rssi = agc_rrrf_get_rssi(p->agc);
-
-                if (use_sync_mode && accum_pll_count > 0) {
-                    // 1. Calculate Phase Error %
-                    float avg_phase_mse = (float)(accum_phase_err_sq_sum / (double)accum_pll_count);
-                    float phase_err_pct = sqrtf(avg_phase_mse) * 100.0f;
-
-                    // 2. Calculate Offset
-                    float avg_carrier_offset = (float)(accum_carrier_freq_sum / (double)accum_pll_count);
-
-                    // 3. Lock Detector (Ratio of In-Phase (Real) energy to Total Magnitude)
-                    float lock_quality = (float)(accum_inphase_sum / (accum_carrier_strength_sum + 1e-9));
-
-                    // Clamp to 0 if negative (avoids weird -5% display if locked 180 out)
-                    if (lock_quality < 0.0f) lock_quality = 0.0f;
-
-                    if (lock_quality < AM_LOCK_THRESHOLD) {
-                        p->unlock_counter++;
-                        if (p->unlock_counter >= AM_LOCK_TIMEOUT_SEC) {
-                            p->fallback_mode = true;
-                            log_warn("AM: PLL failed to lock. Falling back to Envelope detection.");
-                        }
-                    } else {
-                        p->unlock_counter = 0;
-                    }
-
-                    log_info("AM RSSI: %.1f dB | AGC Gain: %.1f dB | Freq Offset: %.2f Hz | Phase Error: %.2f%% | PLL Lock Quality: %.2f%%",
-                             rssi_db, -agc_rssi, avg_carrier_offset, phase_err_pct, lock_quality * 100.0f);
-
-                    accum_phase_err_sq_sum = 0.0; accum_carrier_freq_sum = 0.0;
-                    accum_carrier_strength_sum = 0.0; accum_inphase_sum = 0.0; accum_pll_count = 0;
-                } else {
-                    // Envelope Mode
-                    log_info("AM RSSI: %.1f dB | AGC Gain: %.1f dB", rssi_db, -agc_rssi);
-                }
-
-                stat_counter = 0; accum_mag_sq_sum = 0.0;
-            }
-
-            // --- STAGE 3: Resample (Input -> 48k) ---
-            unsigned int num_resampled;
-            msresamp_rrrf_execute(p->resamp_out, p->mono_buffer, num_frames, p->resamp_buffer, &num_resampled);
-
-            // --- STAGE 4: Audio Processing (48k) ---
-            for (unsigned int i = 0; i < num_resampled; i++) {
-                float sample = p->resamp_buffer[i];
-
-                // A. Audio LPF
-                firfilt_rrrf_push(p->audio_lpf, sample);
-                firfilt_rrrf_execute(p->audio_lpf, &sample);
-
-                // B. Smart "Hang" AGC Logic
-                float current_est = agc_rrrf_get_signal_level(p->agc);
-                float signal_mag = fabsf(sample);
-
-                if (signal_mag > current_est) {
-                    // Attack (Rising Signal): Reduce gain fast
-                    agc_rrrf_set_bandwidth(p->agc, AM_AGC_ATTACK_BW);
-                    // Reset Hold Timer on every attack (carrier peak)
-                    p->agc_hang_counter = p->agc_hang_max;
-                } else {
-                    // Signal is dropping
-                    if (p->agc_hang_counter > 0) {
-                        // Hold Phase: Freeze Gain
-                        p->agc_hang_counter--;
-                        agc_rrrf_set_bandwidth(p->agc, AM_AGC_HANG_BW);
-                    } else {
-                        // Decay Phase: Increase Gain
-                        if (signal_mag > AM_AGC_NOISE_THRESH) {
-                            agc_rrrf_set_bandwidth(p->agc, AM_AGC_DECAY_BW);
-                        } else {
-                            // Pure Silence/Static: Don't ramp up endlessly
-                            agc_rrrf_set_bandwidth(p->agc, AM_AGC_HANG_BW);
-                        }
-                    }
-                }
-
-                agc_rrrf_execute(p->agc, sample, &sample);
-
-                // C. Manual Gain
-                sample *= p->manual_gain;
-
-                if (sample > 1.0f) sample = 1.0f;
-                if (sample < -1.0f) sample = -1.0f;
-
-                int16_t pcm = (int16_t)(sample * pcm_scale);
-                p->interleaved_pcm[2*i]     = pcm;
-                p->interleaved_pcm[2*i + 1] = pcm;
-            }
-
-            ring_buffer_write(p->audio_ring_buffer, p->interleaved_pcm, num_resampled * 2 * sizeof(int16_t));
-        }
-
-        if (!queue_enqueue(res->pipeline.free_sample_chunk_queue, item)) break;
+    static size_t stat_counter = 0;
+    static double accum_mag_sq_sum = 0.0, accum_phase_err_sq_sum = 0.0, accum_carrier_freq_sum = 0.0;
+    static double accum_carrier_strength_sum = 0.0, accum_inphase_sum = 0.0;
+    static size_t accum_pll_count = 0;
+    
+    static size_t stat_threshold = 0;
+    static size_t pll_lock_samples = 0;
+    static bool _first_run = true;
+    if (_first_run) {
+        stat_threshold = (size_t)(p->input_samplerate * AM_STATS_INTERVAL_SEC);
+        pll_lock_samples = (size_t)(p->input_samplerate * AM_PLL_LOCK_TIME);
+        _first_run = false;
     }
 
-cleanup:
-    log_debug("AM writer thread exiting.");
-    return NULL;
+    if (input_bytes == 0) return 0;
+    unsigned int num_frames = input_bytes / res->module.output_bytes_per_sample_pair;
+    liquid_float_complex* iq_ptr = (liquid_float_complex*)buffer;
+    bool use_sync_mode = p->sync_mode && !p->fallback_mode;
+
+    for (unsigned int i = 0; i < num_frames; i++) {
+        float raw_demod = 0.0f;
+        float mag = cabsf(iq_ptr[i]);
+        accum_mag_sq_sum += (mag * mag);
+        if (use_sync_mode) {
+            if (!p->pll_tracking_mode && p->pll_lock_counter++ >= pll_lock_samples) {
+                nco_crcf_pll_set_bandwidth(p->pll, AM_PLL_TRACKING_BW / p->input_samplerate);
+                p->pll_tracking_mode = true;
+            }
+            liquid_float_complex carrier, product;
+            nco_crcf_cexpf(p->pll, &carrier);
+            product = iq_ptr[i] * conjf(carrier);
+            float phase_error = cimagf(product);
+            nco_crcf_pll_step(p->pll, phase_error);
+            nco_crcf_step(p->pll);
+            raw_demod = crealf(product);
+            if ((i & 3) == 0) {
+                accum_phase_err_sq_sum += (phase_error * phase_error);
+                accum_carrier_freq_sum += (nco_crcf_get_frequency(p->pll) / (2.0f * (float)M_PI)) * p->input_samplerate;
+                accum_carrier_strength_sum += cabsf(product);
+                accum_inphase_sum += raw_demod;
+                accum_pll_count++;
+            }
+        } else { raw_demod = mag; }
+        p->dc_integrator = (p->dc_alpha * p->dc_integrator) + ((1.0f - p->dc_alpha) * raw_demod);
+        p->mono_buffer[i] = raw_demod - p->dc_integrator;
+    }
+    stat_counter += num_frames;
+
+    if (stat_counter >= stat_threshold) {
+        float rssi_db = 10.0f * log10f((float)(accum_mag_sq_sum / (double)stat_counter) + 1e-10f);
+        float agc_rssi = agc_rrrf_get_rssi(p->agc);
+        if (use_sync_mode && accum_pll_count > 0) {
+            float lock_quality = (float)(accum_inphase_sum / (accum_carrier_strength_sum + 1e-9));
+            if (lock_quality < AM_LOCK_THRESHOLD) {
+                if (++p->unlock_counter >= AM_LOCK_TIMEOUT_SEC) {
+                    p->fallback_mode = true;
+                    log_warn("AM: PLL failed to lock. Falling back to Envelope detection.");
+                }
+            } else { p->unlock_counter = 0; }
+            log_info("AM RSSI: %.1f dB | AGC Gain: %.1f dB | Freq Offset: %.2f Hz | Phase Error: %.2f%% | PLL Lock Quality: %.2f%%",
+                     rssi_db, -agc_rssi, (float)(accum_carrier_freq_sum / (double)accum_pll_count),
+                     sqrtf((float)(accum_phase_err_sq_sum/(double)accum_pll_count)) * 100.0f, fmaxf(0.0f, lock_quality) * 100.0f);
+            accum_phase_err_sq_sum=0.0; accum_carrier_freq_sum=0.0; accum_carrier_strength_sum=0.0; accum_inphase_sum=0.0; accum_pll_count=0;
+        } else { log_info("AM RSSI: %.1f dB | AGC Gain: %.1f dB", rssi_db, -agc_rssi); }
+        stat_counter = 0; accum_mag_sq_sum = 0.0;
+    }
+
+    unsigned int num_resampled;
+    msresamp_rrrf_execute(p->resamp_out, p->mono_buffer, num_frames, p->resamp_buffer, &num_resampled);
+
+    for (unsigned int i = 0; i < num_resampled; i++) {
+        float sample = p->resamp_buffer[i];
+        firfilt_rrrf_push(p->audio_lpf, sample);
+        firfilt_rrrf_execute(p->audio_lpf, &sample);
+        if (fabsf(sample) > agc_rrrf_get_signal_level(p->agc)) {
+            agc_rrrf_set_bandwidth(p->agc, p->agc_attack_bw);
+            p->agc_hang_counter = p->agc_hang_max;
+        } else if (p->agc_hang_counter > 0) {
+            p->agc_hang_counter--; agc_rrrf_set_bandwidth(p->agc, AM_AGC_HANG_BW);
+        } else {
+            agc_rrrf_set_bandwidth(p->agc, (fabsf(sample) > AM_AGC_NOISE_THRESH) ? p->agc_decay_bw : AM_AGC_HANG_BW);
+        }
+        agc_rrrf_execute(p->agc, sample, &sample);
+        sample *= p->manual_gain;
+        int16_t pcm = (int16_t)(fmaxf(-1.0f, fminf(1.0f, sample)) * pcm_scale);
+        p->interleaved_pcm[2*i] = pcm;
+        p->interleaved_pcm[2*i + 1] = pcm;
+    }
+
+    ring_buffer_write(p->audio_ring_buffer, p->interleaved_pcm, num_resampled * 2 * sizeof(int16_t));
+    return input_bytes;
 }
+
 
 static void am_output_cleanup(ModuleContext* ctx) {
     AppContext* res = ctx->app;
@@ -518,12 +429,13 @@ const struct argparse_option* am_output_get_cli_options(int* count) {
 
 static OutputModuleInterface s_am_output_api = {
     .initialize = am_output_initialize,
-    .run_writer = am_output_run_writer,
+    .write_chunk = am_output_write_chunk,
+    .reset = am_output_reset,
+    .flush = am_output_flush,
     .cleanup = am_output_cleanup,
     .get_summary_info = am_output_get_summary_info,
     .validate_options = am_output_validate_options,
     .get_cli_options = am_output_get_cli_options,
-    .write_chunk = NULL
 };
 
 OutputModuleInterface* output_am_get_module_api(void) {

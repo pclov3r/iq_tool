@@ -8,8 +8,6 @@
 #include "sample_convert.h"
 #include "input_common.h"
 #include "mem_arena.h"
-#include "queue.h"
-#include "sdr_packet_serializer.h"
 #include "argparse.h"
 #include <stdlib.h>
 #include <string.h>
@@ -67,7 +65,7 @@ const struct argparse_option* rtlsdr_input_get_cli_options(int* count) {
 }
 
 static bool rtlsdr_input_initialize(ModuleContext* ctx);
-static void* rtlsdr_input_start_stream(ModuleContext* ctx);
+static void* rtlsdr_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
 static void rtlsdr_input_stop_stream(ModuleContext* ctx);
 static void rtlsdr_input_cleanup(ModuleContext* ctx);
 static void rtlsdr_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
@@ -175,7 +173,6 @@ static void rtlsdr_input_stream_callback(unsigned char *buf, uint32_t len, void 
     AppContext* app = (AppContext*)cb_ctx;
 
     // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(app);
 
     if (is_shutdown_requested() || app->stats.error_occurred) {
         return;
@@ -186,12 +183,7 @@ static void rtlsdr_input_stream_callback(unsigned char *buf, uint32_t len, void 
     // We no longer chop this up. We send the full hardware buffer to the ring buffer.
     uint32_t num_samples = len / 2;
 
-    if (!sdr_packet_serializer_write_block(
-            app->pipeline.sdr_input_buffer,
-            num_samples,
-            buf,
-            CU8))
-    {
+    if (!app->module.queue_samples(app->module.pipeline_ctx, buf, num_samples, CU8)) {
         log_warn("SDR input buffer overrun! Dropped data.");
     }
 }
@@ -342,7 +334,9 @@ cleanup:
     return success;
 }
 
-static void* rtlsdr_input_start_stream(ModuleContext* ctx) {
+static void* rtlsdr_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
+    ctx->app->module.queue_samples = queue_samples;
+    ctx->app->module.pipeline_ctx = pipeline_ctx;
     AppContext* app = ctx->app;
     RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
     int result;

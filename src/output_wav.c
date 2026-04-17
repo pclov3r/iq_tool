@@ -49,13 +49,14 @@ const struct argparse_option* wav_output_get_cli_options(int* count) {
  * and the shared functions from the common WAV module.
  */
 static OutputModuleInterface s_wav_output_api = {
-    .validate_options = wav_common_validate_options,  // Use common validation
+    .validate_options = wav_common_validate_options, // Use common validation
     .get_cli_options  = wav_output_get_cli_options,
-    .initialize       = wav_output_initialize,               // Use our specific initializer
-    .run_writer       = wav_common_run_writer,        // Use common writer thread loop
-    .write_chunk      = wav_common_write_chunk,       // Use common direct-write function
-    .cleanup = wav_common_cleanup,   // Use common finalizer
-    .get_summary_info = wav_output_get_summary_info,         // Use our specific summary function
+    .initialize       = wav_output_initialize,       // Use our specific initializer
+    .reset = NULL,
+    .flush = NULL,
+    .write_chunk = wav_common_write_chunk,           // Use common direct-write function
+    .cleanup = wav_common_cleanup,                   // Use common finalizer
+    .get_summary_info = wav_output_get_summary_info, // Use our specific summary function
 };
 
 /**

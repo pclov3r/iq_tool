@@ -9,8 +9,6 @@
 #include "sample_convert.h"
 #include "input_common.h"
 #include "mem_arena.h"
-#include "queue.h"
-#include "sdr_packet_serializer.h"
 #include "argparse.h"
 #include "wait_event.h"
 #include <stdio.h>
@@ -72,7 +70,7 @@ const struct argparse_option* hackrf_input_get_cli_options(int* count) {
 }
 
 static bool hackrf_input_initialize(ModuleContext* ctx);
-static void* hackrf_input_start_stream(ModuleContext* ctx);
+static void* hackrf_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
 static void hackrf_input_stop_stream(ModuleContext* ctx);
 static void hackrf_input_cleanup(ModuleContext* ctx);
 static void hackrf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
@@ -140,7 +138,6 @@ static int hackrf_input_buffered_stream_callback(hackrf_transfer* transfer) {
     AppContext* app = (AppContext*)transfer->rx_ctx;
 
     // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(app);
 
     if (is_shutdown_requested() || app->stats.error_occurred) {
         return -1;
@@ -149,12 +146,8 @@ static int hackrf_input_buffered_stream_callback(hackrf_transfer* transfer) {
     // --- NEW ARCHITECTURE: DUMP THE WHOLE BLOCK ---
     // HackRF provides interleaved CS8 (2 bytes per sample).
     // valid_length is in bytes.
-    if (!sdr_packet_serializer_write_block(
-            app->pipeline.sdr_input_buffer, 
-            transfer->valid_length / 2, // num_samples
-            transfer->buffer, 
-            CS8)) 
-    {
+    if (!app->module.queue_samples(app->module.pipeline_ctx, // num_samples
+            transfer->buffer, transfer->valid_length / 2, CS8)) {
         log_warn("SDR input buffer overrun! Dropped data.");
     }
 
@@ -271,7 +264,9 @@ cleanup:
     return success;
 }
 
-static void* hackrf_input_start_stream(ModuleContext* ctx) {
+static void* hackrf_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
+    ctx->app->module.queue_samples = queue_samples;
+    ctx->app->module.pipeline_ctx = pipeline_ctx;
     AppContext* app = ctx->app;
     HackrfContext* private_data = (HackrfContext*)app->module.input_private_data;
     int result;

@@ -152,9 +152,6 @@ void request_shutdown(void) {
             queue_signal_shutdown(r->pipeline.iq_optimization_data_queue);
         
         // Signal all ring buffers to wake up any waiting threads
-        if (r->pipeline.writer_input_buffer)
-            ring_buffer_signal_shutdown(r->pipeline.writer_input_buffer);
-        
         if (r->pipeline.sdr_input_buffer)
             ring_buffer_signal_shutdown(r->pipeline.sdr_input_buffer);
     }

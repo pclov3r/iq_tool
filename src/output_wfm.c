@@ -426,330 +426,154 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* wfm_output_run_writer(ModuleContext* ctx) {
+
+static void wfm_output_reset(ModuleContext* ctx) { (void)ctx; /* TODO: Reset PLL state */ }
+static void wfm_output_flush(ModuleContext* ctx) {
+    WfmContext* p = (WfmContext*)ctx->app->module.output_private_data;
+    utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
+}
+static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
     AppContext* res = ctx->app;
     WfmContext* p = (WfmContext*)res->module.output_private_data;
 
-    // Throttle if buffer is > 80% full
+    // --- RESTORE BACKPRESSURE ---
     const size_t THROTTLE_THRESHOLD = (size_t)(AUDIO_BUFFER_SIZE * 0.8);
-
-    // --- Statistics Accumulators ---
-    size_t stat_counter = 0;
-    // Log once per second (Signal Time)
-    size_t stat_rate_threshold = (size_t)(p->input_samplerate * WFM_STATS_INTERVAL_SEC);
-
-    // Using double for accumulators to prevent overflow
-    double accum_mag_sum = 0.0;       // For Mean Magnitude (SNR)
-    double accum_mag_sq_sum = 0.0;    // For Total Power (RSSI)
-    double accum_pilot_mag_sum = 0.0; // For Pilot Presence detection
-
-    // Average accumulators for Stereo/Pilot stats
-    double accum_stereo_pct_sum = 0.0;
-    double accum_pilot_err_sq_sum = 0.0;
-    size_t accum_pilot_count = 0;
-
-    while (true) {
-        // --- 1. BACKPRESSURE: Check Audio Buffer BEFORE Dequeue ---
-        if (p->audio_ring_buffer) {
-            // While the audio buffer is too full, we sleep.
-            // This leaves the SampleChunk in the upstream queue, preserving app.
-            ring_buffer_wait_for_threshold(p->audio_ring_buffer, THROTTLE_THRESHOLD);
-            if (is_shutdown_requested()) goto cleanup;
-        }
-
-        // --- 2. Acquire Data ---
-        SampleChunk* item = (SampleChunk*)queue_dequeue(res->pipeline.writer_input_queue);
-        if (!item) break;
-
-        if (item->stream_discontinuity_event) {
-            queue_enqueue(res->pipeline.free_sample_chunk_queue, item);
-            continue;
-        }
-
-        // --- END OF STREAM HANDLING ---
-        if (item->is_last_chunk) {
-
-            // Wait for the ring buffer to drain using the reusable utility.
-            // Poll every 10ms, timeout if stalled for 200ms, wait 200ms for hardware padding.
-            utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
-
-            queue_enqueue(res->pipeline.free_sample_chunk_queue, item);
-            break;
-        }
-
-        if (item->frames_to_write > 0) {
-            ComplexFloat* iq_in = (ComplexFloat*)item->final_output_data;
-            unsigned int num_frames = item->frames_to_write;
-
-            // --- STATS PRE-CALCULATION (Raw I/Q) ---
-            // Fix: Cast to liquid type to ensure compatibility with cabsf()
-            liquid_float_complex* iq_ptr = (liquid_float_complex*)iq_in;
-
-            // Calculate RSSI and SNR estimates based on Input I/Q Magnitude
-            for (unsigned int k = 0; k < num_frames; k++) {
-                // Calculate magnitude of complex sample: sqrt(I^2 + Q^2)
-                float mag = cabsf(iq_ptr[k]);
-                accum_mag_sum += mag;
-                accum_mag_sq_sum += (mag * mag);
-            }
-            // Count frames towards the 1-second interval
-            stat_counter += num_frames;
-
-            // --- STAGE 1: I/Q to MPX ---
-            freqdem_demodulate_block(p->fm_demod,
-                                     iq_ptr,
-                                     num_frames,
-                                     p->mpx_buffer);
-
-            // --- STAGE 1.5: Optional Raw MPX Output (S16 Mono) ---
-            if (s_wfm_config.raw_mpx_stdout && p->mpx_s16_buffer) {
-                for (unsigned int k = 0; k < num_frames; k++) {
-                    // Scale float MPX (-1.0 to 1.0 approx) to S16 range
-                    float sample = p->mpx_buffer[k] * 32767.0f;
-
-                    // Hard Clamp
-                    if (sample > 32767.0f) sample = 32767.0f;
-                    if (sample < -32768.0f) sample = -32768.0f;
-
-                    p->mpx_s16_buffer[k] = (int16_t)sample;
-                }
-                fwrite(p->mpx_s16_buffer, sizeof(int16_t), num_frames, stdout);
-            }
-
-#ifdef WITH_REDSEA
-            // --- STAGE 1.6: RDS Decoding ---
-            if (p->redsea) {
-                RdsState current;
-                redsea_process_mpx(p->redsea, p->mpx_buffer, num_frames, &current);
-
-                // Increment counter
-                p->rds_display_counter += num_frames;
-
-                // Display every 1 second if valid data exists
-                if (p->rds_display_counter >= p->rds_display_threshold && current.valid) {
-
-                    // Reset counter
-                    p->rds_display_counter = 0;
-
-                    // Trim RadioText
-                    char clean_rt[65];
-                    strncpy(clean_rt, current.radiotext, 64);
-                    clean_rt[64] = '\0';
-                    size_t rt_len = strlen(clean_rt);
-                    while (rt_len > 0 && clean_rt[rt_len - 1] == ' ') {
-                        clean_rt[rt_len - 1] = '\0';
-                        rt_len--;
-                    }
-
-                    // Log Output - Always display
-                    if (s_wfm_config.rds_us_mode && current.callsign[0] != '\0') {
-                        log_info("RBDS PI: %04X | CALL: %s | PS: %s | PTY: %s | PTYN: %s | RT: %s | TP: %d | TA: %d | MS: %d | ST: %d | CMP: %d | DYN: %d", 
-                                 current.pi_code,
-                                 current.callsign,
-                                 current.ps_name,
-                                 current.program_type,
-                                 current.pty_name,
-                                 clean_rt,
-                                 current.tp ? 1 : 0,
-                                 current.ta ? 1 : 0,
-                                 current.is_music ? 1 : 0,
-                                 current.stereo ? 1 : 0,
-                                 current.compressed ? 1 : 0,
-                                 current.dynamic ? 1 : 0);
-                    } else {
-                        log_info("RDS PI: %04X | PS: %s | PTY: %s | PTYN: %s | RT: %s | TP: %d | TA: %d | MS: %d | ST: %d | CMP: %d | DYN: %d", 
-                                 current.pi_code,
-                                 current.ps_name,
-                                 current.program_type,
-                                 current.pty_name,
-                                 clean_rt,
-                                 current.tp ? 1 : 0,
-                                 current.ta ? 1 : 0,
-                                 current.is_music ? 1 : 0,
-                                 current.stereo ? 1 : 0,
-                                 current.compressed ? 1 : 0,
-                                 current.dynamic ? 1 : 0);
-                    }
-
-                    // Clock Time display (if present and changed)
-                    if (current.clock_time[0] != '\0' && strcmp(current.clock_time, p->last_rds_state.clock_time) != 0) {
-                        log_info("RDS/RBDS CT: %s", current.clock_time);
-                    }
-
-                    p->last_rds_state = current;
-                }
-            }
-#endif
-            // --- STAGE 2: Stereo Decoding & Anti-Alias ---
-            for (unsigned int i = 0; i < num_frames; i++) {
-                // ENGINEERING FIX: Explicit Gain Staging
-                // Scale down the hot MPX signal to create headroom for stereo processing.
-                float insample = p->mpx_buffer[i] * WFM_MPX_SCALING_FACTOR;
-
-                // A. Pilot Bandpass
-                liquid_float_complex pilot_mix_down;
-                nco_crcf_mix_down(p->nco_pilot_approx, insample + 0.0f * I, &pilot_mix_down);
-
-                firfilt_crcf_push(p->fir_pilot, pilot_mix_down);
-                liquid_float_complex fir_out;
-                firfilt_crcf_execute(p->fir_pilot, &fir_out);
-
-                // Track Pilot Magnitude for Mono Detection
-                accum_pilot_mag_sum += cabsf(fir_out);
-
-                liquid_float_complex pilot;
-                nco_crcf_mix_up(p->nco_pilot_approx, fir_out, &pilot);
-                nco_crcf_step(p->nco_pilot_approx);
-
-                // B. Generate 38kHz Carrier
-                float pilot_phase = nco_crcf_get_phase(p->nco_pilot_exact);
-                nco_crcf_set_phase(p->nco_stereo_subcarrier, 2.0f * pilot_phase);
-
-                // C. Pilot PLL
-                liquid_float_complex pll_val;
-                nco_crcf_cexpf(p->nco_pilot_exact, &pll_val);
-                float phase_error = cargf(pilot * conjf(pll_val));
-
-                if (i % 4 == 0) {
-                    nco_crcf_pll_step(p->nco_pilot_exact, phase_error);
-
-                    // Accumulate stats for logging (independent of control loop)
-                    accum_pilot_err_sq_sum += (phase_error * phase_error);
-                    accum_pilot_count++;
-
-                    // Push to control loop logic
-                    running_average_push(&p->pilotnoise, phase_error * phase_error);
-                }
-                nco_crcf_step(p->nco_pilot_exact);
-
-                // D. Stereo Gain / Mono Revert Logic
-                float stereogain = 0.0f;
-
-                if (s_wfm_config.force_mono) {
-                    stereogain = 0.0f;
-                } else if (s_wfm_config.force_stereo) {
-                    stereogain = 1.0f;
-                } else {
-                    // Adaptive Mode
-                    float avg_noise = running_average_get(&p->pilotnoise);
-                    float val = WFM_STEREO_SEPARATION - avg_noise;
-                    if (val < 0.0f) val = 0.0f;
-                    if (val > 1.0f) val = 1.0f;
-                    stereogain = val;
-                }
-
-                // Stats: Accumulate Stereo Percentage
-                accum_stereo_pct_sum += (stereogain * 100.0f);
-
-                // E. Decode Stereo & Anti-Alias
-                firfilt_rrrf_push(p->fir_sum, insample);
-
-                liquid_float_complex sc_mix;
-                nco_crcf_mix_down(p->nco_stereo_subcarrier, insample + 0.0f * I, &sc_mix);
-                firfilt_rrrf_push(p->fir_diff, cimagf(sc_mix));
-
-                float sum, diff;
-                firfilt_rrrf_execute(p->fir_sum, &sum);
-                firfilt_rrrf_execute(p->fir_diff, &diff);
-
-                diff = 2.0f * diff * stereogain;
-
-                float left = (sum + diff) * p->gain;
-                float right = (sum - diff) * p->gain;
-
-                // F. De-emphasis
-                deemphasis_execute(&p->deemphasis, left, right, &left, &right);
-
-                p->audio_out_l[i] = left;
-                p->audio_out_r[i] = right;
-            }
-
-            // --- STAGE 3: Log Statistics (Every 1 second) ---
-            if (stat_counter >= stat_rate_threshold) {
-
-                // 1. Calculate RSSI (Average Power)
-                double avg_power = accum_mag_sq_sum / (double)stat_counter;
-                float rssi_db = 10.0f * log10f((float)avg_power + 1e-10f);
-
-                // 2. Calculate SNR
-                double mean_mag = accum_mag_sum / (double)stat_counter;
-                double signal_pwr = mean_mag * mean_mag;
-                double noise_pwr = avg_power - signal_pwr;
-                if (noise_pwr < 1e-10) noise_pwr = 1e-10;
-                float snr_db = 10.0f * log10f((float)(signal_pwr / noise_pwr));
-
-                // 3. Calculate Pilot Error % First
-                float avg_pilot_mse = 0.0f;
-                if (accum_pilot_count > 0) {
-                    avg_pilot_mse = (float)(accum_pilot_err_sq_sum / (double)accum_pilot_count);
-                }
-                float pilot_pct = sqrtf(avg_pilot_mse) * 100.0f;
-
-                // 4. Detect Mono/Stereo status
-                // A. Check Pilot Magnitude (low threshold for weak stations)
-                double avg_pilot = accum_pilot_mag_sum / (double)stat_counter;
-
-                // B. Determine Status:
-                // - Signal too weak (pilot magnitude < 0.001)
-                // - OR Pilot Error > 100% (PLL unlocked / random noise)
-                bool is_mono_station = (avg_pilot < 0.001) || (pilot_pct > 100.0f);
-
-                // C. Sanity Check: If Stereo Separation is active (> 1%), force it to valid.
-                float avg_stereo_pct = (float)(accum_stereo_pct_sum / (double)stat_counter);
-                if (avg_stereo_pct > 1.0f) {
-                    is_mono_station = false;
-                }
-
-                if (is_mono_station || s_wfm_config.force_mono) {
-                     log_info("RSSI: %.1f dB | SNR: %.1f dB | Stereo Separation: Mono | Pilot Phase Error: NA",
-                         rssi_db, snr_db);
-                } else {
-                    log_info("RSSI: %.1f dB | SNR: %.1f dB | Stereo Separation: %.1f%% | Pilot Phase Error: %.1f%%", 
-                            rssi_db, snr_db, avg_stereo_pct, pilot_pct);
-                }
-
-                // Reset all counters
-                stat_counter = 0;
-                accum_mag_sum = 0.0;
-                accum_mag_sq_sum = 0.0;
-                accum_pilot_mag_sum = 0.0;
-                accum_stereo_pct_sum = 0.0;
-                accum_pilot_err_sq_sum = 0.0;
-                accum_pilot_count = 0;
-            }
-
-            // --- STAGE 4: Resample to 48kHz ---
-            unsigned int num_resampled_l, num_resampled_r;
-
-            // Use mpx_buffer as temporary output for Left (safe re-use due to max_dsp_samples).
-            msresamp_rrrf_execute(p->resamp_out_l, p->audio_out_l, num_frames, p->mpx_buffer, &num_resampled_l);
-
-            // Use audio_out_l as temporary output for Right (safe re-use since read is done).
-            msresamp_rrrf_execute(p->resamp_out_r, p->audio_out_r, num_frames, p->audio_out_l, &num_resampled_r);
-
-            // --- STAGE 5: Convert to S16 ---
-            // Note: Left audio is currently in mpx_buffer, Right is in audio_out_l.
-            sample_convert_interleave_f32_to_s16(
-                p->mpx_buffer,      // Left Plane
-                p->audio_out_l,     // Right Plane
-                p->interleaved_pcm, // Destination
-                num_resampled_l     // Count
-            );
-
-            // --- STAGE 6: Push to Audio Ring Buffer ---
-            size_t bytes_to_write = num_resampled_l * 2 * sizeof(int16_t);
-
-            // Note: We do NOT loop/sleep here anymore. We rely on the throttle
-            // at the start of the loop to ensure sufficient space exists.
-            ring_buffer_write(p->audio_ring_buffer, p->interleaved_pcm, bytes_to_write);
-        }
-
-        if (!queue_enqueue(res->pipeline.free_sample_chunk_queue, item)) break;
+    if (p->audio_ring_buffer) {
+        ring_buffer_wait_for_threshold(p->audio_ring_buffer, THROTTLE_THRESHOLD);
+        if (is_shutdown_requested()) return 0;
     }
 
-cleanup:
-    log_debug("WFM writer thread exiting.");
-    return NULL;
+    static size_t stat_counter = 0;
+    static double accum_mag_sum = 0.0, accum_mag_sq_sum = 0.0, accum_pilot_mag_sum = 0.0;
+    static double accum_stereo_pct_sum = 0.0, accum_pilot_err_sq_sum = 0.0;
+    static size_t accum_pilot_count = 0;
+
+    static size_t stat_rate_threshold = 0;
+    static bool _first_run = true;
+    if (_first_run) {
+        stat_rate_threshold = (size_t)(p->input_samplerate * WFM_STATS_INTERVAL_SEC);
+        _first_run = false;
+    }
+
+    if (input_bytes == 0) return 0;
+
+    unsigned int num_frames = input_bytes / res->module.output_bytes_per_sample_pair;
+    ComplexFloat* iq_in = (ComplexFloat*)buffer;
+    liquid_float_complex* iq_ptr = (liquid_float_complex*)iq_in;
+
+    for (unsigned int k = 0; k < num_frames; k++) {
+        float mag = cabsf(iq_ptr[k]);
+        accum_mag_sum += mag;
+        accum_mag_sq_sum += (mag * mag);
+    }
+    stat_counter += num_frames;
+
+    freqdem_demodulate_block(p->fm_demod, iq_ptr, num_frames, p->mpx_buffer);
+
+    if (s_wfm_config.raw_mpx_stdout && p->mpx_s16_buffer) {
+        for (unsigned int k = 0; k < num_frames; k++) {
+            float sample = p->mpx_buffer[k] * 32767.0f;
+            if (sample > 32767.0f) sample = 32767.0f;
+            if (sample < -32768.0f) sample = -32768.0f;
+            p->mpx_s16_buffer[k] = (int16_t)sample;
+        }
+        fwrite(p->mpx_s16_buffer, sizeof(int16_t), num_frames, stdout);
+    }
+
+#ifdef WITH_REDSEA
+    if (p->redsea) {
+        RdsState current;
+        redsea_process_mpx(p->redsea, p->mpx_buffer, num_frames, &current);
+        p->rds_display_counter += num_frames;
+        if (p->rds_display_counter >= p->rds_display_threshold && current.valid) {
+            p->rds_display_counter = 0;
+            char clean_rt[65];
+            strncpy(clean_rt, current.radiotext, 64);
+            clean_rt[64] = '\0';
+            size_t rt_len = strlen(clean_rt);
+            while (rt_len > 0 && clean_rt[rt_len - 1] == ' ') { clean_rt[rt_len - 1] = '\0'; rt_len--; }
+
+            if (s_wfm_config.rds_us_mode && current.callsign[0] != '\0') {
+                 log_info("RBDS PI: %04X | CALL: %s | PS: %s | PTY: %s | PTYN: %s | RT: %s | TP: %d | TA: %d | MS: %d | ST: %d | CMP: %d | DYN: %d",
+                         current.pi_code, current.callsign, current.ps_name, current.program_type, current.pty_name, clean_rt, current.tp, current.ta, current.is_music, current.stereo, current.compressed, current.dynamic);
+            } else {
+                 log_info("RDS PI: %04X | PS: %s | PTY: %s | PTYN: %s | RT: %s | TP: %d | TA: %d | MS: %d | ST: %d | CMP: %d | DYN: %d",
+                         current.pi_code, current.ps_name, current.program_type, current.pty_name, clean_rt, current.tp, current.ta, current.is_music, current.stereo, current.compressed, current.dynamic);
+            }
+            if (current.clock_time[0] != '\0' && strcmp(current.clock_time, p->last_rds_state.clock_time) != 0) {
+                log_info("RDS/RBDS CT: %s", current.clock_time);
+            }
+            p->last_rds_state = current;
+        }
+    }
+#endif
+    for (unsigned int i = 0; i < num_frames; i++) {
+        float insample = p->mpx_buffer[i] * WFM_MPX_SCALING_FACTOR;
+        liquid_float_complex pilot_mix_down;
+        nco_crcf_mix_down(p->nco_pilot_approx, insample + 0.0f * I, &pilot_mix_down);
+        firfilt_crcf_push(p->fir_pilot, pilot_mix_down);
+        liquid_float_complex fir_out;
+        firfilt_crcf_execute(p->fir_pilot, &fir_out);
+        accum_pilot_mag_sum += cabsf(fir_out);
+        liquid_float_complex pilot;
+        nco_crcf_mix_up(p->nco_pilot_approx, fir_out, &pilot);
+        nco_crcf_step(p->nco_pilot_approx);
+        float pilot_phase = nco_crcf_get_phase(p->nco_pilot_exact);
+        nco_crcf_set_phase(p->nco_stereo_subcarrier, 2.0f * pilot_phase);
+        liquid_float_complex pll_val;
+        nco_crcf_cexpf(p->nco_pilot_exact, &pll_val);
+        float phase_error = cargf(pilot * conjf(pll_val));
+        if (i % 4 == 0) {
+            nco_crcf_pll_step(p->nco_pilot_exact, phase_error);
+            accum_pilot_err_sq_sum += (phase_error * phase_error);
+            accum_pilot_count++;
+            running_average_push(&p->pilotnoise, phase_error * phase_error);
+        }
+        nco_crcf_step(p->nco_pilot_exact);
+        float stereogain = s_wfm_config.force_mono ? 0.0f : (s_wfm_config.force_stereo ? 1.0f : fmaxf(0.0f, fminf(1.0f, WFM_STEREO_SEPARATION - running_average_get(&p->pilotnoise))));
+        accum_stereo_pct_sum += (stereogain * 100.0f);
+        firfilt_rrrf_push(p->fir_sum, insample);
+        liquid_float_complex sc_mix;
+        nco_crcf_mix_down(p->nco_stereo_subcarrier, insample + 0.0f * I, &sc_mix);
+        firfilt_rrrf_push(p->fir_diff, cimagf(sc_mix));
+        float sum, diff;
+        firfilt_rrrf_execute(p->fir_sum, &sum);
+        firfilt_rrrf_execute(p->fir_diff, &diff);
+        diff = 2.0f * diff * stereogain;
+        float left = (sum + diff) * p->gain;
+        float right = (sum - diff) * p->gain;
+        deemphasis_execute(&p->deemphasis, left, right, &left, &right);
+        p->audio_out_l[i] = left;
+        p->audio_out_r[i] = right;
+    }
+
+    if (stat_counter >= stat_rate_threshold) {
+        double avg_power = accum_mag_sq_sum / (double)stat_counter;
+        float rssi_db = 10.0f * log10f((float)avg_power + 1e-10f);
+        double mean_mag = accum_mag_sum / (double)stat_counter;
+        float snr_db = 10.0f * log10f((float)((mean_mag*mean_mag) / fmax(1e-10, avg_power - (mean_mag*mean_mag))));
+        float avg_pilot_mse = (accum_pilot_count > 0) ? (float)(accum_pilot_err_sq_sum / (double)accum_pilot_count) : 0.0f;
+        float pilot_pct = sqrtf(avg_pilot_mse) * 100.0f;
+        double avg_pilot = accum_pilot_mag_sum / (double)stat_counter;
+        bool is_mono_station = (avg_pilot < 0.001) || (pilot_pct > 100.0f);
+        float avg_stereo_pct = (float)(accum_stereo_pct_sum / (double)stat_counter);
+        if (avg_stereo_pct > 1.0f) is_mono_station = false;
+        
+        if (is_mono_station || s_wfm_config.force_mono) {
+             log_info("RSSI: %.1f dB | SNR: %.1f dB | Stereo Separation: Mono | Pilot Phase Error: NA", rssi_db, snr_db);
+        } else {
+            log_info("RSSI: %.1f dB | SNR: %.1f dB | Stereo Separation: %.1f%% | Pilot Phase Error: %.1f%%", rssi_db, snr_db, avg_stereo_pct, pilot_pct);
+        }
+        stat_counter = 0; accum_mag_sum = 0.0; accum_mag_sq_sum = 0.0; accum_pilot_mag_sum = 0.0;
+        accum_stereo_pct_sum = 0.0; accum_pilot_err_sq_sum = 0.0; accum_pilot_count = 0;
+    }
+
+    unsigned int num_resampled;
+    msresamp_rrrf_execute(p->resamp_out_l, p->audio_out_l, num_frames, p->audio_out_l, &num_resampled);
+    msresamp_rrrf_execute(p->resamp_out_r, p->audio_out_r, num_frames, p->audio_out_r, &num_resampled);
+    sample_convert_interleave_f32_to_s16(p->audio_out_l, p->audio_out_r, p->interleaved_pcm, num_resampled);
+    ring_buffer_write(p->audio_ring_buffer, p->interleaved_pcm, num_resampled * 2 * sizeof(int16_t));
+    return input_bytes;
 }
 
 static void wfm_output_cleanup(ModuleContext* ctx) {
@@ -816,12 +640,13 @@ const struct argparse_option* wfm_output_get_cli_options(int* count) {
 
 static OutputModuleInterface s_wfm_output_api = {
     .initialize = wfm_output_initialize,
-    .run_writer = wfm_output_run_writer,
+    .write_chunk = wfm_output_write_chunk,
+    .reset = wfm_output_reset,
+    .flush = wfm_output_flush,
     .cleanup = wfm_output_cleanup,
     .get_summary_info = wfm_output_get_summary_info,
     .validate_options = wfm_output_validate_options,
     .get_cli_options = wfm_output_get_cli_options,
-    .write_chunk = NULL
 };
 
 OutputModuleInterface* output_wfm_get_module_api(void) {

@@ -116,40 +116,7 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
     return true;
 }
 
-void* wav_common_run_writer(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
-    WavCommonContext* data = (WavCommonContext*)app->module.output_private_data;
 
-    unsigned char* local_buffer = (unsigned char*)app->pipeline.writer_local_buffer;
-    if (!local_buffer) { handle_fatal_thread_error("WAV writer: Local buffer is NULL.", app); return NULL; }
-
-    // Main writer loop: read from ring buffer, write to file.
-    while (true) {
-        size_t bytes_read = ring_buffer_read(app->pipeline.writer_input_buffer, local_buffer, OUTPUT_WRITER_CHUNK_SIZE);
-        if (bytes_read == 0) break; // End of stream or shutdown signal.
-
-        sf_count_t written = sf_write_raw(data->handle, local_buffer, bytes_read);
-        if (written > 0) {
-            data->total_bytes_written += written;
-        }
-
-        if ((size_t)written != bytes_read) {
-            char error_buf[256];
-            snprintf(error_buf, sizeof(error_buf), "WAV writer: File write error: %s", sf_strerror(data->handle));
-            handle_fatal_thread_error(error_buf, app);
-            break;
-        }
-
-        // Update and invoke the progress callback.
-        if (app->stats.progress_callback) {
-            unsigned long long current_frames = data->total_bytes_written / app->module.output_bytes_per_sample_pair;
-            atomic_store_explicit(&app->stats.total_output_frames, current_frames, memory_order_relaxed);
-            app->stats.progress_callback(current_frames, atomic_load_explicit(&app->stats.expected_total_output_frames, memory_order_relaxed), data->total_bytes_written, app->stats.progress_callback_udata);
-        }
-    }
-    log_debug("Common WAV writer thread is exiting.");
-    return NULL;
-}
 
 size_t wav_common_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
     AppContext* app = ctx->app;

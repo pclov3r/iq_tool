@@ -156,11 +156,9 @@ typedef struct PipelineInfrastructure {
     unsigned int max_out_samples;
 
     size_t input_buffer_size;
-    size_t output_writer_buffer_size;
 
     void*  sdr_deserializer_temp_buffer;
     size_t sdr_deserializer_buffer_size;
-    void*  writer_local_buffer;
 
     Queue* free_sample_chunk_queue;
     Queue* reader_output_queue;
@@ -174,7 +172,6 @@ typedef struct PipelineInfrastructure {
     Queue* iq_optimization_data_queue;
 
     struct RingBuffer* sdr_input_buffer;
-    struct RingBuffer* writer_input_buffer;
 
     WaitEvent* shutdown_event;
 } PipelineInfrastructure;
@@ -190,7 +187,8 @@ typedef struct ModuleState {
     OutputModuleInterface* output_api;
     void*                  output_private_data;
     size_t                 output_bytes_per_sample_pair;
-    bool                   pacing_is_required;
+    QueueSamples           queue_samples;
+    void*                  pipeline_ctx;
 } ModuleState;
 
 // --- 3. DSP Context (Math & Signal Processing) ---

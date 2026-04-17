@@ -3,7 +3,6 @@
 #include "app_context.h"
 #include "log.h"
 #include "platform.h"
-#include "ring_buffer.h"
 #include "utils.h"
 #include "signal_handler.h"
 #include <stdio.h>
@@ -143,43 +142,7 @@ static bool rawfile_output_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* rawfile_output_run_writer(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
-    RawfileOutputContext* data = (RawfileOutputContext*)app->module.output_private_data;
 
-    unsigned char* local_write_buffer = (unsigned char*)app->pipeline.writer_local_buffer;
-    if (!local_write_buffer) {
-        handle_fatal_thread_error("Writer (raw-file): Local write buffer is NULL.", app);
-        return NULL;
-    }
-
-    while (true) {
-        size_t bytes_read = ring_buffer_read(app->pipeline.writer_input_buffer, local_write_buffer, OUTPUT_WRITER_CHUNK_SIZE);
-        if (bytes_read == 0) {
-            break; // End of stream
-        }
-
-        size_t written_bytes = fwrite(local_write_buffer, 1, bytes_read, data->handle);
-        if (written_bytes > 0) {
-            data->total_bytes_written += written_bytes;
-        }
-
-        if (written_bytes != bytes_read) {
-            char error_buf[256];
-            snprintf(error_buf, sizeof(error_buf), "Writer (raw-file): File write error: %s", strerror(errno));
-            handle_fatal_thread_error(error_buf, app);
-            break;
-        }
-
-        if (app->stats.progress_callback) {
-            unsigned long long current_frames = data->total_bytes_written / app->module.output_bytes_per_sample_pair;
-            atomic_store_explicit(&app->stats.total_output_frames, current_frames, memory_order_relaxed);
-            app->stats.progress_callback(current_frames, atomic_load_explicit(&app->stats.expected_total_output_frames, memory_order_relaxed), data->total_bytes_written, app->stats.progress_callback_udata);
-        }
-    }
-    log_debug("Raw-file output writer thread is exiting.");
-    return NULL;
-}
 
 static size_t rawfile_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
     AppContext* app = ctx->app;
@@ -225,7 +188,8 @@ static OutputModuleInterface s_rawfile_output_api = {
     .validate_options = NULL,
     .get_cli_options = rawfile_output_get_cli_options,
     .initialize = rawfile_output_initialize,
-    .run_writer = rawfile_output_run_writer,
+    .reset = NULL,
+    .flush = NULL,
     .write_chunk = rawfile_output_write_chunk,
     .cleanup = rawfile_output_cleanup,
     .get_summary_info = rawfile_output_get_summary_info,

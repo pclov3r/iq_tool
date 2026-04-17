@@ -48,7 +48,7 @@
 #include "utils.h"
 #include "networking.h"
 #include "platform.h"
-#include "sdr_packet_serializer.h" // Required for standardized packet format
+#include "packet_serializer.h" // Required for standardized packet format
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -223,7 +223,7 @@ void spyserver_client_set_default_config(struct AppConfig* config) {
 // --- Function Prototypes ---
 static void* spyserver_client_input_producer_thread(void* arg);
 static bool spyserver_client_input_initialize(ModuleContext* ctx);
-static void* spyserver_client_input_start_stream(ModuleContext* ctx);
+static void* spyserver_client_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
 static void spyserver_client_input_stop_stream(ModuleContext* ctx);
 static void spyserver_client_input_cleanup(ModuleContext* ctx);
 static void spyserver_client_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
@@ -662,13 +662,11 @@ static void* spyserver_client_input_producer_thread(void* arg) {
 
                 // 2. Wrap and Write to Ring Buffer
                 uint32_t samples_in_chunk = (uint32_t)(aligned_read / bpp);
-                if (!sdr_packet_serializer_write_block(p->stream_buffer, samples_in_chunk, p->rx_buffer, p->active_format)) {
+                if (!packet_serializer_write_block(p->stream_buffer, samples_in_chunk, p->rx_buffer, p->active_format)) {
                     log_warn("SpyServer: Ring buffer full, dropped %u samples.", samples_in_chunk);
                 }
 
                 bytes_remaining -= aligned_read;
-
-                sdr_input_update_heartbeat(app);
             }
         }
         else {
@@ -694,7 +692,9 @@ end_loop:;
     return NULL;
 }
 
-static void* spyserver_client_input_start_stream(ModuleContext* ctx) {
+static void* spyserver_client_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
+    ctx->app->module.queue_samples = queue_samples;
+    ctx->app->module.pipeline_ctx = pipeline_ctx;
     AppContext* app = ctx->app;
     SpyServerClientContext* p = (SpyServerClientContext*)app->module.input_private_data;
 
@@ -745,7 +745,7 @@ static void* spyserver_client_input_start_stream(ModuleContext* ctx) {
         bool is_reset = false;
 
         // Read clean data from the ring buffer into the sample chunk
-        int64_t frames_read = sdr_packet_serializer_read_packet(
+        int64_t frames_read = packet_serializer_read_packet(
             p->stream_buffer,
             item,
             &state,

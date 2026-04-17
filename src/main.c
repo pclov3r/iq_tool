@@ -272,7 +272,7 @@ static void print_final_summary(const AppConfig *config, const AppContext* app, 
     (void)config;
 
     // If the output target is not a file (e.g., stdout), don't print a summary.
-    if (!app->module.pacing_is_required) {
+    if (config->output.path_arg == NULL) {
         return;
     }
 

@@ -227,7 +227,7 @@ set(OTHER_SOURCES
     src/presets_loader.c
     src/queue.c
     src/ring_buffer.c
-    src/sdr_packet_serializer.c
+    src/packet_serializer.c
     src/signal_handler.c
     src/thread_manager.c
     src/utility_threads.c

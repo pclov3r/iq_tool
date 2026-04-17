@@ -424,78 +424,42 @@ static bool nrsc5_output_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* nrsc5_output_run_writer(ModuleContext* ctx) {
+
+static void nrsc5_output_reset(ModuleContext* ctx) { (void)ctx; }
+static void nrsc5_output_flush(ModuleContext* ctx) {
+    Nrsc5Context* p = (Nrsc5Context*)ctx->app->module.output_private_data;
+    utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
+}
+static size_t nrsc5_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
     AppContext* app = ctx->app;
     Nrsc5Context* p = (Nrsc5Context*)app->module.output_private_data;
+    if (input_bytes == 0) return 0;
 
-    // Throttle if buffer is > 80% full (approx 2.3 seconds of audio)
+    // --- RESTORE BACKPRESSURE ---
     const size_t THROTTLE_THRESHOLD = (size_t)(NRSC5_AUDIO_BUFFER_SIZE * 0.8);
-
-    while (true) {
-        // --- BACKPRESSURE ---
-        if (p->audio_ring_buffer) {
-            // While the audio buffer is too full, we sleep.
-            ring_buffer_wait_for_threshold(p->audio_ring_buffer, THROTTLE_THRESHOLD);
-            if (is_shutdown_requested()) goto cleanup;
-        }
-
-        // 1. Dequeue chunk from the pipeline
-        SampleChunk* item = (SampleChunk*)queue_dequeue(app->pipeline.writer_input_queue);
-        if (!item) break; // Shutdown
-
-        if (item->stream_discontinuity_event) {
-            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
-            continue;
-        }
-
-        if (item->is_last_chunk) {
-            // Wait for the ring buffer to drain to prevent audio cutoff.
-            // Poll 10ms, stall timeout 200ms, hardware padding 200ms.
-            utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
-
-            queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
-            break; // End of Stream
-        }
-
-        // 2. Push IQ data to NRSC5 decoder
-        if (item->frames_to_write > 0) {
-            int res = 0;
-            // NRSC5 expects total scalar count (I+Q), so frames * 2
-            unsigned int num_scalars = item->frames_to_write * 2;
-
-            switch (s_nrsc5_config.active_mode) {
-                case NRSC5_MODE_CU8_FM:
-                case NRSC5_MODE_CU8_AM:
-                    // 8-bit Unsigned Samples
-                    res = nrsc5_pipe_samples_cu8(p->nrsc5_inst, (uint8_t*)item->final_output_data, num_scalars);
-                    break;
-
-                case NRSC5_MODE_CS16_FM:
-                case NRSC5_MODE_CS16_AM:
-                    // 16-bit Signed Samples
-                    res = nrsc5_pipe_samples_cs16(p->nrsc5_inst, (int16_t*)item->final_output_data, num_scalars);
-                    break;
-
-                default:
-                    log_error("NRSC5: Unknown mode encountered in writer.");
-                    break;
-            }
-
-            if (res != 0) {
-                log_error("NRSC5: Failed to pipe samples to decoder.");
-            }
-        }
-
-        // 3. Return chunk to pool
-        if (!queue_enqueue(app->pipeline.free_sample_chunk_queue, item)) {
-            break;
-        }
+    if (p->audio_ring_buffer) {
+        ring_buffer_wait_for_threshold(p->audio_ring_buffer, THROTTLE_THRESHOLD);
+        if (is_shutdown_requested()) return 0;
     }
 
-cleanup:
-    log_debug("NRSC5 writer thread exiting.");
-    return NULL;
+    unsigned int frames = input_bytes / app->module.output_bytes_per_sample_pair;
+    unsigned int num_scalars = frames * 2;
+    int res = 0;
+    switch (s_nrsc5_config.active_mode) {
+        case NRSC5_MODE_CU8_FM:
+        case NRSC5_MODE_CU8_AM:
+            res = nrsc5_pipe_samples_cu8(p->nrsc5_inst, (uint8_t*)buffer, num_scalars);
+            break;
+        case NRSC5_MODE_CS16_FM:
+        case NRSC5_MODE_CS16_AM:
+            res = nrsc5_pipe_samples_cs16(p->nrsc5_inst, (int16_t*)buffer, num_scalars);
+            break;
+        default: break;
+    }
+    if (res != 0) log_error("NRSC5: Failed to pipe samples to decoder.");
+    return input_bytes;
 }
+
 
 static void nrsc5_output_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
@@ -614,8 +578,9 @@ static OutputModuleInterface s_nrsc5_output_api = {
     .validate_options = nrsc5_output_validate_options,
     .get_cli_options = nrsc5_output_get_cli_options,
     .initialize = nrsc5_output_initialize,
-    .run_writer = nrsc5_output_run_writer,
-    .write_chunk = NULL, // Not used, we use ring buffer
+    .write_chunk = nrsc5_output_write_chunk,
+    .reset = nrsc5_output_reset,
+    .flush = nrsc5_output_flush,
     .cleanup = nrsc5_output_cleanup,
     .get_summary_info = nrsc5_output_get_summary_info,
 };

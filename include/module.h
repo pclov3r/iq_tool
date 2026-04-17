@@ -18,6 +18,7 @@
 #include <time.h>
 #include <stdint.h>
 #include "constants.h" // For MAX_SUMMARY_ITEMS
+#include "common_types.h" // For SampleFormat
 #include "argparse.h"  // For argparse_option struct
 
 typedef enum {
@@ -82,6 +83,8 @@ typedef struct ModuleContext {
  * @struct InputModuleInterface
  * @brief The "vtable" of function pointers that defines the module interface.
  */
+typedef bool (*QueueSamples)(void* pipeline_ctx, const void* data, size_t num_samples, SampleFormat format);
+
 typedef struct InputModuleInterface {
     /**
      * @brief Performs initial setup (e.g., open file, select SDR device, set SDR parameters).
@@ -95,7 +98,12 @@ typedef struct InputModuleInterface {
      * @param ctx The application context.
      * @return NULL on normal exit.
      */
-    void* (*start_stream)(struct ModuleContext* ctx);
+    void* (*start_stream)(struct ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
+
+    /**
+     * @brief Reads a chunk of data synchronously from a file-based source.
+     */
+    size_t (*read_chunk)(struct ModuleContext* ctx, void* buffer, size_t bytes_to_read);
 
     /**
      * @brief Gracefully stops the data stream (e.g., cancels an async SDR read).
@@ -155,8 +163,8 @@ typedef struct OutputModuleInterface {
     // Performs all one-time setup for the writer (opens files, etc.)
     bool (*initialize)(struct ModuleContext* ctx);
 
-    // The main writer loop function (this IS the thread)
-    void* (*run_writer)(struct ModuleContext* ctx);
+    void (*reset)(struct ModuleContext* ctx);
+    void (*flush)(struct ModuleContext* ctx);
 
     /**
      * @brief Writes a single chunk of data directly to the output.

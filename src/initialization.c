@@ -378,8 +378,7 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
     app->pipeline.sdr_deserializer_temp_buffer = mem_arena_alloc(&app->pipeline.setup_arena, app->pipeline.sdr_deserializer_buffer_size, false);
     if (!app->pipeline.sdr_deserializer_temp_buffer) return false;
 
-    app->pipeline.writer_local_buffer = mem_arena_alloc(&app->pipeline.setup_arena, OUTPUT_WRITER_CHUNK_SIZE, false);
-    if (!app->pipeline.writer_local_buffer) return false;
+
 
     // -------------------------------------------------------------------------
     // 5. Calculate Dynamic Ring Buffer Sizes
@@ -406,26 +405,7 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
                  input_rate);
     }
 
-    // Calculate output writer buffer size (for file output)
-    if (app->module.pacing_is_required) {
-        size_t writer_buffer_bytes = (size_t)(
-            config->output_rate.target_rate *
-            OUTPUT_WRITER_BUFFER_DURATION_SEC *
-            app->module.output_bytes_per_sample_pair
-        );
 
-        if (writer_buffer_bytes < OUTPUT_WRITER_BUFFER_MIN_BYTES)
-            writer_buffer_bytes = OUTPUT_WRITER_BUFFER_MIN_BYTES;
-        if (writer_buffer_bytes > OUTPUT_WRITER_BUFFER_MAX_BYTES)
-            writer_buffer_bytes = OUTPUT_WRITER_BUFFER_MAX_BYTES;
-
-        app->pipeline.output_writer_buffer_size = writer_buffer_bytes;
-
-        log_info("Output Writer Buffer: %zu MB (%.1f seconds at %.0f Hz)",
-                 writer_buffer_bytes / (1024 * 1024),
-                 OUTPUT_WRITER_BUFFER_DURATION_SEC,
-                 config->output_rate.target_rate);
-    }
 
     return true;
 }
@@ -590,14 +570,24 @@ void print_configuration_summary(const AppConfig *config, const AppContext* app)
 
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Resampling", app->dsp.is_passthrough ? "Disabled (Passthrough Mode)" : "Enabled");
 
-    bool is_file_output = app->module.pacing_is_required;
-    const char* output_path_for_messages;
+    if (config->output.path_arg != NULL) {
+        const char* out_path;
 #ifdef _WIN32
-    output_path_for_messages = config->output.effective_path_utf8;
+        out_path = config->output.effective_path_utf8;
 #else
-    output_path_for_messages = config->output.effective_path;
+        out_path = config->output.effective_path;
 #endif
-    fprintf(stderr, " %-*s : %s\n", max_label_len, is_file_output ? "Output File" : "Output Target", is_file_output ? output_path_for_messages : "<stdout>");
+        fprintf(stderr, " %-*s : %s\n", max_label_len, "Output File", out_path);
+    } else {
+        const char* target_desc = "<stdout>";
+        if (strcasecmp(config->output.module_name, "nrsc5") == 0 ||
+            strcasecmp(config->output.module_name, "wfm") == 0 ||
+            strcasecmp(config->output.module_name, "nfm") == 0 ||
+            strcasecmp(config->output.module_name, "am") == 0) {
+            target_desc = "Audio Device";
+        }
+        fprintf(stderr, " %-*s : %s\n", max_label_len, "Output Target", target_desc);
+    }
 
     // Log the calculated elastic buffer sizes for verification
     log_debug("Pipeline Config: Read Size = %zu samples, Chunk Alloc = %zu samples.",
@@ -623,8 +613,7 @@ bool initialize_application(AppConfig *config, AppContext* app) {
     }
     app->module.output_api = (OutputModuleInterface*)selected_output_module->api;
 
-    // --- STEP 2: SET THE BEHAVIORAL FLAG ---
-    app->module.pacing_is_required = selected_output_module->requires_output_path;
+
 
     log_info("Attempting to initialize the '%s' input module...", config->input.type_name);
 
@@ -665,18 +654,14 @@ bool initialize_application(AppConfig *config, AppContext* app) {
         return false;
     }
 
-    if (app->module.pacing_is_required) {
-        print_configuration_summary(config, app);
-        fprintf(stderr, "\n");
-    }
+    print_configuration_summary(config, app);
+    fprintf(stderr, "\n");
 
-    if (app->module.pacing_is_required) {
-        bool source_has_known_length = app->module.input_api->has_known_length();
-        if (!source_has_known_length) {
-            log_info("Starting SDR capture...");
-        } else {
-            log_info("Starting file processing...");
-        }
+    bool source_has_known_length = app->module.input_api->has_known_length();
+    if (!source_has_known_length) {
+        log_info("Starting SDR capture...");
+    } else {
+        log_info("Starting file processing...");
     }
 
     return true;

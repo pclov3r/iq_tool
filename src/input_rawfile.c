@@ -54,7 +54,8 @@ const struct argparse_option* rawfile_input_get_cli_options(int* count) {
 }
 
 static bool rawfile_input_initialize(ModuleContext* ctx);
-static void* rawfile_input_start_stream(ModuleContext* ctx);
+static void* rawfile_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
+static size_t rawfile_input_read_chunk(ModuleContext* ctx, void* buffer, size_t bytes_to_read);
 static void rawfile_input_stop_stream(ModuleContext* ctx);
 static void rawfile_input_cleanup(ModuleContext* ctx);
 static void rawfile_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
@@ -64,6 +65,7 @@ static bool rawfile_input_pre_stream_iq_correction(ModuleContext* ctx);
 static InputModuleInterface s_rawfile_input_api = {
     .initialize = rawfile_input_initialize,
     .start_stream = rawfile_input_start_stream,
+    .read_chunk = rawfile_input_read_chunk,
     .stop_stream = rawfile_input_stop_stream,
     .cleanup = rawfile_input_cleanup,
     .get_summary_info = rawfile_input_get_summary_info,
@@ -164,96 +166,22 @@ static bool rawfile_input_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* rawfile_input_start_stream(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
-    const AppConfig *config = ctx->config;
-    RawfileInputContext* private_data = (RawfileInputContext*)app->module.input_private_data;
-
-    if (config->dsp.raw_passthrough && app->module.input_format != config->output.format) {
-        char error_buf[256];
-        snprintf(error_buf, sizeof(error_buf),
-                 "Option --raw-passthrough requires input and output formats to be identical. Input format is '%s', output format is '%s'.",
-                 s_rawfile_config.format_str, config->output.format_name);
-        handle_fatal_thread_error(error_buf, app);
-        return NULL;
+static size_t rawfile_input_read_chunk(ModuleContext* ctx, void* buffer, size_t bytes_to_read) {
+    RawfileInputContext* private_data = (RawfileInputContext*)ctx->app->module.input_private_data;
+    int64_t bytes_read = sf_read_raw(private_data->infile, buffer, bytes_to_read);
+    
+    if (bytes_read < 0) {
+        log_fatal("libsndfile read error: %s", sf_strerror(private_data->infile));
+        handle_fatal_thread_error("Rawfile Reader: File read error.", ctx->app);
+        return 0;
     }
-
-    bool pacing_required = app->module.pacing_is_required;
-
-    // Pre-calculate the back-pressure threshold in bytes for efficiency.
-    const size_t writer_buffer_capacity = pacing_required ? ring_buffer_get_capacity(app->pipeline.writer_input_buffer) : 0;
-    const size_t writer_buffer_threshold = (size_t)(writer_buffer_capacity * OUTPUT_WRITER_BUFFER_HIGH_WATER_MARK);
-
-    while (!is_shutdown_requested() && !app->stats.error_occurred) {
-        if (pacing_required && (ring_buffer_get_size(app->pipeline.writer_input_buffer) > writer_buffer_threshold)) {
-            ring_buffer_wait_for_threshold(app->pipeline.writer_input_buffer, writer_buffer_threshold);
-        }
-
-        SampleChunk *current_item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
-        if (!current_item) {
-            break; // Shutdown or error signaled
-        }
-
-        current_item->stream_discontinuity_event = false;
-
-        // --- CHANGED: Use elastic chunk size ---
-        // Request the optimal number of samples for the pipeline.
-        size_t samples_to_read = app->pipeline.read_chunk_size;
-        
-        // Ensure we don't overflow the buffer (sanity check)
-        size_t capacity_samples = current_item->raw_input_capacity_bytes / app->module.input_bytes_per_sample_pair;
-        if (samples_to_read > capacity_samples) {
-            samples_to_read = capacity_samples;
-        }
-
-        void* target_buffer;
-        if (config->dsp.raw_passthrough) {
-            target_buffer = current_item->final_output_data;
-        } else {
-            target_buffer = current_item->raw_input_data;
-        }
-
-        int64_t bytes_read = sf_read_raw(private_data->infile, target_buffer, samples_to_read * app->module.input_bytes_per_sample_pair);
-
-        if (bytes_read < 0) {
-            log_fatal("libsndfile read error: %s", sf_strerror(private_data->infile));
-            atomic_store_explicit(&app->stats.error_occurred, true, memory_order_release);
-            request_shutdown();
-            queue_enqueue(app->pipeline.free_sample_chunk_queue, current_item);
-            break;
-        }
-
-        current_item->frames_read = bytes_read / app->module.input_bytes_per_sample_pair;
-        current_item->packet_sample_format = app->module.input_format;
-        current_item->frames_to_write = (unsigned int)current_item->frames_read;
-
-        // If we read fewer bytes than requested (and it wasn't 0), it's the last chunk.
-        // If read 0, it's definitely the end.
-
-        if ((size_t)current_item->frames_read < samples_to_read) {
-             current_item->is_last_chunk = true;
-        } else {
-             current_item->is_last_chunk = false;
-        }
-
-
-        if (current_item->frames_read > 0) {
-            atomic_fetch_add_explicit(&app->stats.total_frames_read, current_item->frames_read, memory_order_relaxed);
-        }
-
-        if (!queue_enqueue(app->pipeline.reader_output_queue, current_item)) {
-            queue_enqueue(app->pipeline.free_sample_chunk_queue, current_item);
-            break;
-        }
-
-        if (current_item->is_last_chunk) {
-            break;
-        }
-    }
-
-    return NULL;
+    return (size_t)bytes_read;
 }
 
+static void* rawfile_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
+    (void)ctx; (void)queue_samples; (void)pipeline_ctx;
+    return NULL; // Not used for synchronous file readers
+}
 static void rawfile_input_stop_stream(ModuleContext* ctx) {
     (void)ctx;
 }

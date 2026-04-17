@@ -1,4 +1,4 @@
-#include "sdr_packet_serializer.h"
+#include "packet_serializer.h"
 #include "constants.h"
 #include "log.h"
 #include "app_context.h"
@@ -19,17 +19,17 @@ static bool _has_space_for(RingBuffer* buffer, size_t bytes_needed) {
 
 // --- WRITE IMPLEMENTATION ---
 
-bool sdr_packet_serializer_write_block(RingBuffer* buffer, uint32_t num_samples, const void* sample_data, SampleFormat format) {
+bool packet_serializer_write_block(RingBuffer* buffer, uint32_t num_samples, const void* sample_data, SampleFormat format) {
     size_t bytes_per_sample = sample_convert_bytes_per_sample(format);
     size_t data_size = num_samples * bytes_per_sample;
-    size_t total_needed = sizeof(SdrInputChunkHeader) + data_size;
+    size_t total_needed = sizeof(PacketHeader) + data_size;
 
     // CRITICAL FIX: Atomic Check. If we can't write EVERYTHING, we write NOTHING.
     if (!_has_space_for(buffer, total_needed)) {
         return false;
     }
 
-    SdrInputChunkHeader header;
+    PacketHeader header;
     header.magic = IQPK_MAGIC;
     header.num_samples = num_samples;
     header.flags = 0; // Data is implicitly interleaved now
@@ -41,13 +41,13 @@ bool sdr_packet_serializer_write_block(RingBuffer* buffer, uint32_t num_samples,
     return ring_buffer_write_packet(buffer, &header, sizeof(header), sample_data, data_size) > 0;
 }
 
-bool sdr_packet_serializer_write_reset_event(RingBuffer* buffer) {
-    if (!_has_space_for(buffer, sizeof(SdrInputChunkHeader))) return false;
+bool packet_serializer_write_reset_event(RingBuffer* buffer) {
+    if (!_has_space_for(buffer, sizeof(PacketHeader))) return false;
 
-    SdrInputChunkHeader header;
+    PacketHeader header;
     header.magic = IQPK_MAGIC;
     header.num_samples = 0;
-    header.flags = SDR_CHUNK_FLAG_STREAM_RESET;
+    header.flags = PACKET_FLAG_STREAM_RESET;
     header.format_id = (uint8_t)FORMAT_UNKNOWN;
 
     // Ensure padding bytes are zeroed
@@ -58,7 +58,7 @@ bool sdr_packet_serializer_write_reset_event(RingBuffer* buffer) {
 
 // --- READ IMPLEMENTATION ---
 
-int64_t sdr_packet_serializer_read_packet(RingBuffer* buffer,
+int64_t packet_serializer_read_packet(RingBuffer* buffer,
                                           SampleChunk* target_chunk,
                                           SerializerState* state,
                                           bool* is_reset_event,
@@ -68,7 +68,7 @@ int64_t sdr_packet_serializer_read_packet(RingBuffer* buffer,
 
     // 1. Fetch Header if needed
     if (state->samples_remaining_in_packet == 0) {
-        SdrInputChunkHeader header;
+        PacketHeader header;
 
         // Single atomic read of the 32-byte header
         size_t bytes_read = ring_buffer_read(buffer, &header, sizeof(header));
@@ -82,7 +82,7 @@ int64_t sdr_packet_serializer_read_packet(RingBuffer* buffer,
             return -1;
         }
 
-        if (header.flags & SDR_CHUNK_FLAG_STREAM_RESET) {
+        if (header.flags & PACKET_FLAG_STREAM_RESET) {
             *is_reset_event = true;
             return 0;
         }

@@ -197,154 +197,78 @@ static bool nfm_output_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* nfm_output_run_writer(ModuleContext* ctx) {
+
+static void nfm_output_reset(ModuleContext* ctx) { (void)ctx; }
+static void nfm_output_flush(ModuleContext* ctx) {
+    NfmContext* p = (NfmContext*)ctx->app->module.output_private_data;
+    utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
+}
+static size_t nfm_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
     AppContext* res = ctx->app;
     NfmContext* p = (NfmContext*)res->module.output_private_data;
-
-    // Use a threshold of 80% to trigger backpressure
+    
+    // --- RESTORE BACKPRESSURE ---
     const size_t THROTTLE_THRESHOLD = (size_t)(NFM_BUFFER_SIZE * 0.8);
-
-    // Stats Accumulators
-    size_t stat_counter = 0;
-    size_t stat_rate_threshold = (size_t)(p->input_samplerate * 1.0f);
-    double accum_mag_sum = 0.0;
-    double accum_mag_sq_sum = 0.0;
-
-    while (true) {
-        // --- 1. BACKPRESSURE: Check Audio Buffer BEFORE Dequeue ---
-        if (p->audio_ring_buffer) {
-            ring_buffer_wait_for_threshold(p->audio_ring_buffer, THROTTLE_THRESHOLD);
-            if (is_shutdown_requested()) goto cleanup;
-        }
-
-        SampleChunk* item = (SampleChunk*)queue_dequeue(res->pipeline.writer_input_queue);
-        if (!item) break;
-
-        if (item->is_last_chunk) {
-            utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
-            queue_enqueue(res->pipeline.free_sample_chunk_queue, item);
-            break;
-        }
-
-        if (item->frames_to_write > 0) {
-            unsigned int n = item->frames_to_write;
-            liquid_float_complex* iq = (liquid_float_complex*)item->final_output_data;
-
-            // 1. Calculate Stats (RSSI & SNR)
-            float block_power_sum = 0.0f;
-            for(unsigned int i=0; i<n; i++) {
-                float mag2 = crealf(iq[i])*crealf(iq[i]) + cimagf(iq[i])*cimagf(iq[i]);
-                float mag = sqrtf(mag2);
-                block_power_sum += mag2;
-                accum_mag_sum += mag;
-                accum_mag_sq_sum += mag2;
-            }
-            stat_counter += n;
-
-            // 2. Calculate Block RSSI for Squelch
-            float avg_block_power = block_power_sum / (float)n;
-            float rssi_db_current = 10.0f * log10f(avg_block_power + 1e-12f);
-
-            // 3. Update Squelch Logic
-            // If Squelch is NOT disabled (so it is enabled), run the logic
-            if (!s_nfm_config.squelch_disabled) {
-                if (rssi_db_current > s_nfm_config.squelch_db) {
-                    p->squelch_open = true;
-                    p->squelch_hang_counter = p->squelch_hang_max;
-                } else {
-                    if (p->squelch_hang_counter > 0) {
-                        p->squelch_hang_counter -= n;
-                    } else {
-                        if (rssi_db_current < (s_nfm_config.squelch_db - SQ_HYSTERESIS_DB)) {
-                            p->squelch_open = false;
-                        }
-                    }
-                }
-            } else {
-                // Squelch is disabled, force open
-                p->squelch_open = true;
-            }
-
-            // 4. Print Statistics
-            if (stat_counter >= stat_rate_threshold) {
-                double avg_power = accum_mag_sq_sum / (double)stat_counter;
-                float rssi_db = 10.0f * log10f((float)avg_power + 1e-12f);
-
-                // Only calculate/display SNR if the squelch is OPEN.
-                if (p->squelch_open) {
-                    double mean_mag = accum_mag_sum / (double)stat_counter;
-                    double signal_pwr = mean_mag * mean_mag;
-                    double noise_pwr = avg_power - signal_pwr;
-                    if (noise_pwr < 1e-12) noise_pwr = 1e-12;
-                    float snr_db = 10.0f * log10f((float)(signal_pwr / noise_pwr));
-
-                    log_info("RSSI: %5.1f dB | SNR: %4.1f dB | Squelch: OPEN  ",
-                             rssi_db, snr_db);
-                } else {
-                    // Squelch is closed: SNR is meaningless/impossible to determine.
-                    log_info("RSSI: %5.1f dB | Squelch: CLOSED",
-                             rssi_db);
-                }
-
-                stat_counter = 0;
-                accum_mag_sum = 0.0;
-                accum_mag_sq_sum = 0.0;
-            }
-
-            // 5. Demodulate I/Q -> Mono Audio
-            freqdem_demodulate_block(p->fm_demod, iq, n, p->mono_buffer);
-
-            // 6. Audio Processing Chain
-            for(unsigned int i=0; i<n; i++) {
-                float sample = p->mono_buffer[i];
-
-                // If FILTER IS ENABLED (Normal Voice Operation):
-                // 1. Apply De-emphasis (Correction for FM audio)
-                // 2. Apply LPF (Cutoff > 4kHz to remove hiss)
-                //
-                // If FILTER IS DISABLED (Raw / Discriminator Mode):
-                // We SKIP BOTH to preserve the full bandwidth for digital decoders (POCSAG, DMR, etc).
-
-                if (!s_nfm_config.disable_discriminator_filter) {
-                    iirfilt_rrrf_execute(p->deemph_filter, sample, &sample);
-                    iirfilt_rrrf_execute(p->audio_lpf, sample, &sample);
-                }
-
-                // C. Gain
-                sample *= s_nfm_config.gain;
-
-                // D. Squelch Gate
-                if (!p->squelch_open) {
-                    sample = 0.0f;
-                }
-
-                p->mono_buffer[i] = sample;
-            }
-
-            // 7. Resample to 48k
-            unsigned int num_resampled;
-            msresamp_rrrf_execute(p->resampler, p->mono_buffer, n, p->resamp_buffer, &num_resampled);
-
-            // 8. Convert to S16 Stereo (Duplicate Mono)
-            for(unsigned int i=0; i<num_resampled; i++) {
-                float s = p->resamp_buffer[i];
-                if (s > 1.0f) s = 1.0f;
-                if (s < -1.0f) s = -1.0f;
-
-                int16_t pcm = (int16_t)(s * 32767.0f);
-                p->pcm_out[2*i] = pcm;     // Left
-                p->pcm_out[2*i+1] = pcm;   // Right
-            }
-
-            ring_buffer_write(p->audio_ring_buffer, p->pcm_out, num_resampled * 2 * sizeof(int16_t));
-        }
-
-        queue_enqueue(res->pipeline.free_sample_chunk_queue, item);
+    if (p->audio_ring_buffer) {
+        ring_buffer_wait_for_threshold(p->audio_ring_buffer, THROTTLE_THRESHOLD);
+        if (is_shutdown_requested()) return 0;
     }
 
-cleanup:
-    log_debug("NFM writer thread exiting.");
-    return NULL;
+    static size_t stat_counter = 0;
+    static double accum_mag_sum = 0.0, accum_mag_sq_sum = 0.0;
+    static size_t stat_rate_threshold = 0;
+    static bool _first_run = true;
+    if (_first_run) {
+        stat_rate_threshold = (size_t)(p->input_samplerate * 1.0f);
+        _first_run = false;
+    }
+    if (input_bytes == 0) return 0;
+
+    unsigned int n = input_bytes / res->module.output_bytes_per_sample_pair;
+    liquid_float_complex* iq = (liquid_float_complex*)buffer;
+    float block_power_sum = 0.0f;
+    for(unsigned int i=0; i<n; i++) {
+        float mag2 = crealf(iq[i])*crealf(iq[i]) + cimagf(iq[i])*cimagf(iq[i]);
+        block_power_sum += mag2;
+        accum_mag_sum += sqrtf(mag2);
+        accum_mag_sq_sum += mag2;
+    }
+    stat_counter += n;
+    float rssi_db_current = 10.0f * log10f((block_power_sum / (float)n) + 1e-12f);
+
+    if (!s_nfm_config.squelch_disabled) {
+        if (rssi_db_current > s_nfm_config.squelch_db) { p->squelch_open = true; p->squelch_hang_counter = p->squelch_hang_max; }
+        else if (p->squelch_hang_counter > 0) { p->squelch_hang_counter -= n; }
+        else if (rssi_db_current < (s_nfm_config.squelch_db - SQ_HYSTERESIS_DB)) { p->squelch_open = false; }
+    } else { p->squelch_open = true; }
+
+    if (stat_counter >= stat_rate_threshold) {
+        double avg_power = accum_mag_sq_sum / (double)stat_counter;
+        float rssi_db = 10.0f * log10f((float)avg_power + 1e-12f);
+        if (p->squelch_open) {
+            double mean_mag = accum_mag_sum / (double)stat_counter;
+            float snr_db = 10.0f * log10f((float)((mean_mag*mean_mag) / fmax(1e-12, avg_power - (mean_mag*mean_mag))));
+            log_info("RSSI: %5.1f dB | SNR: %4.1f dB | Squelch: OPEN", rssi_db, snr_db);
+        } else { log_info("RSSI: %5.1f dB | Squelch: CLOSED", rssi_db); }
+        stat_counter = 0; accum_mag_sum = 0.0; accum_mag_sq_sum = 0.0;
+    }
+
+    freqdem_demodulate_block(p->fm_demod, iq, n, p->mono_buffer);
+    for(unsigned int i=0; i<n; i++) {
+        float sample = p->mono_buffer[i];
+        if (!s_nfm_config.disable_discriminator_filter) {
+            iirfilt_rrrf_execute(p->deemph_filter, sample, &sample);
+            iirfilt_rrrf_execute(p->audio_lpf, sample, &sample);
+        }
+        sample *= s_nfm_config.gain;
+        if (!p->squelch_open) sample = 0.0f;
+        p->mono_buffer[i] = sample;
+    }
+    unsigned int num_resampled;
+    msresamp_rrrf_execute(p->resampler, p->mono_buffer, n, p->resamp_buffer, &num_resampled);
+    sample_convert_interleave_f32_to_s16(p->resamp_buffer, p->resamp_buffer, p->pcm_out, num_resampled);
+    ring_buffer_write(p->audio_ring_buffer, p->pcm_out, num_resampled * 2 * sizeof(int16_t));
+    return input_bytes;
 }
 
 static void nfm_output_cleanup(ModuleContext* ctx) {
@@ -388,12 +312,13 @@ const struct argparse_option* nfm_output_get_cli_options(int* count) {
 
 static OutputModuleInterface s_nfm_output_api = {
     .initialize = nfm_output_initialize,
-    .run_writer = nfm_output_run_writer,
+    .write_chunk = nfm_output_write_chunk,
+    .reset = nfm_output_reset,
+    .flush = nfm_output_flush,
     .cleanup = nfm_output_cleanup,
     .get_summary_info = nfm_output_get_summary_info,
     .validate_options = nfm_output_validate_options,
     .get_cli_options = nfm_output_get_cli_options,
-    .write_chunk = NULL
 };
 
 OutputModuleInterface* output_nfm_get_module_api(void) {

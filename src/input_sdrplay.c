@@ -11,7 +11,7 @@
 #include "mem_arena.h"
 #include "queue.h"
 #include "ring_buffer.h"
-#include "sdr_packet_serializer.h"
+#include "packet_serializer.h"
 #include "argparse.h"
 #include "wait_event.h"
 #include <stdio.h>
@@ -244,7 +244,7 @@ const struct argparse_option* sdrplay_input_get_cli_options(int* count) {
 }
 
 static bool sdrplay_input_initialize(ModuleContext* ctx);
-static void* sdrplay_input_start_stream(ModuleContext* ctx);
+static void* sdrplay_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
 static void sdrplay_input_stop_stream(ModuleContext* ctx);
 static void sdrplay_input_cleanup(ModuleContext* ctx);
 static void sdrplay_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
@@ -408,7 +408,6 @@ static void sdrplay_input_buffered_stream_callback(short *xi, short *xq, sdrplay
     SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
 
     // --- HEARTBEAT ---
-    sdr_input_update_heartbeat(app);
 
     if (is_shutdown_requested() || app->stats.error_occurred) {
         return;
@@ -416,7 +415,7 @@ static void sdrplay_input_buffered_stream_callback(short *xi, short *xq, sdrplay
 
     if (reset) {
         log_info("SDRplay stream reset detected, sending event.");
-        sdr_packet_serializer_write_reset_event(app->pipeline.sdr_input_buffer);
+        packet_serializer_write_reset_event(app->pipeline.sdr_input_buffer);
     }
 
     if (numSamples > 0) {
@@ -431,14 +430,9 @@ static void sdrplay_input_buffered_stream_callback(short *xi, short *xq, sdrplay
         sample_convert_interleave_s16(xi, xq, interleaved_data, numSamples);
 
         // 3. Write single Interleaved block to RingBuffer
-        if (!sdr_packet_serializer_write_block(
-                app->pipeline.sdr_input_buffer,
-                numSamples,
-                interleaved_data,
-                CS16))
-        {
-            log_warn("SDR input buffer overrun! Dropped data.");
-        }
+        if (!app->module.queue_samples(app->module.pipeline_ctx, interleaved_data, numSamples, CS16)) {
+        log_warn("SDR input buffer overrun! Dropped data.");
+    }
     }
 }
 
@@ -856,7 +850,9 @@ cleanup:
     return success;
 }
 
-static void* sdrplay_input_start_stream(ModuleContext* ctx) {
+static void* sdrplay_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
+    ctx->app->module.queue_samples = queue_samples;
+    ctx->app->module.pipeline_ctx = pipeline_ctx;
     AppContext* app = ctx->app;
     SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
     sdrplay_api_CallbackFnsT cbFns;

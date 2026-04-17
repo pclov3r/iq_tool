@@ -10,7 +10,7 @@
 #include "platform.h"
 #include "input_common.h"
 #include "queue.h"
-#include "sdr_packet_serializer.h"
+#include "packet_serializer.h"
 #include "argparse.h"
 #include <string.h>
 #include <errno.h>
@@ -214,7 +214,7 @@ const struct argparse_option* bladerf_input_get_cli_options(int* count) {
 
 // Forward declarations for static functions
 static bool bladerf_input_initialize(ModuleContext* ctx);
-static void* bladerf_input_start_stream(ModuleContext* ctx);
+static void* bladerf_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
 static void bladerf_input_stop_stream(ModuleContext* ctx);
 static void bladerf_input_cleanup(ModuleContext* ctx);
 static void bladerf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
@@ -572,16 +572,13 @@ static void* bladerf_rx_stream_callback(struct bladerf *dev, struct bladerf_stre
         return BLADERF_STREAM_SHUTDOWN;
     }
 
-    sdr_input_update_heartbeat(app);
-
     if (meta && (meta->status & BLADERF_META_STATUS_OVERRUN) != 0) {
         log_warn("BladeRF reported a stream overrun. Sending reset event.");
-        sdr_packet_serializer_write_reset_event(app->pipeline.sdr_input_buffer);
+        packet_serializer_write_reset_event(app->pipeline.sdr_input_buffer);
     }
 
-    if (!sdr_packet_serializer_write_block(app->pipeline.sdr_input_buffer, num_samples,
-                                           samples, app->module.input_format)) {
-        log_warn("BladeRF: Ring buffer overrun.");
+    if (!app->module.queue_samples(app->module.pipeline_ctx, samples, num_samples, app->module.input_format)) {
+        log_warn("SDR input buffer overrun! Dropped data.");
     }
 
     for (size_t i = 0; i < private_data->num_stream_buffers; i++) {
@@ -593,7 +590,9 @@ static void* bladerf_rx_stream_callback(struct bladerf *dev, struct bladerf_stre
     return private_data->stream_buffers[0];
 }
 
-static void* bladerf_input_start_stream(ModuleContext* ctx) {
+static void* bladerf_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
+    ctx->app->module.queue_samples = queue_samples;
+    ctx->app->module.pipeline_ctx = pipeline_ctx;
     AppContext* app = ctx->app;
     const AppConfig *config = ctx->config;
     BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
