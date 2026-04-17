@@ -221,6 +221,7 @@ set(OTHER_SOURCES
     src/output_wav_common.c
     src/output_wav_rf64.c
     src/pipeline.c
+    src/pipeline_stages.c
     src/platform.c
     src/post_processor.c
     src/pre_processor.c
