@@ -210,7 +210,7 @@ static bool _init_queues_and_buffers(AppConfig* config, AppContext* app) {
 
     // Populate the free queue with the pre-allocated chunks
     for (size_t i = 0; i < app->pipeline.num_chunks; ++i) {
-        if (!queue_enqueue(app->pipeline.free_sample_chunk_queue, &app->pipeline.sample_chunk_pool[i])) {
+        if (!queue_enqueue(app->pipeline.free_sample_chunk_queue, app->pipeline.sample_chunk_pool[i])) {
             log_fatal("Failed to initially populate free item queue.");
             return false;
         }

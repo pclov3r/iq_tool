@@ -148,7 +148,7 @@ typedef struct AppConfig {
 typedef struct PipelineInfrastructure {
     MemoryArena  setup_arena;
     void*        chunk_data_pool;
-    struct SampleChunk* sample_chunk_pool;
+    struct SampleChunk** sample_chunk_pool;
 
     size_t       alloc_size_samples;
     size_t       read_chunk_size;

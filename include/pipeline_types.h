@@ -1,3 +1,4 @@
+#include "constants.h"
 /**
  * @file pipeline_types.h
  * @brief Defines data structures used for communication within the processing pipeline.
@@ -53,7 +54,7 @@ typedef struct SampleChunk {
     bool         is_last_chunk;               ///< Flag indicating this is the final chunk in a stream.
     bool         stream_discontinuity_event;  ///< Flag indicating a stream reset (e.g., SDR overrun).
     size_t       input_bytes_per_sample_pair; ///< The size of a single I/Q pair from the source.
-} __attribute__((aligned(64))) SampleChunk;
+} __attribute__((aligned(MEM_ARENA_ALIGNMENT))) SampleChunk;
 
 /**
  * @struct Queue

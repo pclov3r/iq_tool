@@ -323,53 +323,48 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
               app->pipeline.num_chunks * seconds_per_chunk,
               input_rate);
 
-    // --- MEMORY ALLOCATION WITH ALIGNMENT ---
-
-    // Calculate raw byte sizes
-    size_t raw_input_bytes = app->pipeline.alloc_size_samples * app->module.input_bytes_per_sample_pair;
-    size_t complex_bytes = app->pipeline.alloc_size_samples * sizeof(ComplexFloat);
+        // --- MONOLITHIC TRAY ALLOCATION (Contiguous Metadata + Data) ---
+    size_t raw_stride     = ALIGN_UP(app->pipeline.alloc_size_samples * app->module.input_bytes_per_sample_pair, MEM_ARENA_ALIGNMENT);
+    size_t complex_stride = ALIGN_UP(app->pipeline.alloc_size_samples * sizeof(ComplexFloat), MEM_ARENA_ALIGNMENT);
     app->module.output_bytes_per_sample_pair = sample_convert_bytes_per_sample(config->output.format);
-    size_t final_output_bytes = app->pipeline.alloc_size_samples * app->module.output_bytes_per_sample_pair;
+    size_t final_stride   = ALIGN_UP(app->pipeline.alloc_size_samples * app->module.output_bytes_per_sample_pair, MEM_ARENA_ALIGNMENT);
 
-    // Calculate Strides (Aligned to 32 bytes)
-    size_t raw_stride = ALIGN_UP(raw_input_bytes, MEM_ARENA_ALIGNMENT);
-    size_t complex_stride = ALIGN_UP(complex_bytes, MEM_ARENA_ALIGNMENT);
-    size_t final_stride = ALIGN_UP(final_output_bytes, MEM_ARENA_ALIGNMENT);
+    size_t struct_stride   = ALIGN_UP(sizeof(SampleChunk), MEM_ARENA_ALIGNMENT);
+    size_t total_tray_size = struct_stride + raw_stride + (complex_stride * 2) + final_stride;
 
-    // Total size of one "Tray" (SampleChunk data area)
-    size_t total_bytes_per_chunk = raw_stride + (complex_stride * 2) + final_stride;
-
-    // Allocate the Big Pool using OS-specific aligned allocation
-    // CRITICAL: We now use the dynamically calculated pipeline_num_chunks
-    size_t pool_total_size = app->pipeline.num_chunks * total_bytes_per_chunk;
-
-    size_t aligned_pool_total_size = ALIGN_UP(pool_total_size, MEM_ARENA_ALIGNMENT);
-    app->pipeline.chunk_data_pool = aligned_alloc(MEM_ARENA_ALIGNMENT, aligned_pool_total_size);
-
+    // Allocate the big data block
+    app->pipeline.chunk_data_pool = aligned_alloc(MEM_ARENA_ALIGNMENT, app->pipeline.num_chunks * total_tray_size);
     if (!app->pipeline.chunk_data_pool) {
-        log_fatal("Error: Failed to allocate aligned pipeline chunk data pool (%zu bytes).", pool_total_size);
+        log_fatal("Error: Failed to allocate pipeline chunk data pool.");
         return false;
     }
 
-    // Allocate metadata structures from the Arena (small objects)
-    app->pipeline.sample_chunk_pool = (SampleChunk*)mem_arena_alloc(&app->pipeline.setup_arena, app->pipeline.num_chunks * sizeof(SampleChunk), true);
-    if (!app->pipeline.sample_chunk_pool) return false;
+    // Allocate the Catalog (The array of pointers)
+    app->pipeline.sample_chunk_pool = (SampleChunk**)mem_arena_alloc(&app->pipeline.setup_arena, app->pipeline.num_chunks * sizeof(SampleChunk*), true);
 
-    // Assign pointers within the monolithic pool
     for (size_t i = 0; i < app->pipeline.num_chunks; ++i) {
-        SampleChunk* item = &app->pipeline.sample_chunk_pool[i];
-        char* chunk_base = (char*)app->pipeline.chunk_data_pool + (i * total_bytes_per_chunk);
+        // Calculate the base address for this specific tray
+        uint8_t* tray_base = (uint8_t*)app->pipeline.chunk_data_pool + (i * total_tray_size);
+        
+        // The Catalog entry points to the struct at the front of the tray
+        app->pipeline.sample_chunk_pool[i] = (SampleChunk*)tray_base;
+        SampleChunk* item = app->pipeline.sample_chunk_pool[i];
 
-        // Set pointers using the aligned strides
-        item->raw_input_data = chunk_base;
-        item->complex_sample_buffer_a = (ComplexFloat*)(chunk_base + raw_stride);
-        item->complex_sample_buffer_b = (ComplexFloat*)(chunk_base + raw_stride + complex_stride);
-        item->final_output_data = (unsigned char*)(chunk_base + raw_stride + (complex_stride * 2));
+        // The buffers follow immediately after the metadata struct
+        uint8_t* data_ptr = tray_base + struct_stride;
 
-        // Set capacities (using the actual usable byte count, not the stride padding)
-        item->raw_input_capacity_bytes = raw_input_bytes;
+        item->raw_input_data         = data_ptr; 
+        data_ptr += raw_stride;
+        item->complex_sample_buffer_a = (ComplexFloat*)data_ptr;
+        data_ptr += complex_stride;
+        item->complex_sample_buffer_b = (ComplexFloat*)data_ptr;
+        data_ptr += complex_stride;
+        item->final_output_data      = (unsigned char*)data_ptr;
+
+        // Set capacities and metadata
+        item->raw_input_capacity_bytes = raw_stride;
         item->complex_buffer_capacity_samples = app->pipeline.alloc_size_samples;
-        item->final_output_capacity_bytes = final_output_bytes;
+        item->final_output_capacity_bytes = final_stride;
         item->input_bytes_per_sample_pair = app->module.input_bytes_per_sample_pair;
     }
 
