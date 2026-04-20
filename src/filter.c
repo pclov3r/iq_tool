@@ -25,7 +25,7 @@
         for (int i = 0; i < master_taps_len; i++) { \
             final_real_taps[i] = crealf(master_taps[i]); \
         } \
-        app->dsp.filter.object = (void*)prefix##_crcf_create(final_real_taps, master_taps_len, ##__VA_ARGS__); \
+        app->dsp.filter.object = (struct liquid_filter_s*)prefix##_crcf_create(final_real_taps, master_taps_len, ##__VA_ARGS__); \
     } while (0)
 
 
@@ -100,7 +100,7 @@ static inline void _invert_filter_spectrum(float* taps, unsigned int len) {
 
 static unsigned int
 _execute_fft_filter_pass(
-    void* filter_object,
+    struct liquid_filter_s* filter_object,
     FilterImplementationType filter_type,
     const ComplexFloat* input_buffer,
     unsigned int frames_in,
@@ -343,7 +343,7 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
         app->dsp.filter.block_size = block_size;
 
         if (is_final_filter_complex) {
-            app->dsp.filter.object = (void*)fftfilt_cccf_create(master_taps, master_taps_len, app->dsp.filter.block_size);
+            app->dsp.filter.object = (struct liquid_filter_s*)fftfilt_cccf_create(master_taps, master_taps_len, app->dsp.filter.block_size);
             app->dsp.filter.type_actual = FILTER_IMPL_FFT_ASYMMETRIC;
         } else {
             PREPARE_AND_CREATE_CRCF_FILTER(fftfilt, app->dsp.filter.block_size);
@@ -371,7 +371,7 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
     } else {
         log_info("Preparing FIR (time-domain) filter object...");
         if (is_final_filter_complex) {
-            app->dsp.filter.object = (void*)firfilt_cccf_create(master_taps, master_taps_len);
+            app->dsp.filter.object = (struct liquid_filter_s*)firfilt_cccf_create(master_taps, master_taps_len);
             app->dsp.filter.type_actual = FILTER_IMPL_FIR_ASYMMETRIC;
         } else {
             PREPARE_AND_CREATE_CRCF_FILTER(firfilt);
@@ -516,7 +516,7 @@ unsigned int filter_apply(DspContext* dsp, SampleChunk* item, bool is_post_resam
 // Actual definition of the helper function
 static unsigned int
 _execute_fft_filter_pass(
-    void* filter_object,
+    struct liquid_filter_s* filter_object,
     FilterImplementationType filter_type,
     const ComplexFloat* input_buffer,
     unsigned int frames_in,

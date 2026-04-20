@@ -194,14 +194,14 @@ typedef struct ModuleState {
 // --- 3. DSP Context (Math & Signal Processing) ---
 
 typedef struct AgcContext {
-    void*    object;        /* liquid-dsp agc_crcf handle. DX/LOCAL profiles only. */
-    void*    harris_object; /* Harris/LMS state block. DIGITAL profile only.       */
+    struct liquid_agc_s* object; /* liquid-dsp agc_crcf handle. DX/LOCAL profiles only. */
+    struct harris_agc_s* harris_object; /* Harris/LMS state block. DIGITAL profile only.       */
     float    current_gain;  /* Most recently applied linear gain scalar.           */
     uint64_t samples_seen;  /* Total samples processed. Used for log interval.     */
 } AgcContext;
 
 typedef struct FilterContext {
-    void*            object;
+    struct liquid_filter_s* object;
     int              type_actual;
     unsigned int     block_size;
     ComplexFloat* pre_fft_remainder_buffer;
@@ -218,7 +218,7 @@ typedef struct IqCorrectionResources {
 } IqCorrectionResources;
 
 typedef struct DcBlockResources {
-    void* dc_block_filter;
+    struct dc_blocker_s* dc_block_filter;
 } DcBlockResources;
 
 typedef struct DspContext {
@@ -229,8 +229,8 @@ typedef struct DspContext {
     FilterContext         filter;
 
     Resampler* resampler;
-    void*        pre_resample_nco;
-    void*        post_resample_nco;
+    struct freq_shifter_s* pre_resample_nco;
+    struct freq_shifter_s* post_resample_nco;
 
     float  resample_ratio;
     double nco_shift_hz;

@@ -39,7 +39,10 @@ bool freq_shift_create(AppConfig *config, AppContext* app);
  * @param output_buffer The destination buffer for the shifted complex samples. Can be the same as input_buffer.
  * @param num_frames The number of frames (I/Q pairs) to process.
  */
-void freq_shift_apply(void* nco, double shift_hz, ComplexFloat* input_buffer, ComplexFloat* output_buffer, unsigned int num_frames);
+struct freq_shifter_s;
+typedef struct freq_shifter_s FreqShifter;
+
+void freq_shift_apply(FreqShifter* nco, double shift_hz, ComplexFloat* input_buffer, ComplexFloat* output_buffer, unsigned int num_frames);
 
 /**
  * @brief Resets the internal phase of a specific NCO.
@@ -49,7 +52,7 @@ void freq_shift_apply(void* nco, double shift_hz, ComplexFloat* input_buffer, Co
  *
  * @param nco The NCO object to reset.
  */
-void freq_shift_reset_nco(void* nco);
+void freq_shift_reset_nco(FreqShifter* nco);
 
 /**
  * @brief Destroys the NCO objects if they were created.

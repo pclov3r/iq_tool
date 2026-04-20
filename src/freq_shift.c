@@ -46,7 +46,7 @@ bool freq_shift_create(AppConfig *config, AppContext* app) {
             log_error("Requested frequency shift %.2f Hz exceeds sanity limit for the pre-resample rate of %.1f Hz.", app->dsp.nco_shift_hz, rate_for_nco);
             return false;
         }
-        app->dsp.pre_resample_nco = nco_crcf_create(LIQUID_NCO);
+        app->dsp.pre_resample_nco = (struct freq_shifter_s*)nco_crcf_create(LIQUID_NCO);
         if (!app->dsp.pre_resample_nco) {
             log_error("Failed to create pre-resample NCO (frequency shifter).");
             return false;
@@ -62,7 +62,7 @@ bool freq_shift_create(AppConfig *config, AppContext* app) {
             log_error("Requested frequency shift %.2f Hz exceeds sanity limit for the post-resample rate of %.1f Hz.", app->dsp.nco_shift_hz, rate_for_nco);
             return false;
         }
-        app->dsp.post_resample_nco = nco_crcf_create(LIQUID_NCO);
+        app->dsp.post_resample_nco = (struct freq_shifter_s*)nco_crcf_create(LIQUID_NCO);
         if (!app->dsp.post_resample_nco) {
             log_error("Failed to create post-resample NCO (frequency shifter).");
             freq_shift_destroy_ncos(app); // Clean up pre-resample NCO if it was created
@@ -78,7 +78,7 @@ bool freq_shift_create(AppConfig *config, AppContext* app) {
 /**
  * @brief Applies the frequency shift to a block of complex samples using a specific NCO.
  */
-void freq_shift_apply(void* nco, double shift_hz, ComplexFloat* input_buffer, ComplexFloat* output_buffer, unsigned int num_frames) {
+void freq_shift_apply(FreqShifter* nco, double shift_hz, ComplexFloat* input_buffer, ComplexFloat* output_buffer, unsigned int num_frames) {
     if (!nco || num_frames == 0) {
         return;
     }
@@ -94,7 +94,7 @@ void freq_shift_apply(void* nco, double shift_hz, ComplexFloat* input_buffer, Co
  * @brief Resets the NCO's phase accumulator without destroying its frequency.
  * This is the safe way to handle stream discontinuities from SDRs.
  */
-void freq_shift_reset_nco(void* nco) {
+void freq_shift_reset_nco(FreqShifter* nco) {
     if (nco) {
         // This only resets the phase, leaving the frequency configuration intact.
         nco_crcf_set_phase((nco_crcf)nco, 0.0f);

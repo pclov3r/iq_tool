@@ -53,7 +53,7 @@ bool dc_block_create(AppConfig* config, AppContext* app) {
     // If a higher-order DC block were needed, a more general filter design
     // function (e.g., iirfilt_crcf_create_prototype with LIQUID_IIRDES_HIGHPASS)
     // would be required. For typical DC removal, 1st order is often sufficient.
-    app->dsp.dc_block.dc_block_filter = iirfilt_crcf_create_dc_blocker(normalized_alpha);
+    app->dsp.dc_block.dc_block_filter = (struct dc_blocker_s*)iirfilt_crcf_create_dc_blocker(normalized_alpha);
 
     if (!app->dsp.dc_block.dc_block_filter) {
         log_fatal("Failed to create liquid-dsp DC block filter.");

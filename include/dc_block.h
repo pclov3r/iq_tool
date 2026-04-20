@@ -26,6 +26,9 @@
  * @param app Pointer to the application app where the filter will be stored.
  * @return true on success or if disabled, false on failure (e.g., filter creation).
  */
+struct dc_blocker_s;
+typedef struct dc_blocker_s DcBlocker;
+
 bool dc_block_create(AppConfig* config, AppContext* app);
 
 /**

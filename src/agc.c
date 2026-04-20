@@ -240,7 +240,7 @@ bool agc_create(AppConfig *config, AppContext *app)
             h->target_db = 20.0f * log10f(config->dsp.agc.target_level_arg);
         }
 
-        app->dsp.agc.harris_object = (void *)h;
+        app->dsp.agc.harris_object = (struct harris_agc_s *)h;
 
         log_info("AGC: Enabled with [Digital] profile (Harris/LMS).");
         log_info("AGC:   Algorithm:  Harris/LMS, dB domain, block-level.");
@@ -296,7 +296,7 @@ bool agc_create(AppConfig *config, AppContext *app)
     agc_crcf_set_signal_level(q, target_level);
     agc_crcf_set_gain(q, 1.0f);
 
-    app->dsp.agc.object = (void *)q;
+    app->dsp.agc.object = (struct liquid_agc_s *)q;
 
     log_info("AGC: Enabled with [%s] profile (liquid-dsp).", profile_name);
     log_info("AGC:   Bandwidth:    %.1e  (loop filter attack/release speed)", bandwidth);
