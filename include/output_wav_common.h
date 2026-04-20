@@ -46,11 +46,6 @@ bool wav_common_validate_options(struct AppConfig* config);
 bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag);
 
 /**
- * @brief The main writer thread loop, common to both WAV and RF64.
- */
-
-
-/**
  * @brief Writes a single chunk of raw data to the open file handle. (Used for passthrough mode).
  */
 size_t wav_common_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write);

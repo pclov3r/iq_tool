@@ -219,7 +219,7 @@ bool agc_create(AppConfig *config, AppContext *app)
      * ----------------------------------------------------------------- */
     if (config->dsp.agc.profile == AGC_PROFILE_DIGITAL) {
 
-        HarrisAgc *h = (HarrisAgc *)malloc(sizeof(HarrisAgc));
+        HarrisAgc *h = (HarrisAgc *)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(HarrisAgc), true);
         if (!h) {
             log_fatal("AGC: Failed to allocate Harris AGC state.");
             return false;
@@ -408,7 +408,7 @@ void agc_reset(DspContext *dsp)
 void agc_destroy(AppContext *app)
 {
     if (app->dsp.agc.harris_object) {
-        free(app->dsp.agc.harris_object);
+        // Memory handled by arena
         app->dsp.agc.harris_object = NULL;
     }
 

@@ -95,7 +95,7 @@ static float __boost_window[FFTBins];
 static bool __boost_initialized = false;
 
 // --- Internal State Structure ---
-typedef struct {
+typedef struct iq_state_s {
     // Shared State (Protected by Mutex)
     _Atomic float phase;
     _Atomic float amplitude;

@@ -193,6 +193,13 @@ typedef struct ModuleState {
 
 // --- 3. DSP Context (Math & Signal Processing) ---
 
+struct liquid_agc_s;
+struct harris_agc_s;
+struct liquid_filter_s;
+struct freq_shifter_s;
+struct dc_blocker_s;
+struct iq_state_s;
+
 typedef struct AgcContext {
     struct liquid_agc_s* object; /* liquid-dsp agc_crcf handle. DX/LOCAL profiles only. */
     struct harris_agc_s* harris_object; /* Harris/LMS state block. DIGITAL profile only.       */
@@ -213,7 +220,7 @@ typedef struct FilterContext {
 
 typedef struct IqCorrectionResources {
     // Mutex removed for C11 Lock-Free Atomics
-    void*           internal_state;
+    struct iq_state_s* internal_state;
     _Atomic double          last_optimization_time;
 } IqCorrectionResources;
 
