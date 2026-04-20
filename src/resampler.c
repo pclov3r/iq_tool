@@ -5,12 +5,6 @@
 #include <stdlib.h> // For exit()
 #include <liquid.h>
 
-// The resampler_s struct is just an alias for the liquid-dsp object.
-// This definition is private to this .c file.
-struct resampler_s {
-    msresamp_crcf liquid_object;
-};
-
 Resampler* resampler_create(const AppConfig *config, AppContext* app, float resample_ratio) {
     (void)config; // config is not used here but kept for API consistency
     if (app->dsp.is_passthrough) {

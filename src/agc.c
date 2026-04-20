@@ -76,7 +76,7 @@
  * Harris/LMS AGC — internal state block
  * ======================================================================= */
 
-typedef struct {
+typedef struct harris_agc_s {
     float    gain_db;      /* Current gain in dB. Updated once per block.    */
     float    gain_linear;  /* Cached linear scalar derived from gain_db.     */
     float    target_db;    /* Target RMS level in dBFS.                      */
