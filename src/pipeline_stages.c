@@ -374,7 +374,7 @@ void* pipeline_thread_post_processor(void* arg) {
     while ((item = (SampleChunk*)queue_dequeue(app->pipeline.post_processor_input_queue)) != NULL) {
 
         if (item->is_last_chunk) {
-            // Unified: Always pass the chunk to the writer thread's queue.
+            // Always pass the chunk to the writer thread's queue.
             queue_enqueue(app->pipeline.writer_input_queue, item);
             break;
         }
@@ -390,7 +390,7 @@ void* pipeline_thread_post_processor(void* arg) {
         post_processor_apply_chain(&app->dsp, item);
 
         if (item->frames_to_write > 0) {
-            // Unified: Backpressure is handled by the writer thread now.
+            // Backpressure is handled by the writer thread.
             if (!queue_enqueue(app->pipeline.writer_input_queue, item)) {
                 queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
                 break;

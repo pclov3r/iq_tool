@@ -219,7 +219,6 @@ typedef struct FilterContext {
 } FilterContext;
 
 typedef struct IqCorrectionResources {
-    // Mutex removed for C11 Lock-Free Atomics
     struct iq_state_s* internal_state;
     _Atomic double          last_optimization_time;
 } IqCorrectionResources;
@@ -249,7 +248,6 @@ typedef void (*ProgressUpdateFn)(unsigned long long current_output_frames, long 
 
 
 typedef struct RuntimeState {
-    // Mutex removed for C11 Lock-Free Atomics
 
     _Atomic double last_sdr_heartbeat_time;
     atomic_bool   error_occurred;

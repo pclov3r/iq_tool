@@ -287,7 +287,6 @@ static void nfm_output_cleanup(ModuleContext* ctx) {
 static void nfm_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
     (void)ctx;
     const char* mode = s_nfm_config.is_narrow ? "Narrow (2.5k Dev)" : "Standard (5k Dev)";
-    // Fixed typo here: Eiscriminator -> Discriminator
     const char* type = s_nfm_config.disable_discriminator_filter ? "Raw (Discriminator Filter Disabled)" : "Voice (Discriminator Filter Enabled)";
 
     add_summary_item(info, "Output Type", "NFM");

@@ -193,7 +193,7 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
             if (current_taps_len % 2 == 0) current_taps_len++;
             if (current_taps_len < FILTER_MINIMUM_TAPS) current_taps_len = FILTER_MINIMUM_TAPS;
 
-            // --- PROTECT L2 CACHE & PIPELINE BUFFERS ---
+            // --- Protect L2 Cache & Pipeline Buffers ---
             if (current_taps_len > FILTER_MAXIMUM_AUTO_TAPS) {
                 log_warn("Auto-calculated filter requires %u taps (transition too sharp).", current_taps_len);
                 log_warn("Clamping to %d taps to protect CPU cache and pipeline stability.", FILTER_MAXIMUM_AUTO_TAPS);
@@ -350,7 +350,7 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
             app->dsp.filter.type_actual = FILTER_IMPL_FFT_SYMMETRIC;
         }
 
-        // --- ALLOCATION FIX FOR HIGH TAPS ---
+        // --- Allocate Dedicated Scratch Buffer ---
         // Allocate a dedicated scratch buffer.
         // It must hold the "Overlap" (approx master_taps_len) + the "Max Incoming Data Chunk".
         // The incoming data comes from the pipeline, so we use pipeline_alloc_size_samples.
@@ -492,7 +492,7 @@ unsigned int filter_apply(DspContext* dsp, SampleChunk* item, bool is_post_resam
         {
             ComplexFloat* remainder_buffer = is_post_resample ? dsp->filter.post_fft_remainder_buffer : dsp->filter.pre_fft_remainder_buffer;
             unsigned int* remainder_len_ptr = is_post_resample ? &dsp->filter.post_fft_remainder_len : &dsp->filter.pre_fft_remainder_len;
-            
+
             unsigned int output_frames = _execute_fft_filter_pass(
                 dsp->filter.object,
                 dsp->filter.type_actual,
@@ -502,7 +502,7 @@ unsigned int filter_apply(DspContext* dsp, SampleChunk* item, bool is_post_resam
                 remainder_buffer,
                 remainder_len_ptr,
                 dsp->filter.block_size,
-                dsp->filter.fft_scratch_buffer // <--- USE DEDICATED SCRATCH BUFFER (Fixed)
+                dsp->filter.fft_scratch_buffer
             );
 
             return output_frames;
@@ -573,12 +573,12 @@ int filter_populate_cli_options(struct argparse_option* buffer, struct AppConfig
         DEFINE_CHAINABLE_FLOAT_OPTION("highpass", highpass, "Remove signal at DC. Rejects freqs from -<hz> to +<hz>."),
         DEFINE_CHAINABLE_STRING_OPTION("pass-range", pass_range, "Isolate a specific band. Format: 'start_freq:end_freq'."),
         DEFINE_CHAINABLE_STRING_OPTION("stopband", stopband, "Remove a specific band (notch). Format: 'start_freq:end_freq'."),
-        
+
         OPT_GROUP("Filter Quality Options"),
         OPT_FLOAT(0, "transition-width", &config->dsp.filter.args.transition_width, "Set filter sharpness by transition width in Hz. (Default: Auto).", NULL, 0, 0),
         OPT_INTEGER(0, "filter-taps", &config->dsp.filter.args.taps, "Set exact filter length. Overrides --transition-width.", NULL, 0, 0),
         OPT_FLOAT(0, "attenuation", &config->dsp.filter.args.attenuation, "Set filter stop-band attenuation in dB. (Default: 60).", NULL, 0, 0),
-        
+
         OPT_GROUP("Filter Implementation Options"),
         OPT_STRING(0, "filter-type", &config->dsp.filter.args.type_str, "Set filter implementation {fir|fft}. (Default: auto).", NULL, 0, 0),
         OPT_INTEGER(0, "filter-fft-size", &config->dsp.filter.args.fft_size, "Set FFT size for 'fft' filter type. Must be a power of 2.", NULL, 0, 0),

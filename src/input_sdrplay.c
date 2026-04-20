@@ -399,9 +399,6 @@ static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz) {
 }
 
 
-// sdrplay_realtime_stream_callback removed by refactor
-
-
 static void sdrplay_input_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext) {
     (void)params;
     AppContext* app = (AppContext*)cbContext;
@@ -813,7 +810,7 @@ static bool sdrplay_input_initialize(ModuleContext* ctx) {
                       s_sdrplay_config.lna_state, num_lna_states - 1);
             goto cleanup;
         }
-        // CORRECTED: Invert the user's gain level to map to the API's LNAstate.
+        // Invert the user's gain level to map to the API's LNAstate.
         // The user provides a level where 0 = min gain and (num_lna_states - 1) = max gain.
         // The API expects an LNAstate where 0 = max gain (min reduction) and (num_lna_states - 1) = min gain (max reduction).
         // Therefore, we apply the formula: LNAstate = (Total States - 1) - User Level.
@@ -858,8 +855,6 @@ static void* sdrplay_input_start_stream(ModuleContext* ctx, QueueSamples queue_s
     sdrplay_api_CallbackFnsT cbFns;
     cbFns.StreamBCbFn = NULL;
     cbFns.EventCbFn = sdrplay_input_event_callback;
-
-    // Logic unified to Buffered Mode
     log_info("Starting sdrplay stream...");
     cbFns.StreamACbFn = sdrplay_input_buffered_stream_callback;
 

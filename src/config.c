@@ -62,8 +62,7 @@ static void add_filter_request(AppConfig *config, FilterType type, float f1, flo
     }
 }
 
-// RESTRUCTURED: This function has been reordered to check for fatal errors first
-// and to explicitly log the application's "smart default" behaviors.
+// Validate output type and sample format, applying presets and smart defaults.
 bool validate_output_type_and_sample_format(AppConfig *config) {
     // --- Step 1: Process Presets (Highest Priority) ---
     if (config->preset_name) {
@@ -76,7 +75,7 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
                     config->output.format_name = p->output_sample_format_name;
                 }
 
-                // UPDATED: Map input_gain and output_gain from preset
+                // Map input_gain and output_gain from preset
                 if (p->input_gain_provided && config->dsp.input_gain == 1.0f) {
                     config->dsp.input_gain = p->input_gain;
                 }
@@ -91,7 +90,7 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
                     config->dsp.iq_correction.enable = p->iq_correction_enable;
                 }
 
-                // --- NEW: Apply AGC Settings from Preset ---
+                // --- Apply AGC Settings from Preset ---
                 // If a profile is provided in the preset, it implicitly enables AGC.
                 if (p->agc_profile_provided) {
                     if (!config->dsp.agc.enable) {
@@ -348,13 +347,13 @@ bool validate_option_combinations(AppConfig *config) {
             return false;
         }
 
-        // NEW: Conflict check for Output Gain
+        // Conflict check for Output Gain
         if (config->dsp.output_gain != 1.0f) {
             log_fatal("Conflicting options: --output-agc and --output-gain-multiplier cannot be used together.");
             return false;
         }
 
-        // 4. Check for Warnings (Updated variable name)
+        // 4. Check for Warnings
         if (config->dsp.input_gain_provided && config->dsp.input_gain != 1.0f) {
             log_warn("Both --input-gain-multiplier and --output-agc are set.");
             log_warn("Manual gain is applied at input, but AGC will override the final volume at output.");

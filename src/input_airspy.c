@@ -304,10 +304,6 @@ static int airspy_input_buffered_stream_callback(airspy_transfer* transfer) {
 }
 
 
-// airspy_realtime_stream_callback removed by refactor
-
-
-
 static void airspy_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppContext* app = ctx->app;
@@ -610,8 +606,6 @@ static void* airspy_input_start_stream(ModuleContext* ctx, QueueSamples queue_sa
     AirspyContext* private_data = (AirspyContext*)app->module.input_private_data;
     int result;
     airspy_sample_block_cb_fn callback_fn;
-
-    // Logic unified to Buffered Mode
     log_info("Starting airspy stream...");
     callback_fn = airspy_input_buffered_stream_callback;
 

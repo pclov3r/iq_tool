@@ -196,10 +196,6 @@ static int airspyhf_input_buffered_stream_callback(airspyhf_transfer_t* transfer
 }
 
 
-// airspyhf_realtime_stream_callback removed by refactor
-
-
-
 static void airspyhf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const AppConfig *config = ctx->config;
     const AppContext* app = ctx->app;
@@ -444,8 +440,6 @@ static void* airspyhf_input_start_stream(ModuleContext* ctx, QueueSamples queue_
     AirspyHFContext* private_data = (AirspyHFContext*)app->module.input_private_data;
     int result;
     airspyhf_sample_block_cb_fn callback_fn;
-
-    // Logic unified to Buffered Mode
     log_info("Starting airspyhf stream...");
     callback_fn = airspyhf_input_buffered_stream_callback;
 

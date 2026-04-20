@@ -51,14 +51,6 @@ typedef struct Module {
 const Module* module_get(const char* name, ModuleType type, struct MemoryArena* arena);
 
 /**
- * @brief Finds an OUTPUT module by name and returns its full registration struct.
- * @param name The name of the output module to find (e.g., "wav").
- * @param arena The memory arena, needed to initialize the module list on first call.
- * @return A read-only pointer to the Module struct, or NULL if not found.
- */
-
-
-/**
  * @brief Finds a module by name and returns its full registration struct.
  * @param name The name of the module to find.
  * @param arena The memory arena, needed to initialize the module list on first call.

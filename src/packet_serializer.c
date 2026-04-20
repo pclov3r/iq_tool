@@ -24,7 +24,7 @@ bool packet_serializer_write_block(RingBuffer* buffer, uint32_t num_samples, con
     size_t data_size = num_samples * bytes_per_sample;
     size_t total_needed = sizeof(PacketHeader) + data_size;
 
-    // CRITICAL FIX: Atomic Check. If we can't write EVERYTHING, we write NOTHING.
+    // Atomic Check: If we cannot write the entire packet, we write nothing to maintain stream integrity.
     if (!_has_space_for(buffer, total_needed)) {
         return false;
     }

@@ -1,13 +1,13 @@
 #include "cli.h"
 #include "constants.h"
-#include "app_context.h"      // Provides AppConfig, MemoryArena
-#include "config.h"           // Provides validation function prototypes
+#include "app_context.h"
+#include "config.h"
 #include "log.h"
 #include "utils.h"
 #include "argparse.h"
 #include "module_registry.h"
-#include "agc.h"              // NEW: For agc_populate_cli_options
-#include "filter.h"           // NEW: For filter_populate_cli_options
+#include "agc.h"
+#include "filter.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,7 +56,6 @@ void cli_print_usage(const char *prog_name, AppConfig *config, MemoryArena* aren
     build_cli_options(all_options, MAX_TOTAL_OPTIONS, config, arena, NULL);
 
     argparse_init(&argparse, all_options, usages, 0);
-    // CHANGE: Removed description string.
     argparse_describe(&argparse, NULL, NULL);
     argparse_usage(&argparse);
 }
@@ -181,7 +180,6 @@ bool cli_parse(int argc, char *argv[], AppConfig *config, MemoryArena* arena) {
     struct argparse argparse;
     const char *const usages[] = { "iq_tool -i <in_type> [in_file] -o <out_type> [out_file] [options]", NULL, };
     argparse_init(&argparse, all_options, usages, 0);
-    // CHANGE: Removed description string.
     argparse_describe(&argparse, NULL, NULL);
     int non_opt_argc = argparse_parse(&argparse, argc, (const char **)argv);
 

@@ -47,7 +47,6 @@ bool dc_block_create(AppConfig* config, AppContext* app) {
     }
 
     // Create the IIR filter object.
-    // Corrected function name: iirfilt_crcf_create_dc_blocker
     // NOTE: iirfilt_crcf_create_dc_blocker always creates a 1st-order filter,
     // regardless of the DC_BLOCK_FILTER_ORDER constant in config.h.
     // If a higher-order DC block were needed, a more general filter design

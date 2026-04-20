@@ -323,7 +323,7 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
               app->pipeline.num_chunks * seconds_per_chunk,
               input_rate);
 
-        // --- MONOLITHIC TRAY ALLOCATION (Contiguous Metadata + Data) ---
+        // --- Monolithic Tray Allocation (Contiguous Metadata + Data) ---
     size_t raw_stride     = ALIGN_UP(app->pipeline.alloc_size_samples * app->module.input_bytes_per_sample_pair, MEM_ARENA_ALIGNMENT);
     size_t complex_stride = ALIGN_UP(app->pipeline.alloc_size_samples * sizeof(ComplexFloat), MEM_ARENA_ALIGNMENT);
     app->module.output_bytes_per_sample_pair = sample_convert_bytes_per_sample(config->output.format);
@@ -619,9 +619,6 @@ bool initialize_application(AppConfig *config, AppContext* app) {
     if (!app->module.input_api->initialize(&ctx)) {
         return false;
     }
-
-    // --- REMOVED: Output Option Validation (Moved to cli.c) ---
-    // This ensures validation happens before expensive input initialization.
 
     if (!calculate_and_validate_resample_ratio(config, app, &app->dsp.resample_ratio)) {
         return false;

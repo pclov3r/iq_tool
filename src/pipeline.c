@@ -75,9 +75,7 @@ bool pipeline_run(PipelineContext* context) {
         return false;
     }
 
-    // --- Step 2: Allocate all memory pools (Now handled in setup.c via allocate_processing_buffers) ---
-    // Note: The memory pool allocation was moved to setup.c to happen earlier in the lifecycle.
-    // We check if it was successful here.
+    // --- Step 2: Verify memory pools (Allocated during initialization) ---
     if (!app->pipeline.chunk_data_pool) {
         log_fatal("Pipeline memory pool not allocated. Initialization order error.");
         _destroy_dsp_components(app);

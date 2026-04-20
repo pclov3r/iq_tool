@@ -63,8 +63,6 @@ typedef struct InputSummaryInfo {
     SummaryItem items[MAX_SUMMARY_ITEMS];
     int         count;
 } InputSummaryInfo;
-
-// ADD THIS TYPEDEF for semantic clarity.
 typedef struct InputSummaryInfo OutputSummaryInfo;
 
 /**
