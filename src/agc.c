@@ -330,7 +330,7 @@ void agc_apply(DspContext *dsp, ComplexFloat *samples, unsigned int num_samples)
 
         /* Log on first block. */
         if (h->samples_seen == num_samples) {
-            log_info("AGC: First block — gain: %.2f dB (%.4fx).",
+            log_info("AGC: First block - gain: %.2f dB (%.4fx).",
                      h->gain_db, h->gain_linear);
         }
 
