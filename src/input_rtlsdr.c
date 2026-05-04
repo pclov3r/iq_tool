@@ -314,10 +314,6 @@ static bool rtlsdr_input_initialize(ModuleContext* ctx) {
     app->module.input_bytes_per_sample_pair = sample_convert_bytes_per_sample(app->module.input_format);
     app->module.source_info.frames = -1;
 
-    if (config->dsp.raw_passthrough && app->module.input_format != config->output.format) {
-        log_fatal("Option --raw-passthrough requires input and output formats to be identical. RTL-SDR input is 'cu8', but output was set to '%s'.", config->output.format_name);
-        goto cleanup;
-    }
 
     // Force the pipeline into BUFFERED_SDR mode.
     // This ensures we use the Async callback (rtlsdr_read_async) and the large RingBuffer.

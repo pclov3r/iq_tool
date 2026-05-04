@@ -594,7 +594,6 @@ static void* bladerf_input_start_stream(ModuleContext* ctx, QueueSamples queue_s
     ctx->app->module.queue_samples = queue_samples;
     ctx->app->module.pipeline_ctx = pipeline_ctx;
     AppContext* app = ctx->app;
-    const AppConfig *config = ctx->config;
     BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
     int status;
     bladerf_channel rx_channel;
@@ -618,10 +617,6 @@ static void* bladerf_input_start_stream(ModuleContext* ctx, QueueSamples queue_s
     bool is_bladerf2 = (strcmp(private_data->board_name, "bladerf2") == 0);
     rx_channel = is_bladerf2 ? BLADERF_CHANNEL_RX(s_bladerf_config.channel) : BLADERF_CHANNEL_RX(0);
 
-    if (config->dsp.raw_passthrough && app->module.input_format != config->output.format) {
-        handle_fatal_thread_error("Option --raw-passthrough requires input and output formats to be identical.", app);
-        return NULL;
-    }
 
     bladerf_format format;
     if (s_bladerf_config.active_bit_depth == 12) {

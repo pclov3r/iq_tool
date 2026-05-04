@@ -417,11 +417,6 @@ static bool airspyhf_input_initialize(ModuleContext* ctx) {
     app->module.source_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
     app->module.source_info.frames = -1;
 
-    if (config->dsp.raw_passthrough && app->module.input_format != config->output.format) {
-        log_error("Option --raw-passthrough requires input and output formats to be identical. Airspy HF+ input is 'cf32', but output was set to '%s'.",
-                  config->output.format_name);
-        goto cleanup;
-    }
 
     app->pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT;
     success = true;

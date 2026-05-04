@@ -620,6 +620,18 @@ bool initialize_application(AppConfig *config, AppContext* app) {
         return false;
     }
 
+    if (config->dsp.raw_passthrough) {
+        if (app->module.input_format != config->output.format) {
+            log_fatal("Option --raw-passthrough requires input and output formats to be identical.");
+            log_fatal("Input module '%s' provides '%s', but output is configured for '%s'.",
+                      config->input.type_name,
+                      utils_get_format_description_string(app->module.input_format),
+                      utils_get_format_description_string(config->output.format));
+            return false;
+        }
+    }
+
+
     if (!calculate_and_validate_resample_ratio(config, app, &app->dsp.resample_ratio)) {
         return false;
     }
