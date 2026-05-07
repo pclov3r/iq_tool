@@ -59,6 +59,7 @@ void* pipeline_thread_watchdog(void* arg) {
     PipelineContext* args = (PipelineContext*)arg;
     AppContext* app = args->app;
     AppConfig* config = args->config;
+    (void)config;
 
     // Give the SDR a moment to start up before we start checking
 #ifdef _WIN32
@@ -83,20 +84,25 @@ void* pipeline_thread_watchdog(void* arg) {
         }
 
         if (timed_out) {
-            const char* input_device_name = config->input.type_name ? config->input.type_name : "SDR";
-
-            // We use raw fprintf to stderr because the logger might be deadlocked if
-            // another thread is holding the console mutex. This is a last-gasp message.
-            fprintf(stderr, "\nFATAL: SDR Watchdog triggered.\n");
-            fprintf(stderr, "FATAL: No data received from the %s device in over %d seconds.\n",
-                      input_device_name, (WATCHDOG_TIMEOUT_MS / 1000));
-            fprintf(stderr, "FATAL: The SDR driver has likely hung due to a crash or device removal.\n");
-            fprintf(stderr, "FATAL: Forcing application exit.\n");
-            fflush(stderr);
+            #ifndef _WIN32
+            const char msg[] = "\nFATAL: SDR Watchdog triggered.\n"
+                               "FATAL: No data received from device.\n"
+                               "FATAL: The SDR driver has likely hung due to a crash or device removal.\n"
+                               "FATAL: Forcing application exit.\n";
+            write(STDERR_FILENO, msg, sizeof(msg) - 1);
+#else
+            HANDLE hStdErr = GetStdHandle(STD_ERROR_HANDLE);
+            DWORD written;
+            const char* msg = "\nFATAL: SDR Watchdog triggered.\n"
+                              "FATAL: No data received from device.\n"
+                              "FATAL: The SDR driver has likely hung due to a crash or device removal.\n"
+                              "FATAL: Forcing application exit.\n";
+            WriteFile(hStdErr, msg, (DWORD)strlen(msg), &written, NULL);
+#endif
 
             // Terminate the entire process immediately. This is the only correct action
             // for an unrecoverable deadlock.
-            exit(EXIT_FAILURE);
+            _exit(EXIT_FAILURE);
         }
     }
 

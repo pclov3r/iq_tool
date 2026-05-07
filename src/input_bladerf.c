@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <limits.h>
+#include <stdatomic.h>
 
 // Module-specific includes
 #include <libbladeRF.h>
@@ -187,7 +188,7 @@ typedef struct {
     void **stream_buffers;
     size_t num_stream_buffers;
     size_t samples_per_buffer;
-    volatile bool stream_error;
+    atomic_bool stream_error;
     pthread_mutex_t driver_mutex;
 } BladerfContext;
 
@@ -466,7 +467,7 @@ static bool bladerf_input_initialize(ModuleContext* ctx) {
 
     private_data->rx_stream = NULL;
     private_data->stream_buffers = NULL;
-    private_data->stream_error = false;
+    atomic_init(&private_data->stream_error, false);
 
     log_info("BladeRF initialized successfully.");
     app->pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT;
@@ -568,7 +569,7 @@ static void* bladerf_rx_stream_callback(struct bladerf *dev, struct bladerf_stre
         return BLADERF_STREAM_NO_DATA;
     }
 
-    if (is_shutdown_requested() || app->stats.error_occurred || private_data->stream_error) {
+    if (is_shutdown_requested() || app->stats.error_occurred || atomic_load_explicit(&private_data->stream_error, memory_order_acquire)) {
         return BLADERF_STREAM_SHUTDOWN;
     }
 
@@ -681,7 +682,7 @@ static void bladerf_input_stop_stream(ModuleContext* ctx) {
     BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
     if (private_data && private_data->dev) {
         // Set error flag so callback returns BLADERF_STREAM_SHUTDOWN
-        private_data->stream_error = true;
+        atomic_store_explicit(&private_data->stream_error, true, memory_order_release);
 
         // Give the stream thread time to exit cleanly
 #ifdef _WIN32

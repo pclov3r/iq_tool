@@ -129,14 +129,14 @@ static float measure_rms_dbfs(const ComplexFloat *samples,
 {
     if (num_samples == 0) return -120.0f;
 
-    double sum_sq = 0.0;
+    float sum_sq = 0.0f;
     for (unsigned int i = 0; i < num_samples; i++) {
         float r = crealf(samples[i]);
         float j = cimagf(samples[i]);
-        sum_sq += (double)(r * r + j * j);
+        sum_sq += (r * r + j * j);
     }
 
-    float rms = sqrtf((float)(sum_sq / num_samples));
+    float rms = sqrtf(sum_sq / (float)num_samples);
     if (rms < 1e-9f) return -120.0f;
 
     return 20.0f * log10f(rms);

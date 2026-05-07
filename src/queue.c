@@ -87,8 +87,9 @@ bool queue_enqueue_forced(Queue* queue, void* item) {
     pthread_mutex_lock(&queue->mutex);
 
     // Wait for space (sanity check), but IGNORE shutting_down flag
-    while (queue->count == queue->capacity) {
-        pthread_cond_wait(&queue->not_full_cond, &queue->mutex);
+    if (queue->count == queue->capacity) {
+        pthread_mutex_unlock(&queue->mutex);
+        return false;
     }
 
     queue->buffer[queue->tail] = item;

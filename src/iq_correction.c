@@ -97,8 +97,7 @@ static bool __boost_initialized = false;
 // --- Internal State Structure ---
 typedef struct iq_state_s {
     // Shared State (Protected by Mutex)
-    _Atomic float phase;
-    _Atomic float amplitude;
+    _Atomic uint64_t packed_state;
 
     // Apply-Only State (Accessed only by DSP thread, no lock needed)
     float last_phase;
@@ -136,6 +135,21 @@ typedef struct iq_state_s {
 } IqState;
 
 // --- Forward Declarations ---
+
+static inline uint64_t pack_iq_state(float p, float a) {
+    uint32_t pi, ai;
+    memcpy(&pi, &p, sizeof(float));
+    memcpy(&ai, &a, sizeof(float));
+    return ((uint64_t)pi << 32) | ai;
+}
+
+static inline void unpack_iq_state(uint64_t packed, float* p, float* a) {
+    uint32_t pi = (uint32_t)(packed >> 32);
+    uint32_t ai = (uint32_t)(packed & 0xFFFFFFFF);
+    memcpy(p, &pi, sizeof(float));
+    memcpy(a, &ai, sizeof(float));
+}
+
 static void init_window(float * restrict w, int length);
 static void init_boost_window(void);
 static void apply_window(complex float * restrict buffer, float * restrict w, int length);
@@ -226,8 +240,9 @@ void iq_correction_apply(DspContext* dsp, ComplexFloat* samples, int num_samples
 
     // Lock briefly to read shared values.
     // This allows the optimizer to update them safely without tearing.
-    float current_phase = atomic_load_explicit(&st->phase, memory_order_relaxed);
-    float current_amp = atomic_load_explicit(&st->amplitude, memory_order_relaxed);
+    uint64_t packed = atomic_load_explicit(&st->packed_state, memory_order_relaxed);
+    float current_phase, current_amp;
+    unpack_iq_state(packed, &current_phase, &current_amp);
 
     float scale = 1.0f / (num_samples - 1);
     float last_phase = st->last_phase;
@@ -262,8 +277,9 @@ void iq_correction_run_optimization(DspContext* dsp, const ComplexFloat* optimiz
     IqState* st = (IqState*)dsp->iq_correct.internal_state;
 
     // Snapshot current values lock-free.
-    float start_phase = atomic_load_explicit(&st->phase, memory_order_relaxed);
-    float start_amp = atomic_load_explicit(&st->amplitude, memory_order_relaxed);
+    uint64_t packed_start = atomic_load_explicit(&st->packed_state, memory_order_relaxed);
+    float start_phase, start_amp;
+    unpack_iq_state(packed_start, &start_phase, &start_amp);
 
     // Perform heavy calculation UNLOCKED using local variables.
     // This prevents stalling the high-priority DSP thread.
@@ -273,8 +289,8 @@ void iq_correction_run_optimization(DspContext* dsp, const ComplexFloat* optimiz
     estimate_imbalance(st, optimization_data, FFTBins, start_phase, start_amp, &new_phase, &new_amp);
 
     // Lock-free commit.
-    atomic_store_explicit(&st->phase, new_phase, memory_order_relaxed);
-    atomic_store_explicit(&st->amplitude, new_amp, memory_order_relaxed);
+    uint64_t new_packed = pack_iq_state(new_phase, new_amp);
+    atomic_store_explicit(&st->packed_state, new_packed, memory_order_relaxed);
 
     // Debug logging (rate limited)
     static double last_debug_log_time = 0.0;
