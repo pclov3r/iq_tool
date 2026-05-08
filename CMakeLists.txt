@@ -204,6 +204,7 @@ set(NETWORK_SOURCES
 
 set(OTHER_SOURCES
     src/argparse.c
+    src/audio_output_functions.c
     src/cli.c
     src/config.c
     src/initialization.c

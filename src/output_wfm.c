@@ -39,7 +39,7 @@
  */
 
 #include "output_wfm.h"
-#include "miniaudio.h"
+#include "audio_output_functions.h"
 #include "module.h"
 #include "app_context.h"
 #include "log.h"
@@ -117,9 +117,7 @@ typedef struct {
 
 typedef struct {
     // Pipeline State
-    ma_device audio_device;
-    RingBuffer* audio_ring_buffer;
-    bool audio_device_initialized;
+    AudioOutputContext* audio_out;
 
     // DSP Objects (Liquid)
     freqdem fm_demod;           // I/Q -> MPX
@@ -237,29 +235,12 @@ static void deemphasis_destroy(DeEmphasis* de) {
     if (de->iir_r) iirfilt_rrrf_destroy(de->iir_r);
 }
 
-// --- Miniaudio Callback ---
-static void miniaudio_data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
-    (void)pInput;
-    WfmContext* ctx = (WfmContext*)pDevice->pUserData;
-    if (frameCount == 0) return;
-
-    size_t bytes_needed = frameCount * AUDIO_CHANNELS * sizeof(int16_t);
-    size_t available = ring_buffer_get_size(ctx->audio_ring_buffer);
-
-    if (available < bytes_needed) {
-        if (available > 0) ring_buffer_read(ctx->audio_ring_buffer, pOutput, available);
-        memset((uint8_t*)pOutput + available, 0, bytes_needed - available);
-        return;
-    }
-    ring_buffer_read(ctx->audio_ring_buffer, pOutput, bytes_needed);
-}
-
 // --- Module Interface Implementation ---
 
 static bool wfm_output_validate_options(AppConfig* config) {
     // 1. Force Pipeline Format to CF32
     // We need high-precision float I/Q for the FM demodulator.
-    config->output.format = CF32; 
+    config->output.format = CF32;
 
     // 2. Validate/Enforce MPX Rate
     if (config->output_rate.target_rate == 0.0) {
@@ -305,28 +286,8 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
     if (!p) return false;
     res->module.output_private_data = p;
 
-    // 1. Setup Audio Ring Buffer
-    p->audio_ring_buffer = ring_buffer_create(AUDIO_BUFFER_SIZE);
-    if (p->audio_ring_buffer) {
-        double bytes_per_sec = (double)AUDIO_SAMPLE_RATE * AUDIO_CHANNELS * sizeof(int16_t);
-        double duration = (double)AUDIO_BUFFER_SIZE / bytes_per_sec;
-        log_info("WFM: Audio Ring Buffer created: %zu bytes (%.2f seconds)", (size_t)AUDIO_BUFFER_SIZE, duration);
-    }
-    if (!p->audio_ring_buffer) return false;
-
-    // 2. Setup Miniaudio
-    ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
-    deviceConfig.playback.format   = ma_format_s16;
-    deviceConfig.playback.channels = AUDIO_CHANNELS;
-    deviceConfig.sampleRate        = AUDIO_SAMPLE_RATE;
-    deviceConfig.dataCallback      = miniaudio_data_callback;
-    deviceConfig.pUserData         = p;
-
-    if (ma_device_init(NULL, &deviceConfig, &p->audio_device) != MA_SUCCESS) {
-        log_fatal("WFM: Failed to initialize audio device.");
-        return false;
-    }
-    p->audio_device_initialized = true;
+    p->audio_out = audio_output_create(&res->pipeline.setup_arena, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_BUFFER_SIZE);
+    if (!p->audio_out) return false;
 
     // 3. DSP Configuration
     float mpx_rate = (float)ctx->config->output_rate.target_rate;
@@ -417,11 +378,7 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
         p->redsea = NULL;
     }
 #endif
-    // 7. Start Audio
-    if (ma_device_start(&p->audio_device) != MA_SUCCESS) {
-        log_error("WFM: Failed to start audio callback.");
-        return false;
-    }
+    
 
     return true;
 }
@@ -430,18 +387,13 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
 static void wfm_output_reset(ModuleContext* ctx) { (void)ctx; /* TODO: Reset PLL state */ }
 static void wfm_output_flush(ModuleContext* ctx) {
     WfmContext* p = (WfmContext*)ctx->app->module.output_private_data;
-    utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
+    audio_output_flush(p->audio_out);
 }
 static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
     AppContext* res = ctx->app;
     WfmContext* p = (WfmContext*)res->module.output_private_data;
 
-    // --- RESTORE BACKPRESSURE ---
-    const size_t THROTTLE_THRESHOLD = (size_t)(AUDIO_BUFFER_SIZE * 0.8);
-    if (p->audio_ring_buffer) {
-        ring_buffer_wait_for_threshold(p->audio_ring_buffer, THROTTLE_THRESHOLD);
-        if (is_shutdown_requested()) return 0;
-    }
+    
 
     static size_t stat_counter = 0;
     static double accum_mag_sum = 0.0, accum_mag_sq_sum = 0.0, accum_pilot_mag_sum = 0.0;
@@ -572,7 +524,7 @@ static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
     msresamp_rrrf_execute(p->resamp_out_l, p->audio_out_l, num_frames, p->audio_out_l, &num_resampled);
     msresamp_rrrf_execute(p->resamp_out_r, p->audio_out_r, num_frames, p->audio_out_r, &num_resampled);
     sample_convert_interleave_f32_to_s16(p->audio_out_l, p->audio_out_r, p->interleaved_pcm, num_resampled);
-    ring_buffer_write(p->audio_ring_buffer, p->interleaved_pcm, num_resampled * 2 * sizeof(int16_t));
+    audio_output_write(p->audio_out, p->interleaved_pcm, num_resampled * 2 * sizeof(int16_t), res->pipeline_mode);
     return input_bytes;
 }
 
@@ -581,12 +533,7 @@ static void wfm_output_cleanup(ModuleContext* ctx) {
     if (!res->module.output_private_data) return;
     WfmContext* p = (WfmContext*)res->module.output_private_data;
 
-    if (p->audio_device_initialized) {
-        ma_device_uninit(&p->audio_device);
-    }
-    if (p->audio_ring_buffer) {
-        ring_buffer_destroy(p->audio_ring_buffer);
-    }
+    audio_output_destroy(p->audio_out);
 
     if (p->fm_demod) freqdem_destroy(p->fm_demod);
     if (p->nco_pilot_approx) nco_crcf_destroy(p->nco_pilot_approx);

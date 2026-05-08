@@ -16,7 +16,7 @@
 #endif
 
 #include "output_nrsc5.h"
-#include "miniaudio.h"
+#include "audio_output_functions.h"
 #include "module.h"
 #include "app_context.h"
 #include "log.h"
@@ -45,9 +45,7 @@ typedef enum {
 typedef struct {
     // Instance State
     nrsc5_t* nrsc5_inst;
-    ma_device audio_device;
-    RingBuffer* audio_ring_buffer;
-    bool audio_device_initialized;
+    AudioOutputContext* audio_out;
     unsigned int active_program;
 
     // BER Stats
@@ -77,29 +75,6 @@ static struct {
 
 // --- Forward Declarations ---
 static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque);
-static void miniaudio_data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount);
-
-// --- Miniaudio Callback ---
-static void miniaudio_data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
-    (void)pInput;
-    Nrsc5Context* ctx = (Nrsc5Context*)pDevice->pUserData;
-
-    if (frameCount == 0) return;
-
-    size_t bytes_needed = frameCount * NRSC5_AUDIO_CHANNELS * sizeof(int16_t);
-
-    // Check availability to prevent deadlock at startup.
-    size_t available = ring_buffer_get_size(ctx->audio_ring_buffer);
-
-    if (available < bytes_needed) {
-        if (available > 0) ring_buffer_read(ctx->audio_ring_buffer, pOutput, available);
-        memset((uint8_t*)pOutput + available, 0, bytes_needed - available);
-        return;
-    }
-
-    // We know we have enough data, so this call will not sleep.
-    ring_buffer_read(ctx->audio_ring_buffer, pOutput, bytes_needed);
-}
 
 // --- Helper: BER Stats ---
 static void update_ber_stats(Nrsc5Context* ctx, float cber) {
@@ -188,7 +163,7 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
                 size_t bytes = evt->audio.count * sizeof(int16_t);
 
                 // Write to ring buffer. If full, it drops data (safe).
-                ring_buffer_write(ctx->audio_ring_buffer, evt->audio.data, bytes);
+                audio_output_write(ctx->audio_out, evt->audio.data, bytes, PIPELINE_MODE_BUFFERED_INPUT);
             }
             break;
 
@@ -354,28 +329,8 @@ static bool nrsc5_output_initialize(ModuleContext* ctx) {
     nrsc5_get_version(&ver_str);
     log_info("NRSC5: Library version %s", SAFE_STR(ver_str));
 
-    // Initialize Ring Buffer
-    p->audio_ring_buffer = ring_buffer_create(NRSC5_AUDIO_BUFFER_SIZE);
-    if (p->audio_ring_buffer) {
-        double bytes_per_sec = (double)NRSC5_AUDIO_SAMPLE_RATE * NRSC5_AUDIO_CHANNELS * sizeof(int16_t);
-        double duration = (double)NRSC5_AUDIO_BUFFER_SIZE / bytes_per_sec;
-        log_info("NRSC5: Audio Ring Buffer created: %zu bytes (%.2f seconds)", (size_t)NRSC5_AUDIO_BUFFER_SIZE, duration);
-    }
-    if (!p->audio_ring_buffer) return false;
-
-    // Initialize Miniaudio
-    ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
-    deviceConfig.playback.format   = ma_format_s16;
-    deviceConfig.playback.channels = NRSC5_AUDIO_CHANNELS;
-    deviceConfig.sampleRate        = NRSC5_AUDIO_SAMPLE_RATE;
-    deviceConfig.dataCallback      = miniaudio_data_callback;
-    deviceConfig.pUserData         = p;
-
-    if (ma_device_init(NULL, &deviceConfig, &p->audio_device) != MA_SUCCESS) {
-        log_fatal("NRSC5: Failed to initialize audio playback device.");
-        return false;
-    }
-    p->audio_device_initialized = true;
+    p->audio_out = audio_output_create(&app->pipeline.setup_arena, NRSC5_AUDIO_SAMPLE_RATE, NRSC5_AUDIO_CHANNELS, NRSC5_AUDIO_BUFFER_SIZE);
+    if (!p->audio_out) return false;
     log_info("NRSC5: Audio device initialized (%d Hz, %d Channels).", NRSC5_AUDIO_SAMPLE_RATE, NRSC5_AUDIO_CHANNELS);
 
     // Initialize NRSC5 Instance
@@ -414,12 +369,7 @@ static bool nrsc5_output_initialize(ModuleContext* ctx) {
     log_debug("NRSC5: Starting decoder thread...");
     nrsc5_start(p->nrsc5_inst);
 
-    // Start Audio Device
-    log_debug("NRSC5: Starting audio device...");
-    if (ma_device_start(&p->audio_device) != MA_SUCCESS) {
-        log_error("NRSC5: Failed to start audio device.");
-        return false;
-    }
+    
 
     return true;
 }
@@ -428,19 +378,14 @@ static bool nrsc5_output_initialize(ModuleContext* ctx) {
 static void nrsc5_output_reset(ModuleContext* ctx) { (void)ctx; }
 static void nrsc5_output_flush(ModuleContext* ctx) {
     Nrsc5Context* p = (Nrsc5Context*)ctx->app->module.output_private_data;
-    utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
+    audio_output_flush(p->audio_out);
 }
 static size_t nrsc5_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
     AppContext* app = ctx->app;
     Nrsc5Context* p = (Nrsc5Context*)app->module.output_private_data;
     if (input_bytes == 0) return 0;
 
-    // --- RESTORE BACKPRESSURE ---
-    const size_t THROTTLE_THRESHOLD = (size_t)(NRSC5_AUDIO_BUFFER_SIZE * 0.8);
-    if (p->audio_ring_buffer) {
-        ring_buffer_wait_for_threshold(p->audio_ring_buffer, THROTTLE_THRESHOLD);
-        if (is_shutdown_requested()) return 0;
-    }
+    
 
     unsigned int frames = input_bytes / app->module.output_bytes_per_sample_pair;
     unsigned int num_scalars = frames * 2;
@@ -466,18 +411,12 @@ static void nrsc5_output_cleanup(ModuleContext* ctx) {
     if (!app->module.output_private_data) return;
     Nrsc5Context* p = (Nrsc5Context*)app->module.output_private_data;
 
-    if (p->audio_device_initialized) {
-        ma_device_uninit(&p->audio_device);
-    }
-
+    audio_output_destroy(p->audio_out);
+    
     if (p->nrsc5_inst) {
         nrsc5_stop(p->nrsc5_inst);
         nrsc5_close(p->nrsc5_inst);
         p->nrsc5_inst = NULL;
-    }
-
-    if (p->audio_ring_buffer) {
-        ring_buffer_destroy(p->audio_ring_buffer);
     }
 }
 

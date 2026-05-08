@@ -1,5 +1,5 @@
 #include "output_am.h"
-#include "miniaudio.h"
+#include "audio_output_functions.h"
 #include "module.h"
 #include "app_context.h"
 #include "log.h"
@@ -75,9 +75,7 @@
 
 typedef struct {
     // Pipeline State
-    ma_device audio_device;
-    RingBuffer* audio_ring_buffer;
-    bool audio_device_initialized;
+    AudioOutputContext* audio_out;
 
     // DSP Objects (Liquid)
     nco_crcf pll;               // Sync AM PLL
@@ -130,23 +128,6 @@ static struct {
     .force_envelope = 0       // Default: 0 (Sync AM is Active)
 };
 
-// --- Miniaudio Callback ---
-static void miniaudio_data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
-    (void)pInput;
-    AmContext* ctx = (AmContext*)pDevice->pUserData;
-    if (frameCount == 0) return;
-
-    size_t bytes_needed = frameCount * AUDIO_CHANNELS * sizeof(int16_t);
-    size_t available = ring_buffer_get_size(ctx->audio_ring_buffer);
-
-    if (available < bytes_needed) {
-        if (available > 0) ring_buffer_read(ctx->audio_ring_buffer, pOutput, available);
-        memset((uint8_t*)pOutput + available, 0, bytes_needed - available);
-        return;
-    }
-    ring_buffer_read(ctx->audio_ring_buffer, pOutput, bytes_needed);
-}
-
 // --- Module Interface Implementation ---
 
 static bool am_output_validate_options(AppConfig* config) {
@@ -177,28 +158,8 @@ static bool am_output_initialize(ModuleContext* ctx) {
     if (!p) return false;
     res->module.output_private_data = p;
 
-    // 1. Setup Audio Ring Buffer
-    p->audio_ring_buffer = ring_buffer_create(AUDIO_BUFFER_SIZE);
-    if (p->audio_ring_buffer) {
-        double bytes_per_sec = (double)AUDIO_SAMPLE_RATE * AUDIO_CHANNELS * sizeof(int16_t);
-        double duration = (double)AUDIO_BUFFER_SIZE / bytes_per_sec;
-        log_info("AM: Audio Ring Buffer created: %zu bytes (%.2f seconds)", (size_t)AUDIO_BUFFER_SIZE, duration);
-    }
-    if (!p->audio_ring_buffer) return false;
-
-    // 2. Setup Miniaudio
-    ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
-    deviceConfig.playback.format   = ma_format_s16;
-    deviceConfig.playback.channels = AUDIO_CHANNELS;
-    deviceConfig.sampleRate        = AUDIO_SAMPLE_RATE;
-    deviceConfig.dataCallback      = miniaudio_data_callback;
-    deviceConfig.pUserData         = p;
-
-    if (ma_device_init(NULL, &deviceConfig, &p->audio_device) != MA_SUCCESS) {
-        log_fatal("AM: Failed to initialize audio device.");
-        return false;
-    }
-    p->audio_device_initialized = true;
+    p->audio_out = audio_output_create(&res->pipeline.setup_arena, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_BUFFER_SIZE);
+    if (!p->audio_out) return false;
 
     // 3. DSP Configuration
     float input_rate = (float)ctx->config->output_rate.target_rate;
@@ -271,11 +232,7 @@ static bool am_output_initialize(ModuleContext* ctx) {
 
     if (!p->mono_buffer || !p->resamp_buffer || !p->interleaved_pcm) return false;
 
-    // 6. Start Audio
-    if (ma_device_start(&p->audio_device) != MA_SUCCESS) {
-        log_error("AM: Failed to start audio callback.");
-        return false;
-    }
+    
 
     return true;
 }
@@ -284,18 +241,13 @@ static bool am_output_initialize(ModuleContext* ctx) {
 static void am_output_reset(ModuleContext* ctx) { (void)ctx; /* TODO: Reset PLL state */ }
 static void am_output_flush(ModuleContext* ctx) {
     AmContext* p = (AmContext*)ctx->app->module.output_private_data;
-    utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
+    audio_output_flush(p->audio_out);
 }
 static size_t am_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
     AppContext* res = ctx->app;
     AmContext* p = (AmContext*)res->module.output_private_data;
 
-    // --- RESTORE BACKPRESSURE ---
-    const size_t THROTTLE_THRESHOLD = (size_t)(AUDIO_BUFFER_SIZE * 0.8);
-    if (p->audio_ring_buffer) {
-        ring_buffer_wait_for_threshold(p->audio_ring_buffer, THROTTLE_THRESHOLD);
-        if (is_shutdown_requested()) return 0;
-    }
+    
 
     const float pcm_scale = 32767.0f;
 
@@ -388,7 +340,7 @@ static size_t am_output_write_chunk(ModuleContext* ctx, const void* buffer, size
         p->interleaved_pcm[2*i + 1] = pcm;
     }
 
-    ring_buffer_write(p->audio_ring_buffer, p->interleaved_pcm, num_resampled * 2 * sizeof(int16_t));
+    audio_output_write(p->audio_out, p->interleaved_pcm, num_resampled * 2 * sizeof(int16_t), res->pipeline_mode);
     return input_bytes;
 }
 
@@ -398,8 +350,7 @@ static void am_output_cleanup(ModuleContext* ctx) {
     if (!res->module.output_private_data) return;
     AmContext* p = (AmContext*)res->module.output_private_data;
 
-    if (p->audio_device_initialized) ma_device_uninit(&p->audio_device);
-    if (p->audio_ring_buffer) ring_buffer_destroy(p->audio_ring_buffer);
+    audio_output_destroy(p->audio_out);
 
     if (p->pll) nco_crcf_destroy(p->pll);
     if (p->agc) agc_rrrf_destroy(p->agc);

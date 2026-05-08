@@ -1,5 +1,5 @@
 #include "output_nfm.h"
-#include "miniaudio.h"
+#include "audio_output_functions.h"
 #include "module.h"
 #include "app_context.h"
 #include "log.h"
@@ -23,8 +23,8 @@
 
 // --- Constants ---
 #define NFM_AUDIO_RATE          48000
-#define NFM_AUDIO_CHANNELS      2       // Output is Stereo (Mono duplicated)
-#define NFM_BUFFER_SIZE         (128 * 1024)
+#define NFM_AUDIO_CHANNELS      2 // Output is Stereo (Mono duplicated)
+#define NFM_AUDIO_BUFFER_SIZE   (128 * 1024)
 
 // Rate Constraints
 #define NFM_MIN_INPUT_RATE      16000.0
@@ -49,9 +49,7 @@
 // --- Context ---
 typedef struct {
     // Pipeline
-    ma_device audio_device;
-    RingBuffer* audio_ring_buffer;
-    bool audio_device_initialized;
+    AudioOutputContext* audio_out;
 
     // DSP
     freqdem fm_demod;           // Liquid FM Demodulator
@@ -90,23 +88,6 @@ static struct {
     .disable_discriminator_filter = 0 // Default to Filter Enabled (Voice mode)
 };
 
-// --- Miniaudio Callback ---
-static void miniaudio_data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
-    (void)pInput;
-    NfmContext* ctx = (NfmContext*)pDevice->pUserData;
-    if (frameCount == 0) return;
-
-    size_t bytes_needed = frameCount * NFM_AUDIO_CHANNELS * sizeof(int16_t);
-    size_t available = ring_buffer_get_size(ctx->audio_ring_buffer);
-
-    if (available < bytes_needed) {
-        if (available > 0) ring_buffer_read(ctx->audio_ring_buffer, pOutput, available);
-        memset((uint8_t*)pOutput + available, 0, bytes_needed - available);
-        return;
-    }
-    ring_buffer_read(ctx->audio_ring_buffer, pOutput, bytes_needed);
-}
-
 // --- Module Interface ---
 
 static bool nfm_output_validate_options(AppConfig* config) {
@@ -134,27 +115,8 @@ static bool nfm_output_initialize(ModuleContext* ctx) {
     NfmContext* p = (NfmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(NfmContext), true);
     res->module.output_private_data = p;
 
-    // 1. Audio Buffer
-    p->audio_ring_buffer = ring_buffer_create(NFM_BUFFER_SIZE);
-    if (p->audio_ring_buffer) {
-        double bytes_per_sec = (double)NFM_AUDIO_RATE * NFM_AUDIO_CHANNELS * sizeof(int16_t);
-        double duration = (double)NFM_BUFFER_SIZE / bytes_per_sec;
-        log_info("NFM: Audio Ring Buffer created: %zu bytes (%.2f seconds)", (size_t)NFM_BUFFER_SIZE, duration);
-    }
-
-    // 2. Miniaudio
-    ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
-    deviceConfig.playback.format   = ma_format_s16;
-    deviceConfig.playback.channels = NFM_AUDIO_CHANNELS;
-    deviceConfig.sampleRate        = NFM_AUDIO_RATE;
-    deviceConfig.dataCallback      = miniaudio_data_callback;
-    deviceConfig.pUserData         = p;
-
-    if (ma_device_init(NULL, &deviceConfig, &p->audio_device) != MA_SUCCESS) {
-        log_fatal("NFM: Audio init failed.");
-        return false;
-    }
-    p->audio_device_initialized = true;
+    p->audio_out = audio_output_create(&res->pipeline.setup_arena, NFM_AUDIO_RATE, NFM_AUDIO_CHANNELS, NFM_AUDIO_BUFFER_SIZE);
+    if (!p->audio_out) return false;
 
     // 3. DSP Setup
     p->input_samplerate = (float)ctx->config->output_rate.target_rate;
@@ -192,7 +154,7 @@ static bool nfm_output_initialize(ModuleContext* ctx) {
     p->resamp_buffer = mem_arena_alloc(&res->pipeline.setup_arena, out_samples * sizeof(float), false);
     p->pcm_out       = mem_arena_alloc(&res->pipeline.setup_arena, out_samples * 2 * sizeof(int16_t), false);
 
-    if (ma_device_start(&p->audio_device) != MA_SUCCESS) return false;
+    
 
     return true;
 }
@@ -201,18 +163,13 @@ static bool nfm_output_initialize(ModuleContext* ctx) {
 static void nfm_output_reset(ModuleContext* ctx) { (void)ctx; }
 static void nfm_output_flush(ModuleContext* ctx) {
     NfmContext* p = (NfmContext*)ctx->app->module.output_private_data;
-    utils_wait_for_ring_buffer_drain(p->audio_ring_buffer, 10, 200, 200);
+    audio_output_flush(p->audio_out);
 }
 static size_t nfm_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
     AppContext* res = ctx->app;
     NfmContext* p = (NfmContext*)res->module.output_private_data;
     
-    // --- RESTORE BACKPRESSURE ---
-    const size_t THROTTLE_THRESHOLD = (size_t)(NFM_BUFFER_SIZE * 0.8);
-    if (p->audio_ring_buffer) {
-        ring_buffer_wait_for_threshold(p->audio_ring_buffer, THROTTLE_THRESHOLD);
-        if (is_shutdown_requested()) return 0;
-    }
+    
 
     static size_t stat_counter = 0;
     static double accum_mag_sum = 0.0, accum_mag_sq_sum = 0.0;
@@ -267,7 +224,7 @@ static size_t nfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
     unsigned int num_resampled;
     msresamp_rrrf_execute(p->resampler, p->mono_buffer, n, p->resamp_buffer, &num_resampled);
     sample_convert_interleave_f32_to_s16(p->resamp_buffer, p->resamp_buffer, p->pcm_out, num_resampled);
-    ring_buffer_write(p->audio_ring_buffer, p->pcm_out, num_resampled * 2 * sizeof(int16_t));
+    audio_output_write(p->audio_out, p->pcm_out, num_resampled * 2 * sizeof(int16_t), res->pipeline_mode);
     return input_bytes;
 }
 
@@ -276,8 +233,7 @@ static void nfm_output_cleanup(ModuleContext* ctx) {
     if (!res->module.output_private_data) return;
     NfmContext* p = (NfmContext*)res->module.output_private_data;
 
-    if (p->audio_device_initialized) ma_device_uninit(&p->audio_device);
-    if (p->audio_ring_buffer) ring_buffer_destroy(p->audio_ring_buffer);
+    audio_output_destroy(p->audio_out);
     if (p->fm_demod) freqdem_destroy(p->fm_demod);
     if (p->deemph_filter) iirfilt_rrrf_destroy(p->deemph_filter);
     if (p->audio_lpf) iirfilt_rrrf_destroy(p->audio_lpf);
