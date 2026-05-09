@@ -172,7 +172,7 @@ bool sample_convert_block_to_cf32(const void* restrict input_buffer, ComplexFloa
 
             // Unrolled Loop: Processes 4 samples (8 components) per iteration.
             // This exposes instruction-level parallelism to the CPU.
-            for (; i + 4 <= num_frames; i += 4) {
+            for (; i + 4 < num_frames; i += 4) {
                 CS24_IN_STEP(0, 0);  // Sample 0 I
                 CS24_IN_STEP(1, 3);  // Sample 0 Q
                 CS24_IN_STEP(2, 6);  // Sample 1 I
@@ -293,7 +293,7 @@ bool sample_convert_cf32_to_block(const ComplexFloat* restrict input_buffer, voi
                 } while (0)
 
             // Unrolled Loop: Processes 4 samples (8 components) per iteration.
-            for (; i + 4 <= num_frames; i += 4) {
+            for (; i + 4 < num_frames; i += 4) {
                 CS24_OUT_STEP(0, 0);
                 CS24_OUT_STEP(1, 3);
                 CS24_OUT_STEP(2, 6);

@@ -355,7 +355,7 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
         // It must hold the "Overlap" (approx master_taps_len) + the "Max Incoming Data Chunk".
         // The incoming data comes from the pipeline, so we use pipeline_alloc_size_samples.
         // We add a small safety pad (+64) just to be safe.
-        size_t scratch_needed = app->pipeline.alloc_size_samples + master_taps_len + 64;
+        size_t scratch_needed = app->pipeline.alloc_size_samples + app->dsp.filter.block_size + 64;
 
         app->dsp.filter.fft_scratch_buffer = (ComplexFloat*)mem_arena_alloc(
             arena,
