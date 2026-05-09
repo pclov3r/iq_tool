@@ -243,7 +243,7 @@ bool validate_filter_options(AppConfig *config) {
     }
 
     if (config->dsp.filter.args.attenuation == 0.0f) {
-        float resolved_attenuation = DEFAULT_FILTER_ATTENUATION;
+        float resolved_attenuation = 60.0f;
         const Module* in_mod = module_get(config->input.type_name, MODULE_TYPE_INPUT, NULL);
         if (in_mod) {
             if (in_mod->default_attenuation > 0.0f) {
