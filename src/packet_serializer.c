@@ -5,6 +5,7 @@
 #include "pipeline_types.h"
 #include "ring_buffer.h"
 #include "sample_convert.h"
+#include "sample_format_table.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -20,7 +21,8 @@ static bool _has_space_for(RingBuffer* buffer, size_t bytes_needed) {
 // --- WRITE IMPLEMENTATION ---
 
 bool packet_serializer_write_block(RingBuffer* buffer, uint32_t num_samples, const void* sample_data, SampleFormat format) {
-    size_t bytes_per_sample = sample_convert_bytes_per_sample(format);
+    const SampleFormatInfo* fmt_info = get_format_info_by_enum(format);
+    size_t bytes_per_sample = fmt_info ? fmt_info->bytes_per_pair : 0;
     size_t data_size = num_samples * bytes_per_sample;
     size_t total_needed = sizeof(PacketHeader) + data_size;
 
@@ -98,7 +100,8 @@ int64_t packet_serializer_read_packet(RingBuffer* buffer,
     }
 
     // Validate format
-    size_t bpp = sample_convert_bytes_per_sample(state->current_packet_format);
+    const SampleFormatInfo* pkt_fmt_info = get_format_info_by_enum(state->current_packet_format);
+    size_t bpp = pkt_fmt_info ? pkt_fmt_info->bytes_per_pair : 0;
     if (bpp == 0) return -1;
 
     // Validate capacity

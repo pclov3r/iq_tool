@@ -96,32 +96,6 @@
         } \
     } while (0)
 
-
-/**
- * @brief Gets the number of bytes for a single sample of the given format.
- */
-size_t sample_convert_bytes_per_sample(SampleFormat format) {
-    switch (format) {
-        case S8:   return sizeof(int8_t);
-        case U8:   return sizeof(uint8_t);
-        case S16:  return sizeof(int16_t);
-        case U16:  return sizeof(uint16_t);
-        case S32:  return sizeof(int32_t);
-        case U32:  return sizeof(uint32_t);
-        case F32:  return sizeof(float);
-        case CS8:  return sizeof(int8_t) * 2;
-        case CU8:  return sizeof(uint8_t) * 2;
-        case CS16: return sizeof(int16_t) * 2;
-        case CU16: return sizeof(uint16_t) * 2;
-        case CS24: return 3 * 2;
-        case CS32: return sizeof(int32_t) * 2;
-        case CU32: return sizeof(uint32_t) * 2;
-        case CF32: return sizeof(ComplexFloat);
-        case SC16Q11: return sizeof(int16_t) * 2;
-        default:   return 0;
-    }
-}
-
 /**
  * @brief Converts a block of samples from a source format to complex float (cf32).
  */

@@ -3,6 +3,7 @@
 #include "log.h"
 #include "signal_handler.h"
 #include "utils.h"
+#include "sample_format_table.h"
 #include "app_context.h"
 #include "platform.h"
 #include "sample_convert.h"
@@ -111,15 +112,15 @@ static bool rawfile_input_initialize(ModuleContext* ctx) {
     }
     app->module.input_private_data = private_data;
 
-    app->module.input_format = utils_get_format_from_string(s_rawfile_config.format_str);
+    app->module.input_format = get_format_info_by_name(s_rawfile_config.format_str) ? get_format_info_by_name(s_rawfile_config.format_str)->format_enum : FORMAT_UNKNOWN;
     if (app->module.input_format == FORMAT_UNKNOWN) {
         log_fatal("Invalid RAW input format '%s'. See --help for valid formats.", s_rawfile_config.format_str);
         return false;
     }
 
-    app->module.input_bytes_per_sample_pair = sample_convert_bytes_per_sample(app->module.input_format);
+    app->module.input_bytes_per_sample_pair = get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->bytes_per_pair : 0;
     if (!config->dsp.dbm_offset_provided) {
-        app->module.input_dbm_offset = utils_get_format_dbm_offset(app->module.input_format);
+        app->module.input_dbm_offset = get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->dbm_offset : 0.0f;
     }
     if (app->module.input_bytes_per_sample_pair == 0) {
         log_fatal("Internal error: could not determine sample size for format '%s'.", s_rawfile_config.format_str);

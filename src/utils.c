@@ -22,33 +22,6 @@
 #include <unistd.h>
 #endif
 
-// --- The Single Source of Truth for Sample Formats ---
-typedef struct {
-    SampleFormat format_enum;
-    const char* name_str;
-    const char* description_str;
-} SampleFormatInfo;
-
-static const SampleFormatInfo format_table[] = {
-    { S8,      "s8",      "s8 (Signed 8-bit Real)" },
-    { U8,      "u8",      "u8 (Unsigned 8-bit Real)" },
-    { S16,     "s16",     "s16 (Signed 16-bit Real)" },
-    { U16,     "u16",     "u16 (Unsigned 16-bit Real)" },
-    { S32,     "s32",     "s32 (Signed 32-bit Real)" },
-    { U32,     "u32",     "u32 (Unsigned 32-bit Real)" },
-    { F32,     "f32",     "f32 (32-bit Float Real)" },
-    { CU8,     "cu8",     "cu8 (Unsigned 8-bit Complex)" },
-    { CS8,     "cs8",     "cs8 (Signed 8-bit Complex)" },
-    { CU16,    "cu16",    "cu16 (Unsigned 16-bit Complex)" },
-    { CS16,    "cs16",    "cs16 (Signed 16-bit Complex)" },
-    { CS24,    "cs24",    "cs24 (Signed 24-bit Complex)" },
-    { CU32,    "cu32",    "cu32 (Unsigned 32-bit Complex)" },
-    { CS32,    "cs32",    "cs32 (Signed 32-bit Complex)" },
-    { CF32,    "cf32",    "cf32 (32-bit Float Complex)" },
-    { SC16Q11, "sc16q11", "sc16q11 (16-bit Signed Complex Q4.11)" },
-};
-static const int num_formats = sizeof(format_table) / sizeof(format_table[0]);
-
 double utils_get_time(void) {
 #ifdef _WIN32
     LARGE_INTEGER freq, count;
@@ -166,25 +139,6 @@ void utils_format_duration(double total_seconds, char* buffer, size_t buffer_siz
     snprintf(buffer, buffer_size, "%02d:%02d:%02d", hours, minutes, seconds);
 }
 
-SampleFormat utils_get_format_from_string(const char *name) {
-    if (!name) return FORMAT_UNKNOWN;
-    for (int i = 0; i < num_formats; ++i) {
-        if (strcasecmp(name, format_table[i].name_str) == 0) {
-            return format_table[i].format_enum;
-        }
-    }
-    return FORMAT_UNKNOWN;
-}
-
-const char* utils_get_format_description_string(SampleFormat format) {
-    for (int i = 0; i < num_formats; ++i) {
-        if (format == format_table[i].format_enum) {
-            return format_table[i].description_str;
-        }
-    }
-    return "Unknown";
-}
-
 bool utils_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz, const char* context_str) {
     if (!context_str || sample_rate_hz <= 0) {
         return true; // Cannot perform check, so allow continuation.
@@ -225,58 +179,3 @@ bool utils_check_file_exists(const char* full_path) {
     return false;
 }
 
-
-
-float utils_get_format_dbm_offset(SampleFormat format) {
-    switch (format) {
-        case S8:
-        case U8:
-        case CS8:
-        case CU8:
-            return FORMAT_DBM_OFFSET_8BIT;
-        case S16:
-        case U16:
-        case CS16:
-        case CU16:
-        case SC16Q11:
-            return FORMAT_DBM_OFFSET_16BIT;
-        case CS24:
-            return FORMAT_DBM_OFFSET_24BIT;
-        case S32:
-        case U32:
-        case CS32:
-        case CU32:
-        case F32:
-        case CF32:
-            return FORMAT_DBM_OFFSET_32BIT;
-        default:
-            return 0.0f;
-    }
-}
-
-float utils_get_format_attenuation_db(SampleFormat format) {
-    switch (format) {
-        case S8:
-        case U8:
-        case CS8:
-        case CU8:
-            return FORMAT_ATTENUATION_8BIT;
-        case S16:
-        case U16:
-        case CS16:
-        case CU16:
-        case SC16Q11:
-            return FORMAT_ATTENUATION_16BIT;
-        case CS24:
-            return FORMAT_ATTENUATION_24BIT;
-        case S32:
-        case U32:
-        case CS32:
-        case CU32:
-        case F32:
-        case CF32:
-            return FORMAT_ATTENUATION_32BIT;
-        default:
-            return FORMAT_ATTENUATION_8BIT;
-    }
-}

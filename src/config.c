@@ -4,6 +4,7 @@
 #include "log.h"
 #include "module_registry.h"
 #include "utils.h"
+#include "sample_format_table.h"
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -174,7 +175,7 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
     }
 
     // --- Step 5: Final Validation of Formats and Combinations ---
-    config->output.format = utils_get_format_from_string(config->output.format_name);
+    config->output.format = get_format_info_by_name(config->output.format_name) ? get_format_info_by_name(config->output.format_name)->format_enum : FORMAT_UNKNOWN;
     if (config->output.format == FORMAT_UNKNOWN) {
         log_fatal("Invalid sample format '%s'. See --help for valid formats.", config->output.format_name);
         return false;
@@ -242,13 +243,13 @@ bool validate_filter_options(AppConfig *config) {
     }
 
     if (config->dsp.filter.args.attenuation == 0.0f) {
-        float resolved_attenuation = 60.0f;
+        float resolved_attenuation = DEFAULT_FILTER_ATTENUATION;
         const Module* in_mod = module_get(config->input.type_name, MODULE_TYPE_INPUT, NULL);
         if (in_mod) {
             if (in_mod->default_attenuation > 0.0f) {
                 resolved_attenuation = in_mod->default_attenuation;
             } else {
-                resolved_attenuation = utils_get_format_attenuation_db(config->output.format);
+                resolved_attenuation = get_format_info_by_enum(config->output.format) ? get_format_info_by_enum(config->output.format)->attenuation_db : 60.0f;
             }
         }
         config->dsp.filter.args.attenuation = resolved_attenuation;

@@ -7,6 +7,7 @@
 #include "log.h"
 #include "freq_shift.h"
 #include "utils.h"
+#include "sample_format_table.h"
 #include "input_common.h"
 #include "mem_arena.h"
 #include "argparse.h"
@@ -413,7 +414,7 @@ static bool airspyhf_input_initialize(ModuleContext* ctx) {
         }
     }
 
-    app->module.input_bytes_per_sample_pair = sample_convert_bytes_per_sample(CF32);
+    app->module.input_bytes_per_sample_pair = (get_format_info_by_enum(CF32) ? get_format_info_by_enum(CF32)->bytes_per_pair : 0);
     app->module.source_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
     app->module.source_info.frames = -1;
 

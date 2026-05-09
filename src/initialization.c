@@ -8,6 +8,7 @@
 #include "constants.h"
 #include "platform.h"
 #include "utils.h"
+#include "sample_format_table.h"
 #include "log.h"
 #include "module.h"
 #include "module_registry.h"
@@ -326,7 +327,7 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
         // --- Monolithic Tray Allocation (Contiguous Metadata + Data) ---
     size_t raw_stride     = ALIGN_UP(app->pipeline.alloc_size_samples * app->module.input_bytes_per_sample_pair, MEM_ARENA_ALIGNMENT);
     size_t complex_stride = ALIGN_UP(app->pipeline.alloc_size_samples * sizeof(ComplexFloat), MEM_ARENA_ALIGNMENT);
-    app->module.output_bytes_per_sample_pair = sample_convert_bytes_per_sample(config->output.format);
+    app->module.output_bytes_per_sample_pair = get_format_info_by_enum(config->output.format) ? get_format_info_by_enum(config->output.format)->bytes_per_pair : 0;
     size_t final_stride   = ALIGN_UP(app->pipeline.alloc_size_samples * app->module.output_bytes_per_sample_pair, MEM_ARENA_ALIGNMENT);
 
     size_t struct_stride   = ALIGN_UP(sizeof(SampleChunk), MEM_ARENA_ALIGNMENT);
@@ -492,7 +493,7 @@ void print_configuration_summary(const AppConfig *config, const AppContext* app)
         }
     }
 
-    const char* sample_type_str = utils_get_format_description_string(config->output.format);
+    const char* sample_type_str = get_format_info_by_enum(config->output.format) ? get_format_info_by_enum(config->output.format)->description_str : "Unknown";
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Sample Type", sample_type_str);
 
     fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Output Rate", config->output_rate.target_rate);
@@ -625,8 +626,8 @@ bool initialize_application(AppConfig *config, AppContext* app) {
             log_fatal("Option --raw-passthrough requires input and output formats to be identical.");
             log_fatal("Input module '%s' provides '%s', but output is configured for '%s'.",
                       config->input.type_name,
-                      utils_get_format_description_string(app->module.input_format),
-                      utils_get_format_description_string(config->output.format));
+                      get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->description_str : "Unknown",
+                      get_format_info_by_enum(config->output.format) ? get_format_info_by_enum(config->output.format)->description_str : "Unknown");
             return false;
         }
     }

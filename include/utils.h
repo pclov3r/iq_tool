@@ -75,20 +75,6 @@ char* utils_trim_whitespace(char* str);
 void utils_format_duration(double total_seconds, char* buffer, size_t buffer_size);
 
 /**
- * @brief Converts a sample format name string (e.g., "cs16") to its corresponding SampleFormat enum.
- * @param name The string name of the format.
- * @return The SampleFormat enum value, or FORMAT_UNKNOWN if not found.
- */
-SampleFormat utils_get_format_from_string(const char *name);
-
-/**
- * @brief Converts a SampleFormat enum value to its full, human-readable description.
- * @param format The enum value.
- * @return A constant string with the full description.
- */
-const char* utils_get_format_description_string(SampleFormat format);
-
-/**
  * @brief Checks if a given frequency exceeds the Nyquist frequency for a sample rate and warns the user.
  * @param freq_to_check_hz The frequency in Hz to check.
  * @param sample_rate_hz The sample rate in Hz.
@@ -103,10 +89,5 @@ bool utils_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz,
  * @return true if the file exists and can be opened for reading, false otherwise.
  */
 bool utils_check_file_exists(const char* full_path);
-
-
-
-float utils_get_format_dbm_offset(SampleFormat format);
-float utils_get_format_attenuation_db(SampleFormat format);
 
 #endif // UTILS_H_

@@ -17,7 +17,7 @@
  * @param format The sample format.
  * @return The size in bytes, or 0 for unknown formats.
  */
-size_t sample_convert_bytes_per_sample(SampleFormat format);
+
 
 /**
  * @brief Converts a block of samples from a source format to complex float (cf32).

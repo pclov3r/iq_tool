@@ -46,9 +46,11 @@
 #include "mem_arena.h"
 #include "ring_buffer.h"
 #include "utils.h"
+#include "sample_format_table.h"
 #include "networking.h"
 #include "platform.h"
-#include "packet_serializer.h" // Required for standardized packet format
+#include "packet_serializer.h"
+#include "sample_format_table.h" // Required for standardized packet format
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -460,8 +462,9 @@ static bool spyserver_client_input_initialize(ModuleContext* ctx) {
     log_info("Client has control of the remote device. Negotiating stream parameters...");
 
     // Determine the format our client wants to request based on user args or defaults.
-    SampleFormat requested_format = utils_get_format_from_string(s_spyserver_client_config.sample_format_str);
-    log_info("Client requesting sample format: %s", utils_get_format_description_string(requested_format));
+    const SampleFormatInfo* req_fmt_info = get_format_info_by_name(s_spyserver_client_config.sample_format_str);
+    SampleFormat requested_format = req_fmt_info ? req_fmt_info->format_enum : FORMAT_UNKNOWN;
+    log_info("Client requesting sample format: %s", req_fmt_info ? req_fmt_info->description_str : "Unknown");
 
     // Assume our request will be honored unless the server says otherwise.
     SampleFormat final_format = requested_format;
@@ -475,7 +478,7 @@ static bool spyserver_client_input_initialize(ModuleContext* ctx) {
         // DIFFERENT from what we were going to request.
         if (server_forced_format != FORMAT_UNKNOWN && server_forced_format != requested_format) {
             log_warn("Server requires the %s sample format. Switching...",
-                     utils_get_format_description_string(server_forced_format));
+                     get_format_info_by_enum(server_forced_format) ? get_format_info_by_enum(server_forced_format)->description_str : "Unknown");
             // Override our choice with the server's required format.
             final_format = server_forced_format;
         }
@@ -484,7 +487,7 @@ static bool spyserver_client_input_initialize(ModuleContext* ctx) {
     // Set the final, negotiated format for use by the rest of the application.
     p->active_format = final_format;
     app->module.input_format = final_format;
-    app->module.input_bytes_per_sample_pair = sample_convert_bytes_per_sample(final_format);
+    app->module.input_bytes_per_sample_pair = get_format_info_by_enum(final_format) ? get_format_info_by_enum(final_format)->bytes_per_pair : 0;
 
     uint32_t max_sr = p->device_info.MaximumSampleRate;
     uint32_t min_dec = p->device_info.MinimumIQDecimation;
@@ -647,7 +650,7 @@ static void* spyserver_client_input_producer_thread(void* arg) {
 
         if (is_iq_data && body_size > 0) {
             size_t bytes_remaining = body_size;
-            size_t bpp = sample_convert_bytes_per_sample(p->active_format);
+            size_t bpp = get_format_info_by_enum(p->active_format) ? get_format_info_by_enum(p->active_format)->bytes_per_pair : 0;
             if (bpp == 0) bpp = 1;
 
             while (bytes_remaining > 0 && !is_shutdown_requested()) {
@@ -790,7 +793,8 @@ static void* spyserver_client_input_start_stream(ModuleContext* ctx, QueueSample
 
         // Packet format is set by the serializer based on the header it read
         // But for extra safety, we ensure byte size matches
-        item->input_bytes_per_sample_pair = sample_convert_bytes_per_sample(item->packet_sample_format);
+        const SampleFormatInfo* pkt_fmt_info = get_format_info_by_enum(item->packet_sample_format);
+        item->input_bytes_per_sample_pair = pkt_fmt_info ? pkt_fmt_info->bytes_per_pair : 0;
 
         if (item->frames_read > 0) {
             atomic_fetch_add_explicit(&app->stats.total_frames_read, item->frames_read, memory_order_relaxed);
@@ -858,7 +862,7 @@ static void spyserver_client_input_get_summary_info(const ModuleContext* ctx, In
         char dev_info_str[128];
         snprintf(dev_info_str, sizeof(dev_info_str), "%s (S/N: %08X)", dev_type_str, p->device_info.DeviceSerial);
         add_summary_item(info, "Remote Device", dev_info_str);
-        add_summary_item(info, "Input Format", utils_get_format_description_string(app->module.input_format));
+        add_summary_item(info, "Input Format", get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->description_str : "Unknown");
         add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.sample_rate);
         add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
