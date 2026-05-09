@@ -47,6 +47,7 @@ typedef struct {
     nrsc5_t* nrsc5_inst;
     AudioOutputContext* audio_out;
     unsigned int active_program;
+    PipelineMode pipeline_mode;
 
     // BER Stats
     float ber_min;
@@ -163,7 +164,7 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
                 size_t bytes = evt->audio.count * sizeof(int16_t);
 
                 // Write to ring buffer. If full, it drops data (safe).
-                audio_output_write(ctx->audio_out, evt->audio.data, bytes, PIPELINE_MODE_BUFFERED_INPUT);
+                audio_output_write(ctx->audio_out, evt->audio.data, bytes, ctx->pipeline_mode);
             }
             break;
 
@@ -333,6 +334,8 @@ static bool nrsc5_output_initialize(ModuleContext* ctx) {
     if (!p->audio_out) return false;
     log_info("NRSC5: Audio device initialized (%d Hz, %d Channels).", NRSC5_AUDIO_SAMPLE_RATE, NRSC5_AUDIO_CHANNELS);
 
+    p->pipeline_mode = app->pipeline_mode;
+
     // Initialize NRSC5 Instance
     log_debug("NRSC5: Opening pipe...");
     if (nrsc5_open_pipe(&p->nrsc5_inst) != 0) {
@@ -369,7 +372,7 @@ static bool nrsc5_output_initialize(ModuleContext* ctx) {
     log_debug("NRSC5: Starting decoder thread...");
     nrsc5_start(p->nrsc5_inst);
 
-    
+
 
     return true;
 }
@@ -385,7 +388,7 @@ static size_t nrsc5_output_write_chunk(ModuleContext* ctx, const void* buffer, s
     Nrsc5Context* p = (Nrsc5Context*)app->module.output_private_data;
     if (input_bytes == 0) return 0;
 
-    
+
 
     unsigned int frames = input_bytes / app->module.output_bytes_per_sample_pair;
     unsigned int num_scalars = frames * 2;
@@ -412,7 +415,7 @@ static void nrsc5_output_cleanup(ModuleContext* ctx) {
     Nrsc5Context* p = (Nrsc5Context*)app->module.output_private_data;
 
     audio_output_destroy(p->audio_out);
-    
+
     if (p->nrsc5_inst) {
         nrsc5_stop(p->nrsc5_inst);
         nrsc5_close(p->nrsc5_inst);
