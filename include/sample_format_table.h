@@ -39,7 +39,6 @@ static const SampleFormatInfo MASTER_FORMAT_TABLE[] = {
     { CU32,    "cu32",    "cu32 (Unsigned 32-bit Complex)", 8,  FORMAT_DBM_OFFSET_32BIT, FORMAT_ATTENUATION_32BIT },
     { CS32,    "cs32",    "cs32 (Signed 32-bit Complex)",   8,  FORMAT_DBM_OFFSET_32BIT, FORMAT_ATTENUATION_32BIT },
     { CF32,    "cf32",    "cf32 (32-bit Float Complex)",    8,  FORMAT_DBM_OFFSET_32BIT, FORMAT_ATTENUATION_32BIT },
-    { SC16Q11, "sc16q11", "sc16q11 (16-bit Signed Q4.11)",  4,  FORMAT_DBM_OFFSET_16BIT, FORMAT_ATTENUATION_16BIT },
 };
 
 static const int NUM_MASTER_FORMATS = sizeof(MASTER_FORMAT_TABLE) / sizeof(MASTER_FORMAT_TABLE[0]);
