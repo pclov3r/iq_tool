@@ -493,8 +493,12 @@ void sample_convert_interleave_f32_to_##SUFFIX( \
         int32_t il = (int32_t)l; \
         int32_t ir = (int32_t)r; \
         \
-        memcpy(interleaved_out + (i * 6),     &il, 4); \
-        memcpy(interleaved_out + (i * 6) + 3, &ir, 4); \
+        interleaved_out[(i * 6) + 0] = (uint8_t)(il & 0xFF); \
+        interleaved_out[(i * 6) + 1] = (uint8_t)((il >> 8) & 0xFF); \
+        interleaved_out[(i * 6) + 2] = (uint8_t)((il >> 16) & 0xFF); \
+        interleaved_out[(i * 6) + 3] = (uint8_t)(ir & 0xFF); \
+        interleaved_out[(i * 6) + 4] = (uint8_t)((ir >> 8) & 0xFF); \
+        interleaved_out[(i * 6) + 5] = (uint8_t)((ir >> 16) & 0xFF); \
     } \
 }
 
