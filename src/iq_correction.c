@@ -300,7 +300,7 @@ void iq_correction_run_optimization(DspContext* dsp, const ComplexFloat* optimiz
         float amp_pct = new_amp * 100.0f;
         float image_db = 10.0f * log10f((float)st->integrated_image_power + 1e-12f);
 
-        log_debug("IQ Correct: Phase: %+.3f deg | Amp: %+.3f %% | Image Pwr: %.1f dB",
+        log_debug("IQ Correct: Phase: %+.3f deg | Amp: %+.3f %% | Image Pwr: %.1f dBFS",
                  phase_deg, amp_pct, image_db);
         last_debug_log_time = current_opt_time;
     }

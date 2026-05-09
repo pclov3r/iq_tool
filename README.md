@@ -156,6 +156,7 @@ Processing Options
     --output-rate=<flt>                       Output sample rate in Hz.
     --input-gain-multiplier=<flt>             Apply a linear gain multiplier to INPUT samples (before processing).
     --output-gain-multiplier=<flt>            Apply a linear gain multiplier to OUTPUT samples (after processing).
+    --dbm-offset=<flt>                        Override the dBFS-to-dBm calibration offset.
     --freq-shift=<flt>                        Apply a direct frequency shift in Hz (e.g., -100e3)
     --shift-after-resample                    Apply frequency shift AFTER resampling (default is before)
     --raw-passthrough                         Bypass all processing. Copies raw input bytes directly to output.
@@ -166,7 +167,7 @@ Processing Options
 Output Automatic Gain Control
     --output-agc                              Enable automatic gain control on the output.
     --agc-profile=<str>                       AGC profile {dx|local|digital}. (Default: local)
-    --agc-target=<flt>                        AGC target magnitude (0.0 - 1.0). (Default: Profile Dependent)
+    --agc-target=<flt>                        AGC target magnitude (0.0 - 1.0). (Default: profile dependent)
 
 Filtering Options (Chain up to 5 by combining options or adding suffixes -2, -3, etc. e.g., --lowpass --stopband --lowpass-2 --pass-range --pass-range-2)
     --lowpass=<flt>                           Isolate signal at DC. Keeps freqs from -<hz> to +<hz>.
@@ -177,7 +178,7 @@ Filtering Options (Chain up to 5 by combining options or adding suffixes -2, -3,
 Filter Quality Options
     --transition-width=<flt>                  Set filter sharpness by transition width in Hz. (Default: Auto).
     --filter-taps=<int>                       Set exact filter length. Overrides --transition-width.
-    --attenuation=<flt>                       Set filter stop-band attenuation in dB. (Default: 60).
+    --attenuation=<flt>                       Set global filter & resampler stop-band attenuation in dB. (Default: Auto).
 
 Filter Implementation Options
     --filter-type=<str>                       Set filter implementation {fir|fft}. (Default: auto).

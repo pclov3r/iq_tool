@@ -196,14 +196,14 @@ static bool am_output_initialize(ModuleContext* ctx) {
 
     // C. Resampler
     p->output_resample_ratio = (float)AUDIO_SAMPLE_RATE / input_rate;
-    p->resamp_out = msresamp_rrrf_create(p->output_resample_ratio, 60.0f);
+    p->resamp_out = msresamp_rrrf_create(p->output_resample_ratio, ctx->config->dsp.filter.args.attenuation);
 
     // D. Audio Lowpass Filter
     unsigned int h_len = 63;
     float h[63];
     float fc = s_am_config.audio_cutoff / (float)AUDIO_SAMPLE_RATE;
     if (fc > 0.49f) fc = 0.49f;
-    liquid_firdes_kaiser(h_len, fc, 60.0f, 0.0f, h);
+    liquid_firdes_kaiser(h_len, fc, ctx->config->dsp.filter.args.attenuation, 0.0f, h);
     p->audio_lpf = firfilt_rrrf_create(h, h_len);
 
     // E. AGC
@@ -300,8 +300,13 @@ static size_t am_output_write_chunk(ModuleContext* ctx, const void* buffer, size
     stat_counter += num_frames;
 
     if (stat_counter >= stat_threshold) {
-        float rssi_db = 10.0f * log10f((float)(accum_mag_sq_sum / (double)stat_counter) + 1e-10f);
+        float rssi_dbfs = 10.0f * log10f((float)(accum_mag_sq_sum / (double)stat_counter) + 1e-10f);
         float agc_rssi = agc_rrrf_get_rssi(p->agc);
+        float magic_offset_db = ctx->app->module.input_dbm_offset;
+        float software_gain_linear = ctx->config->dsp.input_gain;
+        float software_gain_db = 20.0f * log10f(software_gain_linear > 0.001f ? software_gain_linear : 0.001f);
+        float rssi_dbm = rssi_dbfs - software_gain_db + magic_offset_db;
+
         if (use_sync_mode && accum_pll_count > 0) {
             float lock_quality = (float)(accum_inphase_sum / (accum_carrier_strength_sum + 1e-9));
             if (lock_quality < AM_LOCK_THRESHOLD) {
@@ -310,11 +315,10 @@ static size_t am_output_write_chunk(ModuleContext* ctx, const void* buffer, size
                     log_warn("AM: PLL failed to lock. Falling back to Envelope detection.");
                 }
             } else { p->unlock_counter = 0; }
-            log_info("AM RSSI: %.1f dB | AGC Gain: %.1f dB | Freq Offset: %.2f Hz | Phase Error: %.2f%% | PLL Lock Quality: %.2f%%",
-                     rssi_db, -agc_rssi, (float)(accum_carrier_freq_sum / (double)accum_pll_count),
-                     sqrtf((float)(accum_phase_err_sq_sum/(double)accum_pll_count)) * 100.0f, fmaxf(0.0f, lock_quality) * 100.0f);
+            log_info("RSSI: %5.1f dBm (%5.1f dBFS) | AGC Gain: %4.1f dB | Offset: %5.2f Hz | PLL Lock: %5.1f%%",
+                     rssi_dbm, rssi_dbfs, -agc_rssi, (float)(accum_carrier_freq_sum / (double)accum_pll_count), fmaxf(0.0f, lock_quality) * 100.0f);
             accum_phase_err_sq_sum=0.0; accum_carrier_freq_sum=0.0; accum_carrier_strength_sum=0.0; accum_inphase_sum=0.0; accum_pll_count=0;
-        } else { log_info("AM RSSI: %.1f dB | AGC Gain: %.1f dB", rssi_db, -agc_rssi); }
+        } else { log_info("RSSI: %5.1f dBm (%5.1f dBFS) | AGC Gain: %4.1f dB", rssi_dbm, rssi_dbfs, -agc_rssi); }
         stat_counter = 0; accum_mag_sq_sum = 0.0;
     }
 

@@ -319,17 +319,17 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
     // Filters
     int pilot_fir_half_len = (int)(mpx_rate * 1e-6f * WFM_PILOT_FIR_USEC);
     int pilot_fir_len = pilot_fir_half_len * 2 + 1;
-    p->fir_pilot = firfilt_crcf_create_kaiser(pilot_fir_len, WFM_PILOT_FIR_HALFBAND / mpx_rate, 60.0f, 0.0f);
+    p->fir_pilot = firfilt_crcf_create_kaiser(pilot_fir_len, WFM_PILOT_FIR_HALFBAND / mpx_rate, ctx->config->dsp.filter.args.attenuation, 0.0f);
     firfilt_crcf_set_scale(p->fir_pilot, 2.0f * (WFM_PILOT_FIR_HALFBAND / mpx_rate));
 
     int audio_fir_len = (int)(WFM_AUDIO_FIR_LEN_USEC * 1e-6f * mpx_rate);
     if (audio_fir_len % 2 == 0) audio_fir_len++;
     float audio_fc = WFM_AUDIO_FIR_CUTOFF / mpx_rate;
 
-    p->fir_sum = firfilt_rrrf_create_kaiser(audio_fir_len, audio_fc, 60.0f, 0.0f);
+    p->fir_sum = firfilt_rrrf_create_kaiser(audio_fir_len, audio_fc, ctx->config->dsp.filter.args.attenuation, 0.0f);
     firfilt_rrrf_set_scale(p->fir_sum, 2.0f * audio_fc);
 
-    p->fir_diff = firfilt_rrrf_create_kaiser(audio_fir_len, audio_fc, 60.0f, 0.0f);
+    p->fir_diff = firfilt_rrrf_create_kaiser(audio_fir_len, audio_fc, ctx->config->dsp.filter.args.attenuation, 0.0f);
     firfilt_rrrf_set_scale(p->fir_diff, 2.0f * audio_fc);
 
     deemphasis_init(&p->deemphasis, s_wfm_config.deemph_us, mpx_rate);
@@ -337,8 +337,8 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
 
     // Output Resamplers
     p->output_resample_ratio = (float)AUDIO_SAMPLE_RATE / mpx_rate;
-    p->resamp_out_l = msresamp_rrrf_create(p->output_resample_ratio, 60.0f);
-    p->resamp_out_r = msresamp_rrrf_create(p->output_resample_ratio, 60.0f);
+    p->resamp_out_l = msresamp_rrrf_create(p->output_resample_ratio, ctx->config->dsp.filter.args.attenuation);
+    p->resamp_out_r = msresamp_rrrf_create(p->output_resample_ratio, ctx->config->dsp.filter.args.attenuation);
 
     // 5. Scratch Buffers (Local Elastic Allocation)
     // We calculate the maximum buffer size required for ANY stage of this specific module.
@@ -501,7 +501,12 @@ static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
 
     if (stat_counter >= stat_rate_threshold) {
         double avg_power = accum_mag_sq_sum / (double)stat_counter;
-        float rssi_db = 10.0f * log10f((float)avg_power + 1e-10f);
+        float rssi_dbfs = 10.0f * log10f((float)avg_power + 1e-10f);
+        float magic_offset_db = ctx->app->module.input_dbm_offset;
+        float software_gain_linear = ctx->config->dsp.input_gain;
+        float software_gain_db = 20.0f * log10f(software_gain_linear > 0.001f ? software_gain_linear : 0.001f);
+        float rssi_dbm = rssi_dbfs - software_gain_db + magic_offset_db;
+
         double mean_mag = accum_mag_sum / (double)stat_counter;
         float snr_db = 10.0f * log10f((float)((mean_mag*mean_mag) / fmax(1e-10, avg_power - (mean_mag*mean_mag))));
         float avg_pilot_mse = (accum_pilot_count > 0) ? (float)(accum_pilot_err_sq_sum / (double)accum_pilot_count) : 0.0f;
@@ -512,9 +517,9 @@ static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
         if (avg_stereo_pct > 1.0f) is_mono_station = false;
         
         if (is_mono_station || s_wfm_config.force_mono) {
-             log_info("RSSI: %.1f dB | SNR: %.1f dB | Stereo Separation: Mono | Pilot Phase Error: NA", rssi_db, snr_db);
+             log_info("RSSI: %5.1f dBm (%5.1f dBFS) | SNR: %4.1f dB | Stereo: Mono", rssi_dbm, rssi_dbfs, snr_db);
         } else {
-            log_info("RSSI: %.1f dB | SNR: %.1f dB | Stereo Separation: %.1f%% | Pilot Phase Error: %.1f%%", rssi_db, snr_db, avg_stereo_pct, pilot_pct);
+            log_info("RSSI: %5.1f dBm (%5.1f dBFS) | SNR: %4.1f dB | Stereo: %5.1f%% | Pilot Err: %4.1f%%", rssi_dbm, rssi_dbfs, snr_db, avg_stereo_pct, pilot_pct);
         }
         stat_counter = 0; accum_mag_sum = 0.0; accum_mag_sq_sum = 0.0; accum_pilot_mag_sum = 0.0;
         accum_stereo_pct_sum = 0.0; accum_pilot_err_sq_sum = 0.0; accum_pilot_count = 0;

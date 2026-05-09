@@ -175,7 +175,7 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
         }
 
         unsigned int current_taps_len;
-        float attenuation_db = (config->dsp.filter.args.attenuation > 0.0f) ? config->dsp.filter.args.attenuation : RESAMPLER_QUALITY_ATTENUATION_DB;
+        float attenuation_db = config->dsp.filter.args.attenuation;
 
         if (config->dsp.filter.args.taps > 0) {
             current_taps_len = (unsigned int)config->dsp.filter.args.taps;
@@ -281,12 +281,18 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
         float max_mag = 0.0f;
         firfilt_cccf temp_filter = firfilt_cccf_create(master_taps, master_taps_len);
         if (temp_filter) {
-            for (int i = 0; i < FILTER_FREQ_RESPONSE_POINTS; i++) {
-                liquid_float_complex H;
-                float freq = ((float)i / (float)FILTER_FREQ_RESPONSE_POINTS) - 0.5f;
-                firfilt_cccf_freqresponse(temp_filter, freq, &H);
-                float mag = cabsf(H);
-                if (mag > max_mag) max_mag = mag;
+            liquid_float_complex H;
+            firfilt_cccf_freqresponse(temp_filter, 0.0f, &H);
+            max_mag = fmaxf(max_mag, cabsf(H));
+            firfilt_cccf_freqresponse(temp_filter, 0.5f, &H);
+            max_mag = fmaxf(max_mag, cabsf(H));
+            for (int i = 0; i < config->dsp.filter.count; i++) {
+                const FilterRequest* req = &config->dsp.filter.requests[i];
+                if (req->type == FILTER_TYPE_PASSBAND) {
+                    float freq_norm = req->freq1_hz / (float)sample_rate_for_design;
+                    firfilt_cccf_freqresponse(temp_filter, freq_norm, &H);
+                    max_mag = fmaxf(max_mag, cabsf(H));
+                }
             }
             firfilt_cccf_destroy(temp_filter);
         }
@@ -577,7 +583,7 @@ int filter_populate_cli_options(struct argparse_option* buffer, struct AppConfig
         OPT_GROUP("Filter Quality Options"),
         OPT_FLOAT(0, "transition-width", &config->dsp.filter.args.transition_width, "Set filter sharpness by transition width in Hz. (Default: Auto).", NULL, 0, 0),
         OPT_INTEGER(0, "filter-taps", &config->dsp.filter.args.taps, "Set exact filter length. Overrides --transition-width.", NULL, 0, 0),
-        OPT_FLOAT(0, "attenuation", &config->dsp.filter.args.attenuation, "Set filter stop-band attenuation in dB. (Default: 60).", NULL, 0, 0),
+        OPT_FLOAT(0, "attenuation", &config->dsp.filter.args.attenuation, "Set global filter & resampler stop-band attenuation in dB. (Default: Auto).", NULL, 0, 0),
 
         OPT_GROUP("Filter Implementation Options"),
         OPT_STRING(0, "filter-type", &config->dsp.filter.args.type_str, "Set filter implementation {fir|fft}. (Default: auto).", NULL, 0, 0),

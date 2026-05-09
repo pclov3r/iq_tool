@@ -106,4 +106,7 @@ bool utils_check_file_exists(const char* full_path);
 
 
 
+float utils_get_format_dbm_offset(SampleFormat format);
+float utils_get_format_attenuation_db(SampleFormat format);
+
 #endif // UTILS_H_

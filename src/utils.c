@@ -226,3 +226,57 @@ bool utils_check_file_exists(const char* full_path) {
 }
 
 
+
+float utils_get_format_dbm_offset(SampleFormat format) {
+    switch (format) {
+        case S8:
+        case U8:
+        case CS8:
+        case CU8:
+            return FORMAT_DBM_OFFSET_8BIT;
+        case S16:
+        case U16:
+        case CS16:
+        case CU16:
+        case SC16Q11:
+            return FORMAT_DBM_OFFSET_16BIT;
+        case CS24:
+            return FORMAT_DBM_OFFSET_24BIT;
+        case S32:
+        case U32:
+        case CS32:
+        case CU32:
+        case F32:
+        case CF32:
+            return FORMAT_DBM_OFFSET_32BIT;
+        default:
+            return 0.0f;
+    }
+}
+
+float utils_get_format_attenuation_db(SampleFormat format) {
+    switch (format) {
+        case S8:
+        case U8:
+        case CS8:
+        case CU8:
+            return FORMAT_ATTENUATION_8BIT;
+        case S16:
+        case U16:
+        case CS16:
+        case CU16:
+        case SC16Q11:
+            return FORMAT_ATTENUATION_16BIT;
+        case CS24:
+            return FORMAT_ATTENUATION_24BIT;
+        case S32:
+        case U32:
+        case CS32:
+        case CU32:
+        case F32:
+        case CF32:
+            return FORMAT_ATTENUATION_32BIT;
+        default:
+            return FORMAT_ATTENUATION_8BIT;
+    }
+}

@@ -585,6 +585,9 @@ static bool wav_input_initialize(ModuleContext* ctx) {
     }
 
     app->module.input_bytes_per_sample_pair = sample_convert_bytes_per_sample(app->module.input_format);
+    if (!config->dsp.dbm_offset_provided) {
+        app->module.input_dbm_offset = utils_get_format_dbm_offset(app->module.input_format);
+    }
 
     if (sfinfo.samplerate <= 0) {
         log_fatal("Error: Invalid input sample rate (%d Hz).", sfinfo.samplerate);

@@ -92,6 +92,9 @@ typedef struct AppConfig {
         bool  input_gain_provided;
         float output_gain;
         bool  output_gain_provided;
+        float dbm_offset;
+        float dbm_offset_arg;
+        bool  dbm_offset_provided;
         double freq_shift_hz;
         int   shift_after_resample;
         int   raw_passthrough;
@@ -183,6 +186,7 @@ typedef struct ModuleState {
     InputSourceInfo        source_info;
     SampleFormat               input_format;
     size_t                 input_bytes_per_sample_pair;
+    float                  input_dbm_offset;
 
     OutputModuleInterface* output_api;
     void*                  output_private_data;

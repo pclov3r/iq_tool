@@ -241,6 +241,18 @@ bool validate_filter_options(AppConfig *config) {
         return false;
     }
 
+    if (config->dsp.filter.args.attenuation == 0.0f) {
+        float resolved_attenuation = 60.0f;
+        const Module* in_mod = module_get(config->input.type_name, MODULE_TYPE_INPUT, NULL);
+        if (in_mod) {
+            if (in_mod->default_attenuation > 0.0f) {
+                resolved_attenuation = in_mod->default_attenuation;
+            } else {
+                resolved_attenuation = utils_get_format_attenuation_db(config->output.format);
+            }
+        }
+        config->dsp.filter.args.attenuation = resolved_attenuation;
+    }
     return true;
 }
 

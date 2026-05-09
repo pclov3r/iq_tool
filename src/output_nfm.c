@@ -134,7 +134,7 @@ static bool nfm_output_initialize(ModuleContext* ctx) {
     p->audio_lpf = iirfilt_rrrf_create_lowpass(4, NFM_AUDIO_CUTOFF / p->input_samplerate);
 
     // D. Output Resampler
-    p->resampler = msresamp_rrrf_create(p->output_ratio, 60.0f);
+    p->resampler = msresamp_rrrf_create(p->output_ratio, ctx->config->dsp.filter.args.attenuation);
 
     // Squelch state
     p->squelch_open = false;
@@ -201,12 +201,19 @@ static size_t nfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
 
     if (stat_counter >= stat_rate_threshold) {
         double avg_power = accum_mag_sq_sum / (double)stat_counter;
-        float rssi_db = 10.0f * log10f((float)avg_power + 1e-12f);
+        float rssi_dbfs = 10.0f * log10f((float)avg_power + 1e-12f);
+        float magic_offset_db = ctx->app->module.input_dbm_offset;
+        float software_gain_linear = ctx->config->dsp.input_gain;
+        float software_gain_db = 20.0f * log10f(software_gain_linear > 0.001f ? software_gain_linear : 0.001f);
+        float rssi_dbm = rssi_dbfs - software_gain_db + magic_offset_db;
+
         if (p->squelch_open) {
             double mean_mag = accum_mag_sum / (double)stat_counter;
             float snr_db = 10.0f * log10f((float)((mean_mag*mean_mag) / fmax(1e-12, avg_power - (mean_mag*mean_mag))));
-            log_info("RSSI: %5.1f dB | SNR: %4.1f dB | Squelch: OPEN", rssi_db, snr_db);
-        } else { log_info("RSSI: %5.1f dB | Squelch: CLOSED", rssi_db); }
+            log_info("RSSI: %5.1f dBm (%5.1f dBFS) | SNR: %4.1f dB | Squelch: OPEN", rssi_dbm, rssi_dbfs, snr_db);
+        } else { 
+            log_info("RSSI: %5.1f dBm (%5.1f dBFS) | Squelch: CLOSED", rssi_dbm, rssi_dbfs); 
+        }
         stat_counter = 0; accum_mag_sum = 0.0; accum_mag_sq_sum = 0.0;
     }
 

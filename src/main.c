@@ -147,6 +147,7 @@ int main(int argc, char *argv[]) {
 
     config.dsp.input_gain = 1.0f;
     config.dsp.output_gain = 1.0f;
+    config.dsp.dbm_offset_arg = 1000.0f;
 
 #ifndef _WIN32
     pthread_t sig_thread_id;
@@ -184,6 +185,10 @@ int main(int argc, char *argv[]) {
     }
 
     const Module* _mod = module_get(config.input.type_name, MODULE_TYPE_INPUT, &app.pipeline.setup_arena); app.module.input_api = (_mod) ? (InputModuleInterface*)_mod->api : NULL;
+    app.module.input_dbm_offset = (_mod) ? _mod->dbm_offset : 0.0f;
+    if (config.dsp.dbm_offset_provided) {
+        app.module.input_dbm_offset = config.dsp.dbm_offset;
+    }
     if (!app.module.input_api) {
         log_fatal("Input type '%s' is not supported or not enabled in this build.", config.input.type_name);
         goto cleanup;

@@ -78,8 +78,6 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
  */
 #define INPUT_BUFFER_MAX_BYTES (512 * 1024 * 1024) // 512 MB
 
-
-
 /**
  * @def PIPELINE_TARGET_BLOCK_SAMPLES
  * @brief The target number of samples for a processing block.
@@ -133,9 +131,6 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 // =============================================================================
 // == Tier 3: DSP Algorithm Quality & Tuning
 // =============================================================================
-
-// The default stop-band attenuation for the liquid-dsp resampler, in dB.
-#define RESAMPLER_QUALITY_ATTENUATION_DB 60.0f
 
 // Defines the default sharpness of user-defined FIR filters.
 #define DEFAULT_FILTER_TRANSITION_FACTOR 0.25f
@@ -284,26 +279,32 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 // =============================================================================
 // Default values and tuning parameters specific to each SDR device.
 
-#if defined(WITH_RTLSDR)
-#define RTLSDR_DEFAULT_SAMPLE_RATE 2400000.0
+// --- RTLSDR Constants ---
+#define RTLSDR_DBM_OFFSET              -80.0f
+#define RTLSDR_DEFAULT_ATTENUATION     60.0f
+#define RTLSDR_DEFAULT_SAMPLE_RATE     2400000.0
 #define RTLSDR_PASSTHROUGH_BUFFER_SIZE 16384
-#endif
 
-#if defined(WITH_SDRPLAY)
+// --- SDRPLAY Unconditional Constants ---
+#define SDRPLAY_DBM_OFFSET             -25.0f
+#define SDRPLAY_DEFAULT_ATTENUATION    80.0f
 #define SDRPLAY_DEFAULT_SAMPLE_RATE_HZ 2000000.0
 #define SDRPLAY_DEFAULT_BANDWIDTH_HZ   1536000.0
 #define SDRPLAY_DEFAULT_IF_GAIN_DB     -50
+
 // Define a safe max chunk size (16384 samples * 2 channels * 2 bytes = 64KB)
 #define MAX_SDRPLAY_CONVERSION_SAMPLES 16384
-#endif
 
-#if defined(WITH_HACKRF)
-#define HACKRF_DEFAULT_SAMPLE_RATE 8000000.0
-#define HACKRF_DEFAULT_LNA_GAIN    16
-#define HACKRF_DEFAULT_VGA_GAIN    0
-#endif
+// --- HACKRF Constants ---
+#define HACKRF_DBM_OFFSET           -85.0f
+#define HACKRF_DEFAULT_ATTENUATION   60.0f
+#define HACKRF_DEFAULT_SAMPLE_RATE   8000000.0
+#define HACKRF_DEFAULT_LNA_GAIN      16
+#define HACKRF_DEFAULT_VGA_GAIN      0
 
-#if defined(WITH_BLADERF)
+// --- BLADERF Constants ---
+#define BLADERF_DBM_OFFSET             -25.0f
+#define BLADERF_DEFAULT_ATTENUATION    80.0f
 #define BLADERF_DEFAULT_SAMPLE_RATE_HZ 2000000
 #define BLADERF_DEFAULT_BANDWIDTH_HZ   1500000
 
@@ -319,22 +320,23 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 
 #define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_BUFFERS    96
 #define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS  48
-#endif // defined(WITH_BLADERF)
 
-#if defined(WITH_AIRSPY)
-#define AIRSPY_DEFAULT_SAMPLE_RATE 2500000.0
+// --- AIRSPY Constants ---
+#define AIRSPY_DBM_OFFSET           -50.0f
+#define AIRSPY_DEFAULT_ATTENUATION   80.0f
+#define AIRSPY_DEFAULT_SAMPLE_RATE   2500000.0
 #define AIRSPY_DEFAULT_SAMPLE_FORMAT CS16
-#define AIRSPY_DEFAULT_GAIN_VALUE 10
-#define AIRSPY_DEFAULT_LNA_GAIN 5
-#define AIRSPY_DEFAULT_MIXER_GAIN 5
-#define AIRSPY_DEFAULT_VGA_GAIN 5
-#endif
+#define AIRSPY_DEFAULT_GAIN_VALUE    10
+#define AIRSPY_DEFAULT_LNA_GAIN      5
+#define AIRSPY_DEFAULT_MIXER_GAIN    5
+#define AIRSPY_DEFAULT_VGA_GAIN      5
 
-#if defined(WITH_AIRSPYHF)
-#define AIRSPYHF_DEFAULT_SAMPLE_RATE 768000
-#endif
+// --- AIRSPY HF+ Constants ---
+#define AIRSPYHF_DBM_OFFSET           -15.0f
+#define AIRSPYHF_DEFAULT_ATTENUATION   100.0f
+#define AIRSPYHF_DEFAULT_SAMPLE_RATE   768000
 
-// Default sample rate used during initialization
+// --- SPYSERVER Constants --
 #define SPYSERVER_DEFAULT_SAMPLE_RATE_HZ 600000.0
 
 // Absolute hard limit for the ring buffer size (128 MB)
@@ -354,6 +356,18 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 
 // Cap pre-buffering at 80% of capacity to prevent immediate overrun
 #define SPYSERVER_PREBUFFER_MAX_FILL_RATIO 0.8f
+
+// --- Format-Based Offsets for WAV/RAW Files ---
+#define FORMAT_DBM_OFFSET_8BIT    -80.0f
+#define FORMAT_DBM_OFFSET_16BIT   -65.0f
+#define FORMAT_DBM_OFFSET_24BIT   -130.0f
+#define FORMAT_DBM_OFFSET_32BIT   0.0f
+
+// --- Dynamic DSP Filter Attenuation ---
+#define FORMAT_ATTENUATION_8BIT   60.0f
+#define FORMAT_ATTENUATION_16BIT  100.0f
+#define FORMAT_ATTENUATION_24BIT  144.0f
+#define FORMAT_ATTENUATION_32BIT  150.0f
 
 // =============================================================================
 // == Tier 5: Sanity Checks & Hard Limits

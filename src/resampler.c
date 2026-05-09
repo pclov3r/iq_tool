@@ -12,7 +12,7 @@ Resampler* resampler_create(const AppConfig *config, AppContext* app, float resa
     }
 
     // We cast the liquid-dsp object to our opaque type.
-    Resampler* resampler = (Resampler*)msresamp_crcf_create(resample_ratio, RESAMPLER_QUALITY_ATTENUATION_DB);
+    Resampler* resampler = (Resampler*)msresamp_crcf_create(resample_ratio, config->dsp.filter.args.attenuation);
 
     if (!resampler) {
         log_fatal("Error: Failed to create liquid-dsp resampler object.");
