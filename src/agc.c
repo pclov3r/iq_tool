@@ -283,7 +283,7 @@ bool agc_create(AppConfig *config, AppContext *app)
             profile_name = "Local";
             break;
         default:
-            log_fatal("AGC: Unknown profile %d.", config->dsp.agc.profile);
+            log_error("AGC: Unknown profile %d.", config->dsp.agc.profile);
             agc_crcf_destroy(q);
             return false;
     }

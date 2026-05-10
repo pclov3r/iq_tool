@@ -228,19 +228,19 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
 
     // --- Step 2: Validate Output Module and its Arguments ---
     if (!config->output.module_name) {
-        log_fatal("Missing required argument: --output <type> [path]");
+        log_error("Missing required argument: --output <type> [path]");
         return false;
     }
 
     const Module* selected_output_module = module_get(config->output.module_name, MODULE_TYPE_OUTPUT, arena);
     if (!selected_output_module) {
-        log_fatal("Invalid value for --output: '%s'.", config->output.module_name);
+        log_error("Invalid value for --output: '%s'.", config->output.module_name);
         return false;
     }
 
     if (selected_output_module->requires_output_path) {
         if (non_opt_argc < 1) {
-            log_fatal("Missing <out_file> argument for '--output %s'.", config->output.module_name);
+            log_error("Missing <out_file> argument for '--output %s'.", config->output.module_name);
             return false;
         }
         config->output.path_arg = (char*)non_opt_argv[0];

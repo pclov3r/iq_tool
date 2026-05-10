@@ -136,7 +136,7 @@ InputModuleInterface* input_rtlsdr_get_module_api(void) {
 
 static bool rtlsdr_input_validate_generic_options(const AppConfig* config) {
     if (!config->sdr_general.rf_freq_provided) {
-        log_fatal("RTL-SDR input requires the --sdr-rf-freq option.");
+        log_error("RTL-SDR input requires the --sdr-rf-freq option.");
         return false;
     }
     return true;
@@ -154,7 +154,7 @@ static bool rtlsdr_input_validate_options(AppConfig* config) {
 
     if (s_rtlsdr_config.direct_sampling_mode != 0) {
         if (s_rtlsdr_config.direct_sampling_mode < 1 || s_rtlsdr_config.direct_sampling_mode > 2) {
-            log_fatal("Invalid value for --rtlsdr-direct-sampling. Must be 1 or 2.");
+            log_error("Invalid value for --rtlsdr-direct-sampling. Must be 1 or 2.");
             return false;
         }
         s_rtlsdr_config.direct_sampling_provided = true;
@@ -162,7 +162,7 @@ static bool rtlsdr_input_validate_options(AppConfig* config) {
 
     if (config->sdr_general.sample_rate_provided) {
         if (config->sdr_general.sample_rate_hz < 225001 || config->sdr_general.sample_rate_hz > 3200000) {
-             log_fatal("Invalid sample rate for RTL-SDR: %.0f Hz. Must be between 225001 and 3200000.", config->sdr_general.sample_rate_hz);
+             log_error("Invalid sample rate for RTL-SDR: %.0f Hz. Must be between 225001 and 3200000.", config->sdr_general.sample_rate_hz);
              return false;
         }
     }
@@ -185,7 +185,7 @@ static void rtlsdr_input_stream_callback(unsigned char *buf, uint32_t len, void 
     uint32_t num_samples = len / 2;
 
     if (!app->module.queue_samples(app->module.pipeline_ctx, buf, num_samples, CU8)) {
-        log_warn("SDR input buffer overrun! Dropped data.");
+        /* Warning handled internally by pipeline */
     }
 }
 
@@ -220,13 +220,13 @@ static bool rtlsdr_input_initialize(ModuleContext* ctx) {
 
     device_count = rtlsdr_get_device_count();
     if (device_count == 0) {
-        log_fatal("No RTL-SDR devices found.");
+        log_error("No RTL-SDR devices found.");
         goto cleanup;
     }
     log_info("Found %d RTL-SDR device(s).", device_count);
 
     if (device_index >= device_count) {
-        log_fatal("Device index %u is out of range. Found %u devices.", device_index, device_count);
+        log_error("Device index %u is out of range. Found %u devices.", device_index, device_count);
         goto cleanup;
     }
 

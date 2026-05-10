@@ -33,7 +33,7 @@ static bool prompt_for_overwrite(const char* path_for_messages) {
     response = tolower(response);
     if (response != 'y') {
         if (response != '\n' && response != EOF) {
-            log_debug("Operation cancelled by user.");
+            log_info("Operation cancelled by user.");
         }
         return false;
     }
@@ -45,7 +45,7 @@ static bool prompt_for_overwrite(const char* path_for_messages) {
 bool wav_common_validate_options(AppConfig* config) {
     // This logic is identical for both WAV and RF64.
     if (config->output.format != CS16 && config->output.format != CU8) {
-        log_fatal("Invalid sample format '%s' for WAV/RF64 container. Only 'cs16' and 'cu8' are supported.", config->output.format_name);
+        log_error("Invalid sample format '%s' for WAV/RF64 container. Only 'cs16' and 'cu8' are supported.", config->output.format_name);
         return false;
     }
     return true;
@@ -72,14 +72,14 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
     #ifdef _WIN32
     DWORD attrs = GetFileAttributesW(config->output.effective_path_w);
     if (attrs != INVALID_FILE_ATTRIBUTES) {
-        if (attrs & FILE_ATTRIBUTE_DIRECTORY) { log_fatal("Output path '%s' is a directory. Aborting.", out_path); return false; }
+        if (attrs & FILE_ATTRIBUTE_DIRECTORY) { log_error("Output path '%s' is a directory. Aborting.", out_path); return false; }
         file_exists = true;
     }
     #else
     struct stat stat_buf;
     if (lstat(out_path, &stat_buf) == 0) {
         file_exists = true;
-        if (!S_ISREG(stat_buf.st_mode)) { log_fatal("Output path '%s' exists but is not a regular file. Aborting.", out_path); return false; }
+        if (!S_ISREG(stat_buf.st_mode)) { log_error("Output path '%s' exists but is not a regular file. Aborting.", out_path); return false; }
     }
     #endif
 
@@ -103,7 +103,7 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
     }
 
     // Verify that libsndfile supports this format combination.
-    if (!sf_format_check(&sfinfo)) { log_fatal("libsndfile does not support the requested format (Rate: %d, Format: 0x%08X).", sfinfo.samplerate, sfinfo.format); return false; }
+    if (!sf_format_check(&sfinfo)) { log_error("libsndfile does not support the requested format (Rate: %d, Format: 0x%08X).", sfinfo.samplerate, sfinfo.format); return false; }
 
     // Open the file using the appropriate platform-specific function.
     #ifdef _WIN32
@@ -112,7 +112,7 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
     data->handle = sf_open(out_path, SFM_WRITE, &sfinfo);
     #endif
 
-    if (!data->handle) { log_fatal("Error opening output WAV file %s: %s", out_path, sf_strerror(NULL)); return false; }
+    if (!data->handle) { log_error("Error opening output WAV file %s: %s", out_path, sf_strerror(NULL)); return false; }
     return true;
 }
 

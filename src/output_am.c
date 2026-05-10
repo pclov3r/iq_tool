@@ -140,11 +140,11 @@ static bool am_output_validate_options(AppConfig* config) {
     } else {
         double rate = config->output_rate.target_rate;
         if (rate < AM_MIN_INPUT_RATE) {
-            log_fatal("AM: Input rate %.0f Hz is too low for audio (Min: %.0f).", rate, AM_MIN_INPUT_RATE);
+            log_error("AM: Input rate %.0f Hz is too low for audio (Min: %.0f).", rate, AM_MIN_INPUT_RATE);
             return false;
         }
         if (rate > AM_MAX_INPUT_RATE) {
-            log_fatal("AM: Input rate %.0f Hz is unnecessarily high (Max: %.0f).", rate, AM_MAX_INPUT_RATE);
+            log_error("AM: Input rate %.0f Hz is unnecessarily high (Max: %.0f).", rate, AM_MAX_INPUT_RATE);
             return false;
         }
     }

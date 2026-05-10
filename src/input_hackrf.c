@@ -98,7 +98,7 @@ InputModuleInterface* input_hackrf_get_module_api(void) {
 
 static bool hackrf_input_validate_generic_options(const AppConfig* config) {
     if (!config->sdr_general.rf_freq_provided) {
-        log_fatal("HackRF input requires the --sdr-rf-freq option.");
+        log_error("HackRF input requires the --sdr-rf-freq option.");
         return false;
     }
     return true;
@@ -108,7 +108,7 @@ static bool hackrf_input_validate_options(AppConfig* config) {
     if (s_hackrf_config.hackrf_lna_gain_arg != HACKRF_DEFAULT_LNA_GAIN) {
         int lna_gain = s_hackrf_config.hackrf_lna_gain_arg;
         if (lna_gain < 0 || lna_gain > 40 || (lna_gain % 8 != 0)) {
-            log_fatal("Invalid LNA gain %ld dB. Must be 0-40 in 8 dB steps.", lna_gain);
+            log_error("Invalid LNA gain %ld dB. Must be 0-40 in 8 dB steps.", lna_gain);
             return false;
         }
         s_hackrf_config.lna_gain = (uint32_t)lna_gain;
@@ -118,7 +118,7 @@ static bool hackrf_input_validate_options(AppConfig* config) {
     if (s_hackrf_config.hackrf_vga_gain_arg != HACKRF_DEFAULT_VGA_GAIN) {
         int vga_gain = s_hackrf_config.hackrf_vga_gain_arg;
         if (vga_gain < 0 || vga_gain > 62 || (vga_gain % 2 != 0)) {
-            log_fatal("Invalid VGA gain %ld dB. Must be 0-62 in 2 dB steps.", vga_gain);
+            log_error("Invalid VGA gain %ld dB. Must be 0-62 in 2 dB steps.", vga_gain);
             return false;
         }
         s_hackrf_config.vga_gain = (uint32_t)vga_gain;
@@ -127,7 +127,7 @@ static bool hackrf_input_validate_options(AppConfig* config) {
 
     if (config->sdr_general.sample_rate_provided) {
         if (config->sdr_general.sample_rate_hz < 2e6 || config->sdr_general.sample_rate_hz > 20e6) {
-            log_fatal("Invalid HackRF sample rate %.0f Hz. Must be between 2,000,000 and 20,000,000.", config->sdr_general.sample_rate_hz);
+            log_error("Invalid HackRF sample rate %.0f Hz. Must be between 2,000,000 and 20,000,000.", config->sdr_general.sample_rate_hz);
             return false;
         }
     }
@@ -149,7 +149,7 @@ static int hackrf_input_buffered_stream_callback(hackrf_transfer* transfer) {
     // valid_length is in bytes.
     if (!app->module.queue_samples(app->module.pipeline_ctx, // num_samples
             transfer->buffer, transfer->valid_length / 2, CS8)) {
-        log_warn("SDR input buffer overrun! Dropped data.");
+        /* Warning handled internally by pipeline */
     }
 
     return 0;
@@ -191,13 +191,13 @@ static bool hackrf_input_initialize(ModuleContext* ctx) {
 
     result = hackrf_init();
     if (result != HACKRF_SUCCESS) {
-        log_fatal("hackrf_init() failed: %s (%d)", hackrf_error_name(result), result);
+        log_error("hackrf_init() failed: %s (%d)", hackrf_error_name(result), result);
         goto cleanup; // On error, jump to the single cleanup point
     }
 
     result = hackrf_open(&private_data->dev);
     if (result != HACKRF_SUCCESS) {
-        log_fatal("hackrf_open() failed: %s (%d)", hackrf_error_name(result), result);
+        log_error("hackrf_open() failed: %s (%d)", hackrf_error_name(result), result);
         private_data->dev = NULL; // Ensure dev is NULL on failure
         goto cleanup;
     }
@@ -205,38 +205,38 @@ static bool hackrf_input_initialize(ModuleContext* ctx) {
 
     result = hackrf_set_sample_rate(private_data->dev, config->sdr_general.sample_rate_hz);
     if (result != HACKRF_SUCCESS) {
-        log_fatal("hackrf_set_sample_rate() failed: %s (%d)", hackrf_error_name(result), result);
+        log_error("hackrf_set_sample_rate() failed: %s (%d)", hackrf_error_name(result), result);
         goto cleanup;
     }
 
     result = hackrf_set_freq(private_data->dev, (uint64_t)config->sdr_general.rf_freq_hz);
     if (result != HACKRF_SUCCESS) {
-        log_fatal("hackrf_set_freq() failed: %s (%d)", hackrf_error_name(result), result);
+        log_error("hackrf_set_freq() failed: %s (%d)", hackrf_error_name(result), result);
         goto cleanup;
     }
 
     result = hackrf_set_lna_gain(private_data->dev, s_hackrf_config.lna_gain);
     if (result != HACKRF_SUCCESS) {
-        log_fatal("hackrf_set_lna_gain() failed: %s (%d)", hackrf_error_name(result), result);
+        log_error("hackrf_set_lna_gain() failed: %s (%d)", hackrf_error_name(result), result);
         goto cleanup;
     }
 
     result = hackrf_set_vga_gain(private_data->dev, s_hackrf_config.vga_gain);
     if (result != HACKRF_SUCCESS) {
-        log_fatal("hackrf_set_vga_gain() failed: %s (%d)", hackrf_error_name(result), result);
+        log_error("hackrf_set_vga_gain() failed: %s (%d)", hackrf_error_name(result), result);
         goto cleanup;
     }
 
     result = hackrf_set_amp_enable(private_data->dev, (uint8_t)s_hackrf_config.amp_enable);
     if (result != HACKRF_SUCCESS) {
-        log_fatal("hackrf_set_amp_enable() failed: %s (%d)", hackrf_error_name(result), result);
+        log_error("hackrf_set_amp_enable() failed: %s (%d)", hackrf_error_name(result), result);
         goto cleanup;
     }
 
     if (config->sdr_general.bias_t_enable) {
         result = hackrf_set_antenna_enable(private_data->dev, 1);
         if (result != HACKRF_SUCCESS) {
-            log_fatal("hackrf_set_antenna_enable() failed: %s (%d)", hackrf_error_name(result), result);
+            log_error("hackrf_set_antenna_enable() failed: %s (%d)", hackrf_error_name(result), result);
             goto cleanup;
         }
     }

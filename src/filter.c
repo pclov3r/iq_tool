@@ -78,7 +78,7 @@ static bool _configure_filter_stage(AppConfig *config, AppContext* app) {
         double output_nyquist = output_rate / 2.0;
 
         if (max_filter_freq_hz > output_nyquist) {
-            log_fatal("Filter configuration is incompatible with the output sample rate.");
+            log_error("Filter configuration is incompatible with the output sample rate.");
             log_error("The specified filter chain extends to %.0f Hz, but the output rate of %.0f Hz can only support frequencies up to %.0f Hz.",
                       max_filter_freq_hz, output_rate, output_nyquist);
             return false;
@@ -332,7 +332,7 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
             block_size = (unsigned int)config->dsp.filter.args.fft_size / 2;
             log_info("Using user-specified FFT size of %u (block size: %u).", config->dsp.filter.args.fft_size, block_size);
             if (block_size < (unsigned int)master_taps_len - 1) {
-                log_fatal("The specified --filter-fft-size of %d is too small for a filter with %d taps.", config->dsp.filter.args.fft_size, master_taps_len);
+                log_error("The specified --filter-fft-size of %d is too small for a filter with %d taps.", config->dsp.filter.args.fft_size, master_taps_len);
                 log_error("A block size (_n) of at least %d is required, meaning an FFT size of at least %d.", master_taps_len - 1, (master_taps_len - 1) * 2);
                 goto cleanup;
             }

@@ -273,13 +273,13 @@ static int airspy_input_buffered_stream_callback(airspy_transfer* transfer) {
         case AIRSPY_SAMPLE_INT16_IQ:
             // When packing is enabled, the library unpacks to INT16_IQ automatically
             if (!app->module.queue_samples(app->module.pipeline_ctx, transfer->samples, transfer->sample_count, CS16)) {
-        log_warn("SDR input buffer overrun! Dropped data.");
+        /* Warning handled internally by pipeline */
     }
             break;
 
         case AIRSPY_SAMPLE_FLOAT32_IQ:
             if (!app->module.queue_samples(app->module.pipeline_ctx, transfer->samples, transfer->sample_count, CF32)) {
-        log_warn("SDR input buffer overrun! Dropped data.");
+        /* Warning handled internally by pipeline */
     }
             break;
 

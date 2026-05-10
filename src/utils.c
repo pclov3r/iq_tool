@@ -162,7 +162,7 @@ bool utils_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz,
             utils_clear_stdin();
             response = tolower(response);
             if (response == 'n') {
-                log_debug("Operation cancelled by user.");
+                log_info("Operation cancelled by user.");
                 return false;
             }
         } while (response != 'y');

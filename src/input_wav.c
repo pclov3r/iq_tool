@@ -562,12 +562,12 @@ static bool wav_input_initialize(ModuleContext* ctx) {
 #endif
 
     if (!private_data->infile) {
-        log_fatal("Error opening input file: %s", sf_strerror(private_data->infile));
+        log_error("Error opening input file: %s", sf_strerror(private_data->infile));
         return false;
     }
 
     if (sfinfo.channels != 2) {
-        log_fatal("Error: Input file must have 2 channels (I/Q), but found %d.", sfinfo.channels);
+        log_error("Error: Input file must have 2 channels (I/Q), but found %d.", sfinfo.channels);
         sf_close(private_data->infile);
         private_data->infile = NULL;
         return false;
@@ -578,7 +578,7 @@ static bool wav_input_initialize(ModuleContext* ctx) {
         case SF_FORMAT_PCM_16: app->module.input_format = CS16; break;
         case SF_FORMAT_PCM_U8: app->module.input_format = CU8; break;
         default:
-            log_fatal("Error: Input WAV file uses an unsupported PCM subtype (0x%04X). "
+            log_error("Error: Input WAV file uses an unsupported PCM subtype (0x%04X). "
                       "Supported WAV PCM subtypes are 16-bit Signed (cs16) and 8-bit Unsigned (cu8).", sf_subtype);
             sf_close(private_data->infile);
             private_data->infile = NULL;
@@ -591,7 +591,7 @@ static bool wav_input_initialize(ModuleContext* ctx) {
     }
 
     if (sfinfo.samplerate <= 0) {
-        log_fatal("Error: Invalid input sample rate (%d Hz).", sfinfo.samplerate);
+        log_error("Error: Invalid input sample rate (%d Hz).", sfinfo.samplerate);
         sf_close(private_data->infile);
         private_data->infile = NULL;
         return false;
@@ -616,13 +616,13 @@ static bool wav_input_initialize(ModuleContext* ctx) {
 
     if (s_wav_config.center_target_hz_arg != 0.0f) {
         if (config->dsp.freq_shift_hz != 0.0f) {
-            log_fatal("Conflicting frequency shift options provided. Cannot use --freq-shift and --wav-center-target-freq at the same time.");
+            log_error("Conflicting frequency shift options provided. Cannot use --freq-shift and --wav-center-target-freq at the same time.");
             sf_close(private_data->infile);
             return false;
         }
 
         if (!private_data->sdr_info.center_freq_hz_present) {
-            log_fatal("Option --wav-center-target-freq was used, but the input WAV file does not contain the required center frequency metadata.");
+            log_error("Option --wav-center-target-freq was used, but the input WAV file does not contain the required center frequency metadata.");
             sf_close(private_data->infile);
             return false;
         }
@@ -641,7 +641,7 @@ static size_t wav_input_read_chunk(ModuleContext* ctx, void* buffer, size_t byte
     int64_t bytes_read = sf_read_raw(private_data->infile, buffer, bytes_to_read);
     
     if (bytes_read < 0) {
-        log_fatal("libsndfile read error: %s", sf_strerror(private_data->infile));
+        log_error("libsndfile read error: %s", sf_strerror(private_data->infile));
         handle_fatal_thread_error("WAV Reader: File read error.", ctx->app);
         return 0;
     }

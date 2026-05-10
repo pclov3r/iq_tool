@@ -30,7 +30,7 @@ bool freq_shift_create(AppConfig *config, AppContext* app) {
 
     // Now that the final shift value is resolved, validate dependent options.
     if (config->dsp.shift_after_resample && fabs(app->dsp.nco_shift_hz) < 1e-9) {
-        log_fatal("Option --shift-after-resample was used, but no effective frequency shift was requested or calculated.");
+        log_error("Option --shift-after-resample was used, but no effective frequency shift was requested or calculated.");
         return false;
     }
 

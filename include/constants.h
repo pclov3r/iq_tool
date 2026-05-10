@@ -18,8 +18,8 @@
 #define APP_NAME "iq_tool"
 #define PRESETS_FILENAME "iq_tool_presets.conf"
 
-// Defines the interval in seconds for printing progress updates to the console.
-#define PROGRESS_UPDATE_INTERVAL_SECONDS 1
+// Defines the interval in seconds for console status updates and warning throttles to the console.
+#define CONSOLE_UPDATE_INTERVAL_SEC 1
 
 // =============================================================================
 // == Tier 2: Core Memory & Pipeline Architecture

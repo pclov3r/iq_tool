@@ -298,11 +298,11 @@ static bool send_setting(SpyServerClientContext* p, uint32_t setting, uint32_t v
 static bool spyserver_client_input_validate_options(AppConfig* config) {
     (void)config;
     if (s_spyserver_client_config.hostname == NULL) {
-        log_fatal("Missing required argument: --spyserver-client-host <address>");
+        log_error("Missing required argument: --spyserver-client-host <address>");
         return false;
     }
     if (s_spyserver_client_config.port == 0) {
-        log_fatal("Missing required argument: --spyserver-client-port <number>");
+        log_error("Missing required argument: --spyserver-client-port <number>");
         return false;
     }
 
@@ -315,7 +315,7 @@ static bool spyserver_client_input_validate_options(AppConfig* config) {
             strcasecmp(s_spyserver_client_config.sample_format_str, "cs16") != 0 &&
             strcasecmp(s_spyserver_client_config.sample_format_str, "cs24") != 0 &&
             strcasecmp(s_spyserver_client_config.sample_format_str, "cf32") != 0) {
-            log_fatal("Invalid value for --spyserver-client-sample-format: '%s'. Must be one of {cu8|cs16|cs24|cf32}.", s_spyserver_client_config.sample_format_str);
+            log_error("Invalid value for --spyserver-client-sample-format: '%s'. Must be one of {cu8|cs16|cs24|cf32}.", s_spyserver_client_config.sample_format_str);
             return false;
         }
     }
@@ -392,13 +392,13 @@ static bool spyserver_client_input_initialize(ModuleContext* ctx) {
     }
 
     if (response_header.MessageType != SPYSERVER_MSG_TYPE_DEVICE_INFO) {
-        log_fatal("Did not receive DeviceInfo after handshake. Server may have rejected the connection (MessageType=%u).", response_header.MessageType);
+        log_error("Did not receive DeviceInfo after handshake. Server may have rejected the connection (MessageType=%u).", response_header.MessageType);
         networking_disconnect(p->net_ctx);
         networking_cleanup();
         return false;
     }
     if (response_header.BodySize != sizeof(SpyServerDeviceInfo)) {
-        log_fatal("Received DeviceInfo with unexpected size (%u vs %zu).", response_header.BodySize, sizeof(SpyServerDeviceInfo));
+        log_error("Received DeviceInfo with unexpected size (%u vs %zu).", response_header.BodySize, sizeof(SpyServerDeviceInfo));
         networking_disconnect(p->net_ctx);
         networking_cleanup();
         return false;
@@ -418,7 +418,7 @@ static bool spyserver_client_input_initialize(ModuleContext* ctx) {
     }
 
     if (response_header.MessageType != SPYSERVER_MSG_TYPE_CLIENT_SYNC) {
-        log_fatal("Did not receive ClientSync message after handshake. Protocol error.");
+        log_error("Did not receive ClientSync message after handshake. Protocol error.");
         networking_disconnect(p->net_ctx);
         networking_cleanup();
         return false;
@@ -426,7 +426,7 @@ static bool spyserver_client_input_initialize(ModuleContext* ctx) {
 
     SpyServerClientSync sync_info;
     if (response_header.BodySize < sizeof(SpyServerClientSync)) {
-        log_fatal("Received ClientSync with unexpected size (%u vs %zu). Protocol mismatch.", response_header.BodySize, sizeof(SpyServerClientSync));
+        log_error("Received ClientSync with unexpected size (%u vs %zu). Protocol mismatch.", response_header.BodySize, sizeof(SpyServerClientSync));
         networking_disconnect(p->net_ctx);
         networking_cleanup();
         return false;
@@ -551,8 +551,8 @@ static bool spyserver_client_input_initialize(ModuleContext* ctx) {
 
             // Fail outright if the user requests a gain value that does not exist
             if (requested_gain > p->device_info.MaximumGainIndex) {
-                log_fatal("Requested gain value %u is out of range.", requested_gain);
-                log_fatal("Valid gain range for this server is 0 to %u.", p->device_info.MaximumGainIndex);
+                log_error("Requested gain value %u is out of range.", requested_gain);
+                log_error("Valid gain range for this server is 0 to %u.", p->device_info.MaximumGainIndex);
 
                 networking_disconnect(p->net_ctx);
                 networking_cleanup();

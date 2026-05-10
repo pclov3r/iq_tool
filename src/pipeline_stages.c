@@ -38,7 +38,17 @@ static bool pipeline_queue_samples(void* ctx, const void* data, size_t num_sampl
     if (is_shutdown_requested() || atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed)) return false;
 
     if (!packet_serializer_write_block(app->pipeline.sdr_input_buffer, num_samples, data, format)) {
-        log_warn("Pipeline input overrun! Dropped %zu samples.", num_samples);
+        static double last_drop_log_time = 0.0;
+        static size_t accumulated_drops = 0;
+        
+        accumulated_drops += num_samples;
+        double current_time = utils_get_time();
+        
+        if (current_time - last_drop_log_time >= CONSOLE_UPDATE_INTERVAL_SEC) {
+            log_warn("Pipeline input overrun! Dropped %zu samples.", accumulated_drops);
+            accumulated_drops = 0;
+            last_drop_log_time = current_time;
+        }
         return false;
     }
     return true;
@@ -197,7 +207,7 @@ void* pipeline_thread_writer(void* arg) {
     ModuleContext ctx = { .config = args->config, .app = app };
 
     if (!out_api || !out_api->write_chunk) {
-        log_fatal("Output module does not implement write_chunk.");
+        log_error("Output module does not implement write_chunk.");
         return NULL;
     }
 

@@ -20,7 +20,7 @@ bool dc_block_create(AppConfig* config, AppContext* app) {
     }
 
     if (app->module.source_info.sample_rate <= 0.0) {
-        log_fatal("DC Block: Cannot initialize with invalid sample rate (%.0f Hz).",
+        log_error("DC Block: Cannot initialize with invalid sample rate (%.0f Hz).",
                   app->module.source_info.sample_rate);
         return false;
     }
@@ -37,7 +37,7 @@ bool dc_block_create(AppConfig* config, AppContext* app) {
     // A very small alpha means a very narrow notch at DC, a larger alpha means wider.
     // It should be > 0.
     if (normalized_alpha <= 0.0f) {
-        log_fatal("DC Block: Calculated normalized alpha (%.6f) is invalid. Ensure DC_BLOCK_CUTOFF_HZ > 0.", normalized_alpha);
+        log_error("DC Block: Calculated normalized alpha (%.6f) is invalid. Ensure DC_BLOCK_CUTOFF_HZ > 0.", normalized_alpha);
         return false;
     }
     // Cap alpha to avoid excessively wide bandwidth for a DC block, though liquid-dsp handles it.

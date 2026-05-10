@@ -433,7 +433,7 @@ static bool nrsc5_output_validate_options(AppConfig* config) {
         else if (strcasecmp(s_nrsc5_config.mode_str, "cu8-fm") == 0) s_nrsc5_config.active_mode = NRSC5_MODE_CU8_FM;
         else if (strcasecmp(s_nrsc5_config.mode_str, "cu8-am") == 0) s_nrsc5_config.active_mode = NRSC5_MODE_CU8_AM;
         else {
-            log_fatal("Invalid NRSC5 mode '%s'. Valid modes: cs16-fm, cs16-am, cu8-fm, cu8-am.", s_nrsc5_config.mode_str);
+            log_error("Invalid NRSC5 mode '%s'. Valid modes: cs16-fm, cs16-am, cu8-fm, cu8-am.", s_nrsc5_config.mode_str);
             return false;
         }
     }
@@ -476,12 +476,12 @@ static bool nrsc5_output_validate_options(AppConfig* config) {
 
     // 3. Validate Program ID
     if (s_nrsc5_config.program_id == -1) {
-        log_fatal("Missing required option: --nrsc5-program <0-7>.");
+        log_error("Missing required option: --nrsc5-program <0-7>.");
         return false;
     }
 
     if (s_nrsc5_config.program_id < 0 || s_nrsc5_config.program_id > 7) {
-        log_fatal("Invalid NRSC5 program ID %d. Must be 0-7.", s_nrsc5_config.program_id);
+        log_error("Invalid NRSC5 program ID %d. Must be 0-7.", s_nrsc5_config.program_id);
         return false;
     }
 

@@ -190,7 +190,7 @@ int main(int argc, char *argv[]) {
         app.module.input_dbm_offset = config.dsp.dbm_offset;
     }
     if (!app.module.input_api) {
-        log_fatal("Input type '%s' is not supported or not enabled in this build.", config.input.type_name);
+        log_error("Input type '%s' is not supported or not enabled in this build.", config.input.type_name);
         goto cleanup;
     }
 
@@ -352,7 +352,7 @@ static void console_lock_function(bool lock, void *udata) {
 static void application_progress_callback(unsigned long long current_output_frames, long long total_output_frames, unsigned long long current_bytes_written, void* udata) {
     (void)udata;
 
-    if (PROGRESS_UPDATE_INTERVAL_SECONDS == 0) {
+    if (CONSOLE_UPDATE_INTERVAL_SEC == 0) {
         return;
     }
 
@@ -361,7 +361,7 @@ static void application_progress_callback(unsigned long long current_output_fram
 
     double current_time = utils_get_time();
 
-    if (current_time - last_progress_log_time >= PROGRESS_UPDATE_INTERVAL_SECONDS) {
+    if (current_time - last_progress_log_time >= CONSOLE_UPDATE_INTERVAL_SEC) {
         double rate_mb_per_sec = 0.0;
         if (last_progress_log_time > 0.0) {
             long long bytes_delta = current_bytes_written - last_bytes_written;

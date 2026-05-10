@@ -27,7 +27,7 @@ static bool parse_start_end_string(const char* input_str, const char* arg_name, 
     char end_buf[128];
 
     if (sscanf(input_str, "%127[^:]:%127s", start_buf, end_buf) != 2) {
-        log_fatal("Invalid format for %s. Expected 'start_freq:end_freq'. Found '%s'.", arg_name, input_str);
+        log_error("Invalid format for %s. Expected 'start_freq:end_freq'. Found '%s'.", arg_name, input_str);
         return false;
     }
 
@@ -42,7 +42,7 @@ static bool parse_start_end_string(const char* input_str, const char* arg_name, 
     }
 
     if (*out_end <= *out_start) {
-        log_fatal("In %s argument, end frequency must be greater than start frequency.", arg_name);
+        log_error("In %s argument, end frequency must be greater than start frequency.", arg_name);
         return false;
     }
 
@@ -136,7 +136,7 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
             }
         }
         if (!preset_found) {
-            log_fatal("Unknown preset '%s'. Check '%s' or --help for available presets.", config->preset_name, PRESETS_FILENAME);
+            log_error("Unknown preset '%s'. Check '%s' or --help for available presets.", config->preset_name, PRESETS_FILENAME);
             return false;
         }
     }
@@ -169,7 +169,7 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
         }
         // Case C: Raw stream (stdout) with no guidance
         else {
-            log_fatal("Missing required argument: you must specify an --output-sample-format when using '--output %s'.", config->output.module_name);
+            log_error("Missing required argument: you must specify an --output-sample-format when using '--output %s'.", config->output.module_name);
             return false;
         }
     }
@@ -177,13 +177,13 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
     // --- Step 5: Final Validation of Formats and Combinations ---
     config->output.format = get_format_info_by_name(config->output.format_name) ? get_format_info_by_name(config->output.format_name)->format_enum : FORMAT_UNKNOWN;
     if (config->output.format == FORMAT_UNKNOWN) {
-        log_fatal("Invalid sample format '%s'. See --help for valid formats.", config->output.format_name);
+        log_error("Invalid sample format '%s'. See --help for valid formats.", config->output.format_name);
         return false;
     }
 
     if (config->output.type == OUTPUT_TYPE_WAV || config->output.type == OUTPUT_TYPE_WAV_RF64) {
         if (config->output.format != CS16 && config->output.format != CU8) {
-            log_fatal("Invalid sample format '%s' for WAV container. Only 'cs16' and 'cu8' are supported for WAV output.", config->output.format_name);
+            log_error("Invalid sample format '%s' for WAV container. Only 'cs16' and 'cu8' are supported for WAV output.", config->output.format_name);
             return false;
         }
     }
@@ -218,18 +218,18 @@ bool validate_filter_options(AppConfig *config) {
     }
 
     if (config->dsp.filter.args.transition_width > 0.0f && config->dsp.filter.args.taps > 0) {
-        log_fatal("Error: Cannot specify both --transition-width and --filter-taps at the same time.");
+        log_error("Error: Cannot specify both --transition-width and --filter-taps at the same time.");
         log_error("Please choose only one method to define the filter's quality.");
         return false;
     }
 
     if (config->dsp.filter.args.transition_width < 0.0f) {
-        log_fatal("--transition-width must be a positive value.");
+        log_error("--transition-width must be a positive value.");
         return false;
     }
 
     if (config->dsp.filter.args.taps != 0 && config->dsp.filter.args.taps < 3) {
-        log_fatal("--filter-taps must be 3 or greater.");
+        log_error("--filter-taps must be 3 or greater.");
         return false;
     }
     if (config->dsp.filter.args.taps != 0 && config->dsp.filter.args.taps % 2 == 0) {
@@ -238,7 +238,7 @@ bool validate_filter_options(AppConfig *config) {
     }
 
     if (config->dsp.filter.args.attenuation <= 0.0f && config->dsp.filter.args.attenuation != 0.0f) {
-        log_fatal("--attenuation must be a positive value.");
+        log_error("--attenuation must be a positive value.");
         return false;
     }
 
@@ -260,7 +260,7 @@ bool validate_filter_options(AppConfig *config) {
 bool validate_iq_correction_options(AppConfig *config) {
     if (config->dsp.iq_correction.enable) {
         if (!config->dsp.dc_block.enable) {
-            log_fatal("Option --iq-correction requires --dc-block to be enabled for optimal performance and stability.");
+            log_error("Option --iq-correction requires --dc-block to be enabled for optimal performance and stability.");
             return false;
         }
     }
@@ -275,14 +275,14 @@ bool validate_option_combinations(AppConfig *config) {
         } else if (strcasecmp(config->dsp.filter.args.type_str, "fft") == 0) {
             config->dsp.filter.type_req = FILTER_TYPE_FFT;
         } else {
-            log_fatal("Invalid value for --filter-type: '%s'. Must be 'fir' or 'fft'.", config->dsp.filter.args.type_str);
+            log_error("Invalid value for --filter-type: '%s'. Must be 'fir' or 'fft'.", config->dsp.filter.args.type_str);
             return false;
         }
     }
 
     if (config->dsp.filter.args.fft_size != 0) {
         if (config->dsp.filter.args.type_str && config->dsp.filter.type_req == FILTER_TYPE_FIR) {
-            log_fatal("Contradictory options: --filter-fft-size cannot be used with an explicit '--filter-type fir'.");
+            log_error("Contradictory options: --filter-fft-size cannot be used with an explicit '--filter-type fir'.");
             return false;
         }
  
@@ -292,12 +292,12 @@ bool validate_option_combinations(AppConfig *config) {
         }
 
         if (config->dsp.filter.args.fft_size <= 0) {
-            log_fatal("--filter-fft-size must be a positive integer.");
+            log_error("--filter-fft-size must be a positive integer.");
             return false;
         }
         int n = config->dsp.filter.args.fft_size;
         if ((n > 0) && ((n & (n - 1)) != 0)) {
-            log_fatal("--filter-fft-size must be a power of two (e.g., 1024, 2048, 4096).");
+            log_error("--filter-fft-size must be a power of two (e.g., 1024, 2048, 4096).");
             return false;
         }
     }
@@ -308,7 +308,7 @@ bool validate_option_combinations(AppConfig *config) {
                            : config->dsp.filter.args.taps;
         long required_fft_size = (adjusted_taps - 1) * 2;
         if ((long)config->dsp.filter.args.fft_size < required_fft_size) {
-            log_fatal("Parameter conflict: --filter-fft-size (%d) is too small for --filter-taps (%d).",
+            log_error("Parameter conflict: --filter-fft-size (%d) is too small for --filter-taps (%d).",
                       config->dsp.filter.args.fft_size, config->dsp.filter.args.taps);
             log_error("For %ld taps, the FFT size must be at least %ld.",
                       adjusted_taps, required_fft_size);
@@ -329,7 +329,7 @@ bool validate_option_combinations(AppConfig *config) {
             } else if (strcasecmp(config->dsp.agc.profile_str_arg, "digital") == 0) {
                 config->dsp.agc.profile = AGC_PROFILE_DIGITAL;
             } else {
-                log_fatal("Invalid AGC profile '%s'. Must be 'dx', 'local', or 'digital'.", config->dsp.agc.profile_str_arg);
+                log_error("Invalid AGC profile '%s'. Must be 'dx', 'local', or 'digital'.", config->dsp.agc.profile_str_arg);
                 return false;
             }
         }
@@ -337,7 +337,7 @@ bool validate_option_combinations(AppConfig *config) {
         // 2. Validate Target Level
         if (config->dsp.agc.target_level_arg != 0.0f) {
             if (config->dsp.agc.target_level_arg <= 0.0f || config->dsp.agc.target_level_arg > 1.0f) {
-                log_fatal("Invalid AGC target level %.2f. Must be between 0.0 and 1.0.", config->dsp.agc.target_level_arg);
+                log_error("Invalid AGC target level %.2f. Must be between 0.0 and 1.0.", config->dsp.agc.target_level_arg);
                 return false;
             }
             config->dsp.agc.target_level = config->dsp.agc.target_level_arg;
@@ -356,13 +356,13 @@ bool validate_option_combinations(AppConfig *config) {
 
         // 3. Check for Conflicts
         if (config->dsp.raw_passthrough) {
-            log_fatal("Option --output-agc cannot be used with --raw-passthrough.");
+            log_error("Option --output-agc cannot be used with --raw-passthrough.");
             return false;
         }
 
         // Conflict check for Output Gain
         if (config->dsp.output_gain != 1.0f) {
-            log_fatal("Conflicting options: --output-agc and --output-gain-multiplier cannot be used together.");
+            log_error("Conflicting options: --output-agc and --output-gain-multiplier cannot be used together.");
             return false;
         }
 
@@ -375,25 +375,25 @@ bool validate_option_combinations(AppConfig *config) {
 
     // --- Validate Conflicting High-Level Modes ---
     if (config->output_rate.provided && config->preset_name) {
-        log_fatal("Option --output-rate cannot be used with --preset.");
+        log_error("Option --output-rate cannot be used with --preset.");
         return false;
     }
 
     if (config->dsp.raw_passthrough) {
         if (config->dsp.filter.count > 0) {
-            log_fatal("Option --raw-passthrough cannot be used with any filtering options.");
+            log_error("Option --raw-passthrough cannot be used with any filtering options.");
             return false;
         }
         if (config->dsp.freq_shift_hz != 0.0f) {
-            log_fatal("Option --raw-passthrough cannot be used with frequency shifting options.");
+            log_error("Option --raw-passthrough cannot be used with frequency shifting options.");
             return false;
         }
         if (config->dsp.iq_correction.enable) {
-            log_fatal("Option --raw-passthrough cannot be used with --iq-correction.");
+            log_error("Option --raw-passthrough cannot be used with --iq-correction.");
             return false;
         }
         if (config->dsp.dc_block.enable) {
-            log_fatal("Option --raw-passthrough cannot be used with --dc-block.");
+            log_error("Option --raw-passthrough cannot be used with --dc-block.");
             return false;
         }
     }

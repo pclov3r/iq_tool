@@ -252,7 +252,7 @@ InputModuleInterface* input_bladerf_get_module_api(void) {
 
 static bool bladerf_input_validate_generic_options(const AppConfig* config) {
     if (!config->sdr_general.rf_freq_provided) {
-        log_fatal("BladeRF input requires the --sdr-rf-freq option.");
+        log_error("BladeRF input requires the --sdr-rf-freq option.");
         return false;
     }
     return true;
@@ -266,7 +266,7 @@ static bool bladerf_input_validate_options(AppConfig* config) {
 
     if (s_bladerf_config.bladerf_bandwidth_hz_arg != 0.0f) {
         if (s_bladerf_config.bladerf_bandwidth_hz_arg > UINT_MAX) {
-            log_fatal("Value for --bladerf-bandwidth is too large.");
+            log_error("Value for --bladerf-bandwidth is too large.");
             return false;
         }
         s_bladerf_config.bandwidth_hz = (uint32_t)s_bladerf_config.bladerf_bandwidth_hz_arg;
@@ -274,7 +274,7 @@ static bool bladerf_input_validate_options(AppConfig* config) {
     }
 
     if (s_bladerf_config.channel != 0 && s_bladerf_config.channel != 1) {
-        log_fatal("Invalid value for --bladerf-channel. Must be 0 or 1.");
+        log_error("Invalid value for --bladerf-channel. Must be 0 or 1.");
         return false;
     }
 
@@ -305,7 +305,7 @@ static bool bladerf_input_validate_options(AppConfig* config) {
     }
 
     if (s_bladerf_config.active_bit_depth == 8 && s_bladerf_config.bandwidth_provided) {
-        log_fatal("Option --bladerf-bandwidth cannot be used with 8-bit high-speed mode.");
+        log_error("Option --bladerf-bandwidth cannot be used with 8-bit high-speed mode.");
         log_error("In this mode, the analog bandwidth is configured automatically by the library.");
         return false;
     }
@@ -501,7 +501,7 @@ static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf
     }
 
     if (actual_rate_from_device.den == 0) {
-        log_fatal("BladeRF returned an invalid rational sample rate (denominator is zero).");
+        log_error("BladeRF returned an invalid rational sample rate (denominator is zero).");
         return false;
     }
     double actual_rate_double = (double)actual_rate_from_device.integer + ((double)actual_rate_from_device.num / (double)actual_rate_from_device.den);
@@ -580,7 +580,7 @@ static void* bladerf_rx_stream_callback(struct bladerf *dev, struct bladerf_stre
     }
 
     if (!app->module.queue_samples(app->module.pipeline_ctx, samples, num_samples, app->module.input_format)) {
-        log_warn("SDR input buffer overrun! Dropped data.");
+        /* Warning handled internally by pipeline */
     }
 
     for (size_t i = 0; i < private_data->num_stream_buffers; i++) {

@@ -190,7 +190,7 @@ static int airspyhf_input_buffered_stream_callback(airspyhf_transfer_t* transfer
 
     // Airspy HF+ always outputs CF32
     if (!app->module.queue_samples(app->module.pipeline_ctx, transfer->samples, transfer->sample_count, CF32)) {
-        log_warn("SDR input buffer overrun! Dropped data.");
+        /* Warning handled internally by pipeline */
     }
 
     return 0;

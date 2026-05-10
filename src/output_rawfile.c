@@ -36,7 +36,7 @@ static bool prompt_for_overwrite(const char* path_for_messages) {
     response = tolower(response);
     if (response != 'y') {
         if (response != '\n' && response != EOF) {
-            log_debug("Operation cancelled by user.");
+            log_info("Operation cancelled by user.");
         }
         return false;
     }
@@ -80,7 +80,7 @@ static FILE* _secure_open_for_write(const char* out_path_utf8) {
             return NULL;
         }
         if (!S_ISREG(stat_buf.st_mode) && !S_ISCHR(stat_buf.st_mode)) {
-            log_fatal("Output path '%s' exists but is not a regular file. Aborting.", out_path_utf8);
+            log_error("Output path '%s' exists but is not a regular file. Aborting.", out_path_utf8);
             close(fd);
             return NULL;
         }
@@ -102,7 +102,7 @@ static FILE* _secure_open_for_write(const char* out_path_utf8) {
             return NULL;
         }
     } else {
-        log_fatal("Error opening output file %s: %s", out_path_utf8, strerror(errno));
+        log_error("Error opening output file %s: %s", out_path_utf8, strerror(errno));
         return NULL;
     }
     FILE *file_stream = fdopen(fd, "wb");

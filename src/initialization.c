@@ -64,7 +64,7 @@ bool resolve_file_paths(AppConfig *config, AppContext* app) {
     if (config->input.path_arg) {
         char resolved_input_path[PATH_MAX];
         if (realpath(config->input.path_arg, resolved_input_path) == NULL) {
-            log_fatal("Input file not found or path is invalid: %s (%s)", config->input.path_arg, strerror(errno));
+            log_error("Input file not found or path is invalid: %s (%s)", config->input.path_arg, strerror(errno));
             return false;
         }
         config->input.effective_path = mem_arena_alloc(&app->pipeline.setup_arena, strlen(resolved_input_path) + 1, false);
@@ -85,7 +85,7 @@ bool resolve_file_paths(AppConfig *config, AppContext* app) {
 
         char resolved_dir_path[PATH_MAX];
         if (realpath(dir, resolved_dir_path) == NULL) {
-            log_fatal("Output directory does not exist or path is invalid: %s (%s)", dir, strerror(errno));
+            log_error("Output directory does not exist or path is invalid: %s (%s)", dir, strerror(errno));
             return false;
         }
 
@@ -131,7 +131,7 @@ bool calculate_and_validate_resample_ratio(AppConfig *config, AppContext* app, f
 
     // --- Step 4: Validate Ratio ---
     if (!isfinite(r) || r < MIN_ACCEPTABLE_RATIO || r > MAX_ACCEPTABLE_RATIO) {
-        log_fatal("Error: Calculated resampling ratio (%.6f) is invalid or outside acceptable range.", r);
+        log_error("Error: Calculated resampling ratio (%.6f) is invalid or outside acceptable range.", r);
         return false;
     }
     *out_ratio = r;
@@ -184,7 +184,7 @@ bool validate_and_configure_filter_stage(struct AppConfig *config, struct AppCon
         double output_nyquist = output_rate / 2.0;
 
         if (max_filter_freq_hz > output_nyquist) {
-            log_fatal("Filter configuration is incompatible with the output sample rate.");
+            log_error("Filter configuration is incompatible with the output sample rate.");
             log_error("The specified filter chain extends to %.0f Hz, but the output rate of %.0f Hz can only support frequencies up to %.0f Hz.",
                       max_filter_freq_hz, output_rate, output_nyquist);
             return false;
@@ -284,9 +284,9 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
 
     // 3. Absolute Chunk Limit Safety Check
     if (app->pipeline.alloc_size_samples > PIPELINE_MAX_CHUNK_SAMPLES) {
-        log_fatal("Calculated pipeline chunk size (%zu samples) exceeds safety limit (%d).",
+        log_error("Calculated pipeline chunk size (%zu samples) exceeds safety limit (%d).",
                   app->pipeline.alloc_size_samples, PIPELINE_MAX_CHUNK_SAMPLES);
-        log_fatal("Try reducing the output sample rate or manually lowering --filter-taps.");
+        log_error("Try reducing the output sample rate or manually lowering --filter-taps.");
         return false;
     }
 
@@ -301,7 +301,7 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
     // FAIL FAST: If the input rate is unknown or invalid, we cannot safely configure the pipeline.
     if (input_rate <= 0.0) {
         log_fatal("Internal Error: Input sample rate is invalid (%.0f Hz). Cannot calculate buffer depth.", input_rate);
-        log_fatal("Please check the input source configuration.");
+        log_error("Please check the input source configuration.");
         return false;
     }
 
@@ -623,8 +623,8 @@ bool initialize_application(AppConfig *config, AppContext* app) {
 
     if (config->dsp.raw_passthrough) {
         if (app->module.input_format != config->output.format) {
-            log_fatal("Option --raw-passthrough requires input and output formats to be identical.");
-            log_fatal("Input module '%s' provides '%s', but output is configured for '%s'.",
+            log_error("Option --raw-passthrough requires input and output formats to be identical.");
+            log_error("Input module '%s' provides '%s', but output is configured for '%s'.",
                       config->input.type_name,
                       get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->description_str : "Unknown",
                       get_format_info_by_enum(config->output.format) ? get_format_info_by_enum(config->output.format)->description_str : "Unknown");

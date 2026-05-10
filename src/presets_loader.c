@@ -189,7 +189,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
     #endif
 
     if (!fp) {
-        log_fatal("Error opening presets file '%s': %s", found_preset_files[0], strerror(errno));
+        log_error("Error opening presets file '%s': %s", found_preset_files[0], strerror(errno));
         return false;
     }
 
@@ -198,7 +198,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
     BY_HANDLE_FILE_INFORMATION fileInfo;
     if (GetFileInformationByHandle(hFile, &fileInfo)) {
         if (fileInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-            log_fatal("Security: Presets file '%s' is a directory. Aborting.", found_preset_files[0]);
+            log_error("Security: Presets file '%s' is a directory. Aborting.", found_preset_files[0]);
             fclose(fp);
             return false;
         }
@@ -215,7 +215,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         return false;
     }
     if (!S_ISREG(file_stat.st_mode)) {
-        log_fatal("Security: Presets file '%s' is not a regular file. Aborting.", found_preset_files[0]);
+        log_error("Security: Presets file '%s' is not a regular file. Aborting.", found_preset_files[0]);
         fclose(fp);
         return false;
     }

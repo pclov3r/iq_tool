@@ -90,11 +90,11 @@ static bool rawfile_input_validate_options(AppConfig* config) {
     bool format_provided = s_rawfile_config.format_str != NULL;
 
     if (!s_rawfile_config.sample_rate_provided) {
-        log_fatal("Missing required option --raw-file-input-rate <hz> for raw file input.");
+        log_error("Missing required option --raw-file-input-rate <hz> for raw file input.");
         return false;
     }
     if (!format_provided) {
-        log_fatal("Missing required option --raw-file-input-sample-format <format> for raw file input.");
+        log_error("Missing required option --raw-file-input-sample-format <format> for raw file input.");
         return false;
     }
 
@@ -114,7 +114,7 @@ static bool rawfile_input_initialize(ModuleContext* ctx) {
 
     app->module.input_format = get_format_info_by_name(s_rawfile_config.format_str) ? get_format_info_by_name(s_rawfile_config.format_str)->format_enum : FORMAT_UNKNOWN;
     if (app->module.input_format == FORMAT_UNKNOWN) {
-        log_fatal("Invalid RAW input format '%s'. See --help for valid formats.", s_rawfile_config.format_str);
+        log_error("Invalid RAW input format '%s'. See --help for valid formats.", s_rawfile_config.format_str);
         return false;
     }
 
@@ -157,7 +157,7 @@ static bool rawfile_input_initialize(ModuleContext* ctx) {
 #endif
 
     if (!private_data->infile) {
-        log_fatal("Error opening RAW input file '%s': %s", config->input.path_arg, sf_strerror(NULL));
+        log_error("Error opening RAW input file '%s': %s", config->input.path_arg, sf_strerror(NULL));
         return false;
     }
 
@@ -175,7 +175,7 @@ static size_t rawfile_input_read_chunk(ModuleContext* ctx, void* buffer, size_t 
     int64_t bytes_read = sf_read_raw(private_data->infile, buffer, bytes_to_read);
     
     if (bytes_read < 0) {
-        log_fatal("libsndfile read error: %s", sf_strerror(private_data->infile));
+        log_error("libsndfile read error: %s", sf_strerror(private_data->infile));
         handle_fatal_thread_error("Rawfile Reader: File read error.", ctx->app);
         return 0;
     }

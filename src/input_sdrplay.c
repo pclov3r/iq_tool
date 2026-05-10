@@ -429,7 +429,7 @@ static void sdrplay_input_buffered_stream_callback(short *xi, short *xq, sdrplay
 
         // 3. Write single Interleaved block to RingBuffer
         if (!app->module.queue_samples(app->module.pipeline_ctx, interleaved_data, numSamples, CS16)) {
-        log_warn("SDR input buffer overrun! Dropped data.");
+        /* Warning handled internally by pipeline */
     }
     }
 }

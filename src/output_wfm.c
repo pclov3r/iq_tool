@@ -253,15 +253,15 @@ static bool wfm_output_validate_options(AppConfig* config) {
         // Case B: User specified a rate. Validate range.
         double rate = config->output_rate.target_rate;
         if (rate < WFM_MIN_MPX_RATE || rate > WFM_MAX_MPX_RATE) {
-            log_fatal("WFM: Invalid MPX rate %.0f Hz.", rate);
-            log_fatal("Valid range is %.0f Hz to %.0f Hz.", WFM_MIN_MPX_RATE, WFM_MAX_MPX_RATE);
+            log_error("WFM: Invalid MPX rate %.0f Hz.", rate);
+            log_error("Valid range is %.0f Hz to %.0f Hz.", WFM_MIN_MPX_RATE, WFM_MAX_MPX_RATE);
             return false;
         }
     }
 
     // 3. Check for conflicting forced modes
     if (s_wfm_config.force_stereo && s_wfm_config.force_mono) {
-        log_fatal("WFM: Cannot force both Stereo and Mono simultaneously. Please choose one.");
+        log_error("WFM: Cannot force both Stereo and Mono simultaneously. Please choose one.");
         return false;
     }
 

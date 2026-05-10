@@ -102,8 +102,8 @@ static bool nfm_output_validate_options(AppConfig* config) {
     // 2. Enforce Bounds
     double rate = config->output_rate.target_rate;
     if (rate < NFM_MIN_INPUT_RATE || rate > NFM_MAX_INPUT_RATE) {
-        log_fatal("NFM: Invalid input rate %.0f Hz.", rate);
-        log_fatal("Valid range is %.0f Hz to %.0f Hz.", NFM_MIN_INPUT_RATE, NFM_MAX_INPUT_RATE);
+        log_error("NFM: Invalid input rate %.0f Hz.", rate);
+        log_error("Valid range is %.0f Hz to %.0f Hz.", NFM_MIN_INPUT_RATE, NFM_MAX_INPUT_RATE);
         return false;
     }
 
