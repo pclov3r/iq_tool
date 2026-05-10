@@ -325,10 +325,10 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
               input_rate);
 
         // --- Monolithic Tray Allocation (Contiguous Metadata + Data) ---
-    size_t raw_stride     = ALIGN_UP(app->pipeline.alloc_size_samples * app->module.input_bytes_per_sample_pair, MEM_ARENA_ALIGNMENT);
+    size_t raw_stride     = ALIGN_UP(app->pipeline.alloc_size_samples * app->module.input_bytes_per_iq_sample, MEM_ARENA_ALIGNMENT);
     size_t complex_stride = ALIGN_UP(app->pipeline.alloc_size_samples * sizeof(ComplexFloat), MEM_ARENA_ALIGNMENT);
-    app->module.output_bytes_per_sample_pair = get_format_info_by_enum(config->output.format) ? get_format_info_by_enum(config->output.format)->bytes_per_pair : 0;
-    size_t final_stride   = ALIGN_UP(app->pipeline.alloc_size_samples * app->module.output_bytes_per_sample_pair, MEM_ARENA_ALIGNMENT);
+    app->module.output_bytes_per_iq_sample = get_bytes_per_iq_sample(config->output.format);
+    size_t final_stride   = ALIGN_UP(app->pipeline.alloc_size_samples * app->module.output_bytes_per_iq_sample, MEM_ARENA_ALIGNMENT);
 
     size_t struct_stride   = ALIGN_UP(sizeof(SampleChunk), MEM_ARENA_ALIGNMENT);
     size_t total_tray_size = struct_stride + raw_stride + (complex_stride * 2) + final_stride;
@@ -366,7 +366,7 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
         item->raw_input_capacity_bytes = raw_stride;
         item->complex_buffer_capacity_samples = app->pipeline.alloc_size_samples;
         item->final_output_capacity_bytes = final_stride;
-        item->input_bytes_per_sample_pair = app->module.input_bytes_per_sample_pair;
+        item->input_bytes_per_iq_sample = app->module.input_bytes_per_iq_sample;
     }
 
     // Allocate aux buffers
@@ -385,7 +385,7 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
         size_t input_buffer_bytes = (size_t)(
             input_rate *
             INPUT_BUFFER_DURATION_SEC *
-            app->module.input_bytes_per_sample_pair
+            app->module.input_bytes_per_iq_sample
         );
 
         if (input_buffer_bytes < INPUT_BUFFER_MIN_BYTES)

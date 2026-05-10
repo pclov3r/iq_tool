@@ -22,7 +22,7 @@ static bool _has_space_for(RingBuffer* buffer, size_t bytes_needed) {
 
 bool packet_serializer_write_block(RingBuffer* buffer, uint32_t num_samples, const void* sample_data, SampleFormat format) {
     const SampleFormatInfo* fmt_info = get_format_info_by_enum(format);
-    size_t bytes_per_sample = fmt_info ? fmt_info->bytes_per_pair : 0;
+    size_t bytes_per_sample = fmt_info ? fmt_info->bytes_per_iq_sample : 0;
     size_t data_size = num_samples * bytes_per_sample;
     size_t total_needed = sizeof(PacketHeader) + data_size;
 
@@ -101,7 +101,7 @@ int64_t packet_serializer_read_packet(RingBuffer* buffer,
 
     // Validate format
     const SampleFormatInfo* pkt_fmt_info = get_format_info_by_enum(state->current_packet_format);
-    size_t bpp = pkt_fmt_info ? pkt_fmt_info->bytes_per_pair : 0;
+    size_t bpp = pkt_fmt_info ? pkt_fmt_info->bytes_per_iq_sample : 0;
     if (bpp == 0) return -1;
 
     // Validate capacity
@@ -119,7 +119,7 @@ int64_t packet_serializer_read_packet(RingBuffer* buffer,
 
     state->samples_remaining_in_packet -= samples_to_read;
     target_chunk->packet_sample_format = state->current_packet_format;
-    target_chunk->input_bytes_per_sample_pair = bpp;
+    target_chunk->input_bytes_per_iq_sample = bpp;
 
     return (int64_t)samples_to_read;
 }

@@ -487,7 +487,7 @@ static bool spyserver_client_input_initialize(ModuleContext* ctx) {
     // Set the final, negotiated format for use by the rest of the application.
     p->active_format = final_format;
     app->module.input_format = final_format;
-    app->module.input_bytes_per_sample_pair = get_format_info_by_enum(final_format) ? get_format_info_by_enum(final_format)->bytes_per_pair : 0;
+    app->module.input_bytes_per_iq_sample = get_bytes_per_iq_sample(final_format);
 
     uint32_t max_sr = p->device_info.MaximumSampleRate;
     uint32_t min_dec = p->device_info.MinimumIQDecimation;
@@ -593,7 +593,7 @@ static bool spyserver_client_input_initialize(ModuleContext* ctx) {
     // -------------------------------------------------------------------------
     // NEW: Dynamic Ring Buffer Sizing
     // -------------------------------------------------------------------------
-    double bytes_per_sec = (double)actual_rate * (double)app->module.input_bytes_per_sample_pair;
+    double bytes_per_sec = (double)actual_rate * (double)app->module.input_bytes_per_iq_sample;
 
     // Calculate total capacity based on the pre-buffer target and the headroom factor.
     // e.g. 2.5s * 4.0 = 10.0s of total capacity.
@@ -650,7 +650,7 @@ static void* spyserver_client_input_producer_thread(void* arg) {
 
         if (is_iq_data && body_size > 0) {
             size_t bytes_remaining = body_size;
-            size_t bpp = get_format_info_by_enum(p->active_format) ? get_format_info_by_enum(p->active_format)->bytes_per_pair : 0;
+            size_t bpp = get_bytes_per_iq_sample(p->active_format);
             if (bpp == 0) bpp = 1;
 
             while (bytes_remaining > 0 && !is_shutdown_requested()) {
@@ -729,7 +729,7 @@ static void* spyserver_client_input_start_stream(ModuleContext* ctx, QueueSample
     }
 
     size_t buffer_capacity = ring_buffer_get_capacity(p->stream_buffer);
-    double bytes_per_second = (double)app->module.source_info.sample_rate * (double)app->module.input_bytes_per_sample_pair;
+    double bytes_per_second = (double)app->module.source_info.sample_rate * (double)app->module.input_bytes_per_iq_sample;
     size_t high_water_mark = (size_t)(bytes_per_second * SPYSERVER_PREBUFFER_TARGET_SECONDS);
 
     // Sanity Cap
@@ -794,7 +794,7 @@ static void* spyserver_client_input_start_stream(ModuleContext* ctx, QueueSample
         // Packet format is set by the serializer based on the header it read
         // But for extra safety, we ensure byte size matches
         const SampleFormatInfo* pkt_fmt_info = get_format_info_by_enum(item->packet_sample_format);
-        item->input_bytes_per_sample_pair = pkt_fmt_info ? pkt_fmt_info->bytes_per_pair : 0;
+        item->input_bytes_per_iq_sample = pkt_fmt_info ? pkt_fmt_info->bytes_per_iq_sample : 0;
 
         if (item->frames_read > 0) {
             atomic_fetch_add_explicit(&app->stats.total_frames_read, item->frames_read, memory_order_relaxed);

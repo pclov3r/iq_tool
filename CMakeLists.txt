@@ -230,6 +230,7 @@ set(OTHER_SOURCES
     src/queue.c
     src/ring_buffer.c
     src/packet_serializer.c
+    src/sample_format_table.c
     src/signal_handler.c
     src/thread_manager.c
     src/utility_threads.c

@@ -312,7 +312,7 @@ static bool rtlsdr_input_initialize(ModuleContext* ctx) {
     }
 
     app->module.input_format = CU8;
-    app->module.input_bytes_per_sample_pair = get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->bytes_per_pair : 0;
+    app->module.input_bytes_per_iq_sample = get_bytes_per_iq_sample(app->module.input_format);
     app->module.source_info.frames = -1;
 
 

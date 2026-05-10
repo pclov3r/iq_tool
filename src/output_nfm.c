@@ -181,7 +181,7 @@ static size_t nfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
     }
     if (input_bytes == 0) return 0;
 
-    unsigned int n = input_bytes / res->module.output_bytes_per_sample_pair;
+    unsigned int n = input_bytes / res->module.output_bytes_per_iq_sample;
     liquid_float_complex* iq = (liquid_float_complex*)buffer;
     float block_power_sum = 0.0f;
     for(unsigned int i=0; i<n; i++) {

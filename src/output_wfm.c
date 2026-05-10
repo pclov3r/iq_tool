@@ -409,7 +409,7 @@ static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
 
     if (input_bytes == 0) return 0;
 
-    unsigned int num_frames = input_bytes / res->module.output_bytes_per_sample_pair;
+    unsigned int num_frames = input_bytes / res->module.output_bytes_per_iq_sample;
     ComplexFloat* iq_in = (ComplexFloat*)buffer;
     liquid_float_complex* iq_ptr = (liquid_float_complex*)iq_in;
 

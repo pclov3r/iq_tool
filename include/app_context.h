@@ -185,12 +185,12 @@ typedef struct ModuleState {
     void*                  input_private_data;
     InputSourceInfo        source_info;
     SampleFormat               input_format;
-    size_t                 input_bytes_per_sample_pair;
+    size_t                 input_bytes_per_iq_sample;
     float                  input_dbm_offset;
 
     OutputModuleInterface* output_api;
     void*                  output_private_data;
-    size_t                 output_bytes_per_sample_pair;
+    size_t                 output_bytes_per_iq_sample;
     QueueSamples           queue_samples;
     void*                  pipeline_ctx;
 } ModuleState;

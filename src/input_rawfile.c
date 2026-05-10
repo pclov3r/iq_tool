@@ -118,11 +118,11 @@ static bool rawfile_input_initialize(ModuleContext* ctx) {
         return false;
     }
 
-    app->module.input_bytes_per_sample_pair = get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->bytes_per_pair : 0;
+    app->module.input_bytes_per_iq_sample = get_bytes_per_iq_sample(app->module.input_format);
     if (!config->dsp.dbm_offset_provided) {
         app->module.input_dbm_offset = get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->dbm_offset : 0.0f;
     }
-    if (app->module.input_bytes_per_sample_pair == 0) {
+    if (app->module.input_bytes_per_iq_sample == 0) {
         log_fatal("Internal error: could not determine sample size for format '%s'.", s_rawfile_config.format_str);
         return false;
     }
@@ -219,7 +219,7 @@ static void rawfile_input_get_summary_info(const ModuleContext* ctx, InputSummar
     add_summary_item(info, "Input Rate", "%.0f Hz", s_rawfile_config.sample_rate_hz);
 
     char size_buf[40];
-    long long file_size_bytes = app->module.source_info.frames * app->module.input_bytes_per_sample_pair;
+    long long file_size_bytes = app->module.source_info.frames * app->module.input_bytes_per_iq_sample;
     add_summary_item(info, "Input File Size", "%s", utils_format_size(file_size_bytes, size_buf, sizeof(size_buf)));
 }
 

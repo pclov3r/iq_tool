@@ -266,7 +266,7 @@ static size_t am_output_write_chunk(ModuleContext* ctx, const void* buffer, size
     }
 
     if (input_bytes == 0) return 0;
-    unsigned int num_frames = input_bytes / res->module.output_bytes_per_sample_pair;
+    unsigned int num_frames = input_bytes / res->module.output_bytes_per_iq_sample;
     liquid_float_complex* iq_ptr = (liquid_float_complex*)buffer;
     bool use_sync_mode = p->sync_mode && !p->fallback_mode;
 

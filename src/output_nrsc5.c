@@ -390,7 +390,7 @@ static size_t nrsc5_output_write_chunk(ModuleContext* ctx, const void* buffer, s
 
 
 
-    unsigned int frames = input_bytes / app->module.output_bytes_per_sample_pair;
+    unsigned int frames = input_bytes / app->module.output_bytes_per_iq_sample;
     unsigned int num_scalars = frames * 2;
     int res = 0;
     switch (s_nrsc5_config.active_mode) {

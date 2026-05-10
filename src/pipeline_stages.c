@@ -113,7 +113,7 @@ void* pipeline_thread_reader(void* arg) {
                 // In Buffered mode, the Pre-Processor is skipped during passthrough.
                 // We must manually copy data to the final buffer so the Writer can find it.
                 if (config->dsp.raw_passthrough && item->frames_read > 0) {
-                    size_t bytes = item->frames_read * item->input_bytes_per_sample_pair;
+                    size_t bytes = item->frames_read * item->input_bytes_per_iq_sample;
                     memcpy(item->final_output_data, item->raw_input_data, bytes);
                 }
 
@@ -143,17 +143,17 @@ void* pipeline_thread_reader(void* arg) {
                     SampleChunk* item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
                     if (!item) break;
 
-                    size_t bytes_requested = app->pipeline.read_chunk_size * app->module.input_bytes_per_sample_pair;
+                    size_t bytes_requested = app->pipeline.read_chunk_size * app->module.input_bytes_per_iq_sample;
                     size_t capacity_bytes = item->raw_input_capacity_bytes;
                     if (bytes_requested > capacity_bytes) bytes_requested = capacity_bytes;
 
                     void* target_buffer = config->dsp.raw_passthrough ? item->final_output_data : item->raw_input_data;
                     size_t bytes_read = in_api->read_chunk(&ctx, target_buffer, bytes_requested);
 
-                    item->frames_read = bytes_read / app->module.input_bytes_per_sample_pair;
+                    item->frames_read = bytes_read / app->module.input_bytes_per_iq_sample;
                     item->frames_to_write = (unsigned int)item->frames_read;
                     item->packet_sample_format = app->module.input_format;
-                    item->input_bytes_per_sample_pair = app->module.input_bytes_per_sample_pair;
+                    item->input_bytes_per_iq_sample = app->module.input_bytes_per_iq_sample;
                     item->stream_discontinuity_event = false;
                     item->is_last_chunk = (bytes_read < bytes_requested); // EOF reached
 
@@ -208,7 +208,7 @@ void* pipeline_thread_writer(void* arg) {
         // 1. Process payload FIRST if it exists
         // This ensures the partial "tail" of a file is written before we exit.
         if (item->frames_to_write > 0 && !item->stream_discontinuity_event) {
-            size_t bytes_to_write = item->frames_to_write * app->module.output_bytes_per_sample_pair;
+            size_t bytes_to_write = item->frames_to_write * app->module.output_bytes_per_iq_sample;
             size_t written = out_api->write_chunk(&ctx, item->final_output_data, bytes_to_write);
 
             // Stats & Progress Reporting (Only for file outputs)

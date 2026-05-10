@@ -464,7 +464,7 @@ static bool bladerf_input_initialize(ModuleContext* ctx) {
     }
 
     app->module.input_format = (s_bladerf_config.active_bit_depth == 8) ? CS8 : SC16Q11;
-    app->module.input_bytes_per_sample_pair = get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->bytes_per_pair : 0;
+    app->module.input_bytes_per_iq_sample = get_bytes_per_iq_sample(app->module.input_format);
 
     private_data->rx_stream = NULL;
     private_data->stream_buffers = NULL;

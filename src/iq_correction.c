@@ -331,7 +331,7 @@ bool iq_correction_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile) 
     }
 
     // Allocate temporary buffers from the setup arena.
-    size_t raw_buffer_size = FFTBins * app->module.input_bytes_per_sample_pair;
+    size_t raw_buffer_size = FFTBins * app->module.input_bytes_per_iq_sample;
     void* raw_buffer = mem_arena_alloc(&app->pipeline.setup_arena, raw_buffer_size, false);
     ComplexFloat* cf32_buffer = (ComplexFloat*)mem_arena_alloc(&app->pipeline.setup_arena, FFTBins * sizeof(ComplexFloat), false);
 

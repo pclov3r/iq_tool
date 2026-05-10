@@ -585,7 +585,7 @@ static bool wav_input_initialize(ModuleContext* ctx) {
             return false;
     }
 
-    app->module.input_bytes_per_sample_pair = get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->bytes_per_pair : 0;
+    app->module.input_bytes_per_iq_sample = get_bytes_per_iq_sample(app->module.input_format);
     if (!config->dsp.dbm_offset_provided) {
         app->module.input_dbm_offset = get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->dbm_offset : 0.0f;
     }
