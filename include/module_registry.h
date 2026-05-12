@@ -86,20 +86,23 @@ bool module_is_sdr(const char* name, struct MemoryArena* arena);
  * @brief Populates a buffer with the CLI options from all registered modules.
  *
  * This function iterates through all known modules and appends their argparse_option
- * structs to the destination buffer. It intelligently "disables" options for
- * inactive modules by setting their value pointers to NULL.
+ * structs to the destination buffer. It intercepts options for inactive modules
+ * by attaching a custom callback that prints a context-aware warning, allowing
+ * the parser to proceed without crashing.
  *
  * @param dest_buffer The argparse_option array to be filled.
  * @param total_opts_ptr A pointer to the running count of options in the buffer.
  * @param max_opts The capacity of the destination buffer.
  * @param active_input_type The name of the currently active input module.
- * @param arena The memory arena, needed to initialize the module list.
+ * @param active_output_type The name of the currently active output module.
+ * @param arena The memory arena, needed to initialize the module list and context structs.
  */
 void module_populate_cli_options(
     struct argparse_option* dest_buffer,
     int* total_opts_ptr,
     int max_opts,
     const char* active_input_type,
+    const char* active_output_type,
     struct MemoryArena* arena
 );
 

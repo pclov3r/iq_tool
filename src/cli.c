@@ -32,7 +32,7 @@ static const char** g_original_argv = NULL;
 // --- Forward Declarations ---
 static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const char** non_opt_argv, MemoryArena* arena);
 static int version_cb(struct argparse *self, const struct argparse_option *option);
-static int build_cli_options(struct argparse_option* options_buffer, int max_options, AppConfig* config, MemoryArena* arena, const char* active_input_type);
+static int build_cli_options(struct argparse_option* options_buffer, int max_options, AppConfig* config, MemoryArena* arena, const char* active_input_type, const char* active_output_type);
 
 // --- Callback to catch users trying to use presets as flags ---
 static int preset_flag_warning_cb(struct argparse *self, const struct argparse_option *option) {
@@ -53,7 +53,7 @@ void cli_print_usage(const char *prog_name, AppConfig *config, MemoryArena* aren
     };
 
     // Build the full options list to generate complete help text.
-    build_cli_options(all_options, MAX_TOTAL_OPTIONS, config, arena, NULL);
+    build_cli_options(all_options, MAX_TOTAL_OPTIONS, config, arena, NULL, NULL);
 
     argparse_init(&argparse, all_options, usages, 0);
     argparse_describe(&argparse, NULL, NULL);
@@ -73,7 +73,7 @@ static int version_cb(struct argparse *self, const struct argparse_option *optio
     exit(EXIT_SUCCESS);
 }
 
-static int build_cli_options(struct argparse_option* options_buffer, int max_options, AppConfig* config, MemoryArena* arena, const char* active_input_type) {
+static int build_cli_options(struct argparse_option* options_buffer, int max_options, AppConfig* config, MemoryArena* arena, const char* active_input_type, const char* active_output_type) {
     int total_opts = 0;
 
     struct argparse_option generic_options[] = {
@@ -136,6 +136,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         &total_opts,
         max_options,
         active_input_type,
+        active_output_type,
         arena
     );
 
@@ -171,10 +172,22 @@ bool cli_parse(int argc, char *argv[], AppConfig *config, MemoryArena* arena) {
     g_original_argv = (const char**)argv;
 
     struct argparse_option all_options[MAX_TOTAL_OPTIONS];
-    
-    const char* active_input_type = config->input.type_name;
 
-    if (build_cli_options(all_options, MAX_TOTAL_OPTIONS, config, arena, active_input_type) < 0) {
+    const char* active_input_type = config->input.type_name;
+    const char* active_output_type = config->output.module_name;
+
+    if (!active_output_type) {
+        for (int i = 1; i < argc; i++) {
+            if (strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "--output") == 0) {
+                if (i + 1 < argc) {
+                    active_output_type = argv[i + 1];
+                    break;
+                }
+            }
+        }
+    }
+
+    if (build_cli_options(all_options, MAX_TOTAL_OPTIONS, config, arena, active_input_type, active_output_type) < 0) {
         return false;
     }
 
