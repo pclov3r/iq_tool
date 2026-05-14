@@ -8,6 +8,7 @@
 // --- Include the headers for ALL concrete input source implementations ---
 #include "input_wav.h"
 #include "input_rawfile.h"
+#include "input_stdin.h"
 #include "input_spyserver_client.h"
 #if defined(WITH_RTLSDR)
 #include "input_rtlsdr.h"
@@ -90,6 +91,18 @@ static void initialize_modules_list(MemoryArena* arena) {
             .set_default_config = NULL,
             .get_cli_options = rawfile_input_get_cli_options,
             .requires_input_path = true,
+            .requires_output_path = false,
+        },
+        {
+            .name = "stdin",
+            .type = MODULE_TYPE_INPUT,
+            .dbm_offset = 0.0f,
+            .default_attenuation = 0.0f,
+            .api = input_stdin_get_module_api(),
+            .is_sdr = false,
+            .set_default_config = NULL,
+            .get_cli_options = stdin_input_get_cli_options,
+            .requires_input_path = false,
             .requires_output_path = false,
         },
     #if defined(WITH_RTLSDR)

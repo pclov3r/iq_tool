@@ -197,6 +197,10 @@ Raw File Input (rawfile)
     --raw-file-input-rate=<flt>               (Required) The sample rate of the RAW input file.
     --raw-file-input-sample-format=<str>      (Required) The sample format of the RAW input file.
 
+Standard Input (stdin)
+    --stdin-input-rate=<flt>                  (Required) The sample rate of the stdin stream in Hz.
+    --stdin-input-sample-format=<str>         (Required) The sample format of the stdin stream.
+
 RTL-SDR Input (rtlsdr)
     --rtlsdr-device-idx=<int>                 Select specific RTL-SDR device by index (0-indexed). (Default: 0)
     --rtlsdr-gain=<flt>                       Set manual tuner gain in dB (e.g., 28.0, 49.6). Disables AGC.

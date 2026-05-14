@@ -209,6 +209,7 @@ set(OTHER_SOURCES
     src/config.c
     src/initialization.c
     src/input_rawfile.c
+    src/input_stdin.c
     src/input_wav.c
     src/log.c
     src/main.c
