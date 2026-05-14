@@ -98,7 +98,7 @@ bool pipeline_run(PipelineContext* context) {
     log_debug("Spawning pipeline threads...");
     bool threads_ok = true;
     if (app->pipeline_mode != PIPELINE_MODE_FILE_PROCESSING) {
-        if (!thread_manager_spawn_thread(&manager, "SDR Capture", pipeline_thread_sdr_capture)) threads_ok = false;
+        if (!thread_manager_spawn_thread(&manager, "Source", pipeline_thread_source)) threads_ok = false;
     }
     if (threads_ok && !thread_manager_spawn_thread(&manager, "Reader", pipeline_thread_reader)) threads_ok = false;
     if (threads_ok && !config->dsp.raw_passthrough) {

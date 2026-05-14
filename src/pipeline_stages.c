@@ -54,8 +54,8 @@ static bool pipeline_queue_samples(void* ctx, const void* data, size_t num_sampl
     return true;
 }
 
-void* pipeline_thread_sdr_capture(void* arg) {
-    platform_set_thread_priority(PRIORITY_REALTIME, "SDR Capture");
+void* pipeline_thread_source(void* arg) {
+    platform_set_thread_priority(PRIORITY_REALTIME, "Source");
 
     PipelineContext* args = (PipelineContext*)arg;
     AppContext* app = args->app;

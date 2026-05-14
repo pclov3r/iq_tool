@@ -286,7 +286,7 @@ typedef struct AppContext {
         bool post_processor;
         bool writer;
         bool iq_optimizer;
-        bool sdr_capture;
+        bool source;
         bool sdr_watchdog;
     } threads_to_create;
 } AppContext;

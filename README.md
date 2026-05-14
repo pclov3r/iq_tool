@@ -376,36 +376,57 @@ This section provides a high-level overview of the tool's internal design for th
 
 #### The Data Flow Pipeline
 
-The tool processes data using a pipeline of dedicated threads for each major stage. Data is passed between these threads in `SampleChunk` buffers, using queues to hand off a buffer from one stage to the next.
+`iq_tool` processes data through a high-performance pipeline of concurrent, decoupled stages. Each major task runs in its own dedicated thread, using thread-safe blocking queues to hand off data from one stage to the next. To maximize throughput and minimize latency, the pipeline utilizes a pre-allocated memory pool of `SampleChunk` structures, allowing for high-speed data flow without the overhead of dynamic memory allocation.
 
 The sequence of threads and their responsibilities are as follows:
 
-1.  **Reader Thread:** The first thread in the pipeline acquires raw samples from the selected input source (a file or SDR). It fills a `SampleChunk` buffer with this raw data and adds it to a queue for the next stage.
-    *   **SDR-to-File Mode:** When reading from a live SDR to a file, an additional `sdr_capture_thread` is used. This thread's callback writes data to an intermediate ring buffer in a structured packet format. Each packet consists of a header (containing the number of samples and format flags) followed by the corresponding sample data. This packet structure also allows for non-data events, like stream resets, to be communicated. The main Reader thread's job is to read and parse these packets from the buffer, providing a consistent stream to the rest of the pipeline regardless of the source SDR.
+1.  **Source Thread (Optional / Live Mode Only):**
+    This thread is active when using live inputs (SDR hardware, network streams, or OS pipes). Its sole responsibility is to acquire data from the hardware or protocol and write it into a high-capacity, lock-free ring buffer. It uses a structured packet format (Header + Payload) which allows it to communicate stream events, such as hardware overruns or resets, to the rest of the pipeline. This thread ensures that real-time data acquisition is never delayed by downstream DSP processing.
 
-2.  **Pre-Processor Thread:** This thread takes raw sample buffers from the first queue. It converts the data to a 32-bit complex float format and performs any DSP operations scheduled before resampling (e.g., DC blocking, Frequency Shifting).
+2.  **Reader Thread:**
+    The bridge between raw data and the DSP chain. 
+    *   **In Live Mode:** It "sips" data from the Source Ring Buffer, parses the packet headers, and populates `SampleChunk` structures.
+    *   **In File Mode:** It reads raw data directly from the disk.
+    Once a `SampleChunk` is filled with raw bytes, the Reader thread pushes it into the Pre-Processor queue.
 
-3.  **Resampler Thread:** This thread takes the complex float buffers and changes the sample rate of the data using a filter from the `liquid-dsp` library.
+3.  **Pre-Processor Thread:**
+    The first DSP stage. It dequeues `SampleChunk` structures and performs operations on the raw data before it is resampled. This includes:
+    *   Converting raw integer samples into 32-bit complex floats (CF32).
+    *   Applying initial input gain.
+    *   Executing DC-offset removal and automatic I/Q imbalance correction.
+    *   Performing pre-resample frequency shifting (NCO) and filtering.
 
-4.  **Post-Processor Thread:** This thread takes the resampled buffers. It performs any DSP operations scheduled after resampling (e.g., Filtering, AGC, Frequency Shifting) and then converts the data into the final, user-specified output byte format.
+4.  **Resampler Thread:**
+    Handles sample rate conversion. It pulls processed CF32 buffers and uses a polyphase filter (via `liquid-dsp`) to transition the data to the user-specified target rate. It utilizes a "ping-pong" buffer strategy within the `SampleChunk` to ensure high-speed, zero-copy data flow.
 
-5.  **Writer Thread:** The final thread takes the formatted buffers and writes the data to the output destination.
-    *   **File Output:** When writing to a file, the post-processor adds its data to a ring buffer. The writer thread reads from this buffer and writes to the disk.
-    *   **Stdout Output:** When piping, data is written directly to the `stdout` stream.
+5.  **Post-Processor Thread:**
+    The final DSP stage. It operates on the resampled complex float data to prepare it for the final output. Responsibilities include:
+    *   Applying secondary filtering or Automatic Gain Control (AGC).
+    *   Performing post-resample frequency shifting.
+    *   Converting the internal CF32 data into the final user-selected byte format (e.g., `cs16`, `cu8`).
 
-#### The Modular Input System
+6.  **Writer Thread:**
+    The final stage in the pipeline. It dequeues formatted buffers and writes them to the destination.
+    *   **Synchronous Output (File/Stdout):** It manages backpressure; if the destination is slow, the writer will block the pipeline to ensure no data is lost.
+    *   **Real-time Output (Audio/Live):** For audio modules (AM, NFM, WFM), the writer interacts with the OS sound driver. If the pipeline runs faster than real-time, the writer manages the timing to ensure perfectly paced playback.
 
-The tool is designed to be easily extendable for new input sources (like different SDRs or file types). This is handled through a simple but powerful interface in the code.
+#### The Modular I/O System
 
-*   **The Interface (`module.h`):** The core of the system is a `struct` of function pointers called `InputModuleInterface`. It defines a standard contract that every input source must follow, with functions like `initialize`, `start_stream`, `stop_stream`, `cleanup`, etc.
-*   **The Registry (`module_manager.c`):** This file acts as a simple "factory" or registry. It maintains a master list of all available input modules (RTL-SDR, WAV, etc.). When you run the tool with `--input rtlsdr`, the manager looks up the "rtlsdr" entry and provides the main application with the correct `InputModuleInterface` struct for that device.
-*   **Adding a New Source:**
-    1.  Create a new `input_source.c` file that implements the required functions from the `InputModuleInterface` interface.
-    2.  Define any specific command-line options in that file.
-    3.  Add the new module to the master list in `module_manager.c`.
-    4.  Update the `CMakeLists.txt` file to compile the new file and link against the library.
+The tool features a fully modular architecture designed for the rapid extension of both data sources and data sinks. By decoupling hardware and format-specific logic from the core DSP pipeline, `iq_tool` can easily be adapted to new SDR hardware, network protocols, or demodulation schemes.
 
-This design keeps all the logic for a specific input source contained in its own file, making the code clean and easy to maintain and extend.
+*   **The Core Interfaces (`module.h`):** All modules are built upon two primary virtual method tables (v-tables) defined in `module.h`:
+    *   **`InputModuleInterface`**: Standardizes how the pipeline initializes hardware, starts data acquisition, and cleans up resources for any data source.
+    *   **`OutputModuleInterface`**: Standardizes how data is delivered to a destination, allowing the tool to switch seamlessly between writing raw files, generating WAVs, or streaming real-time audio.
+*   **The Module Headers:** Every module provides its own header file (e.g., `input_rtlsdr.h` or `output_am.h`). These headers act as the bridge to the registry, exporting two critical functions: one to return the module's API v-table and another to provide its unique command-line options.
+*   **The Registry (`module_registry.c` / `module_registry.h`):** This serves as the system's central "factory." It maintains a comprehensive catalog of every compiled-in module. When a user selects a mode via the `--input` or `--output` arguments, the registry performs a lookup and injects the appropriate logic into the pipeline at runtime.
+*   **Adding a New Module:**
+    1.  **Define the Header:** Create a new header file (e.g., `input_new_sdr.h`) that declares the functions needed to retrieve the module's API and CLI options.
+    2.  **Implement the Interface:** Create the corresponding implementation file (e.g., `input_new_sdr.c`) that fulfills the required function pointers in the `InputModuleInterface` or `OutputModuleInterface`.
+    3.  **Define CLI Options:** Use the built-in `argparse` integration within your module to define any unique command-line flags (e.g., gain settings for a specific SDR or cutoff frequencies for a demodulator).
+    4.  **Register the Module:** Include your new header in `module_registry.c` and add a new entry to the `temp_modules[]` array to make it visible to the command-line parser and the factory.
+    5.  **Update the Build System:** Add the new source file to `CMakeLists.txt` and link any necessary external libraries.
+
+This design ensures that hardware-specific quirks and complex output formats remain isolated from the high-speed processing core, resulting in a codebase that is clean, maintainable, and highly portable.
 
 ### Contributing
 

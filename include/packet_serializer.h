@@ -1,6 +1,6 @@
 /**
  * @file packet_serializer.h
- * @brief Defines the data protocol for the ring buffer between SDR Capture and Reader threads.
+ * @brief Defines the data protocol for the ring buffer between Source and Reader threads.
  *
  * This module provides a standardized binary protocol for transmitting I/Q data
  * from hardware drivers (Producers) to the processing pipeline (Consumer) via

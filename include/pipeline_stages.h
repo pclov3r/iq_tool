@@ -6,7 +6,7 @@
 #ifndef PIPELINE_STAGES_H_
 #define PIPELINE_STAGES_H_
 
-void* pipeline_thread_sdr_capture(void* arg);
+void* pipeline_thread_source(void* arg);
 void* pipeline_thread_reader(void* arg);
 void* pipeline_thread_pre_processor(void* arg);
 void* pipeline_thread_resampler(void* arg);

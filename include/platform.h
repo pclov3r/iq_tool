@@ -32,7 +32,7 @@ typedef enum {
     PRIORITY_NORMAL,       // Default scheduling (e.g., Reader thread)
     PRIORITY_HIGH,         // Latency-sensitive DSP (e.g., Pre/Post Processor)
     PRIORITY_HIGHEST,      // Critical I/O (e.g., Disk Writer)
-    PRIORITY_REALTIME      // Hardware Timing (e.g., SDR Capture)
+    PRIORITY_REALTIME      // Hardware Timing (e.g., Source)
 } ThreadPriority;
 
 /**
