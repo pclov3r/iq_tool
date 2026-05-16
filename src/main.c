@@ -191,6 +191,11 @@ int main(int argc, char *argv[]) {
         ModuleContext ctx = { .config = &config, .app = &app };
         if (!app.module.input_api->pre_stream_iq_correction(&ctx)) goto cleanup;
     }
+    PipelineContext pipeline_context = { .config = &config, .app = &app };
+    if (!pipeline_setup_buffers(&pipeline_context)) {
+        goto cleanup;
+    }
+
     if (!init_output_module(&config, &app)) {
         goto cleanup;
     }
@@ -210,7 +215,6 @@ int main(int argc, char *argv[]) {
 
     app.stats.start_time = time(NULL);
 
-    PipelineContext pipeline_context = { .config = &config, .app = &app };
     if (!pipeline_run(&pipeline_context)) {
         log_error("Pipeline execution failed.");
     }

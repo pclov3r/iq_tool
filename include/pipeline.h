@@ -27,6 +27,12 @@ struct PipelineContext;
  * @param context A pointer to the PipelineContext, containing the application config and app.
  * @return true if the pipeline ran and shut down cleanly, false if there was a setup or execution error.
  */
+/**
+ * @brief Sets up pipeline buffers and calculates resample ratio.
+ * Must be called before initializing the output module.
+ */
+bool pipeline_setup_buffers(struct PipelineContext* context);
+
 bool pipeline_run(struct PipelineContext* context);
 
 #endif // PIPELINE_H_

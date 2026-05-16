@@ -312,14 +312,21 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext* app, floa
     return true;
 }
 
-bool pipeline_run(PipelineContext* context) {
+bool pipeline_setup_buffers(PipelineContext* context) {
     AppConfig* config = context->config;
     AppContext* app = context->app;
-    bool success = false;
 
     // --- Step 0: Calculate Ratios & Allocate Memory Pools ---
     if (!calculate_and_validate_resample_ratio(config, app, &app->dsp.resample_ratio)) return false;
     if (!allocate_processing_buffers(config, app, app->dsp.resample_ratio)) return false;
+
+    return true;
+}
+
+bool pipeline_run(PipelineContext* context) {
+    AppConfig* config = context->config;
+    AppContext* app = context->app;
+    bool success = false;
 
     // --- Step 1: Create all internal DSP components ---
     if (!_create_dsp_components(config, app, app->dsp.resample_ratio)) {

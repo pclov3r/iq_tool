@@ -29,7 +29,7 @@
 // --- Constants ---
 #define AUDIO_SAMPLE_RATE       48000
 #define AUDIO_CHANNELS          2
-#define AUDIO_BUFFER_SIZE       (512 * 1024)
+#define AUDIO_BUFFER_SIZE       (1536 * 1024)
 #define AM_STATS_INTERVAL_SEC   1.0f
 #define MAX_AUDIO_CUTOFF_HZ     20000.0f
 

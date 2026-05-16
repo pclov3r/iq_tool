@@ -24,7 +24,7 @@
 // --- Constants ---
 #define NFM_AUDIO_RATE          48000
 #define NFM_AUDIO_CHANNELS      2 // Output is Stereo (Mono duplicated)
-#define NFM_AUDIO_BUFFER_SIZE   (128 * 1024)
+#define NFM_AUDIO_BUFFER_SIZE   (1536 * 1024)
 
 // Rate Constraints
 #define NFM_MIN_INPUT_RATE      16000.0

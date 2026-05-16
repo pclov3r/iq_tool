@@ -93,7 +93,7 @@
 // --- Audio Config ---
 #define AUDIO_SAMPLE_RATE       48000
 #define AUDIO_CHANNELS          2
-#define AUDIO_BUFFER_SIZE       (512 * 1024)
+#define AUDIO_BUFFER_SIZE       (1536 * 1024)
 
 // --- MPX Rate Constraints ---
 #define WFM_MIN_MPX_RATE        192000.0

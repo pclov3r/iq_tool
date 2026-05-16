@@ -28,7 +28,7 @@
 #include "queue.h"
 
 // --- Configuration Constants ---
-#define NRSC5_AUDIO_BUFFER_SIZE (512 * 1024)
+#define NRSC5_AUDIO_BUFFER_SIZE (1536 * 1024)
 #define NRSC5_AUDIO_CHANNELS 2
 #define NRSC5_AUDIO_SAMPLE_RATE 44100
 #define SAFE_STR(s) ((s) ? (s) : "(null)")
