@@ -340,10 +340,10 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 #define SPYSERVER_DEFAULT_SAMPLE_RATE_HZ 600000.0
 
 // Absolute hard limit for the ring buffer size (128 MB)
-#define SPYSERVER_MAX_BUFFER_BYTES (128 * 1024 * 1024)
+#define SPYSERVER_MAX_BUFFER_BYTES (256 * 1024 * 1024)
 
 // Start processing only after buffering this much data
-#define SPYSERVER_PREBUFFER_TARGET_SECONDS 2.5f
+#define SPYSERVER_PREBUFFER_TARGET_SECONDS 5.0f
 
 // Minimum data floor required to trigger pre-buffering
 #define SPYSERVER_PREBUFFER_MIN_BYTES 65536

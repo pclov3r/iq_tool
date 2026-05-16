@@ -43,7 +43,6 @@ struct NetworkingContext {
 #endif
 };
 
-
 // --- Public API Implementation ---
 
 bool networking_init(void) {
@@ -134,6 +133,8 @@ NetworkingContext* networking_connect(const char* hostname, int port, struct Mem
         DWORD timeout = NETWORK_SOCKET_TIMEOUT_MS;
         setsockopt(ctx->socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
         setsockopt(ctx->socket_fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout));
+        int rcvbuf = 2 * 1024 * 1024;
+        setsockopt(ctx->socket_fd, SOL_SOCKET, SO_RCVBUF, (const char*)&rcvbuf, sizeof(rcvbuf));
 
         if (connect(ctx->socket_fd, p->ai_addr, (int)p->ai_addrlen) == SOCKET_ERROR) {
             closesocket(ctx->socket_fd);
@@ -150,6 +151,8 @@ NetworkingContext* networking_connect(const char* hostname, int port, struct Mem
         timeout.tv_usec = (NETWORK_SOCKET_TIMEOUT_MS % 1000) * 1000;
         setsockopt(ctx->socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
         setsockopt(ctx->socket_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+        int rcvbuf = 2 * 1024 * 1024;
+        setsockopt(ctx->socket_fd, SOL_SOCKET, SO_RCVBUF, (const char*)&rcvbuf, sizeof(rcvbuf));
 
         if (connect(ctx->socket_fd, p->ai_addr, p->ai_addrlen) < 0) {
             close(ctx->socket_fd);

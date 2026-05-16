@@ -66,7 +66,6 @@
 #include <unistd.h>
 #endif
 
-
 // =============================================================================
 // == START: Encapsulated SpyServer Protocol Definitions
 // =============================================================================
@@ -174,7 +173,6 @@ typedef struct {
 // == END: Encapsulated SpyServer Protocol Definitions
 // =============================================================================
 
-
 // --- Private Module Configuration ---
 static struct {
     const char* hostname;
@@ -196,7 +194,6 @@ typedef struct {
     unsigned char* rx_buffer;
     size_t rx_buffer_size;
 } SpyServerClientContext;
-
 
 // --- CLI Options ---
 static const struct argparse_option spyserver_client_input_cli_options[] = {
@@ -322,7 +319,6 @@ static bool spyserver_client_input_validate_options(AppConfig* config) {
     return true;
 }
 
-// --- Main Module Implementations ---
 static bool spyserver_client_input_initialize(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
     AppContext* app = ctx->app;
@@ -333,8 +329,7 @@ static bool spyserver_client_input_initialize(ModuleContext* ctx) {
     p->net_ctx = NULL;
 
     // Allocate receive scratch buffer
-    // 256KB is large enough for typical SpyServer chunks. Large payloads will be split.
-    p->rx_buffer_size = 256 * 1024;
+    p->rx_buffer_size = 16384; // 16KB sweet-spot for low-latency flow
     p->rx_buffer = (unsigned char*)mem_arena_alloc(&app->pipeline.setup_arena, p->rx_buffer_size, false);
     if (!p->rx_buffer) return false;
 
@@ -590,9 +585,7 @@ static bool spyserver_client_input_initialize(ModuleContext* ctx) {
 
     if (!send_setting(p, SPYSERVER_SETTING_STREAMING_MODE, SPYSERVER_STREAM_MODE_IQ_ONLY)) return false;
 
-    // -------------------------------------------------------------------------
-    // NEW: Dynamic Ring Buffer Sizing
-    // -------------------------------------------------------------------------
+    // Dynamic Ring Buffer Sizing
     double bytes_per_sec = (double)actual_rate * (double)app->module.input_bytes_per_iq_sample;
 
     // Calculate total capacity based on the pre-buffer target and the headroom factor.
