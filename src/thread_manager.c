@@ -50,7 +50,7 @@ bool thread_manager_spawn_thread(ThreadManager* manager, const char* name, void*
         return false;
     }
 
-    log_debug("Thread '%s' spawned successfully.", name);
+    log_debug("Spawned thread \'%s\'.", name);
     manager->num_threads_started++;
     return true;
 }

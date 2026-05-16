@@ -44,7 +44,7 @@ void platform_set_thread_priority(ThreadPriority priority, const char* thread_na
     }
 
     if (!SetThreadPriority(GetCurrentThread(), win_prio)) {
-        log_warn("Failed to set '%s' thread priority to %s.", thread_name, prio_desc);
+        log_warn("Failed to set '%s' thread scheduling priority to %s.", thread_name, prio_desc);
     }
 #else
     // --- Linux / POSIX Implementation ---
@@ -53,57 +53,54 @@ void platform_set_thread_priority(ThreadPriority priority, const char* thread_na
     memset(&param, 0, sizeof(param));
     int nice_val = 0;
     const char* prio_desc = "Normal";
-    bool use_realtime_scheduler = false;
 
     switch (priority) {
         case PRIORITY_REALTIME:
-            use_realtime_scheduler = true;
             policy = SCHED_FIFO;
-            param.sched_priority = 50; 
+            param.sched_priority = 50;
+            nice_val = -15;
             prio_desc = "Realtime (FIFO)";
             break;
 
         case PRIORITY_HIGHEST:
-            use_realtime_scheduler = true;
             policy = SCHED_FIFO;
             param.sched_priority = 20;
+            nice_val = -10;
             prio_desc = "Highest (FIFO)";
             break;
 
         case PRIORITY_HIGH:
-            // Standard scheduler, nice -5
-            use_realtime_scheduler = false;
+            policy = SCHED_FIFO;
+            param.sched_priority = 10;
             nice_val = -5;
-            prio_desc = "High";
+            prio_desc = "High (FIFO)";
             break;
 
-        default: 
+        default:
             return;
     }
 
-    if (use_realtime_scheduler) {
-        // --- Attempt Realtime Scheduler ---
-        if (pthread_setschedparam(pthread_self(), policy, &param) == 0) {
-            log_debug("Set '%s' thread to %s.", thread_name, prio_desc);
-            return;
-        }
-        
-        // Log the specific error for Realtime failure (e.g. "Operation not permitted")
-        log_warn("Failed to set '%s' thread to %s: %s", 
-                 thread_name, prio_desc, strerror(errno));
-    } 
-    else if (nice_val < 0) {
-        // --- Attempt High Priority (Nice) ---
-        pid_t tid = (pid_t)syscall(SYS_gettid);
-        if (setpriority(PRIO_PROCESS, tid, nice_val) == 0) {
-            log_debug("Set '%s' thread to %s.", thread_name, prio_desc);
-            return;
-        }
-
-        // Log the specific error for Nice failure (e.g. "Permission denied")
-        log_warn("Failed to set '%s' thread to %s: %s", 
-                 thread_name, prio_desc, strerror(errno));
+    // 1. Attempt FIFO Scheduling
+    int fifo_err = pthread_setschedparam(pthread_self(), policy, &param);
+    if (fifo_err == 0) {
+        log_debug("Set '%s' thread scheduling priority to %s.", thread_name, prio_desc);
+        return;
     }
+
+    // Report why we are falling back
+    log_debug("Failed to set '%s' to %s (%s). Attempting Nice fallback...",
+              thread_name, prio_desc, strerror(fifo_err));
+
+    // 2. Attempt Nice fallback
+    pid_t tid = (pid_t)syscall(SYS_gettid);
+    if (setpriority(PRIO_PROCESS, tid, nice_val) == 0) {
+        log_debug("Set '%s' thread scheduling priority to %s (Nice Fallback).", thread_name, prio_desc);
+        return;
+    }
+
+    // 3. Both failed - print a single, clean warning
+    log_warn("Failed to elevate '%s' thread scheduling priority to %s: %s",
+             thread_name, prio_desc, strerror(fifo_err));
 #endif
 }
 
