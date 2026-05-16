@@ -207,7 +207,6 @@ set(OTHER_SOURCES
     src/audio_output_functions.c
     src/cli.c
     src/config.c
-    src/initialization.c
     src/input_rawfile.c
     src/input_stdin.c
     src/input_wav.c
