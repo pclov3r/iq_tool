@@ -315,63 +315,41 @@ void iq_correction_destroy(AppContext* app) {
     }
 }
 
-bool iq_correction_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile) {
+bool iq_correction_run_initial_calibration(ModuleContext* ctx, const void* raw_buffer, size_t num_bytes) {
     AppContext* app = ctx->app;
 
-    if (!infile) {
-        log_warn("Cannot perform initial I/Q correction without a valid file handle.");
+    if (!raw_buffer || num_bytes == 0) {
+        log_warn("Cannot perform initial I/Q correction without valid input data.");
         return true;
     }
 
     log_info("Performing initial I/Q calibration for file input...");
 
-    if (app->module.source_info.frames < FFTBins) {
-        log_warn("Input file is too short for I/Q calibration. Skipping.");
+    size_t frames = num_bytes / app->module.input_bytes_per_iq_sample;
+    if (frames < IQ_CORRECTION_FFT_SIZE) {
+        log_warn("Input data is too short for I/Q calibration. Skipping.");
         return true;
     }
 
-    // Allocate temporary buffers from the setup arena.
-    size_t raw_buffer_size = FFTBins * app->module.input_bytes_per_iq_sample;
-    void* raw_buffer = mem_arena_alloc(&app->pipeline.setup_arena, raw_buffer_size, false);
-    ComplexFloat* cf32_buffer = (ComplexFloat*)mem_arena_alloc(&app->pipeline.setup_arena, FFTBins * sizeof(ComplexFloat), false);
-
-    if (!raw_buffer || !cf32_buffer) {
-        log_fatal("Failed to allocate temporary buffers for I/Q calibration.");
+    ComplexFloat* cf32_buffer = (ComplexFloat*)mem_arena_alloc(&app->pipeline.setup_arena, IQ_CORRECTION_FFT_SIZE * sizeof(ComplexFloat), false);
+    if (!cf32_buffer) {
+        log_fatal("Failed to allocate temporary buffer for I/Q calibration.");
         return false;
     }
 
-    // Read the first block of samples.
-    sf_count_t frames_read_bytes = sf_read_raw(infile, raw_buffer, raw_buffer_size);
-    if (frames_read_bytes < (sf_count_t)raw_buffer_size) {
-        log_warn("Failed to read enough samples for I/Q calibration. Skipping.");
-        sf_seek(infile, 0, SEEK_SET);
-        return true;
-    }
-
-    // Create a temporary SampleChunk to pass to the pre-processor chain.
     SampleChunk temp_chunk;
     memset(&temp_chunk, 0, sizeof(SampleChunk));
-    temp_chunk.raw_input_data = raw_buffer;
-    temp_chunk.frames_read = FFTBins;
+    temp_chunk.raw_input_data = (void*)raw_buffer;
+    temp_chunk.frames_read = IQ_CORRECTION_FFT_SIZE;
     temp_chunk.packet_sample_format = app->module.input_format;
     temp_chunk.complex_sample_buffer_a = cf32_buffer;
     temp_chunk.current_output_buffer = temp_chunk.complex_sample_buffer_a;
 
-    // Run the pre-processor (Format conversion + DC Block + IQ Apply)
-    // NOTE: This applies current (0,0) correction, but importantly removes DC.
     pre_processor_apply_chain(&app->dsp, &temp_chunk);
 
-    // Run the optimization algorithm synchronously on the processed data multiple times to converge
     for(int i=0; i<64; i++) {
         iq_correction_run_optimization(&app->dsp, temp_chunk.current_output_buffer);
-        // Force timestamp update so the loop doesn't get rate-limited internally
         app->dsp.iq_correct.last_optimization_time = 0.0;
-    }
-
-    // Rewind the file so the main reader thread can process the file from the start.
-    if (sf_seek(infile, 0, SEEK_SET) < 0) {
-        log_fatal("Failed to rewind input file after I/Q calibration.");
-        return false;
     }
 
     log_info("Initial I/Q calibration complete.");

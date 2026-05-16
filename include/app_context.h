@@ -160,9 +160,6 @@ typedef struct PipelineInfrastructure {
 
     size_t input_buffer_size;
 
-    void*  source_deserializer_temp_buffer;
-    size_t source_deserializer_buffer_size;
-
     Queue* free_sample_chunk_queue;
     Queue* reader_output_queue;
     Queue* pre_processor_input_queue;

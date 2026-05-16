@@ -72,6 +72,7 @@ static void rtlsdr_input_cleanup(ModuleContext* ctx);
 static void rtlsdr_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool rtlsdr_input_validate_options(AppConfig* config);
 static bool rtlsdr_input_validate_generic_options(const AppConfig* config);
+
 static void rtlsdr_input_stream_callback(unsigned char *buf, uint32_t len, void *cb_ctx);
 
 static int rtlsdr_find_nearest_gain(rtlsdr_dev_t *dev,
@@ -400,7 +401,6 @@ static void rtlsdr_input_get_summary_info(const ModuleContext* ctx, InputSummary
     add_summary_item(info, "Input Source", "%s", source_name_buf);
     add_summary_item(info, "Input Format", "8-bit Unsigned Complex (cu8)");
     add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.sample_rate);
-    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
     if (s_rtlsdr_config.gain_provided) {
         add_summary_item(info, "Gain", "%.1f dB (Manual)", (float)s_rtlsdr_config.gain / 10.0f);
     } else {

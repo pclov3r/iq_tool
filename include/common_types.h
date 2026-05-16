@@ -42,7 +42,8 @@ typedef enum {
 typedef enum {
     OUTPUT_TYPE_RAW,
     OUTPUT_TYPE_WAV,
-    OUTPUT_TYPE_WAV_RF64
+    OUTPUT_TYPE_WAV_RF64,
+    OUTPUT_TYPE_AUDIO
 } OutputType;
 
 typedef enum {

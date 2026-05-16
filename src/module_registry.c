@@ -250,7 +250,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "nrsc5",
             .type = MODULE_TYPE_OUTPUT,
-            .output_type = OUTPUT_TYPE_RAW, // Consumes raw I/Q from pipeline
+            .output_type = OUTPUT_TYPE_AUDIO, // Consumes raw I/Q from pipeline
             .api = output_nrsc5_get_module_api(),
             .is_live_source = false,
             .set_default_config = NULL,
@@ -263,7 +263,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "wfm",
             .type = MODULE_TYPE_OUTPUT,
-            .output_type = OUTPUT_TYPE_RAW,
+            .output_type = OUTPUT_TYPE_AUDIO,
             .api = output_wfm_get_module_api(),
             .is_live_source = false,
             .set_default_config = NULL,
@@ -275,7 +275,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "nfm",
             .type = MODULE_TYPE_OUTPUT,
-            .output_type = OUTPUT_TYPE_RAW,
+            .output_type = OUTPUT_TYPE_AUDIO,
             .api = output_nfm_get_module_api(),
             .is_live_source = false,
             .set_default_config = NULL,
@@ -287,7 +287,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "am",
             .type = MODULE_TYPE_OUTPUT,
-            .output_type = OUTPUT_TYPE_RAW,
+            .output_type = OUTPUT_TYPE_AUDIO,
             .api = output_am_get_module_api(),
             .is_live_source = false,
             .set_default_config = NULL,

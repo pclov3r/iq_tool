@@ -77,6 +77,7 @@ static void hackrf_input_cleanup(ModuleContext* ctx);
 static void hackrf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool hackrf_input_validate_options(AppConfig* config);
 static bool hackrf_input_validate_generic_options(const AppConfig* config);
+
 static int hackrf_input_buffered_stream_callback(hackrf_transfer* transfer);
 
 
@@ -162,7 +163,6 @@ static void hackrf_input_get_summary_info(const ModuleContext* ctx, InputSummary
     add_summary_item(info, "Input Source", "HackRF One");
     add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
     add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.sample_rate);
-    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
     // as HackRF does not have a true hardware AGC. The gain is always fixed.
     add_summary_item(info, "LNA Gain", "%u dB", s_hackrf_config.lna_gain);

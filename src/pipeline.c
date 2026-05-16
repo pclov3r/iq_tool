@@ -29,6 +29,7 @@
 #include "filter.h"
 #include "agc.h" // Added for Output AGC
 #include "sample_convert.h"
+#include "sample_format_table.h"
 #include "queue.h"
 #include "ring_buffer.h"
 #include "packet_serializer.h"
@@ -44,6 +45,9 @@
 #include <unistd.h>
 #include <time.h>
 #endif
+
+// Helper macro to align a size up to the next power of 2 boundary
+#define ALIGN_UP(size, align) (((size) + (align) - 1) & ~((align) - 1))
 
 // --- Private Function Prototypes for Setup Helpers ---
 static bool _init_queues_and_buffers(AppConfig* config, AppContext* app);
@@ -63,10 +67,259 @@ static void _destroy_dsp_components(AppContext* app);
  * @param context A pointer to the PipelineContext, containing the application config and app.
  * @return true if the pipeline ran and shut down cleanly, false if there was a setup or execution error.
  */
+static bool calculate_and_validate_resample_ratio(AppConfig *config, AppContext* app, float *out_ratio) {
+    if (!config || !app || !out_ratio) return false;
+
+    // --- Step 1: Handle Smart Default (Missing Rate) ---
+    // If the user didn't specify a rate (0), use the hardware/file input rate.
+    if (config->output_rate.target_rate <= 0.0) {
+        config->output_rate.target_rate = (double)app->module.source_info.sample_rate;
+        log_info("No output rate specified. Defaulting to native input rate: %.0f Hz", config->output_rate.target_rate);
+    }
+
+    // --- Step 2: Calculate Ratio ---
+    double input_rate_d = (double)app->module.source_info.sample_rate;
+    float r = (float)(config->output_rate.target_rate / input_rate_d);
+
+    // --- Step 3: Check for Passthrough Conditions ---
+    if (config->dsp.raw_passthrough) {
+        log_info("Raw Passthrough mode enabled: Bypassing all DSP blocks.");
+        app->dsp.is_passthrough = true;
+        r = 1.0f; // Force ratio to 1.0 for buffer calcs
+    }
+    else if (fabs(r - 1.0f) < 1e-6) {
+        app->dsp.is_passthrough = true;
+        r = 1.0f; // Snap to exact 1.0
+    }
+    else {
+        app->dsp.is_passthrough = false;
+        log_info("Resampling enabled: %.10g Hz -> %.10g Hz (Ratio: %.10g)",
+                 input_rate_d, config->output_rate.target_rate, r);
+    }
+
+    // --- Step 4: Validate Ratio ---
+    if (!isfinite(r) || r < MIN_ACCEPTABLE_RATIO || r > MAX_ACCEPTABLE_RATIO) {
+        log_error("Error: Calculated resampling ratio (%.6f) is invalid or outside acceptable range.", r);
+        return false;
+    }
+    *out_ratio = r;
+
+    if (app->module.source_info.frames > 0) {
+        atomic_store_explicit(&app->stats.expected_total_output_frames, (long long)round((double)app->module.source_info.frames * (double)r), memory_order_relaxed);
+    } else {
+        app->stats.expected_total_output_frames = -1;
+    }
+
+    return true;
+}
+
+static bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resample_ratio) {
+    if (!config || !app) return false;
+
+    // 1. Determine the "Fat Pipe" (highest data rate side)
+    //    Upsampling (Ratio > 1.0): Output is the Fat Pipe.
+    //    Downsampling (Ratio <= 1.0): Input is the Fat Pipe.
+    bool upsampling = (resample_ratio > 1.0f);
+
+    size_t target_block_samples = PIPELINE_TARGET_BLOCK_SAMPLES; // 12,288 samples (~192KB)
+
+    // 2. Adjust target for FFT requirements if necessary
+    // The filter object does not exist yet. We must estimate requirements based on CONFIG.
+    size_t estimated_taps = 0;
+    if (config->dsp.filter.args.taps > 0) {
+        estimated_taps = config->dsp.filter.args.taps;
+    } else if (config->dsp.filter.count > 0) {
+        // If taps aren't explicit, assume a worst-case default for sizing
+        estimated_taps = FILTER_SAFETY_DEFAULT_TAPS;
+    }
+
+    size_t req_block_size = 0;
+    if (estimated_taps > 0) {
+        // Calculate the FFT block size logic used by liquid-dsp/filter.c
+        req_block_size = 1;
+        while (req_block_size < estimated_taps) {
+            req_block_size *= 2;
+        }
+        // Heuristic from filter.c: double it for efficiency
+        if (req_block_size < estimated_taps * 2) {
+            req_block_size *= 2;
+        }
+
+        // If the filter needs huge blocks (e.g. 32k for 15k taps), expand the pipeline chunks.
+        if (req_block_size > target_block_samples) {
+            log_info("FFT filter block size (%zu) exceeds optimal pipeline target (%zu).", req_block_size, target_block_samples);
+            log_info("Expanding internal chunk size to accommodate FFT bursts (may reduce CPU cache efficiency).");
+            target_block_samples = req_block_size;
+        }
+    }
+
+    size_t calculated_input_samples = 0;
+
+    if (upsampling) {
+        // --- CASE A: UPSAMPLING ---
+        // The Output is pinned to the Target.
+        // Calculate Input required: Input = Target / Ratio.
+        size_t raw_input_calc = (size_t)(target_block_samples / resample_ratio);
+
+        // Sanity Floor: Prevent tiny read requests that cause excessive locking overhead.
+        if (raw_input_calc < PIPELINE_MIN_READ_SAMPLES) {
+            calculated_input_samples = PIPELINE_MIN_READ_SAMPLES;
+        } else {
+            calculated_input_samples = raw_input_calc;
+        }
+    }
+    else {
+        // --- CASE B: DOWNSAMPLING / PASSTHROUGH ---
+        // The Input is pinned to the Target.
+        calculated_input_samples = target_block_samples;
+    }
+
+    // --- Calculate Elastic Maximum Buffer Size ---
+    // The filter object processes in blocks. If a remainder exists from a previous chunk,
+    // the output of the filter can momentarily exceed the input size by up to the FFT block size.
+    size_t max_pre_resample_samples = calculated_input_samples;
+    if (config->dsp.filter.count > 0 && !config->dsp.filter.apply_post_resample) {
+        max_pre_resample_samples += req_block_size;
+    }
+
+    // Determine the absolute maximum number of samples that could exist post-resampling
+    size_t max_post_resample_samples = (size_t)ceil((double)(max_pre_resample_samples + 32) * resample_ratio) + 64;
+
+    if (config->dsp.filter.count > 0 && config->dsp.filter.apply_post_resample) {
+        max_post_resample_samples += req_block_size;
+    }
+
+    // The buffer must be large enough to hold the maximum size at ANY stage of the pipeline
+    size_t sample_allocation_count = (max_pre_resample_samples > max_post_resample_samples) ? max_pre_resample_samples : max_post_resample_samples;
+    sample_allocation_count += PIPELINE_BUFFER_PADDING_SAMPLES;
+
+    // Store the results for runtime usage
+    app->pipeline.read_chunk_size = calculated_input_samples;
+    app->pipeline.alloc_size_samples = sample_allocation_count;
+
+    // 3. Absolute Chunk Limit Safety Check
+    if (app->pipeline.alloc_size_samples > PIPELINE_MAX_CHUNK_SAMPLES) {
+        log_error("Calculated pipeline chunk size (%zu samples) exceeds safety limit (%d).",
+                  app->pipeline.alloc_size_samples, PIPELINE_MAX_CHUNK_SAMPLES);
+        log_error("Try reducing the output sample rate or manually lowering --filter-taps.");
+        return false;
+    }
+
+    // Update legacy field used by some filters
+    app->pipeline.max_out_samples = (unsigned int)app->pipeline.alloc_size_samples;
+
+    // -------------------------------------------------------------------------
+    // 4. Calculate Dynamic Pipeline Depth ("Trays")
+    // -------------------------------------------------------------------------
+    double input_rate = (double)app->module.source_info.sample_rate;
+
+    // FAIL FAST: If the input rate is unknown or invalid, we cannot safely configure the pipeline.
+    if (input_rate <= 0.0) {
+        log_fatal("Internal Error: Input sample rate is invalid (%.0f Hz). Cannot calculate buffer depth.", input_rate);
+        log_error("Please check the input source configuration.");
+        return false;
+    }
+
+    // How much time does one chunk represent?
+    double seconds_per_chunk = (double)app->pipeline.read_chunk_size / input_rate;
+
+    // How many chunks do we need to hit the target duration?
+    size_t calculated_chunks = (size_t)(PIPELINE_TARGET_BUFFER_DURATION_SEC / seconds_per_chunk);
+
+    // Apply Sanity Clamps
+    if (calculated_chunks < PIPELINE_MIN_CHUNKS) calculated_chunks = PIPELINE_MIN_CHUNKS;
+    if (calculated_chunks > PIPELINE_MAX_CHUNKS) calculated_chunks = PIPELINE_MAX_CHUNKS;
+
+    app->pipeline.num_chunks = calculated_chunks;
+
+    log_info("Pipeline Sizing: Read=%zu samples, Alloc=%zu samples, Depth=%zu chunks (%.2f sec buffer at %.0f Hz)",
+              app->pipeline.read_chunk_size,
+              app->pipeline.alloc_size_samples,
+              app->pipeline.num_chunks,
+              app->pipeline.num_chunks * seconds_per_chunk,
+              input_rate);
+
+    // --- Monolithic Tray Allocation (Contiguous Metadata + Data) ---
+    size_t raw_stride     = ALIGN_UP(app->pipeline.alloc_size_samples * app->module.input_bytes_per_iq_sample, MEM_ARENA_ALIGNMENT);
+    size_t complex_stride = ALIGN_UP(app->pipeline.alloc_size_samples * sizeof(ComplexFloat), MEM_ARENA_ALIGNMENT);
+    app->module.output_bytes_per_iq_sample = get_bytes_per_iq_sample(config->output.format);
+    size_t final_stride   = ALIGN_UP(app->pipeline.alloc_size_samples * app->module.output_bytes_per_iq_sample, MEM_ARENA_ALIGNMENT);
+
+    size_t struct_stride   = ALIGN_UP(sizeof(SampleChunk), MEM_ARENA_ALIGNMENT);
+    size_t total_tray_size = struct_stride + raw_stride + (complex_stride * 2) + final_stride;
+
+    // Allocate the big data block
+    app->pipeline.chunk_data_pool = aligned_alloc(MEM_ARENA_ALIGNMENT, app->pipeline.num_chunks * total_tray_size);
+    if (!app->pipeline.chunk_data_pool) {
+        log_fatal("Error: Failed to allocate pipeline chunk data pool.");
+        return false;
+    }
+
+    // Allocate the Catalog (The array of pointers)
+    app->pipeline.sample_chunk_pool = (SampleChunk**)mem_arena_alloc(&app->pipeline.setup_arena, app->pipeline.num_chunks * sizeof(SampleChunk*), true);
+
+    for (size_t i = 0; i < app->pipeline.num_chunks; ++i) {
+        // Calculate the base address for this specific tray
+        uint8_t* tray_base = (uint8_t*)app->pipeline.chunk_data_pool + (i * total_tray_size);
+
+        // The Catalog entry points to the struct at the front of the tray
+        app->pipeline.sample_chunk_pool[i] = (SampleChunk*)tray_base;
+        SampleChunk* item = app->pipeline.sample_chunk_pool[i];
+
+        // The buffers follow immediately after the metadata struct
+        uint8_t* data_ptr = tray_base + struct_stride;
+
+        item->raw_input_data         = data_ptr;
+        data_ptr += raw_stride;
+        item->complex_sample_buffer_a = (ComplexFloat*)data_ptr;
+        data_ptr += complex_stride;
+        item->complex_sample_buffer_b = (ComplexFloat*)data_ptr;
+        data_ptr += complex_stride;
+        item->final_output_data      = (unsigned char*)data_ptr;
+
+        // Set capacities and metadata
+        item->raw_input_capacity_bytes = raw_stride;
+        item->complex_buffer_capacity_samples = app->pipeline.alloc_size_samples;
+        item->final_output_capacity_bytes = final_stride;
+        item->input_bytes_per_iq_sample = app->module.input_bytes_per_iq_sample;
+    }
+
+    // -------------------------------------------------------------------------
+    // 5. Calculate Dynamic Ring Buffer Sizes
+    // -------------------------------------------------------------------------
+
+    // Calculate input buffer size (for buffered mode)
+    if (app->pipeline_mode != PIPELINE_MODE_FILE_PROCESSING) {
+        size_t input_buffer_bytes = (size_t)(
+            input_rate *
+            INPUT_BUFFER_DURATION_SEC *
+            app->module.input_bytes_per_iq_sample
+        );
+
+        if (input_buffer_bytes < INPUT_BUFFER_MIN_BYTES)
+            input_buffer_bytes = INPUT_BUFFER_MIN_BYTES;
+        if (input_buffer_bytes > INPUT_BUFFER_MAX_BYTES)
+            input_buffer_bytes = INPUT_BUFFER_MAX_BYTES;
+
+        app->pipeline.input_buffer_size = input_buffer_bytes;
+
+        log_info("Input Buffer: Allocating %zu bytes (%.2f sec capacity) at %.0f Hz.",
+                 input_buffer_bytes,
+                 INPUT_BUFFER_DURATION_SEC,
+                 input_rate);
+    }
+
+    return true;
+}
+
 bool pipeline_run(PipelineContext* context) {
     AppConfig* config = context->config;
     AppContext* app = context->app;
     bool success = false;
+
+    // --- Step 0: Calculate Ratios & Allocate Memory Pools ---
+    if (!calculate_and_validate_resample_ratio(config, app, &app->dsp.resample_ratio)) return false;
+    if (!allocate_processing_buffers(config, app, app->dsp.resample_ratio)) return false;
 
     // --- Step 1: Create all internal DSP components ---
     if (!_create_dsp_components(config, app, app->dsp.resample_ratio)) {
@@ -132,7 +385,6 @@ bool pipeline_run(PipelineContext* context) {
 
     return success;
 }
-
 
 // --- Private Helper Function Implementations ---
 
@@ -218,9 +470,6 @@ static bool _init_queues_and_buffers(AppConfig* config, AppContext* app) {
         app->pipeline.source_input_buffer = ring_buffer_create(app->pipeline.input_buffer_size);
         if (!app->pipeline.source_input_buffer) return false;
     }
-
-
-
     return true;
 }
 

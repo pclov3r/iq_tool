@@ -40,13 +40,14 @@
 #include "module.h"
 #include "pipeline_context.h"
 #include "cli.h"
-#include "initialization.h"
 #include "utils.h"
 #include "module_registry.h"
 #include "presets_loader.h"
 #include "platform.h"
 #include "mem_arena.h"
+#include "sample_format_table.h"
 #include "pipeline.h"
+#include "agc.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
@@ -66,19 +67,20 @@
 #include <io.h>
 #endif
 
-
 // --- Global Variable Definitions ---
 pthread_mutex_t g_console_mutex;
-
 
 // --- Forward Declarations for Static Helper Functions ---
 static void initialize_resource_struct(AppConfig *config, AppContext* app);
 static bool validate_configuration(AppConfig *config, const AppContext* app);
+static void print_configuration_summary(const AppConfig *config, const AppContext* app);
 static void print_final_summary(const AppConfig *config, const AppContext* app, bool success);
 static void console_lock_function(bool lock, void *udata);
 static void application_progress_callback(unsigned long long current_output_frames, long long total_output_frames, unsigned long long current_bytes_written, void* udata);
-static const char* find_input_type_arg(int argc, char *argv[]);
-
+static bool init_input_source(AppConfig *config, AppContext* app);
+static bool init_output_module(AppConfig *config, AppContext* app);
+static void close_input_source(AppConfig *config, AppContext* app);
+static void close_output_module(AppConfig *config, AppContext* app);
 
 // --- Main Application Entry Point ---
 
@@ -118,8 +120,6 @@ int main(int argc, char *argv[]) {
     log_set_lock(console_lock_function, &g_console_mutex);
     log_set_level(LOG_INFO);
 
-    memset(&config, 0, sizeof(AppConfig));
-
     initialize_resource_struct(&config, &app);
     reset_shutdown_flag();
     setup_signal_handlers(&app);
@@ -129,25 +129,9 @@ int main(int argc, char *argv[]) {
     }
     arena_initialized = true;
 
-    // Phase 1: Pre-scan arguments to find the input type.
-    const char* input_type = find_input_type_arg(argc, argv);
-    if (input_type) {
-        config.input.type_name = (char*)input_type;
-        int num_modules = 0;
-        const Module* modules = module_get_all(&num_modules, &app.pipeline.setup_arena);
-        for (int i = 0; i < num_modules; ++i) {
-            if (strcasecmp(input_type, modules[i].name) == 0) {
-                if (modules[i].set_default_config) {
-                    modules[i].set_default_config(&config);
-                }
-                break;
-            }
-        }
+    if (!presets_load_from_file(&config, &app.pipeline.setup_arena)) {
+        goto cleanup;
     }
-
-    config.dsp.input_gain = 1.0f;
-    config.dsp.output_gain = 1.0f;
-    config.dsp.dbm_offset_arg = 1000.0f;
 
 #ifndef _WIN32
     pthread_t sig_thread_id;
@@ -169,28 +153,13 @@ int main(int argc, char *argv[]) {
     pthread_attr_destroy(&sig_thread_attr);
 #endif
 
-    if (!presets_load_from_file(&config, &app.pipeline.setup_arena)) {
-        goto cleanup;
-    }
-
     if (argc <= 1) {
         cli_print_usage(argv[0], &config, &app.pipeline.setup_arena);
         exit_status = EXIT_SUCCESS;
         goto cleanup;
     }
 
-    // Phase 2: Call the main parser.
     if (!cli_parse(argc, argv, &config, &app.pipeline.setup_arena)) {
-        goto cleanup;
-    }
-
-    const Module* _mod = module_get(config.input.type_name, MODULE_TYPE_INPUT, &app.pipeline.setup_arena); app.module.input_api = (_mod) ? (InputModuleInterface*)_mod->api : NULL;
-    app.module.input_dbm_offset = (_mod) ? _mod->dbm_offset : 0.0f;
-    if (config.dsp.dbm_offset_provided) {
-        app.module.input_dbm_offset = config.dsp.dbm_offset;
-    }
-    if (!app.module.input_api) {
-        log_error("Input type '%s' is not supported or not enabled in this build.", config.input.type_name);
         goto cleanup;
     }
 
@@ -198,25 +167,53 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    if (!initialize_application(&config, &app)) {
+    // Apply frequency offset logic before initializing hardware
+    if (config.sdr_general.frequency_offset_hz != 0.0f && config.sdr_general.rf_freq_provided) {
+        double user_target_hz = config.sdr_general.rf_freq_hz;
+        config.sdr_general.rf_freq_hz += config.sdr_general.frequency_offset_hz;
+
+        log_info("Applying Frequency Offset: Target %.0f Hz + Offset %+.0f Hz = Tuning to %.0f Hz",
+                 user_target_hz,
+                 config.sdr_general.frequency_offset_hz,
+                 config.sdr_general.rf_freq_hz);
+
+        if (config.sdr_general.rf_freq_hz <= 0.0) {
+            log_error("Resulting hardware frequency is %.0f Hz, which is not valid. Aborting.", config.sdr_general.rf_freq_hz);
+            goto cleanup;
+        }
+    }
+
+    if (!init_input_source(&config, &app)) {
+        goto cleanup;
+    }
+    // Perform pre-stream calibration if needed (requires open source)
+    if (app.module.input_api->pre_stream_iq_correction) {
+        ModuleContext ctx = { .config = &config, .app = &app };
+        if (!app.module.input_api->pre_stream_iq_correction(&ctx)) goto cleanup;
+    }
+    if (!init_output_module(&config, &app)) {
         goto cleanup;
     }
     resources_initialized = true;
+
+    print_configuration_summary(&config, &app);
+    fprintf(stderr, "\n");
+
+    if (!app.module.input_api->has_known_length()) {
+        log_info("Starting live source capture...");
+    } else {
+        log_info("Starting file processing...");
+    }
 
     app.stats.progress_callback = application_progress_callback;
     app.stats.progress_callback_udata = &g_console_mutex;
 
     app.stats.start_time = time(NULL);
 
-
-    // The entire concurrent operation is now encapsulated in this single call.
     PipelineContext pipeline_context = { .config = &config, .app = &app };
     if (!pipeline_run(&pipeline_context)) {
-        // pipeline_run handles its own internal cleanup. If it fails, we
-        // just need to proceed to the main application cleanup.
         log_error("Pipeline execution failed.");
     }
-
 
     bool processing_ok = !app.stats.error_occurred;
     exit_status = (processing_ok || is_shutdown_requested()) ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -226,7 +223,8 @@ cleanup:
 
     bool final_ok = !app.stats.error_occurred;
 
-    cleanup_application(&config, &app);
+    close_input_source(&config, &app);
+    close_output_module(&config, &app);
 
     if (resources_initialized) {
         print_final_summary(&config, &app, final_ok);
@@ -243,26 +241,76 @@ cleanup:
     return exit_status;
 }
 
+// --- Input/Output Lifecycle Management ---
+
+static bool init_input_source(AppConfig *config, AppContext* app) {
+    app->config = config;
+    app->dsp.config = config;
+    ModuleContext ctx = { .config = config, .app = app };
+
+    const Module* selected_input_module = module_get(config->input.type_name, MODULE_TYPE_INPUT, &app->pipeline.setup_arena);
+    if (!selected_input_module) {
+        log_error("Input type '%s' is not supported or enabled in this build.", config->input.type_name);
+        return false;
+    }
+    app->module.input_api = (InputModuleInterface*)selected_input_module->api;
+
+    // Resolve dBm offset from module or CLI override
+    app->module.input_dbm_offset = selected_input_module->dbm_offset;
+    if (config->dsp.dbm_offset_provided) {
+        app->module.input_dbm_offset = config->dsp.dbm_offset;
+    }
+
+    log_info("Initializing the '%s' input module...", config->input.type_name);
+    return app->module.input_api->initialize(&ctx);
+}
+
+static bool init_output_module(AppConfig *config, AppContext* app) {
+    ModuleContext ctx = { .config = config, .app = app };
+
+    const Module* selected_output_module = module_get(config->output.module_name, MODULE_TYPE_OUTPUT, &app->pipeline.setup_arena);
+    if (!selected_output_module) {
+        log_fatal("Internal error: Could not retrieve selected output module.");
+        return false;
+    }
+    app->module.output_api = (OutputModuleInterface*)selected_output_module->api;
+
+    if (config->dsp.raw_passthrough && app->module.input_format != config->output.format) {
+        log_error("Option --raw-passthrough requires input and output formats to be identical.");
+        return false;
+    }
+
+    log_info("Initializing the '%s' output module...", config->output.module_name);
+    return app->module.output_api->initialize(&ctx);
+}
+
+static void close_input_source(AppConfig *config, AppContext* app) {
+    if (!app || !app->module.input_api) return;
+    ModuleContext ctx = { .config = config, .app = app };
+    if (app->module.input_api->cleanup) {
+        app->module.input_api->cleanup(&ctx);
+    }
+}
+
+static void close_output_module(AppConfig *config, AppContext* app) {
+    if (!app || !app->module.output_api) return;
+    ModuleContext ctx = { .config = config, .app = app };
+    if (app->module.output_api->cleanup) {
+        app->module.output_api->cleanup(&ctx);
+    }
+}
+
 
 // --- Static Helper Function Definitions ---
 
-/**
- * This function manually scans the command-line arguments to find the value
- * of the `--input` or `-i` option *before* the main argparse library is invoked.
- */
-static const char* find_input_type_arg(int argc, char *argv[]) {
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-i") == 0 || strcmp(argv[i], "--input") == 0) {
-            if (i + 1 < argc) {
-                return argv[i + 1];
-            }
-        }
-    }
-    return NULL;
-}
-
 static void initialize_resource_struct(AppConfig *config, AppContext* app) {
     memset(app, 0, sizeof(AppContext));
+
+    // Set global DSP defaults
+    config->dsp.input_gain = 1.0f;
+    config->dsp.output_gain = 1.0f;
+    config->dsp.dbm_offset_arg = 1000.0f; // Marker for "not set by user"
+
     config->dsp.iq_correction.enable = false;
     config->dsp.dc_block.enable = false;
 }
@@ -271,6 +319,159 @@ static bool validate_configuration(AppConfig *config, const AppContext* app) {
     (void)config;
     (void)app;
     return true;
+}
+
+static void print_configuration_summary(const AppConfig *config, const AppContext* app) {
+    if (!config || !app || !app->module.input_api) return;
+
+    InputSummaryInfo summary_info;
+    memset(&summary_info, 0, sizeof(InputSummaryInfo));
+    const ModuleContext ctx = { .config = config, .app = (AppContext*)app };
+    app->module.input_api->get_summary_info(&ctx, &summary_info);
+
+    int max_label_len = 0;
+    if (summary_info.count > 0) {
+        for (int i = 0; i < summary_info.count; i++) {
+            int len = (int)strlen(summary_info.items[i].label);
+            if (len > max_label_len) {
+                max_label_len = len;
+            }
+        }
+    }
+
+    if (config->sdr_general.rf_freq_provided) {
+        const char* offset_labels[] = { "Actual Frequency", "Frequency Offset", "Tuned Frequency", "RF Frequency" };
+        for (int i = 0; i < 4; i++) {
+            int len = (int)strlen(offset_labels[i]);
+            if (len > max_label_len) max_label_len = len;
+        }
+    }
+
+    const char* base_output_labels[] = {
+        "Output Type", "Sample Type", "Output Rate", "Input Gain", "Output Gain", "Frequency Shift",
+        "Resampling", "Output Target", "FIR Filter", "FFT Filter", "Output AGC"
+    };
+    for (size_t i = 0; i < sizeof(base_output_labels) / sizeof(base_output_labels[0]); i++) {
+        int len = (int)strlen(base_output_labels[i]);
+        if (len > max_label_len) {
+            max_label_len = len;
+        }
+    }
+
+    fprintf(stderr, "\n--- Input Details ---\n");
+    if (summary_info.count > 0) {
+        for (int i = 0; i < summary_info.count; i++) {
+            fprintf(stderr, " %-*s : %s\n", max_label_len, summary_info.items[i].label, summary_info.items[i].value);
+        }
+    }
+
+    if (config->sdr_general.rf_freq_provided) {
+        if (fabs(config->sdr_general.frequency_offset_hz) > 1e-9) {
+            double user_target_hz = config->sdr_general.rf_freq_hz - config->sdr_general.frequency_offset_hz;
+            fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Actual Frequency", user_target_hz);
+            fprintf(stderr, " %-*s : %+.0f Hz\n", max_label_len, "Frequency Offset", config->sdr_general.frequency_offset_hz);
+            fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Tuned Frequency", config->sdr_general.rf_freq_hz);
+        } else {
+            fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "RF Frequency", config->sdr_general.rf_freq_hz);
+        }
+    }
+
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "I/Q Correction", config->dsp.iq_correction.enable ? "Enabled" : "Disabled");
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "DC Block", config->dsp.dc_block.enable ? "Enabled" : "Disabled");
+
+
+    fprintf(stderr, "--- Output Details ---\n");
+    if (app->module.output_api && app->module.output_api->get_summary_info) {
+        OutputSummaryInfo output_summary;
+        memset(&output_summary, 0, sizeof(output_summary));
+        app->module.output_api->get_summary_info(&ctx, &output_summary);
+        for (int i = 0; i < output_summary.count; i++) {
+            fprintf(stderr, " %-*s : %s\n", max_label_len, output_summary.items[i].label, output_summary.items[i].value);
+        }
+    }
+
+    const char* sample_type_str = get_format_info_by_enum(config->output.format) ? get_format_info_by_enum(config->output.format)->description_str : "Unknown";
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "Sample Type", sample_type_str);
+
+    fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Output Rate", config->output_rate.target_rate);
+
+    fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Input Gain", config->dsp.input_gain);
+
+    if (config->dsp.output_gain != 1.0f) {
+        fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Output Gain", config->dsp.output_gain);
+    }
+
+    if (fabs(app->dsp.nco_shift_hz) > 1e-9) {
+        char shift_buf[64];
+        snprintf(shift_buf, sizeof(shift_buf), "%+.2f Hz%s", app->dsp.nco_shift_hz, config->dsp.shift_after_resample ? " (Post-Resample)" : "");
+        fprintf(stderr, " %-*s : %s\n", max_label_len, "Frequency Shift", shift_buf);
+    }
+
+    if (config->dsp.filter.count == 0) {
+        fprintf(stderr, " %-*s : %s\n", max_label_len, "Filter", "Disabled");
+    } else {
+        const char* filter_label;
+        switch (app->dsp.filter.type_actual) {
+            case FILTER_IMPL_FIR_SYMMETRIC:
+            case FILTER_IMPL_FIR_ASYMMETRIC:
+                filter_label = "FIR Filter";
+                break;
+            case FILTER_IMPL_FFT_SYMMETRIC:
+            case FILTER_IMPL_FFT_ASYMMETRIC:
+                filter_label = "FFT Filter";
+                break;
+            default:
+                filter_label = "Filter";
+                break;
+        }
+
+        char filter_buf[256] = {0};
+        const char* stage = config->dsp.filter.apply_post_resample ? " (Post-Resample)" : "";
+        strncat(filter_buf, "Enabled: ", sizeof(filter_buf) - strlen(filter_buf) - 1);
+        for (int i = 0; i < config->dsp.filter.count; i++) {
+            char current_filter_desc[128];
+            const FilterRequest* req = &config->dsp.filter.requests[i];
+            switch (req->type) {
+                case FILTER_TYPE_LOWPASS: snprintf(current_filter_desc, sizeof(current_filter_desc), "LPF(%.0f Hz)", req->freq1_hz); break;
+                case FILTER_TYPE_HIGHPASS: snprintf(current_filter_desc, sizeof(current_filter_desc), "HPF(%.0f Hz)", req->freq1_hz); break;
+                case FILTER_TYPE_PASSBAND: snprintf(current_filter_desc, sizeof(current_filter_desc), "BPF(%.0f Hz, BW %.0f Hz)", req->freq1_hz, req->freq2_hz); break;
+                case FILTER_TYPE_STOPBAND: snprintf(current_filter_desc, sizeof(current_filter_desc), "BSF(%.0f Hz, BW %.0f Hz)", req->freq1_hz, req->freq2_hz); break;
+                default: break;
+            }
+            if (i > 0) strncat(filter_buf, " + ", sizeof(filter_buf) - strlen(filter_buf) - 1);
+            strncat(filter_buf, current_filter_desc, sizeof(filter_buf) - strlen(filter_buf) - 1);
+        }
+        strncat(filter_buf, stage, sizeof(filter_buf) - strlen(filter_buf) - 1);
+        fprintf(stderr, " %-*s : %s\n", max_label_len, filter_label, filter_buf);
+    }
+
+    if (config->dsp.agc.enable) {
+        char agc_buf[128];
+        const char* profile_name = agc_get_profile_name(config->dsp.agc.profile);
+
+        snprintf(agc_buf, sizeof(agc_buf), "Enabled (Profile: %s, Target: %.2f)", profile_name, config->dsp.agc.target_level);
+        fprintf(stderr, " %-*s : %s\n", max_label_len, "Output AGC", agc_buf);
+    } else {
+        fprintf(stderr, " %-*s : %s\n", max_label_len, "Output AGC", "Disabled");
+    }
+
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "Resampling", app->dsp.is_passthrough ? "Disabled (Passthrough Mode)" : "Enabled");
+
+    if (config->output.path_arg != NULL) {
+        const char* out_path;
+#ifdef _WIN32
+        out_path = config->output.effective_path_utf8;
+#else
+        out_path = config->output.effective_path;
+#endif
+        fprintf(stderr, " %-*s : %s\n", max_label_len, "Output File", out_path);
+    } else {
+        const char* target_desc = "<stdout>";
+        if (config->output.type == OUTPUT_TYPE_AUDIO) {
+            target_desc = "Audio Device";
+        }
+        fprintf(stderr, " %-*s : %s\n", max_label_len, "Output Target", target_desc);
+    }
 }
 
 static void print_final_summary(const AppConfig *config, const AppContext* app, bool success) {

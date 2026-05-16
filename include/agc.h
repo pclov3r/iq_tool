@@ -36,7 +36,7 @@ bool agc_create(AppConfig* config, AppContext* app);
  *
  * This function processes the input samples in-place.
  * - For DX/Local: It uses the liquid-dsp feedback loop.
- * - For Digital: It scans for peaks and applies provisional gain (if unlocking) 
+ * - For Digital: It scans for peaks and applies provisional gain (if unlocking)
  *   or applies a static gain (if locked).
  *
  * @param app Pointer to the application app.
@@ -69,5 +69,16 @@ void agc_destroy(AppContext* app);
  * @return The number of options added.
  */
 int agc_populate_cli_options(struct argparse_option* buffer, struct AppConfig* config);
+
+/**
+ * @brief Converts an AGC profile enum to a human-readable string.
+ */
+const char* agc_get_profile_name(AgcProfile profile);
+
+/**
+ * @brief Validates all AGC-related user options after parsing.
+ * @return true if the configuration is valid, false otherwise.
+ */
+bool agc_validate_options(AppConfig *config);
 
 #endif // AGC_H_

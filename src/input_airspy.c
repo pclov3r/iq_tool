@@ -116,6 +116,7 @@ static void airspy_input_cleanup(ModuleContext* ctx);
 static void airspy_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool airspy_input_validate_options(AppConfig* config);
 static bool airspy_input_validate_generic_options(const AppConfig* config);
+
 static int airspy_input_buffered_stream_callback(airspy_transfer* transfer);
 
 
@@ -324,7 +325,6 @@ static void airspy_input_get_summary_info(const ModuleContext* ctx, InputSummary
 
     add_summary_item(info, "Input Format", "%s", format_str);
     add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.sample_rate);
-    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
     // Gain reporting
     if (s_airspy_config.gain_mode_provided) {

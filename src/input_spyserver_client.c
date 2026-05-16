@@ -846,7 +846,6 @@ static void spyserver_client_input_cleanup(ModuleContext* ctx) {
 static void spyserver_client_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
     const SpyServerClientContext* p = (const SpyServerClientContext*)ctx->app->module.input_private_data;
     const AppContext* app = ctx->app;
-    const AppConfig* config = ctx->config;
     char server_addr[256];
     snprintf(server_addr, sizeof(server_addr), "%s:%d", s_spyserver_client_config.hostname, s_spyserver_client_config.port);
     add_summary_item(info, "Input Source", "SpyServer Client");
@@ -864,7 +863,6 @@ static void spyserver_client_input_get_summary_info(const ModuleContext* ctx, In
         add_summary_item(info, "Remote Device", dev_info_str);
         add_summary_item(info, "Input Format", get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->description_str : "Unknown");
         add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.sample_rate);
-        add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
         if (s_spyserver_client_config.gain_provided) {
             add_summary_item(info, "Gain", "%d (Manual)", s_spyserver_client_config.gain);

@@ -35,7 +35,6 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
 #include <stdbool.h>
 #include "app_context.h"
 #include "mem_arena.h"
-#include <sndfile.h> // Needed for the SNDFILE* type in the function signature
 
 // --- Function Declarations ---
 
@@ -91,6 +90,6 @@ void iq_correction_destroy(AppContext* app);
  * @param infile The handle to the open input file (e.g., from libsndfile).
  * @return true on success, false on a critical failure.
  */
-bool iq_correction_run_initial_calibration(ModuleContext* ctx, SNDFILE* infile);
+bool iq_correction_run_initial_calibration(ModuleContext* ctx, const void* raw_buffer, size_t num_bytes);
 
 #endif // IQ_CORRECTION_H_

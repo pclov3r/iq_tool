@@ -234,8 +234,7 @@ bool agc_create(AppConfig *config, AppContext *app)
         h->gain_linear  = 1.0f;
         h->samples_seen = 0;
 
-        /* Allow CLI override of target level (user supplies linear 0.0-1.0,
-         * convert to dBFS for the Harris loop). */
+        // The default is set by the constants file. No complex logic needed here.
         if (config->dsp.agc.target_level_arg > 0.0f) {
             h->target_db = 20.0f * log10f(config->dsp.agc.target_level_arg);
         }
@@ -288,6 +287,17 @@ bool agc_create(AppConfig *config, AppContext *app)
             return false;
     }
 
+    // Set default target level based on profile BEFORE checking for user override
+    switch (config->dsp.agc.profile) {
+        case AGC_PROFILE_LOCAL:
+            target_level = AGC_LOCAL_TARGET;
+            break;
+        case AGC_PROFILE_DX:
+        default:
+            target_level = AGC_DX_TARGET;
+            break;
+    }
+
     if (config->dsp.agc.target_level_arg > 0.0f) {
         target_level = config->dsp.agc.target_level_arg;
     }
@@ -305,7 +315,6 @@ bool agc_create(AppConfig *config, AppContext *app)
 
     return true;
 }
-
 
 void agc_apply(DspContext *dsp, ComplexFloat *samples, unsigned int num_samples)
 {
@@ -382,7 +391,6 @@ void agc_apply(DspContext *dsp, ComplexFloat *samples, unsigned int num_samples)
     }
 }
 
-
 void agc_reset(DspContext *dsp)
 {
     if (dsp->config->dsp.agc.profile == AGC_PROFILE_DIGITAL) {
@@ -438,4 +446,61 @@ int agc_populate_cli_options(struct argparse_option *buffer,
     size_t count = sizeof(options) / sizeof(options[0]);
     memcpy(buffer, options, sizeof(options));
     return (int)count;
+}
+
+const char* agc_get_profile_name(AgcProfile profile) {
+    switch (profile) {
+        case AGC_PROFILE_DX:      return "DX";
+        case AGC_PROFILE_LOCAL:   return "Local";
+        case AGC_PROFILE_DIGITAL: return "Digital";
+        default:                  return "Unknown";
+    }
+}
+
+bool agc_validate_options(AppConfig *config) {
+    if (config->dsp.agc.enable) {
+        // 1. Validate Profile
+        if (!config->dsp.agc.profile_str_arg) {
+            config->dsp.agc.profile = AGC_PROFILE_LOCAL; // Default
+        } else {
+            if (strcasecmp(config->dsp.agc.profile_str_arg, "dx") == 0) {
+                config->dsp.agc.profile = AGC_PROFILE_DX;
+            } else if (strcasecmp(config->dsp.agc.profile_str_arg, "local") == 0) {
+                config->dsp.agc.profile = AGC_PROFILE_LOCAL;
+            } else if (strcasecmp(config->dsp.agc.profile_str_arg, "digital") == 0) {
+                config->dsp.agc.profile = AGC_PROFILE_DIGITAL;
+            } else {
+                log_error("Invalid AGC profile '%s'. Must be 'dx', 'local', or 'digital'.", config->dsp.agc.profile_str_arg);
+                return false;
+            }
+        }
+
+        // 2. Validate Target Level
+        if (config->dsp.agc.target_level_arg != 0.0f) {
+            if (config->dsp.agc.target_level_arg <= 0.0f || config->dsp.agc.target_level_arg > 1.0f) {
+                log_error("Invalid AGC target level %.2f. Must be between 0.0 and 1.0.", config->dsp.agc.target_level_arg);
+                return false;
+            }
+            config->dsp.agc.target_level = config->dsp.agc.target_level_arg;
+        }
+
+        // 3. Check for Conflicts
+        if (config->dsp.raw_passthrough) {
+            log_error("Option --output-agc cannot be used with --raw-passthrough.");
+            return false;
+        }
+
+        // Conflict check for Output Gain
+        if (config->dsp.output_gain != 1.0f) {
+            log_error("Conflicting options: --output-agc and --output-gain-multiplier cannot be used together.");
+            return false;
+        }
+
+        // 4. Check for Warnings
+        if (config->dsp.input_gain_provided && config->dsp.input_gain != 1.0f) {
+            log_warn("Both --input-gain-multiplier and --output-agc are set.");
+            log_warn("Manual gain is applied at input, but AGC will override the final volume at output.");
+        }
+    }
+    return true;
 }

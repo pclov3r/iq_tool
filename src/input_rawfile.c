@@ -233,5 +233,22 @@ static bool rawfile_input_pre_stream_iq_correction(ModuleContext* ctx) {
     }
 
     // The module's only job is to call the calibration service with its private file handle.
-    return iq_correction_run_initial_calibration(ctx, private_data->infile);
+    size_t raw_buffer_size = 4096 * ctx->app->module.input_bytes_per_iq_sample; // IQ_CORRECTION_FFT_SIZE
+    void* raw_buffer = mem_arena_alloc(&ctx->app->pipeline.setup_arena, raw_buffer_size, false);
+    if (!raw_buffer) return false;
+
+    sf_count_t frames_read_bytes = sf_read_raw(private_data->infile, raw_buffer, raw_buffer_size);
+    if (frames_read_bytes < (sf_count_t)raw_buffer_size) {
+        log_warn("Failed to read enough samples for I/Q calibration. Skipping.");
+        sf_seek(private_data->infile, 0, SEEK_SET);
+        return true;
+    }
+
+    bool result = iq_correction_run_initial_calibration(ctx, raw_buffer, frames_read_bytes);
+    
+    if (sf_seek(private_data->infile, 0, SEEK_SET) < 0) {
+        log_fatal("Failed to rewind file after calibration.");
+        return false;
+    }
+    return result;
 }

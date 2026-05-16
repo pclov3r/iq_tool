@@ -229,6 +229,7 @@ static void* bladerf_rx_stream_callback(struct bladerf *dev, struct bladerf_stre
 #endif
 static bool bladerf_input_validate_options(AppConfig* config);
 static bool bladerf_input_validate_generic_options(const AppConfig* config);
+
 static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev);
 static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel);
 static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel);
@@ -743,7 +744,6 @@ static void bladerf_input_get_summary_info(const ModuleContext* ctx, InputSummar
 
     add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.sample_rate);
     add_summary_item(info, "Bandwidth", "%u Hz", s_bladerf_config.bandwidth_hz);
-    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
     if (s_bladerf_config.gain_provided) add_summary_item(info, "Gain", "%d dB (Manual)", s_bladerf_config.gain);
     else add_summary_item(info, "Gain", "Automatic (AGC)");

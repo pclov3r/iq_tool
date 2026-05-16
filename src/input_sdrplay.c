@@ -251,6 +251,7 @@ static void sdrplay_input_cleanup(ModuleContext* ctx);
 static void sdrplay_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool sdrplay_input_validate_options(AppConfig* config);
 static bool sdrplay_input_validate_generic_options(const AppConfig* config);
+
 static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz);
 static void sdrplay_input_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext);
 static void sdrplay_input_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext);
@@ -500,7 +501,6 @@ static void sdrplay_input_get_summary_info(const ModuleContext* ctx, InputSummar
     add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.sample_rate);
 
     add_summary_item(info, "Bandwidth", "%.0f Hz", s_sdrplay_config.bandwidth_hz);
-    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
     if (s_sdrplay_config.lna_state_provided || s_sdrplay_config.if_gain_db_provided) {
         // Manual gain mode is active. Show the status of both components.

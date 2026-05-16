@@ -76,6 +76,7 @@ static void airspyhf_input_cleanup(ModuleContext* ctx);
 static void airspyhf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
 static bool airspyhf_input_validate_options(AppConfig* config);
 static bool airspyhf_input_validate_generic_options(const AppConfig* config);
+
 static int airspyhf_input_buffered_stream_callback(airspyhf_transfer_t* transfer);
 
 
@@ -204,7 +205,6 @@ static void airspyhf_input_get_summary_info(const ModuleContext* ctx, InputSumma
     add_summary_item(info, "Input Source", "Airspy HF+");
     add_summary_item(info, "Input Format", "32-bit Float Complex (cf32)");
     add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.sample_rate);
-    add_summary_item(info, "RF Frequency", "%.0f Hz", config->sdr_general.rf_freq_hz);
 
     // Gain reporting
     if (s_airspyhf_config.agc_mode_provided) {
