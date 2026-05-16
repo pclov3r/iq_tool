@@ -194,8 +194,12 @@ set(COMPILE_WITH_FFAST_MATH_SOURCES
     src/output_am.c
     src/output_nfm.c
     src/output_wfm.c
+    src/pipeline_stages.c
+    src/post_processor.c
+    src/pre_processor.c
     src/resampler.c
     src/sample_convert.c
+    src/utility_threads.c
 )
 
 set(NETWORK_SOURCES
@@ -222,10 +226,7 @@ set(OTHER_SOURCES
     src/output_wav_common.c
     src/output_wav_rf64.c
     src/pipeline.c
-    src/pipeline_stages.c
     src/platform.c
-    src/post_processor.c
-    src/pre_processor.c
     src/presets_loader.c
     src/queue.c
     src/ring_buffer.c
@@ -233,7 +234,6 @@ set(OTHER_SOURCES
     src/sample_format_table.c
     src/signal_handler.c
     src/thread_manager.c
-    src/utility_threads.c
     src/utils.c
     src/wait_event.c
 )
@@ -271,7 +271,7 @@ if(WITH_BLADERF)
     include_directories(${BladeRF_INCLUDE_DIRS} ${LibUSB_INCLUDE_DIRS})
 endif()
 if(WITH_NRSC5)
-    list(APPEND OTHER_SOURCES src/output_nrsc5.c)
+    list(APPEND COMPILE_WITH_FFAST_MATH_SOURCES src/output_nrsc5.c)
     include_directories(${NRSC5_INCLUDE_DIRS})
 endif()
 
