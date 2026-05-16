@@ -29,14 +29,14 @@ static inline bool _input_source_has_known_length_false(void) {
 /**
  * @brief Updates the SDR heartbeat timestamp in a thread-safe manner.
  *
- * This function should be called by an SDR module immediately after it
+ * This function should be called by a Source module immediately after it
  * successfully receives data from the hardware. This signals to the watchdog
- * thread that the SDR is alive and not deadlocked.
+ * thread that the source is alive and not deadlocked.
  *
  * @param app A pointer to the application's app.
  */
-static inline void sdr_input_update_heartbeat(AppContext* app) {
-    atomic_store_explicit(&app->stats.last_sdr_heartbeat_time, utils_get_time(), memory_order_relaxed);
+static inline void source_update_heartbeat(AppContext* app) {
+    atomic_store_explicit(&app->stats.last_source_heartbeat_time, utils_get_time(), memory_order_relaxed);
 }
 
 #endif // INPUT_COMMON_H_

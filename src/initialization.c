@@ -370,9 +370,9 @@ bool allocate_processing_buffers(AppConfig *config, AppContext* app, float resam
     }
 
     // Allocate aux buffers
-    app->pipeline.sdr_deserializer_buffer_size = PIPELINE_TARGET_BLOCK_SAMPLES * sizeof(short) * COMPLEX_SAMPLE_COMPONENTS * 2; // Double size for safety
-    app->pipeline.sdr_deserializer_temp_buffer = mem_arena_alloc(&app->pipeline.setup_arena, app->pipeline.sdr_deserializer_buffer_size, false);
-    if (!app->pipeline.sdr_deserializer_temp_buffer) return false;
+    app->pipeline.source_deserializer_buffer_size = PIPELINE_TARGET_BLOCK_SAMPLES * sizeof(short) * COMPLEX_SAMPLE_COMPONENTS * 2; // Double size for safety
+    app->pipeline.source_deserializer_temp_buffer = mem_arena_alloc(&app->pipeline.setup_arena, app->pipeline.source_deserializer_buffer_size, false);
+    if (!app->pipeline.source_deserializer_temp_buffer) return false;
 
 
 
@@ -664,7 +664,7 @@ bool initialize_application(AppConfig *config, AppContext* app) {
 
     bool source_has_known_length = app->module.input_api->has_known_length();
     if (!source_has_known_length) {
-        log_info("Starting SDR capture...");
+        log_info("Starting live source capture...");
     } else {
         log_info("Starting file processing...");
     }

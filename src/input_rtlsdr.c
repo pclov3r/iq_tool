@@ -316,7 +316,7 @@ static bool rtlsdr_input_initialize(ModuleContext* ctx) {
     app->module.source_info.frames = -1;
 
 
-    // Force the pipeline into BUFFERED_SDR mode.
+    // Force the pipeline into BUFFERED_INPUT mode.
     // This ensures we use the Async callback (rtlsdr_read_async) and the large RingBuffer.
     // This decouples the USB read timing from the output pipe backpressure, preventing
     // sample drops when piping to downstream tools.

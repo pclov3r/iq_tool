@@ -30,7 +30,7 @@ typedef struct Module {
     const char* name; ///< The name used in the --input argument (e.g., "wav", "rtlsdr").
     ModuleType type;
     void* api; ///< Generic pointer to the module's interface (e.g., InputModuleInterface* or OutputModuleInterface*).
-    bool is_sdr; ///< Flag to indicate if this is an SDR source.
+    bool is_live_source; ///< Flag to indicate if this is a live source source.
     void (*set_default_config)(struct AppConfig* config); ///< Pointer to the default config function.
     const struct argparse_option* (*get_cli_options)(int* count); ///< Pointer to the CLI option function.
     bool requires_output_path; ///< For output modules, indicates if a file path argument is needed.
@@ -75,12 +75,12 @@ const Module* module_get_all(int* count, struct MemoryArena* arena);
 void module_apply_defaults(struct AppConfig* config, struct MemoryArena* arena);
 
 /**
- * @brief Checks if a given module name corresponds to an SDR device.
+ * @brief Checks if a given module name corresponds to a live source requiring a watchdog.
  * @param name The name of the module to check.
  * @param arena The memory arena, needed to initialize the module list on first call.
- * @return true if the module exists and is an SDR, false otherwise.
+ * @return true if the module exists and is a live source, false otherwise.
  */
-bool module_is_sdr(const char* name, struct MemoryArena* arena);
+bool module_is_live_source(const char* name, struct MemoryArena* arena);
 
 /**
  * @brief Populates a buffer with the CLI options from all registered modules.

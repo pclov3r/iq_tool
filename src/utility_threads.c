@@ -47,10 +47,10 @@ void* pipeline_thread_iq_optimizer(void* arg) {
 }
 
 /**
- * @brief The SDR watchdog thread's main function.
+ * @brief The Source watchdog thread's main function.
  *
- * This thread periodically checks a heartbeat from the SDR reader to detect
- * deadlocks or driver hangs, forcing a shutdown if the SDR becomes unresponsive.
+ * This thread periodically checks a heartbeat from the source reader to detect
+ * deadlocks or driver hangs, forcing a shutdown if the source becomes unresponsive.
  *
  * @param arg A void pointer to the PipelineContext struct.
  * @return NULL.
@@ -78,24 +78,24 @@ void* pipeline_thread_watchdog(void* arg) {
         double current_time = utils_get_time();
         bool timed_out = false;
 
-        double last_heartbeat = atomic_load_explicit(&app->stats.last_sdr_heartbeat_time, memory_order_relaxed);
+        double last_heartbeat = atomic_load_explicit(&app->stats.last_source_heartbeat_time, memory_order_relaxed);
         if (last_heartbeat > 0 && (current_time - last_heartbeat) > (WATCHDOG_TIMEOUT_MS / 1000.0)) {
             timed_out = true;
         }
 
         if (timed_out) {
             #ifndef _WIN32
-            const char msg[] = "\nFATAL: SDR Watchdog triggered.\n"
+            const char msg[] = "\nFATAL: Source Watchdog triggered.\n"
                                "FATAL: No data received from device.\n"
-                               "FATAL: The SDR driver has likely hung due to a crash or device removal.\n"
+                               "FATAL: The input driver has likely hung due to a crash or device removal.\n"
                                "FATAL: Forcing application exit.\n";
             write(STDERR_FILENO, msg, sizeof(msg) - 1);
 #else
             HANDLE hStdErr = GetStdHandle(STD_ERROR_HANDLE);
             DWORD written;
-            const char* msg = "\nFATAL: SDR Watchdog triggered.\n"
+            const char* msg = "\nFATAL: Source Watchdog triggered.\n"
                               "FATAL: No data received from device.\n"
-                              "FATAL: The SDR driver has likely hung due to a crash or device removal.\n"
+                              "FATAL: The input driver has likely hung due to a crash or device removal.\n"
                               "FATAL: Forcing application exit.\n";
             WriteFile(hStdErr, msg, (DWORD)strlen(msg), &written, NULL);
 #endif
@@ -106,6 +106,6 @@ void* pipeline_thread_watchdog(void* arg) {
         }
     }
 
-    log_debug("SDR watchdog thread is exiting.");
+    log_debug("Source watchdog thread is exiting.");
     return NULL;
 }

@@ -34,7 +34,7 @@ AudioOutputContext* audio_output_create(struct MemoryArena* arena, int sample_ra
  *
  * Automatically handles conditional backpressure: it will block if processing
  * a file (to maintain 1x playback speed), but will drop samples if processing
- * a live SDR (to preserve digital RF sync).
+ * a live source (to preserve digital RF sync).
  *
  * @param ctx The audio output handle.
  * @param pcm_data Pointer to the interleaved 16-bit PCM data.

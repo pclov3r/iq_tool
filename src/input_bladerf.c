@@ -576,7 +576,7 @@ static void* bladerf_rx_stream_callback(struct bladerf *dev, struct bladerf_stre
 
     if (meta && (meta->status & BLADERF_META_STATUS_OVERRUN) != 0) {
         log_warn("BladeRF reported a stream overrun. Sending reset event.");
-        packet_serializer_write_reset_event(app->pipeline.sdr_input_buffer);
+        packet_serializer_write_reset_event(app->pipeline.source_input_buffer);
     }
 
     if (!app->module.queue_samples(app->module.pipeline_ctx, samples, num_samples, app->module.input_format)) {

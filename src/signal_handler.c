@@ -42,7 +42,7 @@ static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
                 pthread_mutex_unlock(&g_console_mutex);
 
                 // 2. Trigger shutdown (High Priority)
-                // This will trigger rtlsdr_stop_stream, which prints logs.
+                // This will trigger the input module's stop_stream, which prints logs.
                 request_shutdown();
 
                 // 3. Log the event
@@ -77,7 +77,7 @@ void* signal_handler_thread(void *arg) {
             pthread_mutex_unlock(&g_console_mutex);
 
             // 2. Trigger shutdown (High Priority)
-            // This calls rtlsdr_stop_stream(), which generates logs.
+            // This calls the input module's stop_stream(), which generates logs.
             // Since we printed \n above, these logs will appear on a fresh line.
             request_shutdown();
 
@@ -131,7 +131,7 @@ void request_shutdown(void) {
         }
 
         // Generic shutdown: If the active input module has a stop function, call it.
-        // This handles blocking SDR drivers (like RTL-SDR) and background threads.
+        // This handles blocking input drivers (like RTL-SDR) and background threads.
         if (r->module.input_api && r->module.input_api->stop_stream) {
             ModuleContext ctx = { .config = r->config, .app = r };
             r->module.input_api->stop_stream(&ctx);
@@ -152,8 +152,8 @@ void request_shutdown(void) {
             queue_signal_shutdown(r->pipeline.iq_optimization_data_queue);
         
         // Signal all ring buffers to wake up any waiting threads
-        if (r->pipeline.sdr_input_buffer)
-            ring_buffer_signal_shutdown(r->pipeline.sdr_input_buffer);
+        if (r->pipeline.source_input_buffer)
+            ring_buffer_signal_shutdown(r->pipeline.source_input_buffer);
     }
 }
 

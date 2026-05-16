@@ -160,8 +160,8 @@ typedef struct PipelineInfrastructure {
 
     size_t input_buffer_size;
 
-    void*  sdr_deserializer_temp_buffer;
-    size_t sdr_deserializer_buffer_size;
+    void*  source_deserializer_temp_buffer;
+    size_t source_deserializer_buffer_size;
 
     Queue* free_sample_chunk_queue;
     Queue* reader_output_queue;
@@ -174,7 +174,7 @@ typedef struct PipelineInfrastructure {
     Queue* writer_input_queue;
     Queue* iq_optimization_data_queue;
 
-    struct RingBuffer* sdr_input_buffer;
+    struct RingBuffer* source_input_buffer;
 
     WaitEvent* shutdown_event;
 } PipelineInfrastructure;
@@ -253,7 +253,7 @@ typedef void (*ProgressUpdateFn)(unsigned long long current_output_frames, long 
 
 typedef struct RuntimeState {
 
-    _Atomic double last_sdr_heartbeat_time;
+    _Atomic double last_source_heartbeat_time;
     atomic_bool   error_occurred;
     atomic_bool   end_of_stream_reached;
 
@@ -287,7 +287,7 @@ typedef struct AppContext {
         bool writer;
         bool iq_optimizer;
         bool source;
-        bool sdr_watchdog;
+        bool source_watchdog;
     } threads_to_create;
 } AppContext;
 

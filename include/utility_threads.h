@@ -17,7 +17,7 @@
 void* pipeline_thread_iq_optimizer(void* arg);
 
 /**
- * @brief The main function for the SDR Watchdog utility thread.
+ * @brief The main function for the Source Watchdog utility thread.
  * @param arg A void pointer to the PipelineContext struct.
  * @return NULL.
  */

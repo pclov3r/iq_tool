@@ -34,10 +34,10 @@
 // Universal Ingest Callback
 static bool pipeline_queue_samples(void* ctx, const void* data, size_t num_samples, SampleFormat format) {
     AppContext* app = (AppContext*)ctx;
-    sdr_input_update_heartbeat(app);
+    source_update_heartbeat(app);
     if (is_shutdown_requested() || atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed)) return false;
 
-    if (!packet_serializer_write_block(app->pipeline.sdr_input_buffer, num_samples, data, format)) {
+    if (!packet_serializer_write_block(app->pipeline.source_input_buffer, num_samples, data, format)) {
         static double last_drop_log_time = 0.0;
         static size_t accumulated_drops = 0;
         
@@ -63,11 +63,11 @@ void* pipeline_thread_source(void* arg) {
 
     app->module.input_api->start_stream(&ctx, pipeline_queue_samples, app);
 
-    if (app->pipeline.sdr_input_buffer) {
-        ring_buffer_signal_end_of_stream(app->pipeline.sdr_input_buffer);
+    if (app->pipeline.source_input_buffer) {
+        ring_buffer_signal_end_of_stream(app->pipeline.source_input_buffer);
     }
 
-    log_debug("SDR capture thread is exiting.");
+    log_debug("Source capture thread is exiting.");
     return NULL;
 }
 
@@ -95,7 +95,7 @@ void* pipeline_thread_reader(void* arg) {
 
                 // Call the serializer with the state and the calculated elastic request size
                 int64_t frames_read = packet_serializer_read_packet(
-                    app->pipeline.sdr_input_buffer,
+                    app->pipeline.source_input_buffer,
                     item,
                     &state,
                     &is_reset,
@@ -103,7 +103,7 @@ void* pipeline_thread_reader(void* arg) {
                 );
 
                 if (frames_read < 0) {
-                    handle_fatal_thread_error("Reader: Fatal error parsing SDR buffer stream.", app);
+                    handle_fatal_thread_error("Reader: Fatal error parsing source buffer stream.", app);
                     queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
                     break;
                 }
@@ -235,7 +235,7 @@ void* pipeline_thread_writer(void* arg) {
             }
         }
 
-        // 2. Handle Reset Event (SDR Overrun)
+        // 2. Handle Reset Event (Source Overrun)
         if (item->stream_discontinuity_event) {
             if (out_api->reset) out_api->reset(&ctx);
         }

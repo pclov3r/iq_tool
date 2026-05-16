@@ -112,8 +112,8 @@ bool pipeline_run(PipelineContext* context) {
     if (threads_ok && config->dsp.iq_correction.enable) {
         if (!thread_manager_spawn_thread(&manager, "I/Q Optimizer", pipeline_thread_iq_optimizer)) threads_ok = false;
     }
-    if (threads_ok && module_is_sdr(config->input.type_name, &app->pipeline.setup_arena)) {
-        if (!thread_manager_spawn_thread(&manager, "SDR Watchdog", pipeline_thread_watchdog)) threads_ok = false;
+    if (threads_ok && module_is_live_source(config->input.type_name, &app->pipeline.setup_arena)) {
+        if (!thread_manager_spawn_thread(&manager, "Source Watchdog", pipeline_thread_watchdog)) threads_ok = false;
     }
 
     if (!threads_ok) {
@@ -215,8 +215,8 @@ static bool _init_queues_and_buffers(AppConfig* config, AppContext* app) {
     }
 
     if (app->pipeline_mode != PIPELINE_MODE_FILE_PROCESSING) {
-        app->pipeline.sdr_input_buffer = ring_buffer_create(app->pipeline.input_buffer_size);
-        if (!app->pipeline.sdr_input_buffer) return false;
+        app->pipeline.source_input_buffer = ring_buffer_create(app->pipeline.input_buffer_size);
+        if (!app->pipeline.source_input_buffer) return false;
     }
 
 
@@ -231,7 +231,7 @@ static void _destroy_queues_and_buffers(AppContext* app) {
         wait_event_destroy(app->pipeline.shutdown_event);
     }
 
-    if (app->pipeline.sdr_input_buffer) ring_buffer_destroy(app->pipeline.sdr_input_buffer);
+    if (app->pipeline.source_input_buffer) ring_buffer_destroy(app->pipeline.source_input_buffer);
 
     if(app->pipeline.free_sample_chunk_queue) queue_destroy(app->pipeline.free_sample_chunk_queue);
     if(app->pipeline.reader_output_queue) queue_destroy(app->pipeline.reader_output_queue);

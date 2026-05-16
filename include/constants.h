@@ -396,11 +396,11 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
  */
 #define SDR_INITIALIZE_TIMEOUT_MS 10000
 
-// The interval in milliseconds at which the watchdog thread wakes up to check the SDR heartbeat.
+// The interval in milliseconds at which the watchdog thread wakes up to check the source heartbeat.
 #define WATCHDOG_INTERVAL_MS 2000
 
-// The maximum time in milliseconds that can elapse without an SDR heartbeat before the
-// watchdog triggers a shutdown. This must be longer than any SDR's internal timeouts.
+// The maximum time in milliseconds that can elapse without an source heartbeat before the
+// watchdog triggers a shutdown. This must be longer than any source's internal timeouts.
 #define WATCHDOG_TIMEOUT_MS 8000
 
 /**

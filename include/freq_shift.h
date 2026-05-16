@@ -47,7 +47,7 @@ void freq_shift_apply(FreqShifter* nco, double shift_hz, ComplexFloat* input_buf
 /**
  * @brief Resets the internal phase of a specific NCO.
  *
- * This is used to handle stream discontinuities (e.g., SDR overruns) to prevent
+ * This is used to handle stream discontinuities (e.g., hardware source overruns) to prevent
  * phase jumps in the output signal.
  *
  * @param nco The NCO object to reset.

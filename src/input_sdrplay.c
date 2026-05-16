@@ -413,7 +413,7 @@ static void sdrplay_input_buffered_stream_callback(short *xi, short *xq, sdrplay
 
     if (reset) {
         log_info("SDRplay stream reset detected, sending event.");
-        packet_serializer_write_reset_event(app->pipeline.sdr_input_buffer);
+        packet_serializer_write_reset_event(app->pipeline.source_input_buffer);
     }
 
     if (numSamples > 0) {

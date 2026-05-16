@@ -39,7 +39,7 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena);
 /**
  * @brief Resets the internal state of the user-defined filter object.
  *
- * This should be called upon a stream discontinuity (e.g., an SDR overrun)
+ * This should be called upon a stream discontinuity (e.g., a hardware source overrun)
  * to clear any old data from the filter's internal buffers. This prevents
  * stale samples from corrupting the new, incoming signal.
  *
