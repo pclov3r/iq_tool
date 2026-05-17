@@ -33,9 +33,7 @@ typedef struct {
 
 typedef struct {
     bool       enable;
-    AgcProfile profile;
     float      target_level;
-    char*      profile_str_arg;
     float      target_level_arg;
 } OutputAgcConfig;
 
@@ -202,8 +200,7 @@ struct dc_blocker_s;
 struct iq_state_s;
 
 typedef struct AgcContext {
-    struct liquid_agc_s* object; /* liquid-dsp agc_crcf handle. DX/LOCAL profiles only. */
-    struct harris_agc_s* harris_object; /* Harris/LMS state block. DIGITAL profile only.       */
+    struct harris_agc_s* harris_object; /* Internal state for the Harris/LMS gain tracker */
     float    current_gain;  /* Most recently applied linear gain scalar.           */
     uint64_t samples_seen;  /* Total samples processed. Used for log interval.     */
 } AgcContext;

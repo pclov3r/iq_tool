@@ -190,10 +190,7 @@ static void apply_preset_if_requested(AppConfig* config, MemoryArena* arena) {
             if (p->output_gain_provided && config->dsp.output_gain == 1.0f) config->dsp.output_gain = p->output_gain;
             if (p->dc_block_provided && !config->dsp.dc_block.enable) config->dsp.dc_block.enable = p->dc_block_enable;
             if (p->iq_correction_provided && !config->dsp.iq_correction.enable) config->dsp.iq_correction.enable = p->iq_correction_enable;
-            if (p->agc_profile_provided) {
-                if (!config->dsp.agc.enable) config->dsp.agc.enable = true;
-                if (!config->dsp.agc.profile_str_arg) config->dsp.agc.profile_str_arg = p->agc_profile_str;
-            }
+            if (p->agc_enable_provided && !config->dsp.agc.enable) config->dsp.agc.enable = p->agc_enable;
             if (p->agc_target_provided && config->dsp.agc.target_level_arg == 0.0f) config->dsp.agc.target_level_arg = p->agc_target;
             if (p->lowpass_cutoff_hz_provided && config->dsp.filter.args.lowpass[0] == 0.0f) config->dsp.filter.args.lowpass[0] = p->lowpass_cutoff_hz;
             if (p->highpass_cutoff_hz_provided && config->dsp.filter.args.highpass[0] == 0.0f) config->dsp.filter.args.highpass[0] = p->highpass_cutoff_hz;

@@ -176,13 +176,7 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 #define AGC_LOCAL_BANDWIDTH      1e-2f
 #define AGC_LOCAL_TARGET         0.5f
 
-// 3. Digital Profile
-// Strategy: Harris/LMS block-level AGC operating in the dB domain.
-//           Inspired by Fred Harris & Gregory Smith, "On the Design,
-//           Implementation, and Performance of a Microprocessor-Controlled
-//           AGC System for a Digital Receiver", and documented in
-//           Richard G. Lyons, "Understanding Digital Signal Processing",
-//           3rd ed., Section 13.30.
+// Harris/LMS AGC Logic
 //
 // The algorithm operates entirely in dB (treating the AGC as a linear
 // system), applies a deadband so signals already in a good range are
@@ -191,25 +185,25 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 //
 // Signal chain:
 //   [1] Pre-AGC impulse blanker  — zeros samples whose magnitude exceeds
-//                                   AGC_DIGITAL_BLANKER_THRESHOLD.
+//                                   AGC_BLANKER_THRESHOLD.
 //   [2] Harris/LMS gain loop     — block RMS measurement, dB-domain LMS
 //                                   update with deadband and gain rails.
 //                                   Output is always a linear multiply.
 
 /**
- * @def AGC_DIGITAL_HARRIS_TARGET_DBFS
+ * @def AGC_HARRIS_TARGET_DBFS
  * @brief Target RMS output level in dBFS for the Harris/LMS AGC.
  *
- * -18 dBFS gives high-PAPR OFDM signals (10-13 dB PAPR) comfortable
+ * -18 dBFS gives high-PAPR signals with high peak-to-average power ratios comfortable
  * headroom below full scale. A signal arriving at -14 dBFS with a 6 dB
  * deadband has an error of +4 dB which falls inside the deadband, so
  * the gain stays at 0 dB and the signal passes through untouched.
  *
  */
-#define AGC_DIGITAL_HARRIS_TARGET_DBFS      -18.0f
+#define AGC_HARRIS_TARGET_DBFS      -18.0f
 
 /**
- * @def AGC_DIGITAL_HARRIS_DEADBAND_DB
+ * @def AGC_HARRIS_DEADBAND_DB
  * @brief Deadband half-width in dB for the Harris/LMS AGC.
  *
  * If |error| <= deadband, gain is frozen and samples pass through with
@@ -218,16 +212,16 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
  *
  * With the default target of -18 dBFS and deadband of 6 dB, signals
  * in the range [-24, -12] dBFS are passed through untouched. This covers
- * most well-received digital signals without any intervention.
+ * most well-received signals without any intervention.
  *
  * Harris's original paper used 1 dB for discrete hardware VGA steps.
  * A wider deadband is appropriate for software AGC with infinite gain
  * resolution — err on the side of not touching the signal.
  */
-#define AGC_DIGITAL_HARRIS_DEADBAND_DB       6.0f
+#define AGC_HARRIS_DEADBAND_DB       6.0f
 
 /**
- * @def AGC_DIGITAL_HARRIS_ALPHA
+ * @def AGC_HARRIS_ALPHA
  * @brief LMS loop filter coefficient for the Harris/LMS AGC (0 < alpha < 1).
  *
  * Controls convergence speed. Smaller = slower and more stable.
@@ -241,33 +235,33 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
  * per block — converging in roughly 5 blocks. For a 6 dB error (just
  * outside the deadband), gain moves 1.2 dB per block.
  */
-#define AGC_DIGITAL_HARRIS_ALPHA             0.2f
+#define AGC_HARRIS_ALPHA             0.2f
 
 /**
- * @def AGC_DIGITAL_HARRIS_GAIN_MIN_DB
+ * @def AGC_HARRIS_GAIN_MIN_DB
  * @brief Minimum gain the Harris/LMS AGC may apply, in dB.
  *
  * Negative values allow attenuation of hot signals.
  * -20 dB allows meaningful attenuation without the loop going to extremes.
  */
-#define AGC_DIGITAL_HARRIS_GAIN_MIN_DB      -20.0f
+#define AGC_HARRIS_GAIN_MIN_DB      -20.0f
 
 /**
- * @def AGC_DIGITAL_HARRIS_GAIN_MAX_DB
+ * @def AGC_HARRIS_GAIN_MAX_DB
  * @brief Maximum gain the Harris/LMS AGC may apply, in dB.
  *
  * +40 dB (100x linear) is enough to rescue a genuinely weak signal.
  * Caps gain to prevent amplifying a noise floor into something a decoder
  * mistakes for a signal.
  */
-#define AGC_DIGITAL_HARRIS_GAIN_MAX_DB       40.0f
+#define AGC_HARRIS_GAIN_MAX_DB       40.0f
 
 // Impulse blanker threshold (absolute IQ magnitude).
 // Any sample whose magnitude exceeds this value is zeroed before entering
 // the AGC. Legitimate normalised signals should never exceed 1.0; hardware
 // impulse artefacts commonly exceed 5-10. A value of 2.0 gives comfortable
 // margin between the two without risk of blanking valid signal content.
-#define AGC_DIGITAL_BLANKER_THRESHOLD        2.0f
+#define AGC_BLANKER_THRESHOLD        2.0f
 
 // How often to emit periodic AGC runtime status at debug level (seconds).
 // Applies to all profiles. 5 seconds is frequent enough to observe gain

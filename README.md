@@ -44,9 +44,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
         *   **Narrowband FM (NFM):** Demodulates voice signals with adjustable squelch and standard/narrow bandwidths
         *   **AM:** Demodulates AM signals using a Synchronous (PLL) detector, or standard Envelope detection.
         *   **NRSC5 (HD Radio):** Integrated support for demodulating and playing HD Radio streams (via `libnrsc5`).
-    *   **Automatic Gain Control (AGC):** 
-        *   **DX/Local:** Employs an RMS-tracking AGC from `liquid-dsp`. `DX` provides slow tracking for weak/fading analog signals, while `LOCAL` offers fast tracking for strong ones.
-        *   **Digital:** A custom Harris/LMS block-level AGC for digital signals. Features a crucial **deadband** that allows strong, stable signals to pass through untouched, preserving Modulation Error Ratio (MER).
+*   **Automatic Gain Control (AGC):** A universal Harris/LMS block-level tracker that provides smooth gain control for all signal types. It features a crucial **deadband** that allows strong, stable signals to pass through untouched—preserving Modulation Error Ratio (MER) for digital signals and audio transparency for analog ones—while still capable of automatically rescuing weak signals from deep fades.
     *   **Filtering:**
         *   Apply low-pass, high-pass, band-pass, or notch FIR filters.
         *   Offers two processing methods: a `FIR` (time-domain) method and an `FFT` (frequency-domain) method and will attempt to automatically default to the most suitable method.
@@ -166,8 +164,7 @@ Processing Options
 
 Output Automatic Gain Control
     --output-agc                              Enable automatic gain control on the output.
-    --agc-profile=<str>                       AGC profile {dx|local|digital}. (Default: local)
-    --agc-target=<flt>                        AGC target magnitude (0.0 - 1.0). (Default: profile dependent)
+    --agc-target=<flt>                        AGC target magnitude (0.0 - 1.0). (Default: 0.12)
 
 Filtering Options (Chain up to 5 by combining options or adding suffixes -2, -3, etc. e.g., --lowpass --stopband --lowpass-2 --pass-range --pass-range-2)
     --lowpass=<flt>                           Isolate signal at DC. Keeps freqs from -<hz> to +<hz>.
@@ -282,7 +279,7 @@ WFM Output (wfm)
     --wfm-force-mono                          Force mono output.
     --wfm-raw-mpx-stdout                      Pipe raw MPX data (S16 Mono) to stdout while playing audio.
     --wfm-no-rds                              Disable RDS decoding (Enabled by default).
-    --wfm-rbds                                Enable US RBDS mode (Callsigns + US Program Types).
+    --wfm-rds                                 Use World RDS standard (Default is US RBDS).
     --wfm-rds-partial                         Show partial/noisy RDS text (PS/RT).
 
 NFM Output (nfm)

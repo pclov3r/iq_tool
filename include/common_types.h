@@ -73,15 +73,5 @@ typedef enum {
     PIPELINE_MODE_FILE_PROCESSING
 } PipelineMode;
 
-/**
- * @enum AgcProfile
- * @brief Defines the behavior profile for the output Automatic Gain Control.
- */
-typedef enum {
-    AGC_PROFILE_OFF,     // AGC is disabled.
-    AGC_PROFILE_DX,      // RMS-based. Slow tracking. Good for weak/fading signals.
-    AGC_PROFILE_LOCAL,   // RMS-based. Fast tracking. Good for strong analog signals.
-    AGC_PROFILE_DIGITAL  // Peak-based. Scan & Lock. Essential for OFDM/MER.
-} AgcProfile;
 
 #endif // COMMON_TYPES_H_

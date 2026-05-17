@@ -33,20 +33,21 @@ typedef struct PresetDefinition {
     char*  output_sample_format_name;
 
     // DSP parameters
-    float input_gain;           // Renamed from gain
-    bool  input_gain_provided;  // Renamed from gain_provided
+    float input_gain;
+    bool  input_gain_provided;
 
-    float output_gain;          // New
-    bool  output_gain_provided; // New
+    float output_gain;
+    bool  output_gain_provided;
 
     bool  dc_block_enable;
     bool  dc_block_provided;
     bool  iq_correction_enable;
     bool  iq_correction_provided;
 
+    bool  agc_enable;
+    bool  agc_enable_provided;
+
     // --- AGC Parameters ---
-    char* agc_profile_str;
-    bool  agc_profile_provided;
     float agc_target;
     bool  agc_target_provided;
 

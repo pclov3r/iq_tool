@@ -37,7 +37,7 @@ static const PresetKeyHandler key_handlers[] = {
     { "output-gain-multiplier", PRESET_KEY_STRTOF, offsetof(PresetDefinition, output_gain),       offsetof(PresetDefinition, output_gain_provided) },
     { "dc_block",         PRESET_KEY_BOOL,   offsetof(PresetDefinition, dc_block_enable),   offsetof(PresetDefinition, dc_block_provided) },
     { "iq_correction",    PRESET_KEY_BOOL,   offsetof(PresetDefinition, iq_correction_enable),offsetof(PresetDefinition, iq_correction_provided) },
-    { "agc_profile",      PRESET_KEY_STRDUP, offsetof(PresetDefinition, agc_profile_str),   offsetof(PresetDefinition, agc_profile_provided) },
+    { "agc",              PRESET_KEY_BOOL,   offsetof(PresetDefinition, agc_enable),           offsetof(PresetDefinition, agc_enable_provided) },
     { "agc_target",       PRESET_KEY_STRTOF, offsetof(PresetDefinition, agc_target),        offsetof(PresetDefinition, agc_target_provided) },
     { "lowpass",          PRESET_KEY_STRTOF, offsetof(PresetDefinition, lowpass_cutoff_hz), offsetof(PresetDefinition, lowpass_cutoff_hz_provided) },
     { "highpass",         PRESET_KEY_STRTOF, offsetof(PresetDefinition, highpass_cutoff_hz),offsetof(PresetDefinition, highpass_cutoff_hz_provided) },
@@ -49,7 +49,6 @@ static const PresetKeyHandler key_handlers[] = {
     { "filter_type",      PRESET_KEY_STRDUP, offsetof(PresetDefinition, filter_type_str),   offsetof(PresetDefinition, filter_type_str_provided) },
 };
 static const size_t num_key_handlers = sizeof(key_handlers) / sizeof(key_handlers[0]);
-
 
 static char* arena_strdup(MemoryArena* arena, const char* s) {
     if (!s) return NULL;
@@ -66,7 +65,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
     config->num_presets = 0;
 
     char full_path_buffer[MAX_PATH_BUFFER];
-    
+
     char* found_preset_files[5];
     int num_found_files = 0;
 
@@ -85,7 +84,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         full_appdata_path_w[MAX_PATH_BUFFER - 1] = L'\0';
         CoTaskMemFree(appdata_path_w);
         PathAppendW(full_appdata_path_w, L"\\" APP_NAME);
-        
+
         char* appdata_path_utf8 = (char*)mem_arena_alloc(arena, MAX_PATH_BUFFER, false);
         if (appdata_path_utf8) {
             if (WideCharToMultiByte(CP_UTF8, 0, full_appdata_path_w, -1, appdata_path_utf8, MAX_PATH_BUFFER, NULL, NULL) > 0) {
@@ -111,7 +110,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
 #else // POSIX
     search_paths_list[current_path_idx++] = ".";
     const char* xdg_config_home = getenv("XDG_CONFIG_HOME");
-    
+
     char* xdg_path = (char*)mem_arena_alloc(arena, MAX_PATH_BUFFER, false);
     if (xdg_path) {
         bool xdg_path_set = false;
@@ -129,7 +128,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
             search_paths_list[current_path_idx++] = xdg_path;
         }
     }
-    
+
     search_paths_list[current_path_idx++] = "/etc/" APP_NAME;
     search_paths_list[current_path_idx++] = "/usr/local/etc/" APP_NAME;
 #endif
@@ -138,7 +137,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
         const char* base_dir = search_paths_list[i];
         if (base_dir == NULL) continue;
         snprintf(full_path_buffer, sizeof(full_path_buffer), "%s/%s", base_dir, PRESETS_FILENAME);
-        
+
         bool file_is_safe_and_exists = false;
         #ifdef _WIN32
         wchar_t full_path_w[MAX_PATH_BUFFER];

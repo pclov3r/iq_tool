@@ -451,9 +451,7 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
 
     if (config->dsp.agc.enable) {
         char agc_buf[128];
-        const char* profile_name = agc_get_profile_name(config->dsp.agc.profile);
-
-        snprintf(agc_buf, sizeof(agc_buf), "Enabled (Profile: %s, Target: %.2f)", profile_name, config->dsp.agc.target_level);
+        snprintf(agc_buf, sizeof(agc_buf), "Enabled (Target: %.2f)", config->dsp.agc.target_level);
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Output AGC", agc_buf);
     } else {
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Output AGC", "Disabled");

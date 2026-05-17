@@ -3,10 +3,7 @@
  * @brief Defines the interface for the Output Automatic Gain Control module.
  *
  * This module provides functionality to initialize, apply, and clean up an
- * automatic gain control (AGC) object. It supports three distinct profiles:
- * 1. DX: Slow RMS tracking for weak/fading signals.
- * 2. Local: Fast RMS tracking for strong analog signals.
- * 3. Digital: Peak-Detect & Lock for digital signals.
+ * automatic gain control (AGC) object. It utilizes a self-contained Harris/LMS block-level algorithm.
  */
 
 #ifndef AGC_H_
@@ -21,9 +18,7 @@
 /**
  * @brief Creates and configures the AGC logic based on the application configuration.
  *
- * Depending on the selected profile, this will either create a liquid-dsp
- * AGC object (for DX/Local) or initialize the internal state for the custom
- * Peak-Lock logic (for Digital).
+ * Initializes the internal state for the block-level gain tracking loop.
  *
  * @param config Pointer to the application configuration.
  * @param app Pointer to the application app.
@@ -35,9 +30,7 @@ bool agc_create(AppConfig* config, AppContext* app);
  * @brief Applies the AGC to a block of complex samples.
  *
  * This function processes the input samples in-place.
- * - For DX/Local: It uses the liquid-dsp feedback loop.
- * - For Digital: It scans for peaks and applies provisional gain (if unlocking)
- *   or applies a static gain (if locked).
+ * Measures block RMS, computes error, applies deadband, and updates gain via LMS.
  *
  * @param app Pointer to the application app.
  * @param samples Pointer to the complex float samples (modified in-place).
@@ -73,8 +66,6 @@ int agc_populate_cli_options(struct argparse_option* buffer, struct AppConfig* c
 /**
  * @brief Converts an AGC profile enum to a human-readable string.
  */
-const char* agc_get_profile_name(AgcProfile profile);
-
 /**
  * @brief Validates all AGC-related user options after parsing.
  * @return true if the configuration is valid, false otherwise.
