@@ -69,7 +69,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// --- Constants from demux.h ---
+// --- Constants ---
 #define WFM_BUFFER_SIZE         8192
 #define WFM_PILOT_HZ            19000.0f
 #define WFM_PLL_BW_HZ           10.0f
@@ -79,6 +79,14 @@
 #define WFM_AUDIO_FIR_LEN_USEC  740.0f
 #define WFM_DEEMPH_ORDER        1
 #define WFM_STEREO_SEPARATION   1.2f
+
+#ifdef WITH_REDSEA
+// --- RDS Configuration Enum ---
+typedef enum {
+    RDS_STANDARD_RBDS, // US Standard (Default)
+    RDS_STANDARD_RDS   // World Standard
+} RdsStandard;
+#endif
 
 // --- Logging Config ---
 #define WFM_STATS_INTERVAL_SEC  1.0f
@@ -166,9 +174,10 @@ static struct {
     int force_mono;
     int raw_mpx_stdout;
 #ifdef WITH_REDSEA
-    int rds_disable; // Default 0 (Enabled)
-    int rds_us_mode;
-    int rds_partial; // Default 0 (Disabled)
+    int rds_disable;
+    RdsStandard rds_standard; // The final, resolved standard after parsing CLI flags
+    int use_world_rds;        // Temporary flag from CLI to select the non-default standard
+    int rds_partial;
 #endif
 } s_wfm_config = {
     .deemph_us = 75.0f,
@@ -177,8 +186,9 @@ static struct {
     .force_mono = 0,
     .raw_mpx_stdout = 0,
 #ifdef WITH_REDSEA
-    .rds_disable = 0, // Enabled by default
-    .rds_us_mode = 0,
+    .rds_disable = 0,
+    .rds_standard = RDS_STANDARD_RBDS, // Default to US standard
+    .use_world_rds = 0,
     .rds_partial = 0
 #endif
 };
@@ -238,6 +248,12 @@ static void deemphasis_destroy(DeEmphasis* de) {
 // --- Module Interface Implementation ---
 
 static bool wfm_output_validate_options(AppConfig* config) {
+#ifdef WITH_REDSEA
+    // Resolve the user's choice from the CLI flag into our clean enum state.
+    if (s_wfm_config.use_world_rds) {
+        s_wfm_config.rds_standard = RDS_STANDARD_RDS;
+    }
+#endif
     // 1. Force Pipeline Format to CF32
     // We need high-precision float I/Q for the FM demodulator.
     config->output.format = CF32;
@@ -365,24 +381,24 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
 #ifdef WITH_REDSEA
     // 6. Initialize RDS (Enabled unless disabled)
     if (!s_wfm_config.rds_disable) {
-        p->redsea = redsea_init(p->input_samplerate, s_wfm_config.rds_us_mode, s_wfm_config.rds_partial);
+        // The `is_rbds` parameter for redsea is determined by our final enum state.
+        bool is_rbds = (s_wfm_config.rds_standard == RDS_STANDARD_RBDS);
+        p->redsea = redsea_init(p->input_samplerate, is_rbds, s_wfm_config.rds_partial);
         memset(&p->last_rds_state, 0, sizeof(RdsState));
 
         p->rds_display_counter = 0;
         p->rds_display_threshold = (size_t)(p->input_samplerate * 1.0); // 1 second
 
-        log_info("WFM: RDS Decoder enabled (Mode: %s%s)",
-                 s_wfm_config.rds_us_mode ? "RBDS/US" : "RDS/World",
+        log_info("WFM: RDS Decoder enabled (Standard: %s%s)",
+                 is_rbds ? "RBDS (US, Default)" : "RDS (World)",
                  s_wfm_config.rds_partial ? ", Partial Text" : "");
     } else {
         p->redsea = NULL;
     }
 #endif
-    
 
     return true;
 }
-
 
 static void wfm_output_reset(ModuleContext* ctx) { (void)ctx; /* TODO: Reset PLL state */ }
 static void wfm_output_flush(ModuleContext* ctx) {
@@ -392,8 +408,6 @@ static void wfm_output_flush(ModuleContext* ctx) {
 static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
     AppContext* res = ctx->app;
     WfmContext* p = (WfmContext*)res->module.output_private_data;
-
-    
 
     static size_t stat_counter = 0;
     static double accum_mag_sum = 0.0, accum_mag_sq_sum = 0.0, accum_pilot_mag_sum = 0.0;
@@ -445,7 +459,7 @@ static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
             size_t rt_len = strlen(clean_rt);
             while (rt_len > 0 && clean_rt[rt_len - 1] == ' ') { clean_rt[rt_len - 1] = '\0'; rt_len--; }
 
-            if (s_wfm_config.rds_us_mode && current.callsign[0] != '\0') {
+            if (s_wfm_config.rds_standard == RDS_STANDARD_RBDS && current.callsign[0] != '\0') {
                  log_info("RBDS PI: %04X | CALL: %s | PS: %s | PTY: %s | PTYN: %s | RT: %s | TP: %d | TA: %d | MS: %d | ST: %d | CMP: %d | DYN: %d",
                          current.pi_code, current.callsign, current.ps_name, current.program_type, current.pty_name, clean_rt, current.tp, current.ta, current.is_music, current.stereo, current.compressed, current.dynamic);
             } else {
@@ -515,7 +529,7 @@ static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
         bool is_mono_station = (avg_pilot < 0.001) || (pilot_pct > 100.0f);
         float avg_stereo_pct = (float)(accum_stereo_pct_sum / (double)stat_counter);
         if (avg_stereo_pct > 1.0f) is_mono_station = false;
-        
+
         if (is_mono_station || s_wfm_config.force_mono) {
              log_info("RSSI: %5.1f dBm (%5.1f dBFS) | SNR: %4.1f dB | Stereo: Mono", rssi_dbm, rssi_dbfs, snr_db);
         } else {
@@ -571,7 +585,7 @@ static void wfm_output_get_summary_info(const ModuleContext* ctx, OutputSummaryI
     add_summary_item(info, "Stereo Mode", "%s", mode);
 }
 
-static const struct argparse_option wfm_output_cli_options[] = {
+const struct argparse_option wfm_output_cli_options[] = {
     OPT_GROUP("WFM Output (wfm)"),
     OPT_FLOAT(0, "wfm-de-emphasis-time", &s_wfm_config.deemph_us, "Set FM de-emphasis time constant in microseconds (default: 75.0).", NULL, 0, 0),
     OPT_FLOAT(0, "wfm-gain", &s_wfm_config.gain_val, "Set audio output gain (linear).", NULL, 0, 0),
@@ -580,7 +594,7 @@ static const struct argparse_option wfm_output_cli_options[] = {
     OPT_BOOLEAN(0, "wfm-raw-mpx-stdout", &s_wfm_config.raw_mpx_stdout, "Pipe raw MPX data (S16 Mono) to stdout while playing audio.", NULL, 0, 0),
 #ifdef WITH_REDSEA
     OPT_BOOLEAN(0, "wfm-no-rds", &s_wfm_config.rds_disable, "Disable RDS decoding (Enabled by default).", NULL, 0, 0),
-    OPT_BOOLEAN(0, "wfm-rbds", &s_wfm_config.rds_us_mode, "Enable US RBDS mode (Callsigns + US Program Types).", NULL, 0, 0),
+    OPT_BOOLEAN(0, "wfm-rds", &s_wfm_config.use_world_rds, "Use World RDS standard (Default is US RBDS).", NULL, 0, 0),
     OPT_BOOLEAN(0, "wfm-rds-partial", &s_wfm_config.rds_partial, "Show partial/noisy RDS text (PS/RT).", NULL, 0, 0),
 #endif
 };
