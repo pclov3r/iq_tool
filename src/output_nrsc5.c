@@ -8,11 +8,16 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
+#include <errno.h>
+#include <ctype.h>
+#include <sys/stat.h>
 
 #ifdef _WIN32
 #include <windows.h>
+#define PATH_SEPARATOR "\\"
 #else
 #include <unistd.h>
+#define PATH_SEPARATOR "/"
 #endif
 
 #include "output_nrsc5.h"
@@ -61,15 +66,19 @@ typedef struct {
     unsigned int audio_bytes;         // Bytes from valid packets
     unsigned int audio_errors;        // Recent CRC errors
     unsigned int total_audio_errors;  // Total CRC errors since sync
+
+    char filepath_buffer[MAX_PATH_BUFFER];
 } Nrsc5Context;
 
 // --- CLI Configuration Storage ---
 static struct {
     char* mode_str;
+    char* aas_dir_arg;
     int program_id;
     Nrsc5Mode active_mode;
 } s_nrsc5_config = {
     .mode_str = NULL,
+    .aas_dir_arg = NULL,
     .program_id = -1, // Sentinel: -1 indicates "not set by user"
     .active_mode = NRSC5_MODE_CS16_FM
 };
@@ -86,6 +95,76 @@ static void update_ber_stats(Nrsc5Context* ctx, float cber) {
 
     log_info("NRSC5: BER: %f, avg: %f, min: %f, max: %f",
              cber, ctx->ber_sum / ctx->ber_count, ctx->ber_min, ctx->ber_max);
+}
+
+/**
+ * @brief Surgically sanitizes filenames from the air using a strict whitelist pattern.
+ */
+static void sanitize_aas_filename(const char* raw, char* out, size_t max_len) {
+    size_t j = 0;
+    if (!raw || max_len == 0) {
+        if (max_len > 0) out[0] = '\0';
+        return;
+    }
+    for (size_t i = 0; i < 255 && raw[i] != '\0' && j < (max_len - 1); i++) {
+        unsigned char c = (unsigned char)raw[i];
+        // Whitelist: Alphanumeric, dots, dashes, underscores only.
+        if (isalnum(c) || c == '.' || c == '-' || c == '_') {
+            out[j++] = (char)c;
+        }
+    }
+    out[j] = '\0';
+}
+
+/**
+ * @brief Safely dumps AAS/AAA files to disk using pre-allocated arena memory.
+ */
+static void dump_aas_file(Nrsc5Context* ctx, const nrsc5_event_t *evt) {
+    if (is_shutdown_requested()) return;
+
+    const char *name_raw = NULL;
+    const uint8_t *data = NULL;
+    unsigned int size = 0;
+    unsigned int number = 0;
+
+    switch (evt->event) {
+        case NRSC5_EVENT_LOT:
+            name_raw = evt->lot.name;
+            data = evt->lot.data;
+            size = evt->lot.size;
+            number = evt->lot.lot;
+            break;
+        case NRSC5_EVENT_HERE_IMAGE:
+            name_raw = evt->here_image.name;
+            data = evt->here_image.data;
+            size = evt->here_image.size;
+            #if defined(_WIN32)
+                number = (unsigned int)_mkgmtime64(evt->here_image.time_utc);
+            #else
+                number = (unsigned int)timegm(evt->here_image.time_utc);
+            #endif
+            break;
+        default: return;
+    }
+
+    if (!name_raw || !data || size == 0) return;
+
+    char safe_name[256];
+    sanitize_aas_filename(name_raw, safe_name, sizeof(safe_name));
+
+    snprintf(ctx->filepath_buffer, MAX_PATH_BUFFER, "%s" PATH_SEPARATOR "%u_%s",
+             s_nrsc5_config.aas_dir_arg, number, safe_name);
+
+    FILE *fp = fopen(ctx->filepath_buffer, "wb");
+    if (fp) {
+        size_t written = fwrite(data, 1, size, fp);
+        fclose(fp);
+        if (written == size) {
+            log_info("NRSC5: AAS file saved: %s (%u bytes)", ctx->filepath_buffer, size);
+        }
+    } else {
+        log_warn("NRSC5: Failed to save AAS file '%s': %s", safe_name, strerror(errno));
+    }
 }
 
 // --- NRSC5 Event Callback ---
@@ -107,7 +186,6 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
             ctx->ber_max = 0.0f;
             ctx->ber_sum = 0.0f;
             ctx->ber_count = 0.0f;
-            ctx->total_audio_errors = 0;
             break;
 
         case NRSC5_EVENT_LOST_SYNC:
@@ -134,7 +212,6 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
                     ctx->audio_packets_valid++;
                 }
 
-                // Trigger 1: Bitrate (Based on 32 VALID packets)
                 if (ctx->audio_packets_valid >= 32) {
                     float kbps = (float)ctx->audio_bytes * 8.0f * NRSC5_SAMPLE_RATE_AUDIO /
                                  NRSC5_AUDIO_FRAME_SAMPLES / ctx->audio_packets_valid / 1000.0f;
@@ -143,7 +220,6 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
                     ctx->audio_bytes = 0;
                 }
 
-                // Trigger 2: Errors (Based on 32 TOTAL packets)
                 if (ctx->audio_packets >= 32) {
                     if (ctx->audio_errors > 0) {
                         log_warn("NRSC5: Audio CRC errors (recent): %d", ctx->audio_errors);
@@ -157,13 +233,8 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
 
         case NRSC5_EVENT_AUDIO:
             if (evt->audio.program == ctx->active_program) {
-                // Sanity check incoming data
                 if (!evt->audio.data || evt->audio.count == 0 || evt->audio.count > 100000) return;
-
-                // evt->audio.count is TOTAL samples (interleaved), not frames.
                 size_t bytes = evt->audio.count * sizeof(int16_t);
-
-                // Write to ring buffer. If full, it drops data (safe).
                 audio_output_write(ctx->audio_out, evt->audio.data, bytes, ctx->pipeline_mode);
             }
             break;
@@ -255,12 +326,9 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
 
         case NRSC5_EVENT_EMERGENCY_ALERT:
             if (evt->emergency_alert.message) {
-                // Safe string construction to prevent buffer overflows
                 char alert_buf[1024];
                 int offset = 0;
-
                 offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "Category=[");
-
                 if (evt->emergency_alert.category1 >= 1) {
                     nrsc5_alert_category_name(evt->emergency_alert.category1, &name_ptr);
                     offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "%s", SAFE_STR(name_ptr));
@@ -272,24 +340,16 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
                 offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "] ");
 
                 switch (evt->emergency_alert.location_format) {
-                    case NRSC5_LOCATION_FORMAT_SAME:
-                        offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "SAME=");
-                        break;
-                    case NRSC5_LOCATION_FORMAT_FIPS:
-                        offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "FIPS=");
-                        break;
-                    case NRSC5_LOCATION_FORMAT_ZIP:
-                        offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "ZIP=");
-                        break;
+                    case NRSC5_LOCATION_FORMAT_SAME: offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "SAME="); break;
+                    case NRSC5_LOCATION_FORMAT_FIPS: offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "FIPS="); break;
+                    case NRSC5_LOCATION_FORMAT_ZIP:  offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "ZIP="); break;
                 }
-
                 offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "[");
                 for (int i = 0; i < evt->emergency_alert.num_locations; i++) {
                     if (i > 0) offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, ", ");
                     offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "%d", evt->emergency_alert.locations[i]);
                 }
                 offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "]");
-
                 log_info("NRSC5: Alert: %s %s", alert_buf, SAFE_STR(evt->emergency_alert.message));
             } else {
                 log_info("NRSC5: Alert ended");
@@ -302,6 +362,7 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
                      evt->here_image.image_type == NRSC5_HERE_IMAGE_TRAFFIC ? "TRAFFIC" : "WEATHER",
                      evt->here_image.seq, evt->here_image.n1, evt->here_image.n2, time_str,
                      SAFE_STR(evt->here_image.name), evt->here_image.size);
+            if (s_nrsc5_config.aas_dir_arg) dump_aas_file(ctx, evt);
             break;
 
         case NRSC5_EVENT_LOT:
@@ -309,6 +370,7 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
             log_info("NRSC5: LOT file: port=%04X lot=%d name=%s size=%d mime=%08X expiry=%s",
                      evt->lot.component->data.port, evt->lot.lot, SAFE_STR(evt->lot.name),
                      evt->lot.size, evt->lot.mime, time_str);
+            if (s_nrsc5_config.aas_dir_arg) dump_aas_file(ctx, evt);
             break;
 
         default:
@@ -374,21 +436,28 @@ static bool nrsc5_output_initialize(ModuleContext* ctx) {
 
 
 
+        if (s_nrsc5_config.aas_dir_arg) {
+        struct stat st;
+        if (stat(s_nrsc5_config.aas_dir_arg, &st) != 0 || !S_ISDIR(st.st_mode)) {
+            log_error("NRSC5: AAS directory '%s' is invalid or not a directory.", s_nrsc5_config.aas_dir_arg);
+            return false;
+        }
+    }
+
     return true;
 }
 
-
 static void nrsc5_output_reset(ModuleContext* ctx) { (void)ctx; }
+
 static void nrsc5_output_flush(ModuleContext* ctx) {
     Nrsc5Context* p = (Nrsc5Context*)ctx->app->module.output_private_data;
     audio_output_flush(p->audio_out);
 }
+
 static size_t nrsc5_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
     AppContext* app = ctx->app;
     Nrsc5Context* p = (Nrsc5Context*)app->module.output_private_data;
     if (input_bytes == 0) return 0;
-
-
 
     unsigned int frames = input_bytes / app->module.output_bytes_per_iq_sample;
     unsigned int num_scalars = frames * 2;
@@ -407,7 +476,6 @@ static size_t nrsc5_output_write_chunk(ModuleContext* ctx, const void* buffer, s
     if (res != 0) log_error("NRSC5: Failed to pipe samples to decoder.");
     return input_bytes;
 }
-
 
 static void nrsc5_output_cleanup(ModuleContext* ctx) {
     AppContext* app = ctx->app;
@@ -508,6 +576,7 @@ static const struct argparse_option nrsc5_output_cli_options[] = {
     OPT_GROUP("NRSC5 Output (nrsc5)"),
     OPT_STRING(0, "nrsc5-mode", &s_nrsc5_config.mode_str, "Set decoder mode {cs16-fm|cs16-am|cu8-fm|cu8-am}. (Default: cs16-fm)", NULL, 0, 0),
     OPT_INTEGER(0, "nrsc5-program", &s_nrsc5_config.program_id, "Select HD program/subchannel (0-7). (Required)", NULL, 0, 0),
+    OPT_STRING(0, "nrsc5-aas-dir", &s_nrsc5_config.aas_dir_arg, "Directory to dump AAS files (logos, maps, etc).", NULL, 0, 0),
 };
 
 const struct argparse_option* nrsc5_output_get_cli_options(int* count) {

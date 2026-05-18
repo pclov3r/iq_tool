@@ -151,7 +151,7 @@ Output Options
     --output-sample-format=<str>              Sample format for output data {cs8|cu8|cs16|...}
 
 Processing Options
-    --output-rate=<flt>                       Output sample rate in Hz.
+    --output-sample-rate=<flt>                Output sample rate in Hz.
     --input-gain-multiplier=<flt>             Apply a linear gain multiplier to INPUT samples (before processing).
     --output-gain-multiplier=<flt>            Apply a linear gain multiplier to OUTPUT samples (after processing).
     --dbm-offset=<flt>                        Override the dBFS-to-dBm calibration offset.
@@ -191,11 +191,11 @@ WAV Input (wav)
     --wav-center-target-freq=<flt>            Shift signal to a new target center frequency (e.g., 97.3e6)
 
 Raw File Input (rawfile)
-    --rawfile-input-rate=<flt>               (Required) The sample rate of the RAW input file.
-    --rawfile-input-sample-format=<str>      (Required) The sample format of the RAW input file.
+    --rawfile-input-sample-rate=<flt>         (Required) The sample rate of the RAW input file.
+    --rawfile-input-sample-format=<str>       (Required) The sample format of the RAW input file.
 
 Standard Input (stdin)
-    --stdin-input-rate=<flt>                  (Required) The sample rate of the stdin stream in Hz.
+    --stdin-input-sample-rate=<flt>           (Required) The sample rate of the stdin stream in Hz.
     --stdin-input-sample-format=<str>         (Required) The sample format of the stdin stream.
 
 RTL-SDR Input (rtlsdr)
@@ -271,6 +271,7 @@ Standard Output (stdout)
 NRSC5 Output (nrsc5)
     --nrsc5-mode=<str>                        Set decoder mode {cs16-fm|cs16-am|cu8-fm|cu8-am}. (Default: cs16-fm)
     --nrsc5-program=<int>                     Select HD program/subchannel (0-7). (Required)
+    --nrsc5-aas-dir=<str>                     Directory to dump AAS files (logos, maps, etc).
 
 WFM Output (wfm)
     --wfm-de-emphasis-time=<flt>              Set FM de-emphasis time constant in microseconds (default: 75.0).
@@ -305,7 +306,7 @@ Available Presets
 
 Help & Version
     -v, --version                             show program's version number and exit
-    -h, --help                                show this help message and exit
+    -h, --help
 ```
 
 #### Examples
