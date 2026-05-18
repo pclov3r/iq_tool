@@ -364,7 +364,7 @@ static void rtlsdr_input_stop_stream(ModuleContext* ctx) {
     AppContext* app = ctx->app;
     RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
     if (private_data && private_data->dev) {
-        log_info("Stopping RTL-SDR stream...");
+        log_debug("Stopping RTL-SDR stream...");
         rtlsdr_cancel_async(private_data->dev);
     }
 }

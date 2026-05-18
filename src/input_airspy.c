@@ -630,7 +630,7 @@ static void airspy_input_stop_stream(ModuleContext* ctx) {
     if (private_data) {
     pthread_mutex_lock(&private_data->driver_mutex);
     if (private_data && private_data->dev && airspy_is_streaming(private_data->dev) == AIRSPY_TRUE) {
-        log_info("Stopping Airspy stream...");
+        log_debug("Stopping Airspy stream...");
         int result = airspy_stop_rx(private_data->dev);
         if (result != AIRSPY_SUCCESS) {
             log_error("Failed to stop Airspy RX: %s (%d)", airspy_error_name(result), result);
@@ -654,6 +654,6 @@ static void airspy_input_cleanup(ModuleContext* ctx) {
         pthread_mutex_destroy(&private_data->driver_mutex);
         app->module.input_private_data = NULL;
     }
-    log_info("Exiting Airspy library...");
+    log_debug("Exiting Airspy library...");
     airspy_exit();
 }

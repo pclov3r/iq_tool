@@ -833,7 +833,7 @@ static void spyserver_client_input_cleanup(ModuleContext* ctx) {
         // rx_buffer is in arena, no free needed
         networking_cleanup();
     }
-    log_info("Exiting SpyServer client...");
+    log_info("Closing SpyServer connection...");
 }
 
 static void spyserver_client_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {

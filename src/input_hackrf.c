@@ -293,7 +293,7 @@ static void hackrf_input_stop_stream(ModuleContext* ctx) {
     if (private_data) {
     pthread_mutex_lock(&private_data->driver_mutex);
     if (private_data && private_data->dev && hackrf_is_streaming(private_data->dev) == HACKRF_TRUE) {
-        log_info("Stopping HackRF stream...");
+        log_debug("Stopping HackRF stream...");
         int result = hackrf_stop_rx(private_data->dev);
         if (result != HACKRF_SUCCESS) {
             log_error("Failed to stop HackRF RX: %s (%d)", hackrf_error_name(result), result);
@@ -317,6 +317,6 @@ static void hackrf_input_cleanup(ModuleContext* ctx) {
         pthread_mutex_destroy(&private_data->driver_mutex);
         app->module.input_private_data = NULL;
     }
-    log_info("Exiting HackRF library...");
+    log_debug("Exiting HackRF library...");
     hackrf_exit();
 }

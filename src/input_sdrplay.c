@@ -922,7 +922,7 @@ static void sdrplay_input_stop_stream(ModuleContext* ctx) {
     if (private_data) {
     pthread_mutex_lock(&private_data->driver_mutex);
     if (private_data && private_data->sdr_device && private_data->is_streaming) {
-        log_info("Stopping SDRplay stream...");
+        log_debug("Stopping SDRplay stream...");
         private_data->is_streaming = false;
         sdrplay_api_ErrT err = sdrplay_api_Uninit(private_data->sdr_device->dev);
         // Ignore NotInitialised error, as it may happen during a race condition on shutdown
@@ -940,7 +940,7 @@ static void sdrplay_input_cleanup(ModuleContext* ctx) {
         SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
         pthread_mutex_lock(&private_data->driver_mutex);
         if (private_data->sdr_device && private_data->device_selected) {
-            log_debug("Releasing SDRplay device handle...");
+            log_info("Closing SDRplay device...");
             sdrplay_api_ReleaseDevice(private_data->sdr_device);
 #ifndef _WIN32
             log_debug("Waiting for SDRplay daemon to release device...");

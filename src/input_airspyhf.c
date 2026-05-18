@@ -465,7 +465,7 @@ static void airspyhf_input_stop_stream(ModuleContext* ctx) {
     if (private_data) {
     pthread_mutex_lock(&private_data->driver_mutex);
     if (private_data && private_data->dev && airspyhf_is_streaming(private_data->dev)) {
-        log_info("Stopping Airspy HF+ stream...");
+        log_debug("Stopping Airspy HF+ stream...");
         int result = airspyhf_stop(private_data->dev);
         if (result != AIRSPYHF_SUCCESS) {
             log_error("Failed to stop Airspy HF+ RX: %d", result);
