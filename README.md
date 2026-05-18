@@ -306,7 +306,7 @@ Available Presets
 
 Help & Version
     -v, --version                             show program's version number and exit
-    -h, --help
+    -h, --help                                show this help message and exit
 ```
 
 #### Examples
