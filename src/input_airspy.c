@@ -324,7 +324,7 @@ static void airspy_input_get_summary_info(const ModuleContext* ctx, InputSummary
     }
 
     add_summary_item(info, "Input Format", "%s", format_str);
-    add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.sample_rate);
+    add_summary_item(info, "Input Sample Rate", "%d Hz", app->module.source_info.sample_rate);
 
     // Gain reporting
     if (s_airspy_config.gain_mode_provided) {

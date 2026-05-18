@@ -70,7 +70,7 @@ void post_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
         if (!sample_convert_cf32_to_block(current_data_ptr,
                                    item->final_output_data,
                                    item->frames_to_write,
-                                   config->output.format)) {
+                                   config->output.sample_format)) {
             log_fatal("Post-Processor: Failed to convert samples.");
             // Mark the chunk as having zero frames to prevent writing bad data
             item->frames_to_write = 0;

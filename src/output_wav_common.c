@@ -44,8 +44,8 @@ static bool prompt_for_overwrite(const char* path_for_messages) {
 
 bool wav_common_validate_options(AppConfig* config) {
     // This logic is identical for both WAV and RF64.
-    if (config->output.format != CS16 && config->output.format != CU8) {
-        log_error("Invalid sample format '%s' for WAV/RF64 container. Only 'cs16' and 'cu8' are supported.", config->output.format_name);
+    if (config->output.sample_format != CS16 && config->output.sample_format != CU8) {
+        log_error("Invalid sample format '%s' for WAV/RF64 container. Only 'cs16' and 'cu8' are supported.", config->output.sample_format_str);
         return false;
     }
     return true;
@@ -92,11 +92,11 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
     // Prepare the libsndfile info struct.
     SF_INFO sfinfo;
     memset(&sfinfo, 0, sizeof(SF_INFO));
-    sfinfo.samplerate = (int)config->output_rate.target_rate;
+    sfinfo.samplerate = (int)config->output_sample_rate.rate_hz;
     sfinfo.channels = 2;
     sfinfo.format = sf_format_flag; // Use the specific format flag passed by the wrapper.
 
-    switch (config->output.format) {
+    switch (config->output.sample_format) {
         case CS16: sfinfo.format |= SF_FORMAT_PCM_16; break;
         case CU8:  sfinfo.format |= SF_FORMAT_PCM_U8; break;
         default: return false; // Should be caught by validation.

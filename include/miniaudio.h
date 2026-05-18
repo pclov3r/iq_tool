@@ -6148,7 +6148,7 @@ MA_API void ma_aligned_free(void* p, const ma_allocation_callbacks* pAllocationC
 /*
 Retrieves a friendly name for a format.
 */
-MA_API const char* ma_get_format_name(ma_format format);
+MA_API const char* ma_get_sample_format_str(ma_format format);
 
 /*
 Blends two frames in floating point format.
@@ -32073,7 +32073,7 @@ static ma_result ma_device_init__pulse(ma_device* pDevice, const ma_device_confi
         pActualSS = ((ma_pa_stream_get_sample_spec_proc)pDevice->pContext->pulse.pa_stream_get_sample_spec)((ma_pa_stream*)pDevice->pulse.pStreamCapture);
         if (pActualSS != NULL) {
             ss = *pActualSS;
-            ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "[PulseAudio] Capture sample spec: format=%s, channels=%d, rate=%d\n", ma_get_format_name(ma_format_from_pulse(ss.format)), ss.channels, ss.rate);
+            ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "[PulseAudio] Capture sample spec: format=%s, channels=%d, rate=%d\n", ma_get_sample_format_str(ma_format_from_pulse(ss.format)), ss.channels, ss.rate);
         } else {
             ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "[PulseAudio] Failed to retrieve capture sample spec.\n");
         }
@@ -32083,7 +32083,7 @@ static ma_result ma_device_init__pulse(ma_device* pDevice, const ma_device_confi
         pDescriptorCapture->sampleRate = ss.rate;
 
         if (pDescriptorCapture->format == ma_format_unknown || pDescriptorCapture->channels == 0 || pDescriptorCapture->sampleRate == 0) {
-            ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_ERROR, "[PulseAudio] Capture sample spec is invalid. Device unusable by miniaudio. format=%s, channels=%d, sampleRate=%d.\n", ma_get_format_name(pDescriptorCapture->format), pDescriptorCapture->channels, pDescriptorCapture->sampleRate);
+            ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_ERROR, "[PulseAudio] Capture sample spec is invalid. Device unusable by miniaudio. format=%s, channels=%d, sampleRate=%d.\n", ma_get_sample_format_str(pDescriptorCapture->format), pDescriptorCapture->channels, pDescriptorCapture->sampleRate);
             result = MA_ERROR;
             goto on_error4;
         }
@@ -32235,7 +32235,7 @@ static ma_result ma_device_init__pulse(ma_device* pDevice, const ma_device_confi
         pActualSS = ((ma_pa_stream_get_sample_spec_proc)pDevice->pContext->pulse.pa_stream_get_sample_spec)((ma_pa_stream*)pDevice->pulse.pStreamPlayback);
         if (pActualSS != NULL) {
             ss = *pActualSS;
-            ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "[PulseAudio] Playback sample spec: format=%s, channels=%d, rate=%d\n", ma_get_format_name(ma_format_from_pulse(ss.format)), ss.channels, ss.rate);
+            ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "[PulseAudio] Playback sample spec: format=%s, channels=%d, rate=%d\n", ma_get_sample_format_str(ma_format_from_pulse(ss.format)), ss.channels, ss.rate);
         } else {
             ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "[PulseAudio] Failed to retrieve playback sample spec.\n");
         }
@@ -32245,7 +32245,7 @@ static ma_result ma_device_init__pulse(ma_device* pDevice, const ma_device_confi
         pDescriptorPlayback->sampleRate = ss.rate;
 
         if (pDescriptorPlayback->format == ma_format_unknown || pDescriptorPlayback->channels == 0 || pDescriptorPlayback->sampleRate == 0) {
-            ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_ERROR, "[PulseAudio] Playback sample spec is invalid. Device unusable by miniaudio. format=%s, channels=%d, sampleRate=%d.\n", ma_get_format_name(pDescriptorPlayback->format), pDescriptorPlayback->channels, pDescriptorPlayback->sampleRate);
+            ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_ERROR, "[PulseAudio] Playback sample spec is invalid. Device unusable by miniaudio. format=%s, channels=%d, sampleRate=%d.\n", ma_get_sample_format_str(pDescriptorPlayback->format), pDescriptorPlayback->channels, pDescriptorPlayback->sampleRate);
             result = MA_ERROR;
             goto on_error4;
         }
@@ -43892,7 +43892,7 @@ MA_API ma_result ma_device_init(ma_context* pContext, const ma_device_config* pC
             ma_device_get_name(pDevice, ma_device_type_capture, name, sizeof(name), NULL);
 
             ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "  %s (%s)\n", name, "Capture");
-            ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "    Format:      %s -> %s\n", ma_get_format_name(pDevice->capture.internalFormat), ma_get_format_name(pDevice->capture.format));
+            ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "    Format:      %s -> %s\n", ma_get_sample_format_str(pDevice->capture.internalFormat), ma_get_sample_format_str(pDevice->capture.format));
             ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "    Channels:    %d -> %d\n", pDevice->capture.internalChannels, pDevice->capture.channels);
             ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "    Sample Rate: %d -> %d\n", pDevice->capture.internalSampleRate, pDevice->sampleRate);
             ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "    Buffer Size: %d*%d (%d)\n", pDevice->capture.internalPeriodSizeInFrames, pDevice->capture.internalPeriods, (pDevice->capture.internalPeriodSizeInFrames * pDevice->capture.internalPeriods));
@@ -43916,7 +43916,7 @@ MA_API ma_result ma_device_init(ma_context* pContext, const ma_device_config* pC
             ma_device_get_name(pDevice, ma_device_type_playback, name, sizeof(name), NULL);
 
             ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "  %s (%s)\n", name, "Playback");
-            ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "    Format:      %s -> %s\n", ma_get_format_name(pDevice->playback.format), ma_get_format_name(pDevice->playback.internalFormat));
+            ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "    Format:      %s -> %s\n", ma_get_sample_format_str(pDevice->playback.format), ma_get_sample_format_str(pDevice->playback.internalFormat));
             ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "    Channels:    %d -> %d\n", pDevice->playback.channels, pDevice->playback.internalChannels);
             ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "    Sample Rate: %d -> %d\n", pDevice->sampleRate, pDevice->playback.internalSampleRate);
             ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "    Buffer Size: %d*%d (%d)\n", pDevice->playback.internalPeriodSizeInFrames, pDevice->playback.internalPeriods, (pDevice->playback.internalPeriodSizeInFrames * pDevice->playback.internalPeriods));
@@ -59014,7 +59014,7 @@ MA_API void ma_aligned_free(void* p, const ma_allocation_callbacks* pAllocationC
     ma_free(((void**)p)[-1], pAllocationCallbacks);
 }
 
-MA_API const char* ma_get_format_name(ma_format format)
+MA_API const char* ma_get_sample_format_str(ma_format format)
 {
     switch (format)
     {

@@ -45,7 +45,7 @@ typedef struct {
 
 static const struct argparse_option rawfile_input_cli_options[] = {
     OPT_GROUP("Raw File Input (rawfile)"),
-    OPT_FLOAT(0, "rawfile-input-rate", &s_rawfile_config.raw_file_sample_rate_hz_arg, "(Required) The sample rate of the RAW input file.", NULL, 0, 0),
+    OPT_FLOAT(0, "rawfile-input-sample-rate", &s_rawfile_config.raw_file_sample_rate_hz_arg, "(Required) The sample rate of the RAW input file.", NULL, 0, 0),
     OPT_STRING(0, "rawfile-input-sample-format", &s_rawfile_config.format_str, "(Required) The sample format of the RAW input file.", NULL, 0, 0),
 };
 
@@ -216,7 +216,7 @@ static void rawfile_input_get_summary_info(const ModuleContext* ctx, InputSummar
     add_summary_item(info, "Input File", "%s", display_path);
     add_summary_item(info, "Input Type", "RAW FILE");
     add_summary_item(info, "Input Format", "%s", s_rawfile_config.format_str);
-    add_summary_item(info, "Input Rate", "%.0f Hz", s_rawfile_config.sample_rate_hz);
+    add_summary_item(info, "Input Sample Rate", "%.0f Hz", s_rawfile_config.sample_rate_hz);
 
     char size_buf[40];
     long long file_size_bytes = app->module.source_info.frames * app->module.input_bytes_per_iq_sample;

@@ -459,19 +459,19 @@ static bool nrsc5_output_validate_options(AppConfig* config) {
     }
 
     // Override User Settings
-    if (config->output_rate.target_rate != required_rate) {
-        if (config->output_rate.provided) {
+    if (config->output_sample_rate.rate_hz != required_rate) {
+        if (config->output_sample_rate.provided) {
             log_warn("NRSC5: Ignoring user output rate %.0f Hz. Forcing required rate %.5f Hz.",
-                     config->output_rate.target_rate, required_rate);
+                     config->output_sample_rate.rate_hz, required_rate);
         }
-        config->output_rate.target_rate = required_rate;
+        config->output_sample_rate.rate_hz = required_rate;
     }
 
-    if (config->output.format != required_format) {
+    if (config->output.sample_format != required_format) {
         if (config->output.type_provided) {
              log_warn("NRSC5: Ignoring user format. Forcing required format for selected mode.");
         }
-        config->output.format = required_format;
+        config->output.sample_format = required_format;
     }
 
     // 3. Validate Program ID

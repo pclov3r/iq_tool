@@ -31,8 +31,8 @@
 // --- The Dispatch Table ---
 static const PresetKeyHandler key_handlers[] = {
     { "description",      PRESET_KEY_STRDUP, offsetof(PresetDefinition, description),         0 },
-    { "target_rate",      PRESET_KEY_STRTOD, offsetof(PresetDefinition, target_rate),         0 },
-    { "output_sample_format_name", PRESET_KEY_STRDUP, offsetof(PresetDefinition, output_sample_format_name),  0 },
+    { "output_sample_rate",      PRESET_KEY_STRTOD, offsetof(PresetDefinition, rate_hz),         0 },
+    { "output_sample_format", PRESET_KEY_STRDUP, offsetof(PresetDefinition, output_sample_format),  0 },
     { "input-gain-multiplier",  PRESET_KEY_STRTOF, offsetof(PresetDefinition, input_gain),        offsetof(PresetDefinition, input_gain_provided) },
     { "output-gain-multiplier", PRESET_KEY_STRTOF, offsetof(PresetDefinition, output_gain),       offsetof(PresetDefinition, output_gain_provided) },
     { "dc_block",         PRESET_KEY_BOOL,   offsetof(PresetDefinition, dc_block_enable),   offsetof(PresetDefinition, dc_block_provided) },

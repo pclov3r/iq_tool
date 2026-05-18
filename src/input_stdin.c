@@ -23,7 +23,7 @@
 // --- CLI Config ---
 static struct {
     double sample_rate_hz;
-    float stdin_input_rate_hz_arg;
+    float stdin_input_sample_rate_hz_arg;
     bool sample_rate_provided;
     char *format_str;
     bool format_provided;
@@ -37,7 +37,7 @@ typedef struct {
 
 static const struct argparse_option stdin_input_cli_options[] = {
     OPT_GROUP("Standard Input (stdin)"),
-    OPT_FLOAT(0, "stdin-input-rate", &s_stdin_config.stdin_input_rate_hz_arg, "(Required) The sample rate of the stdin stream in Hz.", NULL, 0, 0),
+    OPT_FLOAT(0, "stdin-input-sample-rate", &s_stdin_config.stdin_input_sample_rate_hz_arg, "(Required) The sample rate of the stdin stream in Hz.", NULL, 0, 0),
     OPT_STRING(0, "stdin-input-sample-format", &s_stdin_config.format_str, "(Required) The sample format of the stdin stream.", NULL, 0, 0),
 };
 
@@ -50,8 +50,8 @@ const struct argparse_option* stdin_input_get_cli_options(int* count) {
 
 static bool stdin_input_validate_options(AppConfig* config) {
     (void)config;
-    if (s_stdin_config.stdin_input_rate_hz_arg > 0.0f) {
-        s_stdin_config.sample_rate_hz = (double)s_stdin_config.stdin_input_rate_hz_arg;
+    if (s_stdin_config.stdin_input_sample_rate_hz_arg > 0.0f) {
+        s_stdin_config.sample_rate_hz = (double)s_stdin_config.stdin_input_sample_rate_hz_arg;
         s_stdin_config.sample_rate_provided = true;
     }
 
@@ -154,7 +154,7 @@ static void stdin_input_get_summary_info(const ModuleContext* ctx, InputSummaryI
     (void)ctx;
     add_summary_item(info, "Input Source", "Standard Input (stdin)");
     add_summary_item(info, "Input Format", "%s", s_stdin_config.format_str);
-    add_summary_item(info, "Input Rate", "%.0f Hz", s_stdin_config.sample_rate_hz);
+    add_summary_item(info, "Input Sample Rate", "%.0f Hz", s_stdin_config.sample_rate_hz);
 }
 
 static InputModuleInterface s_stdin_input_api = {

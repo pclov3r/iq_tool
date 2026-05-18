@@ -490,7 +490,7 @@ static void wav_input_get_summary_info(const ModuleContext* ctx, InputSummaryInf
         default:   format_str = "Unknown PCM"; break;
     }
     add_summary_item(info, "Input Format", "%s", format_str);
-    add_summary_item(info, "Input Rate", "%.0f Hz", (double)app->module.source_info.sample_rate);
+    add_summary_item(info, "Input Sample Rate", "%.0f Hz", (double)app->module.source_info.sample_rate);
 
     long long input_file_size = -1LL;
 #ifdef _WIN32

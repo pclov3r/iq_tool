@@ -29,8 +29,8 @@ typedef struct {
 typedef struct PresetDefinition {
     char*  name;
     char*  description;
-    double target_rate;
-    char*  output_sample_format_name;
+    double rate_hz;
+    char*  output_sample_format;
 
     // DSP parameters
     float input_gain;

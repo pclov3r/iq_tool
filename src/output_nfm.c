@@ -91,16 +91,16 @@ static struct {
 // --- Module Interface ---
 
 static bool nfm_output_validate_options(AppConfig* config) {
-    config->output.format = CF32;
+    config->output.sample_format = CF32;
 
     // 1. Default to NFM_DEFAULT_INPUT_RATE (48k) if not specified
-    if (config->output_rate.target_rate == 0.0) {
-        config->output_rate.target_rate = NFM_DEFAULT_INPUT_RATE;
-        config->output_rate.provided = true;
+    if (config->output_sample_rate.rate_hz == 0.0) {
+        config->output_sample_rate.rate_hz = NFM_DEFAULT_INPUT_RATE;
+        config->output_sample_rate.provided = true;
     }
 
     // 2. Enforce Bounds
-    double rate = config->output_rate.target_rate;
+    double rate = config->output_sample_rate.rate_hz;
     if (rate < NFM_MIN_INPUT_RATE || rate > NFM_MAX_INPUT_RATE) {
         log_error("NFM: Invalid input rate %.0f Hz.", rate);
         log_error("Valid range is %.0f Hz to %.0f Hz.", NFM_MIN_INPUT_RATE, NFM_MAX_INPUT_RATE);
@@ -119,7 +119,7 @@ static bool nfm_output_initialize(ModuleContext* ctx) {
     if (!p->audio_out) return false;
 
     // 3. DSP Setup
-    p->input_samplerate = (float)ctx->config->output_rate.target_rate;
+    p->input_samplerate = (float)ctx->config->output_sample_rate.rate_hz;
     p->output_ratio = (float)NFM_AUDIO_RATE / p->input_samplerate;
 
     // A. Determine Deviation (Modulation Index)

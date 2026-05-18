@@ -742,7 +742,7 @@ static void bladerf_input_get_summary_info(const ModuleContext* ctx, InputSummar
     if (strcmp(private_data->board_name, "bladerf2") == 0) add_summary_item(info, "Channel", "%d (RXA)", s_bladerf_config.channel);
     else add_summary_item(info, "Antenna Port", "Automatic");
 
-    add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.sample_rate);
+    add_summary_item(info, "Input Sample Rate", "%d Hz", app->module.source_info.sample_rate);
     add_summary_item(info, "Bandwidth", "%u Hz", s_bladerf_config.bandwidth_hz);
 
     if (s_bladerf_config.gain_provided) add_summary_item(info, "Gain", "%d dB (Manual)", s_bladerf_config.gain);

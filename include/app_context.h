@@ -64,11 +64,11 @@ typedef struct AppConfig {
     struct {
         char* module_name;
         char* path_arg;
-        char* format_name;
+        char* sample_format_str;
         char* type_name;
         bool  type_provided;
         OutputType type;
-        SampleFormat   format;
+        SampleFormat sample_format;
     #ifdef _WIN32
         wchar_t effective_path_w[MAX_PATH_BUFFER];
         char    effective_path_utf8[MAX_PATH_BUFFER];
@@ -79,10 +79,10 @@ typedef struct AppConfig {
 
     // --- Output Sample Rate ---
     struct {
-        double target_rate;
+        double rate_hz;
         double user_arg;
         bool   provided;
-    } output_rate;
+    } output_sample_rate;
 
     // --- DSP Configuration ---
     struct {

@@ -256,18 +256,18 @@ static bool wfm_output_validate_options(AppConfig* config) {
 #endif
     // 1. Force Pipeline Format to CF32
     // We need high-precision float I/Q for the FM demodulator.
-    config->output.format = CF32;
+    config->output.sample_format = CF32;
 
     // 2. Validate/Enforce MPX Rate
-    if (config->output_rate.target_rate == 0.0) {
+    if (config->output_sample_rate.rate_hz == 0.0) {
         // Case A: User did not specify --output-rate.
         // Force the default MPX rate.
-        config->output_rate.target_rate = WFM_DEFAULT_MPX_RATE;
-        config->output_rate.provided = true; // Mark as provided so setup.c respects it
+        config->output_sample_rate.rate_hz = WFM_DEFAULT_MPX_RATE;
+        config->output_sample_rate.provided = true; // Mark as provided so setup.c respects it
         log_info("WFM: No output rate specified. Defaulting to MPX rate %.0f Hz.", WFM_DEFAULT_MPX_RATE);
     } else {
         // Case B: User specified a rate. Validate range.
-        double rate = config->output_rate.target_rate;
+        double rate = config->output_sample_rate.rate_hz;
         if (rate < WFM_MIN_MPX_RATE || rate > WFM_MAX_MPX_RATE) {
             log_error("WFM: Invalid MPX rate %.0f Hz.", rate);
             log_error("Valid range is %.0f Hz to %.0f Hz.", WFM_MIN_MPX_RATE, WFM_MAX_MPX_RATE);
@@ -306,7 +306,7 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
     if (!p->audio_out) return false;
 
     // 3. DSP Configuration
-    float mpx_rate = (float)ctx->config->output_rate.target_rate;
+    float mpx_rate = (float)ctx->config->output_sample_rate.rate_hz;
     p->input_samplerate = mpx_rate;
     p->gain = s_wfm_config.gain_val;
 
@@ -576,7 +576,7 @@ static void wfm_output_cleanup(ModuleContext* ctx) {
 static void wfm_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
     (void)ctx;
     add_summary_item(info, "Output Type", "WFM Stereo Audio");
-    add_summary_item(info, "Audio Rate", "%d Hz", AUDIO_SAMPLE_RATE);
+    add_summary_item(info, "Audio Sample Rate", "%d Hz", AUDIO_SAMPLE_RATE);
     add_summary_item(info, "De-emphasis", "%.0f us", s_wfm_config.deemph_us);
 
     const char* mode = "Adaptive";

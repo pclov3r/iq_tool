@@ -131,14 +131,14 @@ static struct {
 // --- Module Interface Implementation ---
 
 static bool am_output_validate_options(AppConfig* config) {
-    config->output.format = CF32;
+    config->output.sample_format = CF32;
 
-    if (config->output_rate.target_rate == 0.0) {
-        config->output_rate.target_rate = AM_DEFAULT_INPUT_RATE;
-        config->output_rate.provided = true;
+    if (config->output_sample_rate.rate_hz == 0.0) {
+        config->output_sample_rate.rate_hz = AM_DEFAULT_INPUT_RATE;
+        config->output_sample_rate.provided = true;
         log_debug("AM: No rate specified. Requesting %.0f Hz.", AM_DEFAULT_INPUT_RATE);
     } else {
-        double rate = config->output_rate.target_rate;
+        double rate = config->output_sample_rate.rate_hz;
         if (rate < AM_MIN_INPUT_RATE) {
             log_error("AM: Input rate %.0f Hz is too low for audio (Min: %.0f).", rate, AM_MIN_INPUT_RATE);
             return false;
@@ -162,7 +162,7 @@ static bool am_output_initialize(ModuleContext* ctx) {
     if (!p->audio_out) return false;
 
     // 3. DSP Configuration
-    float input_rate = (float)ctx->config->output_rate.target_rate;
+    float input_rate = (float)ctx->config->output_sample_rate.rate_hz;
     if (input_rate < 1.0f) input_rate = 48000.0f;
 
     p->input_samplerate = input_rate;
@@ -366,7 +366,7 @@ static void am_output_get_summary_info(const ModuleContext* ctx, OutputSummaryIn
     (void)ctx;
     add_summary_item(info, "Output Type", "AM Audio");
     add_summary_item(info, "Mode", "%s", s_am_config.force_envelope ? "Envelope (Mag)" : "Synchronous (PLL)");
-    add_summary_item(info, "Audio Rate", "%d Hz", AUDIO_SAMPLE_RATE);
+    add_summary_item(info, "Audio Sample Rate", "%d Hz", AUDIO_SAMPLE_RATE);
     add_summary_item(info, "Filter Cutoff", "%.0f Hz", s_am_config.audio_cutoff);
 }
 

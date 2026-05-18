@@ -231,7 +231,7 @@ void agc_apply(DspContext *dsp, ComplexFloat *samples, unsigned int num_samples)
     /* Periodic status. */
     uint64_t prev = dsp->agc.samples_seen;
     dsp->agc.samples_seen += num_samples;
-    uint64_t period = (uint64_t)(dsp->config->output_rate.target_rate * AGC_LOG_INTERVAL_SEC);
+    uint64_t period = (uint64_t)(dsp->config->output_sample_rate.rate_hz * AGC_LOG_INTERVAL_SEC);
 
     if (period > 0 && (prev / period) != (dsp->agc.samples_seen / period)) {
         bool in_deadband = (fabsf(h->gain_db - gain_db_before) < 1e-6f);

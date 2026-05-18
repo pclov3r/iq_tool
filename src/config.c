@@ -54,21 +54,21 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
         config->output.type = out_mod->output_type;
     }
 
-    if (!config->output.format_name) {
+    if (!config->output.sample_format_str) {
         if (config->output.path_arg) {
-            config->output.format_name = "cs16";
+            config->output.sample_format_str = "cs16";
             log_info("No output sample format specified; defaulting to 'cs16' for file output.");
         } else if (out_mod && out_mod->module_defines_format) {
-            config->output.format_name = "cs16";
+            config->output.sample_format_str = "cs16";
         } else {
             log_error("Missing required argument: --output-sample-format for output '%s'.", config->output.module_name);
             return false;
         }
     }
 
-    config->output.format = get_format_info_by_name(config->output.format_name) ? get_format_info_by_name(config->output.format_name)->format_enum : FORMAT_UNKNOWN;
-    if (config->output.format == FORMAT_UNKNOWN) {
-        log_error("Invalid sample format '%s'.", config->output.format_name);
+    config->output.sample_format = get_format_info_by_name(config->output.sample_format_str) ? get_format_info_by_name(config->output.sample_format_str)->format_enum : FORMAT_UNKNOWN;
+    if (config->output.sample_format == FORMAT_UNKNOWN) {
+        log_error("Invalid sample format '%s'.", config->output.sample_format_str);
         return false;
     }
     return true;
@@ -112,7 +112,7 @@ bool validate_filter_options(AppConfig *config) {
         const Module* in_mod = module_get(config->input.type_name, MODULE_TYPE_INPUT, NULL);
         if (in_mod) {
             resolved_attenuation = (in_mod->default_attenuation > 0.0f) ? in_mod->default_attenuation :
-                (get_format_info_by_enum(config->output.format) ? get_format_info_by_enum(config->output.format)->attenuation_db : 60.0f);
+                (get_format_info_by_enum(config->output.sample_format) ? get_format_info_by_enum(config->output.sample_format)->attenuation_db : 60.0f);
         }
         config->dsp.filter.args.attenuation = resolved_attenuation;
     }
@@ -154,7 +154,7 @@ bool validate_option_combinations(AppConfig *config) {
 
     if (!agc_validate_options(config)) return false;
 
-    if (config->output_rate.provided && config->preset_name) {
+    if (config->output_sample_rate.provided && config->preset_name) {
         log_error("Option --output-rate cannot be used with --preset.");
         return false;
     }

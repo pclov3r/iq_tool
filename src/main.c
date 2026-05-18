@@ -279,7 +279,7 @@ static bool init_output_module(AppConfig *config, AppContext* app) {
     }
     app->module.output_api = (OutputModuleInterface*)selected_output_module->api;
 
-    if (config->dsp.raw_passthrough && app->module.input_format != config->output.format) {
+    if (config->dsp.raw_passthrough && app->module.input_format != config->output.sample_format) {
         log_error("Option --raw-passthrough requires input and output formats to be identical.");
         return false;
     }
@@ -352,7 +352,7 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
     }
 
     const char* base_output_labels[] = {
-        "Output Type", "Sample Type", "Output Rate", "Input Gain", "Output Gain", "Frequency Shift",
+        "Output Type", "Sample Type", "Output Sample Rate", "Input Gain", "Output Gain", "Frequency Shift",
         "Resampling", "Output Target", "FIR Filter", "FFT Filter", "Output AGC"
     };
     for (size_t i = 0; i < sizeof(base_output_labels) / sizeof(base_output_labels[0]); i++) {
@@ -394,10 +394,10 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
         }
     }
 
-    const char* sample_type_str = get_format_info_by_enum(config->output.format) ? get_format_info_by_enum(config->output.format)->description_str : "Unknown";
+    const char* sample_type_str = get_format_info_by_enum(config->output.sample_format) ? get_format_info_by_enum(config->output.sample_format)->description_str : "Unknown";
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Sample Type", sample_type_str);
 
-    fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Output Rate", config->output_rate.target_rate);
+    fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Output Sample Rate", config->output_sample_rate.rate_hz);
 
     fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Input Gain", config->dsp.input_gain);
 

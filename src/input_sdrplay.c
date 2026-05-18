@@ -498,7 +498,7 @@ static void sdrplay_input_get_summary_info(const ModuleContext* ctx, InputSummar
              get_sdrplay_device_name(private_data->sdr_device->hwVer), private_data->sdr_device->SerNo);
     add_summary_item(info, "Input Source", "%s", source_name_buf);
     add_summary_item(info, "Input Format", "16-bit Signed Complex (cs16)");
-    add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.sample_rate);
+    add_summary_item(info, "Input Sample Rate", "%d Hz", app->module.source_info.sample_rate);
 
     add_summary_item(info, "Bandwidth", "%.0f Hz", s_sdrplay_config.bandwidth_hz);
 

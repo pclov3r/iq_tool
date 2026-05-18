@@ -81,9 +81,9 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_STRING('i', "input", &config->input.type_name, "Specifies the input module.", NULL, 0, 0),
         OPT_STRING('o', "output", &config->output.module_name, "Specifies the output module and optional file path", NULL, 0, 0),
         OPT_GROUP("Output Options"),
-        OPT_STRING(0, "output-sample-format", &config->output.format_name, "Sample format for output data {cs8|cu8|cs16|...}", NULL, 0, 0),
+        OPT_STRING(0, "output-sample-format", &config->output.sample_format_str, "Sample format for output data {cs8|cu8|cs16|...}", NULL, 0, 0),
         OPT_GROUP("Processing Options"),
-        OPT_DOUBLE(0, "output-rate", &config->output_rate.user_arg, "Output sample rate in Hz.", NULL, 0, 0),
+        OPT_DOUBLE(0, "output-sample-rate", &config->output_sample_rate.user_arg, "Output sample rate in Hz.", NULL, 0, 0),
         OPT_FLOAT(0, "input-gain-multiplier", &config->dsp.input_gain, "Apply a linear gain multiplier to INPUT samples (before processing).", NULL, 0, 0),
         OPT_FLOAT(0, "output-gain-multiplier", &config->dsp.output_gain, "Apply a linear gain multiplier to OUTPUT samples (after processing).", NULL, 0, 0),
         OPT_FLOAT(0, "dbm-offset", &config->dsp.dbm_offset_arg, "Override the dBFS-to-dBm calibration offset.", NULL, 0, 0),
@@ -184,8 +184,8 @@ static void apply_preset_if_requested(AppConfig* config, MemoryArena* arena) {
     for (int i = 0; i < config->num_presets; i++) {
         if (strcasecmp(config->preset_name, config->presets[i].name) == 0) {
             const PresetDefinition* p = &config->presets[i];
-            config->output_rate.target_rate = p->target_rate;
-            if (!config->output.format_name) config->output.format_name = p->output_sample_format_name;
+            config->output_sample_rate.rate_hz = p->rate_hz;
+            if (!config->output.sample_format_str) config->output.sample_format_str = p->output_sample_format;
             if (p->input_gain_provided && config->dsp.input_gain == 1.0f) config->dsp.input_gain = p->input_gain;
             if (p->output_gain_provided && config->dsp.output_gain == 1.0f) config->dsp.output_gain = p->output_gain;
             if (p->dc_block_provided && !config->dsp.dc_block.enable) config->dsp.dc_block.enable = p->dc_block_enable;
@@ -296,9 +296,9 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
         return false;
     }
 
-    if (config->output_rate.user_arg > 0.0f) {
-        config->output_rate.target_rate = (double)config->output_rate.user_arg;
-        config->output_rate.provided = true;
+    if (config->output_sample_rate.user_arg > 0.0f) {
+        config->output_sample_rate.rate_hz = (double)config->output_sample_rate.user_arg;
+        config->output_sample_rate.provided = true;
     }
     if (config->dsp.dbm_offset_arg != 1000.0f) {
         config->dsp.dbm_offset = config->dsp.dbm_offset_arg;

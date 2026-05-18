@@ -72,14 +72,14 @@ static bool calculate_and_validate_resample_ratio(AppConfig *config, AppContext*
 
     // --- Step 1: Handle Smart Default (Missing Rate) ---
     // If the user didn't specify a rate (0), use the hardware/file input rate.
-    if (config->output_rate.target_rate <= 0.0) {
-        config->output_rate.target_rate = (double)app->module.source_info.sample_rate;
-        log_info("No output rate specified. Defaulting to native input rate: %.0f Hz", config->output_rate.target_rate);
+    if (config->output_sample_rate.rate_hz <= 0.0) {
+        config->output_sample_rate.rate_hz = (double)app->module.source_info.sample_rate;
+        log_info("No output rate specified. Defaulting to native input rate: %.0f Hz", config->output_sample_rate.rate_hz);
     }
 
     // --- Step 2: Calculate Ratio ---
     double input_rate_d = (double)app->module.source_info.sample_rate;
-    float r = (float)(config->output_rate.target_rate / input_rate_d);
+    float r = (float)(config->output_sample_rate.rate_hz / input_rate_d);
 
     // --- Step 3: Check for Passthrough Conditions ---
     if (config->dsp.raw_passthrough) {
@@ -94,7 +94,7 @@ static bool calculate_and_validate_resample_ratio(AppConfig *config, AppContext*
     else {
         app->dsp.is_passthrough = false;
         log_info("Resampling enabled: %.10g Hz -> %.10g Hz (Ratio: %.10g)",
-                 input_rate_d, config->output_rate.target_rate, r);
+                 input_rate_d, config->output_sample_rate.rate_hz, r);
     }
 
     // --- Step 4: Validate Ratio ---
@@ -242,7 +242,7 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext* app, floa
     // --- Monolithic Tray Allocation (Contiguous Metadata + Data) ---
     size_t raw_stride     = ALIGN_UP(app->pipeline.alloc_size_samples * app->module.input_bytes_per_iq_sample, MEM_ARENA_ALIGNMENT);
     size_t complex_stride = ALIGN_UP(app->pipeline.alloc_size_samples * sizeof(ComplexFloat), MEM_ARENA_ALIGNMENT);
-    app->module.output_bytes_per_iq_sample = get_bytes_per_iq_sample(config->output.format);
+    app->module.output_bytes_per_iq_sample = get_bytes_per_iq_sample(config->output.sample_format);
     size_t final_stride   = ALIGN_UP(app->pipeline.alloc_size_samples * app->module.output_bytes_per_iq_sample, MEM_ARENA_ALIGNMENT);
 
     size_t struct_stride   = ALIGN_UP(sizeof(SampleChunk), MEM_ARENA_ALIGNMENT);

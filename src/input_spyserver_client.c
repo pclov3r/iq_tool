@@ -855,7 +855,7 @@ static void spyserver_client_input_get_summary_info(const ModuleContext* ctx, In
         snprintf(dev_info_str, sizeof(dev_info_str), "%s (S/N: %08X)", dev_type_str, p->device_info.DeviceSerial);
         add_summary_item(info, "Remote Device", dev_info_str);
         add_summary_item(info, "Input Format", get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->description_str : "Unknown");
-        add_summary_item(info, "Input Rate", "%d Hz", app->module.source_info.sample_rate);
+        add_summary_item(info, "Input Sample Rate", "%d Hz", app->module.source_info.sample_rate);
 
         if (s_spyserver_client_config.gain_provided) {
             add_summary_item(info, "Gain", "%d (Manual)", s_spyserver_client_config.gain);

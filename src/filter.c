@@ -48,10 +48,10 @@ static bool _configure_filter_stage(AppConfig *config, AppContext* app) {
     }
 
     double input_rate = (double)app->module.source_info.sample_rate;
-    double output_rate = config->output_rate.target_rate;
+    double output_sample_rate = config->output_sample_rate.rate_hz;
 
     // This optimization is only relevant if we are downsampling.
-    if (output_rate < input_rate) {
+    if (output_sample_rate < input_rate) {
         float max_filter_freq_hz = 0.0f;
 
         // Find the highest frequency required by any filter in the chain.
@@ -75,12 +75,12 @@ static bool _configure_filter_stage(AppConfig *config, AppContext* app) {
             }
         }
 
-        double output_nyquist = output_rate / 2.0;
+        double output_nyquist = output_sample_rate / 2.0;
 
         if (max_filter_freq_hz > output_nyquist) {
             log_error("Filter configuration is incompatible with the output sample rate.");
             log_error("The specified filter chain extends to %.0f Hz, but the output rate of %.0f Hz can only support frequencies up to %.0f Hz.",
-                      max_filter_freq_hz, output_rate, output_nyquist);
+                      max_filter_freq_hz, output_sample_rate, output_nyquist);
             return false;
         } else {
             // It's safe and more efficient to filter after resampling.
@@ -158,7 +158,7 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
     master_taps[0] = 1.0f + 0.0f * I;
 
     double sample_rate_for_design = config->dsp.filter.apply_post_resample
-                                      ? config->output_rate.target_rate
+                                      ? config->output_sample_rate.rate_hz
                                       : (double)app->module.source_info.sample_rate;
 
     bool is_final_filter_complex = false;
