@@ -45,8 +45,8 @@ typedef struct {
 
 static const struct argparse_option rawfile_input_cli_options[] = {
     OPT_GROUP("Raw File Input (rawfile)"),
-    OPT_FLOAT(0, "raw-file-input-rate", &s_rawfile_config.raw_file_sample_rate_hz_arg, "(Required) The sample rate of the RAW input file.", NULL, 0, 0),
-    OPT_STRING(0, "raw-file-input-sample-format", &s_rawfile_config.format_str, "(Required) The sample format of the RAW input file.", NULL, 0, 0),
+    OPT_FLOAT(0, "rawfile-input-rate", &s_rawfile_config.raw_file_sample_rate_hz_arg, "(Required) The sample rate of the RAW input file.", NULL, 0, 0),
+    OPT_STRING(0, "rawfile-input-sample-format", &s_rawfile_config.format_str, "(Required) The sample format of the RAW input file.", NULL, 0, 0),
 };
 
 const struct argparse_option* rawfile_input_get_cli_options(int* count) {
@@ -90,11 +90,11 @@ static bool rawfile_input_validate_options(AppConfig* config) {
     bool format_provided = s_rawfile_config.format_str != NULL;
 
     if (!s_rawfile_config.sample_rate_provided) {
-        log_error("Missing required option --raw-file-input-rate <hz> for raw file input.");
+        log_error("Missing required option --rawfile-input-rate <hz> for raw file input.");
         return false;
     }
     if (!format_provided) {
-        log_error("Missing required option --raw-file-input-sample-format <format> for raw file input.");
+        log_error("Missing required option --rawfile-input-sample-format <format> for raw file input.");
         return false;
     }
 
@@ -173,7 +173,7 @@ static bool rawfile_input_initialize(ModuleContext* ctx) {
 static size_t rawfile_input_read_chunk(ModuleContext* ctx, void* buffer, size_t bytes_to_read) {
     RawfileInputContext* private_data = (RawfileInputContext*)ctx->app->module.input_private_data;
     int64_t bytes_read = sf_read_raw(private_data->infile, buffer, bytes_to_read);
-    
+
     if (bytes_read < 0) {
         log_error("libsndfile read error: %s", sf_strerror(private_data->infile));
         handle_fatal_thread_error("Rawfile Reader: File read error.", ctx->app);
@@ -245,7 +245,7 @@ static bool rawfile_input_pre_stream_iq_correction(ModuleContext* ctx) {
     }
 
     bool result = iq_correction_run_initial_calibration(ctx, raw_buffer, frames_read_bytes);
-    
+
     if (sf_seek(private_data->infile, 0, SEEK_SET) < 0) {
         log_fatal("Failed to rewind file after calibration.");
         return false;
