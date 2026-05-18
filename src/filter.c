@@ -473,6 +473,7 @@ unsigned int filter_apply(DspContext* dsp, SampleChunk* item, bool is_post_resam
     }
 
     unsigned int frames_in = is_post_resample ? item->frames_to_write : item->frames_read;
+    ComplexFloat* target_buffer = is_post_resample ? item->post_resample_buffer : item->pre_resample_buffer;
     if (frames_in == 0) {
         return 0;
     }
@@ -482,14 +483,14 @@ unsigned int filter_apply(DspContext* dsp, SampleChunk* item, bool is_post_resam
         case FILTER_IMPL_FIR_ASYMMETRIC:
             if (dsp->filter.type_actual == FILTER_IMPL_FIR_SYMMETRIC) {
                 firfilt_crcf_execute_block((firfilt_crcf)dsp->filter.object,
-                                           (liquid_float_complex*)item->current_input_buffer,
+                                           (liquid_float_complex*)target_buffer,
                                            frames_in,
-                                           (liquid_float_complex*)item->current_input_buffer);
+                                           (liquid_float_complex*)target_buffer);
             } else {
                 firfilt_cccf_execute_block((firfilt_cccf)dsp->filter.object,
-                                           (liquid_float_complex*)item->current_input_buffer,
+                                           (liquid_float_complex*)target_buffer,
                                            frames_in,
-                                           (liquid_float_complex*)item->current_input_buffer);
+                                           (liquid_float_complex*)target_buffer);
             }
             return frames_in;
 
@@ -502,9 +503,9 @@ unsigned int filter_apply(DspContext* dsp, SampleChunk* item, bool is_post_resam
             unsigned int output_frames = _execute_fft_filter_pass(
                 dsp->filter.object,
                 dsp->filter.type_actual,
-                item->current_input_buffer,
+                target_buffer,
                 frames_in,
-                item->current_output_buffer,
+                target_buffer,
                 remainder_buffer,
                 remainder_len_ptr,
                 dsp->filter.block_size,

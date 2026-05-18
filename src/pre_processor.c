@@ -14,12 +14,9 @@ void pre_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
     // For the pre-processor, all operations happen in the first buffer.
     // We read raw data and write the final pre-processed result to buffer_a.
     // All intermediate steps operate in-place on buffer_a.
-    item->current_input_buffer = item->complex_sample_buffer_a;
-    item->current_output_buffer = item->complex_sample_buffer_a;
-
     // Step 1: Convert sample block to complex float
     // UPDATED: Use input_gain instead of gain
-    if (!sample_convert_block_to_cf32(item->raw_input_data, item->current_output_buffer,
+    if (!sample_convert_block_to_cf32(item->raw_input_data, item->pre_resample_buffer,
                                item->frames_read, item->packet_sample_format, config->dsp.input_gain)) {
         log_fatal("Pre-Processor: Failed to convert samples.");
         item->frames_read = 0;
@@ -28,12 +25,12 @@ void pre_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
 
     // Step 2: DC Blocking (if enabled)
     if (config->dsp.dc_block.enable) {
-        dc_block_apply(dsp, item->current_output_buffer, item->frames_read);
+        dc_block_apply(dsp, item->pre_resample_buffer, item->frames_read);
     }
 
     // Step 3: I/Q Imbalance Correction (if enabled)
     if (config->dsp.iq_correction.enable) {
-        iq_correction_apply(dsp, item->current_output_buffer, item->frames_read);
+        iq_correction_apply(dsp, item->pre_resample_buffer, item->frames_read);
     }
 
     // Step 4: Pre-Resample Frequency Shifting (if enabled)
@@ -41,8 +38,8 @@ void pre_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
         // This is an in-place operation.
         freq_shift_apply(dsp->pre_resample_nco,
                          dsp->nco_shift_hz,
-                         item->current_output_buffer,
-                         item->current_output_buffer,
+                         item->pre_resample_buffer,
+                         item->pre_resample_buffer,
                          item->frames_read);
     }
 

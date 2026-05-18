@@ -38,7 +38,7 @@ void* pipeline_thread_iq_optimizer(void* arg) {
 
     SampleChunk* item;
     while ((item = (SampleChunk*)queue_dequeue(app->pipeline.iq_optimization_data_queue)) != NULL) {
-        iq_correction_run_optimization(&app->dsp, item->complex_sample_buffer_a);
+        iq_correction_run_optimization(&app->dsp, item->pre_resample_buffer);
         // Return the chunk to the free pool for reuse
         queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
     }

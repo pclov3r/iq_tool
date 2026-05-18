@@ -271,9 +271,9 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext* app, floa
 
         item->raw_input_data         = data_ptr;
         data_ptr += raw_stride;
-        item->complex_sample_buffer_a = (ComplexFloat*)data_ptr;
+        item->pre_resample_buffer = (ComplexFloat*)data_ptr;
         data_ptr += complex_stride;
-        item->complex_sample_buffer_b = (ComplexFloat*)data_ptr;
+        item->post_resample_buffer = (ComplexFloat*)data_ptr;
         data_ptr += complex_stride;
         item->final_output_data      = (unsigned char*)data_ptr;
 

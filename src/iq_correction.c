@@ -342,13 +342,12 @@ bool iq_correction_run_initial_calibration(ModuleContext* ctx, const void* raw_b
     temp_chunk.raw_input_data = (void*)raw_buffer;
     temp_chunk.frames_read = IQ_CORRECTION_FFT_SIZE;
     temp_chunk.packet_sample_format = app->module.input_format;
-    temp_chunk.complex_sample_buffer_a = cf32_buffer;
-    temp_chunk.current_output_buffer = temp_chunk.complex_sample_buffer_a;
+    temp_chunk.pre_resample_buffer = cf32_buffer;
 
     pre_processor_apply_chain(&app->dsp, &temp_chunk);
 
     for(int i=0; i<64; i++) {
-        iq_correction_run_optimization(&app->dsp, temp_chunk.current_output_buffer);
+        iq_correction_run_optimization(&app->dsp, temp_chunk.pre_resample_buffer);
         app->dsp.iq_correct.last_optimization_time = 0.0;
     }
 

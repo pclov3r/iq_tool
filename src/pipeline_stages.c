@@ -291,7 +291,7 @@ void* pipeline_thread_pre_processor(void* arg) {
             if (item->frames_read >= IQ_CORRECTION_FFT_SIZE && !item->stream_discontinuity_event) {
                 SampleChunk* opt_item = (SampleChunk*)queue_try_dequeue(app->pipeline.free_sample_chunk_queue);
                 if (opt_item) {
-                    memcpy(opt_item->complex_sample_buffer_a, item->complex_sample_buffer_a, IQ_CORRECTION_FFT_SIZE * sizeof(ComplexFloat));
+                    memcpy(opt_item->pre_resample_buffer, item->pre_resample_buffer, IQ_CORRECTION_FFT_SIZE * sizeof(ComplexFloat));
                     queue_enqueue(app->pipeline.iq_optimization_data_queue, opt_item);
                 }
             }
@@ -334,18 +334,11 @@ void* pipeline_thread_resampler(void* arg) {
             continue;
         }
 
-        // Set up the state pointers for this stage
-        if (item->current_input_buffer == item->complex_sample_buffer_a) {
-            item->current_output_buffer = item->complex_sample_buffer_b;
-        } else {
-            item->current_output_buffer = item->complex_sample_buffer_a;
-        }
-
         unsigned int output_frames_this_chunk = 0;
         if (app->dsp.is_passthrough) {
             output_frames_this_chunk = (unsigned int)item->frames_read;
             // In passthrough, we must copy the data to the output buffer
-            memcpy(item->current_output_buffer, item->current_input_buffer, output_frames_this_chunk * sizeof(ComplexFloat));
+            memcpy(item->post_resample_buffer, item->pre_resample_buffer, output_frames_this_chunk * sizeof(ComplexFloat));
         } else {
             // Estimate maximum output length mathematically prior to execution
             unsigned int estimated_out = (unsigned int)((item->frames_read + 32) * app->dsp.resample_ratio) + 64;
@@ -354,15 +347,12 @@ void* pipeline_thread_resampler(void* arg) {
                 break;
             }
             resampler_execute(app->dsp.resampler,
-                              item->current_input_buffer,
+                              item->pre_resample_buffer,
                               (unsigned int)item->frames_read,
-                              item->current_output_buffer,
+                              item->post_resample_buffer,
                               &output_frames_this_chunk);
         }
         item->frames_to_write = output_frames_this_chunk;
-
-        // Output becomes input for next stage
-        item->current_input_buffer = item->current_output_buffer;
 
         if (!queue_enqueue(app->pipeline.resampler_output_queue, item)) {
             // Downstream rejected us. Force return to pool.
