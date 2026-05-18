@@ -32,26 +32,27 @@
  * for dynamic memory allocation during real-time processing.
  */
 typedef struct SampleChunk {
-    // --- Buffers ---
-    void*            raw_input_data;              ///< Buffer for raw data from the source.
-    ComplexFloat* pre_resample_buffer;     ///< Generic complex float sample buffer #1 for ping-pong.
-    ComplexFloat* post_resample_buffer;     ///< Generic complex float sample buffer #2 for ping-pong.
-    unsigned char*   final_output_data;           ///< Buffer for the final, converted output data.
+    // --- Data Buffers ---
+    void*          raw_input_data;              ///< Buffer for raw data from the source.
+    ComplexFloat*  pre_resample_buffer;         ///< Complex float buffer at the source sample rate.
+    ComplexFloat*  post_resample_buffer;        ///< Complex float buffer at the target sample rate.
+    unsigned char* final_output_data;           ///< Buffer for the final, converted output data.
 
-    // --- State Pointers for Data Flow ---
+    // --- Memory Capacities ---
+    size_t         raw_input_capacity_bytes;    ///< Max size of the raw_input_data buffer in bytes.
+    size_t         complex_buffer_capacity_samples; ///< Max number of samples for all complex buffers.
+    size_t         final_output_capacity_bytes; ///< Max size of the final_output_data buffer in bytes.
 
-    // --- Capacities ---
-    size_t raw_input_capacity_bytes;        ///< The max size of the raw_input_data buffer.
-    size_t complex_buffer_capacity_samples; ///< The max number of samples for all cf32 buffers.
-    size_t final_output_capacity_bytes;     ///< The max size of the final_output_data buffer.
+    // --- Pipeline State ---
+    int64_t        frames_read;                 ///< Number of valid frames read from the source.
+    SampleFormat   packet_sample_format;        ///< Original format of the raw data (for live sources).
+    unsigned int   frames_to_write;             ///< Number of valid frames to be written to output.
+    size_t         input_bytes_per_iq_sample;   ///< Size of a single I/Q pair from the source.
 
-    // --- State Variables ---
-    int64_t      frames_read;                 ///< Number of valid frames read from the source.
-    SampleFormat     packet_sample_format;        ///< The sample format of the raw data in this chunk (for live sources).
-    unsigned int frames_to_write;             ///< Number of valid frames to be written to the output.
-    bool         is_last_chunk;               ///< Flag indicating this is the final chunk in a stream.
-    bool         stream_discontinuity_event;  ///< Flag indicating a stream reset (e.g., source overrun).
-    size_t       input_bytes_per_iq_sample; ///< The size of a single I/Q pair from the source.
+    // --- Stream Flags ---
+    bool           is_last_chunk;               ///< Flag indicating the end of the stream (EOF).
+    bool           stream_discontinuity_event;  ///< Flag indicating a source reset (e.g., SDR overrun).
+
 } __attribute__((aligned(MEM_ARENA_ALIGNMENT))) SampleChunk;
 
 /**
