@@ -34,6 +34,7 @@
 #include "output_wav.h"
 #include "output_wav_rf64.h"
 #include "output_stdout.h"
+#include "output_directpipe.h"
 #if defined(WITH_NRSC5)
 #include "output_nrsc5.h"
 #endif
@@ -243,6 +244,17 @@ static void initialize_modules_list(MemoryArena* arena) {
             .is_live_source = false,
             .set_default_config = NULL,
             .get_cli_options = stdout_output_get_cli_options,
+            .requires_input_path = false,
+            .requires_output_path = false,
+        },
+        {
+            .name = "directpipe",
+            .type = MODULE_TYPE_OUTPUT,
+            .output_type = OUTPUT_TYPE_RAW,
+            .api = output_directpipe_get_module_api(),
+            .is_live_source = false,
+            .set_default_config = NULL,
+            .get_cli_options = directpipe_output_get_cli_options,
             .requires_input_path = false,
             .requires_output_path = false,
         },

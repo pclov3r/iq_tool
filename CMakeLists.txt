@@ -220,6 +220,7 @@ set(OTHER_SOURCES
     src/miniaudio.c
     src/module_registry.c
     src/networking.c
+    src/output_directpipe.c
     src/output_rawfile.c
     src/output_stdout.c
     src/output_wav.c

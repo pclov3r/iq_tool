@@ -268,6 +268,13 @@ Standard Output (stdout)
 
     (No module-specific options)
 
+Direct Pipe Output (directpipe)
+
+    (Pure data pipe bypassing stdio
+     Route with '10>' or '10> >(...)')
+
+    (No module-specific options)
+
 NRSC5 Output (nrsc5)
     --nrsc5-mode=<str>                        Set decoder mode {cs16-fm|cs16-am|cu8-fm|cu8-am}. (Default: cs16-fm)
     --nrsc5-program=<int>                     Select HD program/subchannel (0-7). (Required)
