@@ -176,7 +176,7 @@ typedef struct ModuleState {
     InputModuleInterface*  input_api;
     void*                  input_private_data;
     InputSourceInfo        source_info;
-    SampleFormat               input_format;
+    SampleFormat           input_format;
     size_t                 input_bytes_per_iq_sample;
 
     OutputModuleInterface* output_api;
