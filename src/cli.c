@@ -86,7 +86,6 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_DOUBLE(0, "output-sample-rate", &config->output_sample_rate.user_arg, "Output sample rate in Hz.", NULL, 0, 0),
         OPT_FLOAT(0, "input-gain-multiplier", &config->dsp.input_gain, "Apply a linear gain multiplier to INPUT samples (before processing).", NULL, 0, 0),
         OPT_FLOAT(0, "output-gain-multiplier", &config->dsp.output_gain, "Apply a linear gain multiplier to OUTPUT samples (after processing).", NULL, 0, 0),
-        OPT_FLOAT(0, "dbm-offset", &config->dsp.dbm_offset_arg, "Override the dBFS-to-dBm calibration offset.", NULL, 0, 0),
         OPT_DOUBLE(0, "freq-shift", &config->dsp.freq_shift_hz, "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0, 0),
         OPT_BOOLEAN(0, "shift-after-resample", &config->dsp.shift_after_resample, "Apply frequency shift AFTER resampling (default is before)", NULL, 0, 0),
         OPT_BOOLEAN(0, "raw-passthrough", &config->dsp.raw_passthrough, "Bypass all processing. Copies raw input bytes directly to output.", NULL, 0, 0),
@@ -198,7 +197,7 @@ static void apply_preset_if_requested(AppConfig* config, MemoryArena* arena) {
             if (p->stopband_str_provided && !config->dsp.filter.args.stopband[0]) config->dsp.filter.args.stopband[0] = p->stopband_str;
             if (p->transition_width_hz_provided && config->dsp.filter.args.transition_width == 0.0f) config->dsp.filter.args.transition_width = p->transition_width_hz;
             if (p->filter_taps_provided && config->dsp.filter.args.taps == 0) config->dsp.filter.args.taps = p->filter_taps;
-            if (p->attenuation_db_provided && config->dsp.filter.args.attenuation == 0.0f) config->dsp.filter.args.attenuation = p->attenuation_db;
+            if (p->default_filter_attenuation_db_provided && config->dsp.filter.args.attenuation == 0.0f) config->dsp.filter.args.attenuation = p->default_filter_attenuation_db;
             if (p->filter_type_str_provided && !config->dsp.filter.args.type_str) config->dsp.filter.args.type_str = p->filter_type_str;
             return;
         }
@@ -299,10 +298,6 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
     if (config->output_sample_rate.user_arg > 0.0f) {
         config->output_sample_rate.rate_hz = (double)config->output_sample_rate.user_arg;
         config->output_sample_rate.provided = true;
-    }
-    if (config->dsp.dbm_offset_arg != 1000.0f) {
-        config->dsp.dbm_offset = config->dsp.dbm_offset_arg;
-        config->dsp.dbm_offset_provided = true;
     }
     if (config->sdr_general.rf_freq_hz_arg > 0.0f) {
         config->sdr_general.rf_freq_hz = config->sdr_general.rf_freq_hz_arg;

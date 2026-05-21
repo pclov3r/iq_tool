@@ -259,11 +259,6 @@ static bool init_input_source(AppConfig *config, AppContext* app) {
     }
     app->module.input_api = (InputModuleInterface*)selected_input_module->api;
 
-    // Resolve dBm offset from module or CLI override
-    app->module.input_dbm_offset = selected_input_module->dbm_offset;
-    if (config->dsp.dbm_offset_provided) {
-        app->module.input_dbm_offset = config->dsp.dbm_offset;
-    }
 
     log_info("Initializing the '%s' input module...", config->input.type_name);
     return app->module.input_api->initialize(&ctx);
@@ -313,7 +308,6 @@ static void initialize_resource_struct(AppConfig *config, AppContext* app) {
     // Set global DSP defaults
     config->dsp.input_gain = 1.0f;
     config->dsp.output_gain = 1.0f;
-    config->dsp.dbm_offset_arg = 1000.0f; // Marker for "not set by user"
 
     config->dsp.iq_correction.enable = false;
     config->dsp.dc_block.enable = false;

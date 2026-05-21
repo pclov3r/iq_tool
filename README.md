@@ -154,7 +154,6 @@ Processing Options
     --output-sample-rate=<flt>                Output sample rate in Hz.
     --input-gain-multiplier=<flt>             Apply a linear gain multiplier to INPUT samples (before processing).
     --output-gain-multiplier=<flt>            Apply a linear gain multiplier to OUTPUT samples (after processing).
-    --dbm-offset=<flt>                        Override the dBFS-to-dBm calibration offset.
     --freq-shift=<flt>                        Apply a direct frequency shift in Hz (e.g., -100e3)
     --shift-after-resample                    Apply frequency shift AFTER resampling (default is before)
     --raw-passthrough                         Bypass all processing. Copies raw input bytes directly to output.

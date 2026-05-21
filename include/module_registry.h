@@ -37,8 +37,7 @@ typedef struct Module {
     bool requires_input_path;  // For INPUT modules (read from file)
     bool module_defines_format;
     OutputType output_type;
-    float dbm_offset;
-    float default_attenuation;
+    float default_filter_attenuation_db;
 } Module;
 
 

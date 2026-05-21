@@ -175,7 +175,7 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
         }
 
         unsigned int current_taps_len;
-        float attenuation_db = config->dsp.filter.args.attenuation;
+        float default_filter_attenuation_db = config->dsp.filter.args.attenuation;
 
         if (config->dsp.filter.args.taps > 0) {
             current_taps_len = (unsigned int)config->dsp.filter.args.taps;
@@ -189,7 +189,7 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
             }
             if (transition_width_hz < 1.0f) transition_width_hz = 1.0f;
             float normalized_tw = transition_width_hz / (float)sample_rate_for_design;
-            current_taps_len = estimate_req_filter_len(normalized_tw, attenuation_db);
+            current_taps_len = estimate_req_filter_len(normalized_tw, default_filter_attenuation_db);
             if (current_taps_len % 2 == 0) current_taps_len++;
             if (current_taps_len < FILTER_MINIMUM_TAPS) current_taps_len = FILTER_MINIMUM_TAPS;
 
@@ -213,7 +213,7 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
             float* real_taps = (float*)mem_arena_alloc(arena, current_taps_len * sizeof(float), false);
             if (!real_taps) goto cleanup;
             float half_bw_norm = (req->freq2_hz / 2.0f) / (float)sample_rate_for_design;
-            liquid_firdes_kaiser(current_taps_len, half_bw_norm, attenuation_db, 0.0f, real_taps);
+            liquid_firdes_kaiser(current_taps_len, half_bw_norm, default_filter_attenuation_db, 0.0f, real_taps);
             float fc_norm = req->freq1_hz / (float)sample_rate_for_design;
             nco_crcf shifter = nco_crcf_create(LIQUID_NCO);
             nco_crcf_set_frequency(shifter, 2.0f * M_PI * fc_norm);
@@ -230,20 +230,20 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
             switch (req->type) {
                 case FILTER_TYPE_LOWPASS:
                     fc = req->freq1_hz / (float)sample_rate_for_design;
-                    liquid_firdes_kaiser(current_taps_len, fc, attenuation_db, 0.0f, real_taps);
+                    liquid_firdes_kaiser(current_taps_len, fc, default_filter_attenuation_db, 0.0f, real_taps);
                     break;
                 case FILTER_TYPE_HIGHPASS:
                     fc = req->freq1_hz / (float)sample_rate_for_design;
-                    liquid_firdes_kaiser(current_taps_len, fc, attenuation_db, 0.0f, real_taps);
+                    liquid_firdes_kaiser(current_taps_len, fc, default_filter_attenuation_db, 0.0f, real_taps);
                     _invert_filter_spectrum(real_taps, current_taps_len);
                     break;
                 case FILTER_TYPE_PASSBAND:
                     bw = req->freq2_hz / (float)sample_rate_for_design;
-                    liquid_firdes_kaiser(current_taps_len, bw / 2.0f, attenuation_db, 0.0f, real_taps);
+                    liquid_firdes_kaiser(current_taps_len, bw / 2.0f, default_filter_attenuation_db, 0.0f, real_taps);
                     break;
                 case FILTER_TYPE_STOPBAND:
                     bw = req->freq2_hz / (float)sample_rate_for_design;
-                    liquid_firdes_kaiser(current_taps_len, bw / 2.0f, attenuation_db, 0.0f, real_taps);
+                    liquid_firdes_kaiser(current_taps_len, bw / 2.0f, default_filter_attenuation_db, 0.0f, real_taps);
                     _invert_filter_spectrum(real_taps, current_taps_len);
                     break;
                 default: break;

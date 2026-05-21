@@ -111,8 +111,8 @@ bool validate_filter_options(AppConfig *config) {
         float resolved_attenuation = 60.0f;
         const Module* in_mod = module_get(config->input.type_name, MODULE_TYPE_INPUT, NULL);
         if (in_mod) {
-            resolved_attenuation = (in_mod->default_attenuation > 0.0f) ? in_mod->default_attenuation :
-                (get_format_info_by_enum(config->output.sample_format) ? get_format_info_by_enum(config->output.sample_format)->attenuation_db : 60.0f);
+            resolved_attenuation = (in_mod->default_filter_attenuation_db > 0.0f) ? in_mod->default_filter_attenuation_db :
+                (get_format_info_by_enum(config->output.sample_format) ? get_format_info_by_enum(config->output.sample_format)->default_filter_attenuation_db : 60.0f);
         }
         config->dsp.filter.args.attenuation = resolved_attenuation;
     }

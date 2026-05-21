@@ -64,8 +64,8 @@ typedef struct PresetDefinition {
     bool  transition_width_hz_provided;
     int   filter_taps;
     bool  filter_taps_provided;
-    float attenuation_db;
-    bool  attenuation_db_provided;
+    float default_filter_attenuation_db;
+    bool  default_filter_attenuation_db_provided;
     char* filter_type_str;
     bool  filter_type_str_provided;
 } PresetDefinition;

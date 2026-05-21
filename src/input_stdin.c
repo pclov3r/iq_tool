@@ -70,6 +70,7 @@ static bool stdin_input_validate_options(AppConfig* config) {
 
 static bool stdin_input_initialize(ModuleContext* ctx) {
     const AppConfig *config = ctx->config;
+    (void)config;
     AppContext* app = ctx->app;
 
 #ifdef _WIN32
@@ -98,9 +99,6 @@ static bool stdin_input_initialize(ModuleContext* ctx) {
     }
 
     app->module.input_bytes_per_iq_sample = get_bytes_per_iq_sample(app->module.input_format);
-    if (!config->dsp.dbm_offset_provided) {
-        app->module.input_dbm_offset = get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->dbm_offset : 0.0f;
-    }
 
     app->module.source_info.sample_rate = (int)s_stdin_config.sample_rate_hz;
     app->module.source_info.frames = -1;

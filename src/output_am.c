@@ -299,13 +299,9 @@ static size_t am_output_write_chunk(ModuleContext* ctx, const void* buffer, size
     }
     stat_counter += num_frames;
 
-    if (stat_counter >= stat_threshold) {
-        float rssi_dbfs = 10.0f * log10f((float)(accum_mag_sq_sum / (double)stat_counter) + 1e-10f);
+        if (stat_counter >= stat_threshold) {
+        float dbfs = 10.0f * log10f((float)(accum_mag_sq_sum / (double)stat_counter) + 1e-10f);
         float agc_rssi = agc_rrrf_get_rssi(p->agc);
-        float magic_offset_db = ctx->app->module.input_dbm_offset;
-        float software_gain_linear = ctx->config->dsp.input_gain;
-        float software_gain_db = 20.0f * log10f(software_gain_linear > 0.001f ? software_gain_linear : 0.001f);
-        float rssi_dbm = rssi_dbfs - software_gain_db + magic_offset_db;
 
         if (use_sync_mode && accum_pll_count > 0) {
             float lock_quality = (float)(accum_inphase_sum / (accum_carrier_strength_sum + 1e-9));
@@ -315,10 +311,10 @@ static size_t am_output_write_chunk(ModuleContext* ctx, const void* buffer, size
                     log_warn("AM: PLL failed to lock. Falling back to Envelope detection.");
                 }
             } else { p->unlock_counter = 0; }
-            log_info("RSSI: %5.1f dBm (%5.1f dBFS) | AGC Gain: %4.1f dB | Offset: %5.2f Hz | PLL Lock: %5.1f%%",
-                     rssi_dbm, rssi_dbfs, -agc_rssi, (float)(accum_carrier_freq_sum / (double)accum_pll_count), fmaxf(0.0f, lock_quality) * 100.0f);
+            log_info("dBFS: %5.1f | AGC Gain: %4.1f dB | Offset: %5.2f Hz | PLL Lock: %5.1f%%",
+                     dbfs, -agc_rssi, (float)(accum_carrier_freq_sum / (double)accum_pll_count), fmaxf(0.0f, lock_quality) * 100.0f);
             accum_phase_err_sq_sum=0.0; accum_carrier_freq_sum=0.0; accum_carrier_strength_sum=0.0; accum_inphase_sum=0.0; accum_pll_count=0;
-        } else { log_info("RSSI: %5.1f dBm (%5.1f dBFS) | AGC Gain: %4.1f dB", rssi_dbm, rssi_dbfs, -agc_rssi); }
+        } else { log_info("dBFS: %5.1f | AGC Gain: %4.1f dB", dbfs, -agc_rssi); }
         stat_counter = 0; accum_mag_sq_sum = 0.0;
     }
 

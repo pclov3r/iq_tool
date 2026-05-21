@@ -73,8 +73,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "wav",
             .type = MODULE_TYPE_INPUT,
-            .dbm_offset = 0.0f,
-            .default_attenuation = 0.0f,
+            .default_filter_attenuation_db = 0.0f,
             .api = input_wav_get_module_api(),
             .is_live_source = false,
             .set_default_config = NULL,
@@ -85,8 +84,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "rawfile",
             .type = MODULE_TYPE_INPUT,
-            .dbm_offset = 0.0f,
-            .default_attenuation = 0.0f,
+            .default_filter_attenuation_db = 0.0f,
             .api = input_rawfile_get_module_api(),
             .is_live_source = false,
             .set_default_config = NULL,
@@ -97,8 +95,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "stdin",
             .type = MODULE_TYPE_INPUT,
-            .dbm_offset = 0.0f,
-            .default_attenuation = 0.0f,
+            .default_filter_attenuation_db = 0.0f,
             .api = input_stdin_get_module_api(),
             .is_live_source = false,
             .set_default_config = NULL,
@@ -110,8 +107,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "rtlsdr",
             .type = MODULE_TYPE_INPUT,
-            .dbm_offset = RTLSDR_DBM_OFFSET,
-            .default_attenuation = RTLSDR_DEFAULT_ATTENUATION,
+            .default_filter_attenuation_db = RTLSDR_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_rtlsdr_get_module_api(),
             .is_live_source = true,
             .set_default_config = rtlsdr_set_default_config,
@@ -124,8 +120,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "sdrplay",
             .type = MODULE_TYPE_INPUT,
-            .dbm_offset = SDRPLAY_DBM_OFFSET,
-            .default_attenuation = SDRPLAY_DEFAULT_ATTENUATION,
+            .default_filter_attenuation_db = SDRPLAY_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_sdrplay_get_module_api(),
             .is_live_source = true,
             .set_default_config = sdrplay_set_default_config,
@@ -138,8 +133,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "hackrf",
             .type = MODULE_TYPE_INPUT,
-            .dbm_offset = HACKRF_DBM_OFFSET,
-            .default_attenuation = HACKRF_DEFAULT_ATTENUATION,
+            .default_filter_attenuation_db = HACKRF_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_hackrf_get_module_api(),
             .is_live_source = true,
             .set_default_config = hackrf_set_default_config,
@@ -152,8 +146,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "airspy",
             .type = MODULE_TYPE_INPUT,
-            .dbm_offset = AIRSPY_DBM_OFFSET,
-            .default_attenuation = AIRSPY_DEFAULT_ATTENUATION,
+            .default_filter_attenuation_db = AIRSPY_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_airspy_get_module_api(),
             .is_live_source = true,
             .set_default_config = airspy_set_default_config,
@@ -166,8 +159,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "airspyhf",
             .type = MODULE_TYPE_INPUT,
-            .dbm_offset = AIRSPYHF_DBM_OFFSET,
-            .default_attenuation = AIRSPYHF_DEFAULT_ATTENUATION,
+            .default_filter_attenuation_db = AIRSPYHF_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_airspyhf_get_module_api(),
             .is_live_source = true,
             .set_default_config = airspyhf_set_default_config,
@@ -180,8 +172,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "bladerf",
             .type = MODULE_TYPE_INPUT,
-            .dbm_offset = BLADERF_DBM_OFFSET,
-            .default_attenuation = BLADERF_DEFAULT_ATTENUATION,
+            .default_filter_attenuation_db = BLADERF_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_bladerf_get_module_api(),
             .is_live_source = true,
             .set_default_config = bladerf_set_default_config,
@@ -193,8 +184,7 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "spyserver-client",
             .type = MODULE_TYPE_INPUT,
-            .dbm_offset = 0.0f,
-            .default_attenuation = 0.0f,
+            .default_filter_attenuation_db = 0.0f,
             .api = input_spyserver_client_get_module_api(),
             .is_live_source = true,
             .set_default_config = spyserver_client_set_default_config,
@@ -308,7 +298,6 @@ static void initialize_modules_list(MemoryArena* arena) {
             .requires_output_path = false,
             .module_defines_format = true,
         },
-
     };
 
     num_all_modules = sizeof(temp_modules) / sizeof(temp_modules[0]);

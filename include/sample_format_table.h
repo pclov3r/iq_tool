@@ -22,8 +22,7 @@ typedef struct {
     const char*  name_str;            ///< The short command-line identifier (e.g., "cs16", "cf32").
     const char*  description_str;     ///< A human-readable description for UI and logging.
     size_t       bytes_per_iq_sample; ///< Total memory footprint in bytes for one complete I/Q pair.
-    float        dbm_offset;          ///< Calibration offset to convert dBFS to absolute dBm.
-    float        attenuation_db;      ///< Recommended default stop-band attenuation for DSP filters.
+    float        default_filter_attenuation_db;      ///< Recommended default stop-band attenuation for DSP filters.
 } SampleFormatInfo;
 
 // --- Function Prototypes ---

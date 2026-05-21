@@ -119,9 +119,6 @@ static bool rawfile_input_initialize(ModuleContext* ctx) {
     }
 
     app->module.input_bytes_per_iq_sample = get_bytes_per_iq_sample(app->module.input_format);
-    if (!config->dsp.dbm_offset_provided) {
-        app->module.input_dbm_offset = get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->dbm_offset : 0.0f;
-    }
     if (app->module.input_bytes_per_iq_sample == 0) {
         log_fatal("Internal error: could not determine sample size for format '%s'.", s_rawfile_config.format_str);
         return false;

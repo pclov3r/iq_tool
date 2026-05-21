@@ -45,7 +45,7 @@ static const PresetKeyHandler key_handlers[] = {
     { "stopband",         PRESET_KEY_STRDUP, offsetof(PresetDefinition, stopband_str),      offsetof(PresetDefinition, stopband_str_provided) },
     { "transition_width", PRESET_KEY_STRTOF, offsetof(PresetDefinition, transition_width_hz), offsetof(PresetDefinition, transition_width_hz_provided) },
     { "filter_taps",      PRESET_KEY_STRTOL, offsetof(PresetDefinition, filter_taps),       offsetof(PresetDefinition, filter_taps_provided) },
-    { "attenuation",      PRESET_KEY_STRTOF, offsetof(PresetDefinition, attenuation_db),    offsetof(PresetDefinition, attenuation_db_provided) },
+    { "attenuation",      PRESET_KEY_STRTOF, offsetof(PresetDefinition, default_filter_attenuation_db),    offsetof(PresetDefinition, default_filter_attenuation_db_provided) },
     { "filter_type",      PRESET_KEY_STRDUP, offsetof(PresetDefinition, filter_type_str),   offsetof(PresetDefinition, filter_type_str_provided) },
 };
 static const size_t num_key_handlers = sizeof(key_handlers) / sizeof(key_handlers[0]);

@@ -513,22 +513,6 @@ static bool spyserver_client_input_initialize(ModuleContext* ctx) {
     }
 
     app->module.source_info.sample_rate = (int)actual_rate;
-    if (!config->dsp.dbm_offset_provided) {
-        switch (p->device_info.DeviceType) {
-            case SPYSERVER_DEV_AIRSPY_ONE:
-                app->module.input_dbm_offset = AIRSPY_DBM_OFFSET;
-                break;
-            case SPYSERVER_DEV_AIRSPY_HF:
-                app->module.input_dbm_offset = AIRSPYHF_DBM_OFFSET;
-                break;
-            case SPYSERVER_DEV_RTLSDR:
-                app->module.input_dbm_offset = RTLSDR_DBM_OFFSET;
-                break;
-            default:
-                app->module.input_dbm_offset = 0.0f;
-                break;
-        }
-    }
 
     int format_to_request_int = get_spyserver_enum_from_internal_format(final_format);
 
