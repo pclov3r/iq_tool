@@ -285,6 +285,8 @@ void* pipeline_thread_pre_processor(void* arg) {
 
         if (app->dsp.is_passthrough) {
             item->frames_to_write = (unsigned int)item->frames_read;
+            // Copy data to the post-resample buffer since the resampler thread is bypassed
+            memcpy(item->post_resample_buffer, item->pre_resample_buffer, item->frames_to_write * sizeof(ComplexFloat));
             }
 
         if (config->dsp.iq_correction.enable) {
