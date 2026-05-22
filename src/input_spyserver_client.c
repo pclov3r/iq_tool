@@ -659,7 +659,17 @@ static void* spyserver_client_input_producer_thread(void* arg) {
                 // 2. Wrap and Write to Ring Buffer
                 uint32_t samples_in_chunk = (uint32_t)(aligned_read / bpp);
                 if (!packet_serializer_write_block(p->stream_buffer, samples_in_chunk, p->rx_buffer, p->active_format)) {
-                    log_warn("SpyServer: Ring buffer full, dropped %u samples.", samples_in_chunk);
+                    static double last_drop_log_time = 0.0;
+                    static size_t accumulated_drops = 0;
+
+                    accumulated_drops += samples_in_chunk;
+                    double current_time = utils_get_time();
+
+                    if (current_time - last_drop_log_time >= CONSOLE_UPDATE_INTERVAL_SEC) {
+                        log_warn("SpyServer: Ring buffer full! Dropped %zu samples.", accumulated_drops);
+                        accumulated_drops = 0;
+                        last_drop_log_time = current_time;
+                    }
                 }
 
                 bytes_remaining -= aligned_read;
