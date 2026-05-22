@@ -210,15 +210,16 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
  * the current gain unchanged. Signals within [TARGET-DEADBAND, TARGET+DEADBAND]
  * dBFS receive no gain adjustment at all.
  *
- * With the default target of -18 dBFS and deadband of 6 dB, signals
- * in the range [-24, -12] dBFS are passed through untouched. This covers
- * most well-received signals without any intervention.
+ * With the default target of -18 dBFS and deadband of 1 dB, signals
+ * in the range [-19, -17] dBFS are passed through untouched. This covers
+ * the natural volume variations of most signals without constant intervention.
  *
  * Harris's original paper used 1 dB for discrete hardware VGA steps.
- * A wider deadband is appropriate for software AGC with infinite gain
- * resolution — err on the side of not touching the signal.
+ * While software AGC has infinite gain resolution, using a tight 1 dB
+ * deadband ensures weak signals are properly amplified to the target, while
+ * still saving CPU cycles when the signal is stable.
  */
-#define AGC_HARRIS_DEADBAND_DB       6.0f
+#define AGC_HARRIS_DEADBAND_DB       1.0f
 
 /**
  * @def AGC_HARRIS_ALPHA
