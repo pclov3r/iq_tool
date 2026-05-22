@@ -31,6 +31,7 @@
 #include "signal_handler.h"
 #include "nrsc5.h"
 #include "queue.h"
+#include "constants.h"
 
 // --- Configuration Constants ---
 #define NRSC5_AUDIO_BUFFER_SIZE (1536 * 1024)
@@ -85,6 +86,18 @@ static struct {
 
 // --- Forward Declarations ---
 static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque);
+
+// ==========================================
+// Do not remove these blank lines.
+// Deliberate spacing padding
+//
+// Pushing the update_ber_stats function
+// below line 99 ensures its log_info
+// gets a 3-digit line number. This keeps
+// the console output perfectly aligned
+// without having to modify rxi.
+// Do not remove these blank lines.
+// ==========================================
 
 // --- Helper: BER Stats ---
 static void update_ber_stats(Nrsc5Context* ctx, float cber) {
@@ -378,6 +391,30 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
     }
 }
 
+
+// --- Helper: dBFS Calculation ---
+static double calculate_buffer_power(const void* buffer, unsigned int frames, Nrsc5Mode mode) {
+    double accum_mag_sq_sum = 0.0;
+
+    if (mode == NRSC5_MODE_CS16_FM || mode == NRSC5_MODE_CS16_AM) {
+        const int16_t* ptr = (const int16_t*)buffer;
+        for (unsigned int i = 0; i < frames; i++) {
+            float i_val = (float)ptr[2*i] * (1.0f / 32768.0f);
+            float q_val = (float)ptr[2*i+1] * (1.0f / 32768.0f);
+            accum_mag_sq_sum += (double)(i_val*i_val + q_val*q_val);
+        }
+    } else {
+        const uint8_t* ptr = (const uint8_t*)buffer;
+        for (unsigned int i = 0; i < frames; i++) {
+            float i_val = ((float)ptr[2*i] - 127.5f) * (1.0f / 128.0f);
+            float q_val = ((float)ptr[2*i+1] - 127.5f) * (1.0f / 128.0f);
+            accum_mag_sq_sum += (double)(i_val*i_val + q_val*q_val);
+        }
+    }
+
+    return accum_mag_sq_sum;
+}
+
 // --- Module Interface Implementation ---
 
 static bool nrsc5_output_initialize(ModuleContext* ctx) {
@@ -461,6 +498,31 @@ static size_t nrsc5_output_write_chunk(ModuleContext* ctx, const void* buffer, s
 
     unsigned int frames = input_bytes / app->module.output_bytes_per_iq_sample;
     unsigned int num_scalars = frames * 2;
+
+    // --- dBFS Calculation ---
+    static size_t stat_counter = 0;
+    static double accum_mag_sq_sum = 0.0;
+    static size_t stat_rate_threshold = 0;
+
+    if (stat_rate_threshold == 0) {
+        stat_rate_threshold = (size_t)(ctx->config->output_sample_rate.rate_hz * CONSOLE_UPDATE_INTERVAL_SEC);
+        if (stat_rate_threshold == 0) stat_rate_threshold = (size_t)(744187 * CONSOLE_UPDATE_INTERVAL_SEC);
+    }
+
+    accum_mag_sq_sum += calculate_buffer_power(buffer, frames, s_nrsc5_config.active_mode);
+    stat_counter += frames;
+
+    // Print dBFS according to global console interval
+    if (stat_counter >= stat_rate_threshold) {
+        double avg_power = accum_mag_sq_sum / (double)stat_counter;
+        float dbfs = 10.0f * log10f((float)fmax(1e-10, avg_power));
+
+        log_info("NRSC5: dBFS: %.1f", dbfs);
+
+        stat_counter = 0;
+        accum_mag_sq_sum = 0.0;
+    }
+
     int res = 0;
     switch (s_nrsc5_config.active_mode) {
         case NRSC5_MODE_CU8_FM:
