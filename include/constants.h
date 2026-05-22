@@ -19,7 +19,7 @@
 #define PRESETS_FILENAME "iq_tool_presets.conf"
 
 // Defines the interval in seconds for console status updates and warning throttles to the console.
-#define CONSOLE_UPDATE_INTERVAL_SEC 1
+#define CONSOLE_UPDATE_INTERVAL_SEC 1.0
 
 // =============================================================================
 // == Tier 2: Core Memory & Pipeline Architecture

@@ -1,4 +1,5 @@
 #include "output_nfm.h"
+#include "constants.h"
 #include "audio_output_functions.h"
 #include "module.h"
 #include "app_context.h"
@@ -176,7 +177,7 @@ static size_t nfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
     static size_t stat_rate_threshold = 0;
     static bool _first_run = true;
     if (_first_run) {
-        stat_rate_threshold = (size_t)(p->input_samplerate * 1.0f);
+        stat_rate_threshold = (size_t)(p->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC);
         _first_run = false;
     }
     if (input_bytes == 0) return 0;

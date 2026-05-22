@@ -295,7 +295,7 @@ void iq_correction_run_optimization(DspContext* dsp, const ComplexFloat* optimiz
     // Debug logging (rate limited)
     static double last_debug_log_time = 0.0;
     double current_opt_time = atomic_load_explicit(&dsp->iq_correct.last_optimization_time, memory_order_relaxed);
-    if (current_opt_time - last_debug_log_time >= 1.0) {
+    if (current_opt_time - last_debug_log_time >= CONSOLE_UPDATE_INTERVAL_SEC) {
         float phase_deg = new_phase * (180.0f / (float)M_PI);
         float amp_pct = new_amp * 100.0f;
         float image_db = 10.0f * log10f((float)st->integrated_image_power + 1e-12f);

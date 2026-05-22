@@ -1,4 +1,5 @@
 #include "output_am.h"
+#include "constants.h"
 #include "audio_output_functions.h"
 #include "module.h"
 #include "app_context.h"
@@ -30,7 +31,6 @@
 #define AUDIO_SAMPLE_RATE       48000
 #define AUDIO_CHANNELS          2
 #define AUDIO_BUFFER_SIZE       (1536 * 1024)
-#define AM_STATS_INTERVAL_SEC   1.0f
 #define MAX_AUDIO_CUTOFF_HZ     20000.0f
 
 // --- Constraints ---
@@ -260,7 +260,7 @@ static size_t am_output_write_chunk(ModuleContext* ctx, const void* buffer, size
     static size_t pll_lock_samples = 0;
     static bool _first_run = true;
     if (_first_run) {
-        stat_threshold = (size_t)(p->input_samplerate * AM_STATS_INTERVAL_SEC);
+        stat_threshold = (size_t)(p->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC);
         pll_lock_samples = (size_t)(p->input_samplerate * AM_PLL_LOCK_TIME);
         _first_run = false;
     }

@@ -39,6 +39,7 @@
  */
 
 #include "output_wfm.h"
+#include "constants.h"
 #include "audio_output_functions.h"
 #include "module.h"
 #include "app_context.h"
@@ -89,7 +90,6 @@ typedef enum {
 #endif
 
 // --- Logging Config ---
-#define WFM_STATS_INTERVAL_SEC  1.0f
 
 // --- Gain Staging ---
 // Scaling factor applied to the MPX signal after demodulation.
@@ -387,7 +387,7 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
         memset(&p->last_rds_state, 0, sizeof(RdsState));
 
         p->rds_display_counter = 0;
-        p->rds_display_threshold = (size_t)(p->input_samplerate * 1.0); // 1 second
+        p->rds_display_threshold = (size_t)(p->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC); // 1 second
 
         log_info("WFM: RDS Decoder enabled (Standard: %s%s)",
                  is_rbds ? "RBDS (US, Default)" : "RDS (World)",
@@ -417,7 +417,7 @@ static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
     static size_t stat_rate_threshold = 0;
     static bool _first_run = true;
     if (_first_run) {
-        stat_rate_threshold = (size_t)(p->input_samplerate * WFM_STATS_INTERVAL_SEC);
+        stat_rate_threshold = (size_t)(p->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC);
         _first_run = false;
     }
 
