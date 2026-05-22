@@ -108,7 +108,8 @@ _execute_fft_filter_pass(
     ComplexFloat* remainder_buffer,
     unsigned int* remainder_len_ptr,
     unsigned int block_size,
-    ComplexFloat* scratch_buffer
+    ComplexFloat* scratch_buffer,
+    bool is_last_chunk
 );
 
 static liquid_float_complex* convolve_complex_taps(
@@ -282,17 +283,12 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
         firfilt_cccf temp_filter = firfilt_cccf_create(master_taps, master_taps_len);
         if (temp_filter) {
             liquid_float_complex H;
-            firfilt_cccf_freqresponse(temp_filter, 0.0f, &H);
-            max_mag = fmaxf(max_mag, cabsf(H));
-            firfilt_cccf_freqresponse(temp_filter, 0.5f, &H);
-            max_mag = fmaxf(max_mag, cabsf(H));
-            for (int i = 0; i < config->dsp.filter.count; i++) {
-                const FilterRequest* req = &config->dsp.filter.requests[i];
-                if (req->type == FILTER_TYPE_PASSBAND) {
-                    float freq_norm = req->freq1_hz / (float)sample_rate_for_design;
-                    firfilt_cccf_freqresponse(temp_filter, freq_norm, &H);
-                    max_mag = fmaxf(max_mag, cabsf(H));
-                }
+            // Dense sweep to capture the exact peak of any compounding Kaiser ripple
+            for (int i = 0; i < FILTER_FREQ_RESPONSE_POINTS; i++) {
+                float freq = ((float)i / (float)FILTER_FREQ_RESPONSE_POINTS) - 0.5f;
+                firfilt_cccf_freqresponse(temp_filter, freq, &H);
+                float mag = cabsf(H);
+                if (mag > max_mag) max_mag = mag;
             }
             firfilt_cccf_destroy(temp_filter);
         }
@@ -357,7 +353,6 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
         }
 
         // --- Allocate Dedicated Scratch Buffer ---
-        // Allocate a dedicated scratch buffer.
         // It must hold the "Overlap" (approx master_taps_len) + the "Max Incoming Data Chunk".
         // The incoming data comes from the pipeline, so we use pipeline_alloc_size_samples.
         // We add a small safety pad (+64) just to be safe.
@@ -509,7 +504,8 @@ unsigned int filter_apply(DspContext* dsp, SampleChunk* item, bool is_post_resam
                 remainder_buffer,
                 remainder_len_ptr,
                 dsp->filter.block_size,
-                dsp->filter.fft_scratch_buffer
+                dsp->filter.fft_scratch_buffer,
+                item->is_last_chunk
             );
 
             return output_frames;
@@ -531,13 +527,14 @@ _execute_fft_filter_pass(
     ComplexFloat* remainder_buffer,
     unsigned int* remainder_len_ptr,
     unsigned int block_size,
-    ComplexFloat* scratch_buffer
+    ComplexFloat* scratch_buffer,
+    bool is_last_chunk
 ) {
     unsigned int old_remainder_len = *remainder_len_ptr;
     unsigned int total_frames_to_process = old_remainder_len + frames_in;
 
     memcpy(scratch_buffer, remainder_buffer, old_remainder_len * sizeof(ComplexFloat));
-    memmove(scratch_buffer + old_remainder_len, input_buffer, frames_in * sizeof(ComplexFloat));
+    memcpy(scratch_buffer + old_remainder_len, input_buffer, frames_in * sizeof(ComplexFloat));
 
     unsigned int processed_frames = 0;
     unsigned int total_output_frames = 0;
@@ -551,8 +548,29 @@ _execute_fft_filter_pass(
         total_output_frames += block_size;
     }
 
+    // EOF LOGIC: Flush the remaining tail of the file
+    if (is_last_chunk && (total_frames_to_process - processed_frames > 0)) {
+        unsigned int final_tail_len = total_frames_to_process - processed_frames;
+
+        // Zero-pad the remaining samples up to block_size
+        memset(scratch_buffer + processed_frames + final_tail_len, 0,
+               (block_size - final_tail_len) * sizeof(ComplexFloat));
+
+        // Force one final FFT execution
+        if (filter_type == FILTER_IMPL_FFT_SYMMETRIC) {
+            fftfilt_crcf_execute((fftfilt_crcf)filter_object, (liquid_float_complex*)(scratch_buffer + processed_frames), (liquid_float_complex*)(output_buffer + total_output_frames));
+        } else {
+            fftfilt_cccf_execute((fftfilt_cccf)filter_object, (liquid_float_complex*)(scratch_buffer + processed_frames), (liquid_float_complex*)(output_buffer + total_output_frames));
+        }
+
+        processed_frames += final_tail_len; // Only advance by the actual data length
+        total_output_frames += final_tail_len; // Only output the actual data length
+    }
+
     unsigned int new_remainder_len = total_frames_to_process - processed_frames;
-    memmove(remainder_buffer, scratch_buffer + processed_frames, new_remainder_len * sizeof(ComplexFloat));
+    if (new_remainder_len > 0) {
+        memmove(remainder_buffer, scratch_buffer + processed_frames, new_remainder_len * sizeof(ComplexFloat));
+    }
     *remainder_len_ptr = new_remainder_len;
 
     return total_output_frames;

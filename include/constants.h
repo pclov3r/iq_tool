@@ -151,7 +151,10 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 // Used by initialization.c to budget memory when taps aren't explicitly defined.
 #define FILTER_SAFETY_DEFAULT_TAPS FILTER_MAXIMUM_AUTO_TAPS
 
+// Minimum gain threshold to safely trigger normalization and prevent divide-by-zero.
 #define FILTER_GAIN_ZERO_THRESHOLD 1e-9f
+
+// Number of frequency bins evaluated to find the absolute peak gain and prevent clipping.
 #define FILTER_FREQ_RESPONSE_POINTS 2048
 
 // --- I/Q Correction Algorithm Tuning ---
@@ -275,13 +278,11 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 // Default values and tuning parameters specific to each SDR device.
 
 // --- RTLSDR Constants ---
-#define RTLSDR_DBM_OFFSET              -80.0f
 #define RTLSDR_DEFAULT_FILTER_ATTENUATION_DB     60.0f
 #define RTLSDR_DEFAULT_SAMPLE_RATE     2400000.0
 #define RTLSDR_PASSTHROUGH_BUFFER_SIZE 16384
 
 // --- SDRPLAY Unconditional Constants ---
-#define SDRPLAY_DBM_OFFSET             -25.0f
 #define SDRPLAY_DEFAULT_FILTER_ATTENUATION_DB    80.0f
 #define SDRPLAY_DEFAULT_SAMPLE_RATE_HZ 2000000.0
 #define SDRPLAY_DEFAULT_BANDWIDTH_HZ   1536000.0
@@ -291,14 +292,12 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 #define MAX_SDRPLAY_CONVERSION_SAMPLES 16384
 
 // --- HACKRF Constants ---
-#define HACKRF_DBM_OFFSET           -85.0f
 #define HACKRF_DEFAULT_FILTER_ATTENUATION_DB   60.0f
 #define HACKRF_DEFAULT_SAMPLE_RATE   8000000.0
 #define HACKRF_DEFAULT_LNA_GAIN      16
 #define HACKRF_DEFAULT_VGA_GAIN      0
 
 // --- BLADERF Constants ---
-#define BLADERF_DBM_OFFSET             -25.0f
 #define BLADERF_DEFAULT_FILTER_ATTENUATION_DB    80.0f
 #define BLADERF_DEFAULT_SAMPLE_RATE_HZ 2000000
 #define BLADERF_DEFAULT_BANDWIDTH_HZ   1500000
@@ -317,7 +316,6 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 #define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS  48
 
 // --- AIRSPY Constants ---
-#define AIRSPY_DBM_OFFSET           -50.0f
 #define AIRSPY_DEFAULT_FILTER_ATTENUATION_DB   80.0f
 #define AIRSPY_DEFAULT_SAMPLE_RATE   2500000.0
 #define AIRSPY_DEFAULT_SAMPLE_FORMAT CS16
@@ -327,7 +325,6 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 #define AIRSPY_DEFAULT_VGA_GAIN      5
 
 // --- AIRSPY HF+ Constants ---
-#define AIRSPYHF_DBM_OFFSET           -15.0f
 #define AIRSPYHF_DEFAULT_FILTER_ATTENUATION_DB   100.0f
 #define AIRSPYHF_DEFAULT_SAMPLE_RATE   768000
 
@@ -351,12 +348,6 @@ _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_AREN
 
 // Cap pre-buffering at 80% of capacity to prevent immediate overrun
 #define SPYSERVER_PREBUFFER_MAX_FILL_RATIO 0.8f
-
-// --- Format-Based Offsets for WAV/RAW Files ---
-#define FORMAT_DBM_OFFSET_8BIT    -80.0f
-#define FORMAT_DBM_OFFSET_16BIT   -65.0f
-#define FORMAT_DBM_OFFSET_24BIT   -130.0f
-#define FORMAT_DBM_OFFSET_32BIT   0.0f
 
 // --- Dynamic DSP Filter Attenuation ---
 #define DEFAULT_FILTER_ATTENUATION_8BIT_DB   60.0f
