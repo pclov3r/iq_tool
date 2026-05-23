@@ -260,18 +260,10 @@ void* pipeline_thread_pre_processor(void* arg) {
 
     PipelineContext* args = (PipelineContext*)arg;
     AppContext* app = args->app;
-    AppConfig* config = args->config;
 
     SampleChunk* item;
     while ((item = (SampleChunk*)queue_dequeue(app->pipeline.pre_processor_input_queue)) != NULL) {
-
-        if (item->is_last_chunk) {
-            if (app->pipeline.iq_optimization_data_queue) {
-                queue_signal_shutdown(app->pipeline.iq_optimization_data_queue);
-            }
-            queue_enqueue(app->pipeline.pre_processor_output_queue, item);
-            break;
-        }
+        bool is_last = item->is_last_chunk;
 
         if (item->stream_discontinuity_event) {
             pre_processor_reset(&app->dsp);
@@ -281,33 +273,26 @@ void* pipeline_thread_pre_processor(void* arg) {
             continue;
         }
 
-        pre_processor_apply_chain(&app->dsp, item);
+        if (item->frames_read > 0) {
+            pre_processor_apply_chain(&app->dsp, item);
+        }
 
         if (app->dsp.is_passthrough) {
             item->frames_to_write = (unsigned int)item->frames_read;
             // Copy data to the post-resample buffer since the resampler thread is bypassed
             memcpy(item->post_resample_buffer, item->pre_resample_buffer, item->frames_to_write * sizeof(ComplexFloat));
-            }
-
-        if (config->dsp.iq_correction.enable) {
-            if (item->frames_read >= IQ_CORRECTION_FFT_SIZE && !item->stream_discontinuity_event) {
-                SampleChunk* opt_item = (SampleChunk*)queue_try_dequeue(app->pipeline.free_sample_chunk_queue);
-                if (opt_item) {
-                    memcpy(opt_item->pre_resample_buffer, item->pre_resample_buffer, IQ_CORRECTION_FFT_SIZE * sizeof(ComplexFloat));
-                    queue_enqueue(app->pipeline.iq_optimization_data_queue, opt_item);
-                }
-            }
         }
 
-        if (item->frames_read > 0) {
-            if (!queue_enqueue(app->pipeline.pre_processor_output_queue, item)) {
-                // Downstream rejected us (shutdown). Force return to pool.
-                queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
-                break;
-            }
-        } else {
-            // Empty/Control chunk, just return it.
+        if (!queue_enqueue(app->pipeline.pre_processor_output_queue, item)) {
             queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
+            break;
+        }
+
+        if (is_last) {
+            if (app->pipeline.iq_optimization_data_queue) {
+                queue_signal_shutdown(app->pipeline.iq_optimization_data_queue);
+            }
+            break;
         }
     }
 
@@ -323,10 +308,7 @@ void* pipeline_thread_resampler(void* arg) {
 
     SampleChunk* item;
     while ((item = (SampleChunk*)queue_dequeue(app->pipeline.resampler_input_queue)) != NULL) {
-        if (item->is_last_chunk) {
-            queue_enqueue(app->pipeline.resampler_output_queue, item);
-            break;
-        }
+        bool is_last = item->is_last_chunk;
 
         if (item->stream_discontinuity_event) {
             resampler_reset(app->dsp.resampler);
@@ -339,9 +321,8 @@ void* pipeline_thread_resampler(void* arg) {
         unsigned int output_frames_this_chunk = 0;
         if (app->dsp.is_passthrough) {
             output_frames_this_chunk = (unsigned int)item->frames_read;
-            // In passthrough, we must copy the data to the output buffer
             memcpy(item->post_resample_buffer, item->pre_resample_buffer, output_frames_this_chunk * sizeof(ComplexFloat));
-        } else {
+        } else if (item->frames_read > 0) {
             // Estimate maximum output length mathematically prior to execution
             unsigned int estimated_out = (unsigned int)((item->frames_read + 32) * app->dsp.resample_ratio) + 64;
             if (estimated_out > item->complex_buffer_capacity_samples) {
@@ -357,8 +338,11 @@ void* pipeline_thread_resampler(void* arg) {
         item->frames_to_write = output_frames_this_chunk;
 
         if (!queue_enqueue(app->pipeline.resampler_output_queue, item)) {
-            // Downstream rejected us. Force return to pool.
             queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
+            break;
+        }
+
+        if (is_last) {
             break;
         }
     }
@@ -374,12 +358,7 @@ void* pipeline_thread_post_processor(void* arg) {
 
     SampleChunk* item;
     while ((item = (SampleChunk*)queue_dequeue(app->pipeline.post_processor_input_queue)) != NULL) {
-
-        if (item->is_last_chunk) {
-            // Always pass the chunk to the writer thread's queue.
-            queue_enqueue(app->pipeline.writer_input_queue, item);
-            break;
-        }
+        bool is_last = item->is_last_chunk;
 
         if (item->stream_discontinuity_event) {
             post_processor_reset(&app->dsp);
@@ -389,17 +368,17 @@ void* pipeline_thread_post_processor(void* arg) {
             continue;
         }
 
-        post_processor_apply_chain(&app->dsp, item);
-
         if (item->frames_to_write > 0) {
-            // Backpressure is handled by the writer thread.
-            if (!queue_enqueue(app->pipeline.writer_input_queue, item)) {
-                queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
-                break;
-            }
-        } else {
-            // Empty frame, force return to pool
+            post_processor_apply_chain(&app->dsp, item);
+        }
+
+        if (!queue_enqueue(app->pipeline.writer_input_queue, item)) {
             queue_enqueue_forced(app->pipeline.free_sample_chunk_queue, item);
+            break;
+        }
+
+        if (is_last) {
+            break;
         }
     }
 
