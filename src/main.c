@@ -461,12 +461,8 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
         out_path = config->output.effective_path;
 #endif
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Output File", out_path);
-    } else {
-        const char* target_desc = "<stdout>";
-        if (config->output.type == OUTPUT_TYPE_AUDIO) {
-            target_desc = "Audio Device";
-        }
-        fprintf(stderr, " %-*s : %s\n", max_label_len, "Output Target", target_desc);
+    } else if (config->output.type == OUTPUT_TYPE_AUDIO) {
+        fprintf(stderr, " %-*s : %s\n", max_label_len, "Output Target", "Audio Device");
     }
 }
 
