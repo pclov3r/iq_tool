@@ -121,6 +121,7 @@ typedef struct {
     int current_file_index;       // Index of the currently open file in file_list
     char* base_path_no_suffix;    // Base file path with the suffix stripped
     const SplitPattern* active_pattern;
+    bool repeat_enabled;          // Loop state
 } WavInputContext;
 
 // --- Expat XML Metadata Handlers (Unmodified) ---
@@ -458,9 +459,11 @@ static bool _parse_auxi_xml_expat(const unsigned char *chunk_data, sf_count_t ch
 static struct {
     float center_target_hz_arg;
     bool wav_read_split; // Locally scoped boolean, bypassing any global app_context edits
+    bool wav_repeat;     // Locally scoped boolean
 } s_wav_config = {
     .center_target_hz_arg = 0.0f,
-    .wav_read_split = false
+    .wav_read_split = false,
+    .wav_repeat = false
 };
 
 // --- Helper function to safely duplicate strings into the Arena (MOVED HERE) ---
@@ -592,6 +595,7 @@ static const struct argparse_option wav_cli_options[] = {
     OPT_GROUP("WAV Input (wav)"),
     OPT_FLOAT(0, "wav-center-target-freq", &s_wav_config.center_target_hz_arg, "Shift signal to a new target center frequency (e.g., 97.3e6)", NULL, 0, 0),
     OPT_BOOLEAN(0, "wav-read-split-files", &s_wav_config.wav_read_split, "Enable sequential reading of split WAV files.", NULL, 0, 0),
+    OPT_BOOLEAN(0, "wav-repeat", &s_wav_config.wav_repeat, "Loop the WAV input file or sequence.", NULL, 0, 0),
 };
 
 const struct argparse_option* wav_input_get_cli_options(int* count) {
@@ -611,6 +615,7 @@ static bool wav_input_initialize(ModuleContext* ctx) {
 
     // Set up default file list (just the single input file)
     private_data->split_enabled = s_wav_config.wav_read_split;
+    private_data->repeat_enabled = s_wav_config.wav_repeat;
     private_data->current_file_index = 0;
     private_data->total_files = 1;
     private_data->file_list = (char**)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(char*) * 1, true);
@@ -756,6 +761,30 @@ static size_t wav_input_read_chunk(ModuleContext* ctx, void* buffer, size_t byte
                     log_fatal("Next split file format mismatch! (Expected Rate: %d, Chans: 2)",
                               app->module.source_info.sample_rate);
                     handle_fatal_thread_error("Format mismatch during rollover.", app);
+                    return 0;
+                }
+            } else if (p->repeat_enabled) {
+                // Loop back to the very first file in the list (works for both single and split-WAV!)
+                sf_close(p->infile);
+                p->current_file_index = 0;
+
+                log_info("Looping WAV input back to start.");
+
+                SF_INFO new_sfinfo;
+                memset(&new_sfinfo, 0, sizeof(SF_INFO));
+                p->infile = sf_open(p->file_list[0], SFM_READ, &new_sfinfo);
+
+                if (!p->infile) {
+                    log_fatal("Failed to reopen first WAV file during loop.");
+                    handle_fatal_thread_error("WAV loop reopen failed.", app);
+                    return 0;
+                }
+
+                // Strict format validation across boundaries
+                if (new_sfinfo.samplerate != app->module.source_info.sample_rate || new_sfinfo.channels != 2) {
+                    log_fatal("Format mismatch on loop reopen! (Expected Rate: %d, Chans: 2)",
+                              app->module.source_info.sample_rate);
+                    handle_fatal_thread_error("Format mismatch during loop.", app);
                     return 0;
                 }
             } else {

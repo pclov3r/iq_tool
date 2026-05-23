@@ -36,17 +36,27 @@ static struct {
     bool sample_rate_provided;
     char *format_str;
     bool format_provided;
-} s_rawfile_config;
+    bool repeat_enabled; // Loop state
+} s_rawfile_config = {
+    .sample_rate_hz = 0.0,
+    .raw_file_sample_rate_hz_arg = 0.0f,
+    .sample_rate_provided = false,
+    .format_str = NULL,
+    .format_provided = false,
+    .repeat_enabled = false
+};
 
 // This is the private data structure for the Raw File input module.
 typedef struct {
     SNDFILE *infile;
+    bool repeat_enabled; // Loop state
 } RawfileInputContext;
 
 static const struct argparse_option rawfile_input_cli_options[] = {
     OPT_GROUP("Raw File Input (rawfile)"),
     OPT_FLOAT(0, "rawfile-input-sample-rate", &s_rawfile_config.raw_file_sample_rate_hz_arg, "(Required) The sample rate of the RAW input file.", NULL, 0, 0),
     OPT_STRING(0, "rawfile-input-sample-format", &s_rawfile_config.format_str, "(Required) The sample format of the RAW input file.", NULL, 0, 0),
+    OPT_BOOLEAN(0, "rawfile-repeat", &s_rawfile_config.repeat_enabled, "Loop the RAW input file.", NULL, 0, 0),
 };
 
 const struct argparse_option* rawfile_input_get_cli_options(int* count) {
@@ -111,6 +121,7 @@ static bool rawfile_input_initialize(ModuleContext* ctx) {
         return false;
     }
     app->module.input_private_data = private_data;
+    private_data->repeat_enabled = s_rawfile_config.repeat_enabled;
 
     app->module.input_format = get_format_info_by_name(s_rawfile_config.format_str) ? get_format_info_by_name(s_rawfile_config.format_str)->format_enum : FORMAT_UNKNOWN;
     if (app->module.input_format == FORMAT_UNKNOWN) {
@@ -168,15 +179,39 @@ static bool rawfile_input_initialize(ModuleContext* ctx) {
 }
 
 static size_t rawfile_input_read_chunk(ModuleContext* ctx, void* buffer, size_t bytes_to_read) {
-    RawfileInputContext* private_data = (RawfileInputContext*)ctx->app->module.input_private_data;
-    int64_t bytes_read = sf_read_raw(private_data->infile, buffer, bytes_to_read);
+    AppContext* app = ctx->app;
+    RawfileInputContext* p = (RawfileInputContext*)app->module.input_private_data;
+    if (!p || !p->infile || bytes_to_read == 0) return 0;
 
-    if (bytes_read < 0) {
-        log_error("libsndfile read error: %s", sf_strerror(private_data->infile));
-        handle_fatal_thread_error("Rawfile Reader: File read error.", ctx->app);
-        return 0;
+    size_t bytes_read_total = 0;
+    size_t bytes_left = bytes_to_read;
+
+    while (bytes_left > 0) {
+        // Read directly into the offset buffer
+        sf_count_t read_this_pass = sf_read_raw(p->infile, (char*)buffer + bytes_read_total, bytes_left);
+
+        if (read_this_pass < 0) {
+            log_error("libsndfile read error: %s", sf_strerror(p->infile));
+            handle_fatal_thread_error("Rawfile Reader: File read error.", app);
+            return 0;
+        }
+
+        if (read_this_pass > 0) {
+            bytes_read_total += (size_t)read_this_pass;
+            bytes_left -= (size_t)read_this_pass;
+        } else {
+            // EOF reached
+            if (p->repeat_enabled) {
+                // Instantly and safely rewind the read pointer back to sample 0
+                sf_seek(p->infile, 0, SEEK_SET);
+                log_info("Looping RAW input back to start.");
+            } else {
+                break; // True EOF
+            }
+        }
     }
-    return (size_t)bytes_read;
+
+    return bytes_read_total;
 }
 
 static void* rawfile_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
