@@ -188,6 +188,7 @@ SDR General Options
 
 WAV Input (wav)
     --wav-center-target-freq=<flt>            Shift signal to a new target center frequency (e.g., 97.3e6)
+    --wav-read-split-files                    Enable sequential reading of split WAV files.
 
 Raw File Input (rawfile)
     --rawfile-input-sample-rate=<flt>         (Required) The sample rate of the RAW input file.

@@ -40,6 +40,22 @@
 #define SDRC_AUXI_CHUNK_ID_STR "auxi"
 #define MAX_METADATA_CHUNK_SIZE (1024 * 1024)
 
+// --- Struct to Define Split File Naming Suffixes ---
+typedef struct {
+    const char* detect_suffix;   // Suffix pattern to detect (e.g., "_001.wav")
+    const char* format_template; // Template to reconstruct the name (e.g., "%s_%0*d.wav")
+    char separator;              // Separator character ('_', '.', etc.)
+    int default_width;           // Hardcoded digit padding width (e.g., 3)
+} SplitPattern;
+
+static const SplitPattern g_split_patterns[] = {
+    { "_%d.wav", "%s_%0*d.wav", '_', 3 }, // capture_001.wav   (SDR Console, SDRuno, HDSDR, SDR#)
+    { " %d.wav", "%s %0*d.wav", ' ', 3 }, // "capture 001.wav" (SDR Console space-separated)
+    { ".%d.wav", "%s.%0*d.wav", '.', 3 }, // capture.001.wav   (Alternative SDR# / Linux scripts)
+    { "-%d.wav", "%s-%0*d.wav", '-', 3 }, // capture-001.wav   (HDSDR / Winrad)
+};
+static const int g_num_patterns = sizeof(g_split_patterns) / sizeof(g_split_patterns[0]);
+
 #pragma pack(push, 1)
 typedef struct {
     uint16_t wYear;
@@ -92,12 +108,22 @@ typedef struct {
     size_t buffer_size;
 } AttributeParser;
 
-// This is the private data structure for the WAV input module.
+// Private data structure for the WAV input module
 typedef struct {
     SNDFILE *infile;
     SdrMetadata sdr_info;
     bool sdr_info_present;
+
+    // --- New Split-File State ---
+    bool split_enabled;
+    char** file_list;             // Array of file path strings allocated from Arena
+    int total_files;              // Total number of files found in sequence
+    int current_file_index;       // Index of the currently open file in file_list
+    char* base_path_no_suffix;    // Base file path with the suffix stripped
+    const SplitPattern* active_pattern;
 } WavInputContext;
+
+// --- Expat XML Metadata Handlers (Unmodified) ---
 
 static void XMLCALL expat_start_element_handler(void *userData, const XML_Char *name, const XML_Char **atts);
 static bool _parse_auxi_xml_expat(const unsigned char *chunk_data, sf_count_t chunk_size, SdrMetadata *metadata);
@@ -431,112 +457,146 @@ static bool _parse_auxi_xml_expat(const unsigned char *chunk_data, sf_count_t ch
 
 static struct {
     float center_target_hz_arg;
-} s_wav_config;
+    bool wav_read_split; // Locally scoped boolean, bypassing any global app_context edits
+} s_wav_config = {
+    .center_target_hz_arg = 0.0f,
+    .wav_read_split = false
+};
 
+// --- Helper function to safely duplicate strings into the Arena (MOVED HERE) ---
+static char* arena_strdup(MemoryArena* arena, const char* s) {
+    if (!s) return NULL;
+    size_t len = strlen(s) + 1;
+    char* dest = (char*)mem_arena_alloc(arena, len, false);
+    if (dest) {
+        memcpy(dest, s, len);
+    }
+    return dest;
+}
+
+static bool _probe_split_sequence(WavInputContext* p, const AppConfig* config, AppContext* app, MemoryArena* arena) {
+    const char* filename;
+    #ifdef _WIN32
+        filename = config->input.effective_path_utf8;
+    #else
+        filename = config->input.effective_path;
+    #endif
+
+    const SplitPattern* matched = NULL;
+    int starting_index = -1;
+    size_t suffix_start_pos = 0;
+    int digit_width = 3; // Fallback default
+
+    // Locate the extension dot (.wav)
+    const char* ext_dot = strrchr(filename, '.');
+    if (!ext_dot || strcasecmp(ext_dot, ".wav") != 0) {
+        return true;
+    }
+
+    // Walk backward from the dot to count consecutive digits
+    const char* digit_ptr = ext_dot - 1;
+    while (digit_ptr > filename && isdigit((unsigned char)*digit_ptr)) {
+        digit_ptr--;
+    }
+
+    // digit_ptr now points to the separator character (e.g. '_', '-', '.', or ' ')
+    char sep = *digit_ptr;
+    digit_width = ext_dot - (digit_ptr + 1);
+
+    // Verify if we found a valid separator and at least 1 digit
+    if (digit_width > 0 && (sep == '_' || sep == '-' || sep == '.' || sep == ' ')) {
+        // Parse starting index directly from the isolated digits
+        starting_index = atoi(digit_ptr + 1);
+        suffix_start_pos = digit_ptr - filename;
+
+        // Match against our pattern table
+        for (int i = 0; i < g_num_patterns; i++) {
+            if (g_split_patterns[i].separator == sep) {
+                matched = &g_split_patterns[i];
+                break;
+            }
+        }
+    }
+
+    if (!matched) {
+        log_warn("No split-WAV pattern matched or files found. Running in single-file mode.");
+        return true;
+    }
+
+    p->active_pattern = matched;
+
+    // Isolate the base path by copying up to the separator position
+    char base_path[MAX_PATH_BUFFER];
+    strncpy(base_path, filename, MAX_PATH_BUFFER - 1);
+    base_path[suffix_start_pos] = '\0'; // Truncate cleanly at the separator
+    p->base_path_no_suffix = arena_strdup(arena, base_path);
+
+    // Pass 1: Probe the directory to count existing sequential files
+    int file_count = 0;
+    int current_idx = starting_index;
+    while (true) {
+        char test_path[MAX_PATH_BUFFER];
+
+        // Use the dynamically measured digit_width (e.g. 3 for "000")
+        snprintf(test_path, sizeof(test_path), matched->format_template,
+                 p->base_path_no_suffix, digit_width, current_idx);
+
+        if (!utils_check_file_exists(test_path)) {
+            break; // No more files in sequence
+        }
+        file_count++;
+        current_idx++;
+    }
+
+    if (file_count <= 1) {
+        log_warn("Only 1 WAV file found in split sequence. Running in single-file mode.");
+        return true;
+    }
+
+    p->total_files = file_count;
+
+    // Pass 2: Allocate the file list array and gather cumulative metadata
+    p->file_list = (char**)mem_arena_alloc(arena, sizeof(char*) * file_count, true);
+    sf_count_t cumulative_frames = 0;
+
+    for (int i = 0; i < file_count; i++) {
+        char resolved_path[MAX_PATH_BUFFER];
+        snprintf(resolved_path, sizeof(resolved_path), matched->format_template,
+                 p->base_path_no_suffix, digit_width, starting_index + i);
+
+        p->file_list[i] = arena_strdup(arena, resolved_path);
+
+        // Open briefly to sum up the frames
+        SF_INFO temp_sfinfo;
+        memset(&temp_sfinfo, 0, sizeof(SF_INFO));
+        SNDFILE* temp_file = sf_open(p->file_list[i], SFM_READ, &temp_sfinfo);
+        if (temp_file) {
+            cumulative_frames += temp_sfinfo.frames;
+            sf_close(temp_file);
+        } else {
+            log_fatal("Failed to probe WAV file in sequence: %s", p->file_list[i]);
+            return false;
+        }
+    }
+
+    // Overwrite global frames with the true, cumulative sequence total
+    app->module.source_info.frames = cumulative_frames;
+
+    log_info("Found %d split WAV files.", p->total_files);
+    log_debug("Cumulative frames: %lld", (long long)cumulative_frames);
+
+    return true;
+}
 
 static const struct argparse_option wav_cli_options[] = {
     OPT_GROUP("WAV Input (wav)"),
     OPT_FLOAT(0, "wav-center-target-freq", &s_wav_config.center_target_hz_arg, "Shift signal to a new target center frequency (e.g., 97.3e6)", NULL, 0, 0),
+    OPT_BOOLEAN(0, "wav-read-split-files", &s_wav_config.wav_read_split, "Enable sequential reading of split WAV files.", NULL, 0, 0),
 };
 
 const struct argparse_option* wav_input_get_cli_options(int* count) {
     *count = sizeof(wav_cli_options) / sizeof(wav_cli_options[0]);
     return wav_cli_options;
-}
-
-static bool wav_input_initialize(ModuleContext* ctx);
-static void* wav_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
-static size_t wav_input_read_chunk(ModuleContext* ctx, void* buffer, size_t bytes_to_read);
-static void wav_input_stop_stream(ModuleContext* ctx);
-static void wav_input_cleanup(ModuleContext* ctx);
-static void wav_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
-static bool wav_input_pre_stream_iq_correction(ModuleContext* ctx);
-
-static InputModuleInterface s_wav_input_api = {
-    .initialize = wav_input_initialize,
-    .start_stream = wav_input_start_stream,
-    .read_chunk = wav_input_read_chunk,
-    .stop_stream = wav_input_stop_stream,
-    .cleanup = wav_input_cleanup,
-    .get_summary_info = wav_input_get_summary_info,
-    .has_known_length = _input_source_has_known_length_true,
-    .validate_options = NULL,
-    .validate_generic_options = NULL,
-    .pre_stream_iq_correction = wav_input_pre_stream_iq_correction,
-};
-
-InputModuleInterface* input_wav_get_module_api(void) {
-    return &s_wav_input_api;
-}
-
-static void wav_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
-    const AppConfig *config = ctx->config;
-    const AppContext* app = ctx->app;
-    WavInputContext* private_data = (WavInputContext*)app->module.input_private_data;
-
-    const char* display_path = config->input.path_arg;
-#ifdef _WIN32
-    if (config->input.effective_path_utf8[0] != '\0') {
-        display_path = config->input.effective_path_utf8;
-    }
-#endif
-
-    add_summary_item(info, "Input File", "%s", display_path);
-
-    const char *format_str;
-    switch (app->module.input_format) {
-        case CS16: format_str = "16-bit Signed Complex PCM (cs16)"; break;
-        case CU8:  format_str = "8-bit Unsigned Complex PCM (cu8)"; break;
-        default:   format_str = "Unknown PCM"; break;
-    }
-    add_summary_item(info, "Input Format", "%s", format_str);
-    add_summary_item(info, "Input Sample Rate", "%.0f Hz", (double)app->module.source_info.sample_rate);
-
-    long long input_file_size = -1LL;
-#ifdef _WIN32
-    struct __stat64 stat_buf64;
-    if (_wstat64(config->input.effective_path_w, &stat_buf64) == 0)
-        input_file_size = stat_buf64.st_size;
-#else
-    struct stat stat_buf;
-    if (stat(display_path, &stat_buf) == 0)
-        input_file_size = stat_buf.st_size;
-#endif
-    char size_buf[40];
-    add_summary_item(info, "Input File Size", "%s", utils_format_size(input_file_size, size_buf, sizeof(size_buf)));
-
-    if (private_data->sdr_info_present) {
-        if (private_data->sdr_info.timestamp_unix_present) {
-            char time_buf[64];
-            struct tm time_info;
-#ifdef _WIN32
-            if (gmtime_s(&time_info, &private_data->sdr_info.timestamp_unix) == 0) {
-                strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC", &time_info);
-                add_summary_item(info, "Timestamp", "%s", time_buf);
-            }
-#else
-            if (gmtime_r(&private_data->sdr_info.timestamp_unix, &time_info)) {
-                strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC", &time_info);
-                add_summary_item(info, "Timestamp", "%s", time_buf);
-            }
-#endif
-        } else if (private_data->sdr_info.timestamp_str_present) {
-            add_summary_item(info, "Timestamp", "%s", private_data->sdr_info.timestamp_str);
-        }
-        if (private_data->sdr_info.center_freq_hz_present) {
-            add_summary_item(info, "Center Frequency", "%.0f Hz", private_data->sdr_info.center_freq_hz);
-        }
-        if (private_data->sdr_info.software_name_present) {
-            char sw_buf[128];
-            snprintf(sw_buf, sizeof(sw_buf), "%s %s",
-                     private_data->sdr_info.software_name,
-                     private_data->sdr_info.software_version_present ? private_data->sdr_info.software_version : "");
-            add_summary_item(info, "SDR Software", "%s", sw_buf);
-        }
-        if (private_data->sdr_info.radio_model_present) {
-            add_summary_item(info, "Radio Model", "%s", private_data->sdr_info.radio_model);
-        }
-    }
 }
 
 static bool wav_input_initialize(ModuleContext* ctx) {
@@ -549,17 +609,36 @@ static bool wav_input_initialize(ModuleContext* ctx) {
     }
     app->module.input_private_data = private_data;
 
-#ifdef _WIN32
-    log_info("Opening WAV input file: %s", config->input.effective_path_utf8);
-    SF_INFO sfinfo;
-    memset(&sfinfo, 0, sizeof(SF_INFO));
-    private_data->infile = sf_wchar_open(config->input.effective_path_w, SFM_READ, &sfinfo);
-#else
-    log_info("Opening WAV input file: %s", config->input.effective_path);
-    SF_INFO sfinfo;
-    memset(&sfinfo, 0, sizeof(SF_INFO));
-    private_data->infile = sf_open(config->input.effective_path, SFM_READ, &sfinfo);
-#endif
+    // Set up default file list (just the single input file)
+    private_data->split_enabled = s_wav_config.wav_read_split;
+    private_data->current_file_index = 0;
+    private_data->total_files = 1;
+    private_data->file_list = (char**)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(char*) * 1, true);
+    #ifdef _WIN32
+        private_data->file_list[0] = arena_strdup(&app->pipeline.setup_arena, config->input.effective_path_utf8);
+    #else
+        private_data->file_list[0] = arena_strdup(&app->pipeline.setup_arena, config->input.effective_path);
+    #endif
+
+    // Run the directory prober if split reading is requested by the user
+    if (private_data->split_enabled) {
+        if (!_probe_split_sequence(private_data, config, app, &app->pipeline.setup_arena)) {
+            return false;
+        }
+    }
+
+    // Open the active file handle
+    #ifdef _WIN32
+        log_info("Opening WAV input file: %s", private_data->file_list[0]);
+        SF_INFO sfinfo;
+        memset(&sfinfo, 0, sizeof(SF_INFO));
+        private_data->infile = sf_wchar_open(config->input.effective_path_w, SFM_READ, &sfinfo);
+    #else
+        log_info("Opening WAV input file: %s", private_data->file_list[0]);
+        SF_INFO sfinfo;
+        memset(&sfinfo, 0, sizeof(SF_INFO));
+        private_data->infile = sf_open(private_data->file_list[0], SFM_READ, &sfinfo);
+    #endif
 
     if (!private_data->infile) {
         log_error("Error opening input file: %s", sf_strerror(private_data->infile));
@@ -578,8 +657,7 @@ static bool wav_input_initialize(ModuleContext* ctx) {
         case SF_FORMAT_PCM_16: app->module.input_format = CS16; break;
         case SF_FORMAT_PCM_U8: app->module.input_format = CU8; break;
         default:
-            log_error("Error: Input WAV file uses an unsupported PCM subtype (0x%04X). "
-                      "Supported WAV PCM subtypes are 16-bit Signed (cs16) and 8-bit Unsigned (cu8).", sf_subtype);
+            log_error("Error: Input WAV file uses an unsupported PCM subtype (0x%04X).", sf_subtype);
             sf_close(private_data->infile);
             private_data->infile = NULL;
             return false;
@@ -594,12 +672,12 @@ static bool wav_input_initialize(ModuleContext* ctx) {
         return false;
     }
 
-    if (sfinfo.frames == 0) {
-        log_warn("Warning: Input file appears to be empty (0 frames).");
-    }
-
     app->module.source_info.sample_rate = sfinfo.samplerate;
-    app->module.source_info.frames = sfinfo.frames;
+
+    // Only overwrite frames if split mode didn't already calculate it
+    if (!private_data->split_enabled) {
+        app->module.source_info.frames = sfinfo.frames;
+    }
 
     init_sdr_metadata(&private_data->sdr_info);
     private_data->sdr_info_present = parse_sdr_metadata_chunks(private_data->infile, &sfinfo, &private_data->sdr_info, &app->pipeline.setup_arena);
@@ -634,21 +712,67 @@ static bool wav_input_initialize(ModuleContext* ctx) {
 }
 
 static size_t wav_input_read_chunk(ModuleContext* ctx, void* buffer, size_t bytes_to_read) {
-    WavInputContext* private_data = (WavInputContext*)ctx->app->module.input_private_data;
-    int64_t bytes_read = sf_read_raw(private_data->infile, buffer, bytes_to_read);
-    
-    if (bytes_read < 0) {
-        log_error("libsndfile read error: %s", sf_strerror(private_data->infile));
-        handle_fatal_thread_error("WAV Reader: File read error.", ctx->app);
-        return 0;
+    AppContext* app = ctx->app;
+    WavInputContext* p = (WavInputContext*)app->module.input_private_data;
+    if (!p || !p->infile || bytes_to_read == 0) return 0;
+
+    size_t bytes_read_total = 0;
+    size_t bytes_left = bytes_to_read;
+
+    while (bytes_left > 0) {
+        // Read directly into the offset buffer
+        sf_count_t read_this_pass = sf_read_raw(p->infile, (char*)buffer + bytes_read_total, bytes_left);
+
+        if (read_this_pass < 0) {
+            log_error("libsndfile read error: %s", sf_strerror(p->infile));
+            handle_fatal_thread_error("File read error.", app);
+            return 0;
+        }
+
+        if (read_this_pass > 0) {
+            bytes_read_total += (size_t)read_this_pass;
+            bytes_left -= (size_t)read_this_pass;
+        } else {
+            // EOF reached for the current file handle
+            // If split mode is enabled, attempt to roll over to the next file in the list
+            if (p->split_enabled && (p->current_file_index < p->total_files - 1)) {
+                sf_close(p->infile);
+                p->current_file_index++;
+
+                log_info("Transitioning to split file: %s", p->file_list[p->current_file_index]);
+
+                SF_INFO new_sfinfo;
+                memset(&new_sfinfo, 0, sizeof(SF_INFO));
+                p->infile = sf_open(p->file_list[p->current_file_index], SFM_READ, &new_sfinfo);
+
+                if (!p->infile) {
+                    log_fatal("Failed to open next split file: %s", p->file_list[p->current_file_index]);
+                    handle_fatal_thread_error("Next split file failed to open.", app);
+                    return 0;
+                }
+
+                // Strict format validation across boundaries
+                if (new_sfinfo.samplerate != app->module.source_info.sample_rate || new_sfinfo.channels != 2) {
+                    log_fatal("Next split file format mismatch! (Expected Rate: %d, Chans: 2)",
+                              app->module.source_info.sample_rate);
+                    handle_fatal_thread_error("Format mismatch during rollover.", app);
+                    return 0;
+                }
+            } else {
+                // True EOF reached (no more files left in sequence)
+                break;
+            }
+        }
     }
-    return (size_t)bytes_read;
+
+    return bytes_read_total;
 }
 
 static void* wav_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
     (void)ctx; (void)queue_samples; (void)pipeline_ctx;
     return NULL; // Not used for synchronous file readers
 }
+
 static void wav_input_stop_stream(ModuleContext* ctx) {
     (void)ctx;
 }
@@ -674,7 +798,7 @@ static bool wav_input_pre_stream_iq_correction(ModuleContext* ctx) {
     if (!config->dsp.iq_correction.enable) {
         return true;
     }
-    
+
     // The module's only job is to call the calibration service with its private file handle.
     size_t raw_buffer_size = 4096 * ctx->app->module.input_bytes_per_iq_sample; // IQ_CORRECTION_FFT_SIZE
     void* raw_buffer = mem_arena_alloc(&ctx->app->pipeline.setup_arena, raw_buffer_size, false);
@@ -688,10 +812,127 @@ static bool wav_input_pre_stream_iq_correction(ModuleContext* ctx) {
     }
 
     bool result = iq_correction_run_initial_calibration(ctx, raw_buffer, frames_read_bytes);
-    
+
     if (sf_seek(private_data->infile, 0, SEEK_SET) < 0) {
         log_fatal("Failed to rewind file after calibration.");
         return false;
     }
     return result;
+}
+
+static void wav_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
+    const AppConfig *config = ctx->config;
+    const AppContext* app = ctx->app;
+    WavInputContext* private_data = (WavInputContext*)app->module.input_private_data;
+
+    const char* display_path = config->input.path_arg;
+    #ifdef _WIN32
+        if (config->input.effective_path_utf8[0] != '\0') {
+            display_path = config->input.effective_path_utf8;
+        }
+    #endif
+
+    // Dynamic key output depending on split configuration status
+    if (private_data && private_data->split_enabled && private_data->total_files > 1) {
+        // Expose the sequential range using ASCII tilde (~), ensuring 100% terminal safety
+        const char* first_file = private_data->file_list[0];
+        const char* last_file = private_data->file_list[private_data->total_files - 1];
+
+        const char* first_base = strrchr(first_file, '/');
+        if (!first_base) first_base = strrchr(first_file, '\\');
+        first_base = first_base ? first_base + 1 : first_file;
+
+        const char* last_base = strrchr(last_file, '/');
+        if (!last_base) last_base = strrchr(last_file, '\\');
+        last_base = last_base ? last_base + 1 : last_file;
+
+        add_summary_item(info, "Input Files", "%s ~ %s", first_base, last_base);
+        add_summary_item(info, "Total Files", "%d", private_data->total_files);
+
+        // Exact mathematical calculation of the total cumulative file sizes combined
+        long long combined_bytes = (long long)app->module.source_info.frames * app->module.input_bytes_per_iq_sample;
+        char size_buf[40];
+        add_summary_item(info, "Total Size", "%s", utils_format_size(combined_bytes, size_buf, sizeof(size_buf)));
+
+        // Reuse existing utils.c duration parser for combined HH:MM:SS formatting
+        double total_seconds = (double)app->module.source_info.frames / (double)app->module.source_info.sample_rate;
+        char duration_buf[40];
+        utils_format_duration(total_seconds, duration_buf, sizeof(duration_buf));
+        add_summary_item(info, "Total Duration", "%s", duration_buf);
+    } else {
+        // Standard single file fallback
+        add_summary_item(info, "Input File", "%s", display_path);
+
+        long long input_file_size = -1LL;
+        #ifdef _WIN32
+            struct __stat64 stat_buf64;
+            if (_wstat64(config->input.effective_path_w, &stat_buf64) == 0)
+                input_file_size = stat_buf64.st_size;
+        #else
+            struct stat stat_buf;
+            if (stat(display_path, &stat_buf) == 0)
+                input_file_size = stat_buf.st_size;
+        #endif
+        char size_buf[40];
+        add_summary_item(info, "Input File Size", "%s", utils_format_size(input_file_size, size_buf, sizeof(size_buf)));
+    }
+
+    const char *format_str;
+    switch (app->module.input_format) {
+        case CS16: format_str = "16-bit Signed Complex PCM (cs16)"; break;
+        case CU8:  format_str = "8-bit Unsigned Complex PCM (cu8)"; break;
+        default:   format_str = "Unknown PCM"; break;
+    }
+    add_summary_item(info, "Input Format", "%s", format_str);
+    add_summary_item(info, "Input Sample Rate", "%.0f Hz", (double)app->module.source_info.sample_rate);
+
+    if (private_data->sdr_info_present) {
+        if (private_data->sdr_info.timestamp_unix_present) {
+            char time_buf[64];
+            struct tm time_info;
+            #ifdef _WIN32
+                if (gmtime_s(&time_info, &private_data->sdr_info.timestamp_unix) == 0) {
+                    strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC", &time_info);
+                    add_summary_item(info, "Timestamp", "%s", time_buf);
+                }
+            #else
+                if (gmtime_r(&private_data->sdr_info.timestamp_unix, &time_info)) {
+                    strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC", &time_info);
+                    add_summary_item(info, "Timestamp", "%s", time_buf);
+                }
+            #endif
+        } else if (private_data->sdr_info.timestamp_str_present) {
+            add_summary_item(info, "Timestamp", "%s", private_data->sdr_info.timestamp_str);
+        }
+        if (private_data->sdr_info.center_freq_hz_present) {
+            add_summary_item(info, "Center Frequency", "%.0f Hz", private_data->sdr_info.center_freq_hz);
+        }
+        if (private_data->sdr_info.software_name_present) {
+            char sw_buf[128];
+            snprintf(sw_buf, sizeof(sw_buf), "%s %s",
+                     private_data->sdr_info.software_name,
+                     private_data->sdr_info.software_version_present ? private_data->sdr_info.software_version : "");
+            add_summary_item(info, "SDR Software", "%s", sw_buf);
+        }
+        if (private_data->sdr_info.radio_model_present) {
+            add_summary_item(info, "Radio Model", "%s", private_data->sdr_info.radio_model);
+        }
+    }
+}
+
+static InputModuleInterface s_wav_input_api = {
+    .initialize = wav_input_initialize,
+    .start_stream = wav_input_start_stream,
+    .read_chunk = wav_input_read_chunk,
+    .stop_stream = wav_input_stop_stream,
+    .cleanup = wav_input_cleanup,
+    .get_summary_info = wav_input_get_summary_info,
+    .has_known_length = _input_source_has_known_length_true,
+    .validate_options = NULL,
+    .validate_generic_options = NULL,
+    .pre_stream_iq_correction = wav_input_pre_stream_iq_correction,
+};
+
+InputModuleInterface* input_wav_get_module_api(void) {
+    return &s_wav_input_api;
 }
