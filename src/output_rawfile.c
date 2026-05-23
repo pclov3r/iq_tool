@@ -170,7 +170,7 @@ static void rawfile_output_cleanup(ModuleContext* ctx) {
 
 static void rawfile_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
     (void)ctx;
-    add_summary_item(info, "Output Type", "RAW");
+    add_summary_item(info, "Output Type", "RAW File");
 }
 
 static const struct argparse_option rawfile_output_cli_options[] = {

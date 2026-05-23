@@ -29,7 +29,7 @@ static bool wav_output_initialize(ModuleContext* ctx) {
  */
 static void wav_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
     (void)ctx; // Unused in this simple implementation
-    add_summary_item(info, "Output Type", "WAV (Standard)");
+    add_summary_item(info, "Output Type", "WAV");
 }
 
 static const struct argparse_option wav_output_cli_options[] = {

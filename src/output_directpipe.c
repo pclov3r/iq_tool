@@ -101,7 +101,7 @@ static void directpipe_output_cleanup(ModuleContext* ctx) {
 
 static void directpipe_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
     (void)ctx;
-    add_summary_item(info, "Output Type", "Direct OS Pipe (FD 10)");
+    add_summary_item(info, "Output Type", "directpipe");
 }
 
 static const struct argparse_option directpipe_cli_options[] = {

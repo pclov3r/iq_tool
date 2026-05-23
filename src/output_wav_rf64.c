@@ -28,7 +28,7 @@ static bool wav_rf64_output_initialize(ModuleContext* ctx) {
  */
 static void wav_rf64_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
     (void)ctx; // Unused in this simple implementation
-    add_summary_item(info, "Output Type", "WAV (RF64)");
+    add_summary_item(info, "Output Type", "WAV-RF64");
 }
 
 static const struct argparse_option wav_rf64_output_cli_options[] = {
