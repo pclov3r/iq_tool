@@ -183,21 +183,37 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (!init_input_source(&config, &app)) {
+    // Step 1: Initialize Output Module (Passive I/O)
+    // We prepare the output WAV, Stdout, or Audio mixer first.
+    // If this fails (e.g. file lock, directory permissions), we abort cleanly
+    // before ever touching the physical SDR hardware clock.
+    if (!init_output_module(&config, &app)) {
         goto cleanup;
     }
-    // Perform pre-stream calibration if needed (requires open source)
-    if (app.module.input_api->pre_stream_iq_correction) {
-        ModuleContext ctx = { .config = &config, .app = &app };
-        if (!app.module.input_api->pre_stream_iq_correction(&ctx)) goto cleanup;
-    }
+
+    // Step 2: Set up pipeline buffers
     PipelineContext pipeline_context = { .config = &config, .app = &app };
     if (!pipeline_setup_buffers(&pipeline_context)) {
         goto cleanup;
     }
 
-    if (!init_output_module(&config, &app)) {
+    // Step 3: Initialize Input Source (Active I/O)
+    // Now that the output path and buffers are guaranteed, we safely initialize the SDR.
+    if (!init_input_source(&config, &app)) {
         goto cleanup;
+    }
+
+    // Step 4: Validate format compatibility for raw passthrough (Post-Init check)
+    // TODO: Query the module for its format before we fully initialize or open the hardware
+    if (config.dsp.raw_passthrough && app.module.input_format != config.output.sample_format) {
+        log_error("Option --raw-passthrough requires input and output formats to be identical.");
+        goto cleanup;
+    }
+
+    // Perform pre-stream calibration if needed (requires open source)
+    if (app.module.input_api->pre_stream_iq_correction) {
+        ModuleContext ctx = { .config = &config, .app = &app };
+        if (!app.module.input_api->pre_stream_iq_correction(&ctx)) goto cleanup;
     }
     resources_initialized = true;
 
@@ -273,11 +289,6 @@ static bool init_output_module(AppConfig *config, AppContext* app) {
         return false;
     }
     app->module.output_api = (OutputModuleInterface*)selected_output_module->api;
-
-    if (config->dsp.raw_passthrough && app->module.input_format != config->output.sample_format) {
-        log_error("Option --raw-passthrough requires input and output formats to be identical.");
-        return false;
-    }
 
     log_info("Initializing the '%s' output module...", config->output.module_name);
     return app->module.output_api->initialize(&ctx);
