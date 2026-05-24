@@ -934,7 +934,7 @@ static void wav_input_get_summary_info(const ModuleContext* ctx, InputSummaryInf
             add_summary_item(info, "Timestamp", "%s", private_data->sdr_info.timestamp_str);
         }
         if (private_data->sdr_info.center_freq_hz_present) {
-            add_summary_item(info, "Center Frequency", "%.0f Hz", private_data->sdr_info.center_freq_hz);
+            add_summary_item(info, "Center Frequency", "%.15g Hz", private_data->sdr_info.center_freq_hz);
         }
         if (private_data->sdr_info.software_name_present) {
             char sw_buf[128];

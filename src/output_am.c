@@ -136,15 +136,15 @@ static bool am_output_validate_options(AppConfig* config) {
     if (config->output_sample_rate.rate_hz == 0.0) {
         config->output_sample_rate.rate_hz = AM_DEFAULT_INPUT_RATE;
         config->output_sample_rate.provided = true;
-        log_debug("AM: No rate specified. Requesting %.0f Hz.", AM_DEFAULT_INPUT_RATE);
+        log_debug("AM: No rate specified. Requesting %.15g Hz.", AM_DEFAULT_INPUT_RATE);
     } else {
         double rate = config->output_sample_rate.rate_hz;
         if (rate < AM_MIN_INPUT_RATE) {
-            log_error("AM: Input rate %.0f Hz is too low for audio (Min: %.0f).", rate, AM_MIN_INPUT_RATE);
+            log_error("AM: Input rate %.15g Hz is too low for audio (Min: %.15g).", rate, AM_MIN_INPUT_RATE);
             return false;
         }
         if (rate > AM_MAX_INPUT_RATE) {
-            log_error("AM: Input rate %.0f Hz is unnecessarily high (Max: %.0f).", rate, AM_MAX_INPUT_RATE);
+            log_error("AM: Input rate %.15g Hz is unnecessarily high (Max: %.15g).", rate, AM_MAX_INPUT_RATE);
             return false;
         }
     }
@@ -175,7 +175,7 @@ static bool am_output_initialize(ModuleContext* ctx) {
         s_am_config.audio_cutoff = MAX_AUDIO_CUTOFF_HZ;
     }
 
-    log_info("AM: Input Rate %.0f Hz | Audio Cutoff: %.0f Hz | Mode: %s",
+    log_info("AM: Input Rate %.15g Hz | Audio Cutoff: %.15g Hz | Mode: %s",
              input_rate, s_am_config.audio_cutoff,
              p->sync_mode ? "Synchronous (PLL)" : "Envelope (Magnitude)");
 
@@ -363,7 +363,7 @@ static void am_output_get_summary_info(const ModuleContext* ctx, OutputSummaryIn
     add_summary_item(info, "Output Type", "AM Audio");
     add_summary_item(info, "Mode", "%s", s_am_config.force_envelope ? "Envelope (Mag)" : "Synchronous (PLL)");
     add_summary_item(info, "Audio Sample Rate", "%d Hz", AUDIO_SAMPLE_RATE);
-    add_summary_item(info, "Filter Cutoff", "%.0f Hz", s_am_config.audio_cutoff);
+    add_summary_item(info, "Filter Cutoff", "%.15g Hz", s_am_config.audio_cutoff);
 }
 
 static const struct argparse_option am_output_cli_options[] = {

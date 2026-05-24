@@ -147,7 +147,7 @@ bool utils_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz,
     double nyquist_freq = sample_rate_hz / 2.0;
 
     if (fabs(freq_to_check_hz) > nyquist_freq) {
-        log_warn("The '%s' of %.2f Hz exceeds the Nyquist frequency of %.2f Hz for the current sample rate.",
+        log_warn("The '%s' of %.15g Hz exceeds the Nyquist frequency of %.15g Hz for the current sample rate.",
                  context_str, freq_to_check_hz, nyquist_freq);
         log_warn("This may cause aliasing and corrupt the signal.");
 

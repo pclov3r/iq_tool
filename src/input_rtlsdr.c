@@ -163,7 +163,7 @@ static bool rtlsdr_input_validate_options(AppConfig* config) {
 
     if (config->sdr_general.sample_rate_provided) {
         if (config->sdr_general.sample_rate_hz < 225001 || config->sdr_general.sample_rate_hz > 3200000) {
-             log_error("Invalid sample rate for RTL-SDR: %.0f Hz. Must be between 225001 and 3200000.", config->sdr_general.sample_rate_hz);
+             log_error("Invalid sample rate for RTL-SDR: %.15g Hz. Must be between 225001 and 3200000.", config->sdr_general.sample_rate_hz);
              return false;
         }
     }
@@ -255,7 +255,7 @@ static bool rtlsdr_input_initialize(ModuleContext* ctx) {
         goto cleanup;
     }
     uint32_t actual_rate = rtlsdr_get_sample_rate(private_data->dev);
-    log_info("RTL-SDR: Requested sample rate %.0f Hz, actual rate set to %u Hz.", config->sdr_general.sample_rate_hz, actual_rate);
+    log_info("RTL-SDR: Requested sample rate %.15g Hz, actual rate set to %.15g Hz.", config->sdr_general.sample_rate_hz, (double)actual_rate);
     app->module.source_info.sample_rate = actual_rate;
 
     result = rtlsdr_set_center_freq(private_data->dev, (uint32_t)config->sdr_general.rf_freq_hz);

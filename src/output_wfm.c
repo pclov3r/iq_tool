@@ -264,13 +264,13 @@ static bool wfm_output_validate_options(AppConfig* config) {
         // Force the default MPX rate.
         config->output_sample_rate.rate_hz = WFM_DEFAULT_MPX_RATE;
         config->output_sample_rate.provided = true; // Mark as provided so setup.c respects it
-        log_info("WFM: No output rate specified. Defaulting to MPX rate %.0f Hz.", WFM_DEFAULT_MPX_RATE);
+        log_info("WFM: No output rate specified. Defaulting to MPX rate %.15g Hz.", WFM_DEFAULT_MPX_RATE);
     } else {
         // Case B: User specified a rate. Validate range.
         double rate = config->output_sample_rate.rate_hz;
         if (rate < WFM_MIN_MPX_RATE || rate > WFM_MAX_MPX_RATE) {
-            log_error("WFM: Invalid MPX rate %.0f Hz.", rate);
-            log_error("Valid range is %.0f Hz to %.0f Hz.", WFM_MIN_MPX_RATE, WFM_MAX_MPX_RATE);
+            log_error("WFM: Invalid MPX rate %.15g Hz.", rate);
+            log_error("Valid range is %.15g Hz to %.15g Hz.", WFM_MIN_MPX_RATE, WFM_MAX_MPX_RATE);
             return false;
         }
     }
@@ -310,7 +310,7 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
     p->input_samplerate = mpx_rate;
     p->gain = s_wfm_config.gain_val;
 
-    log_info("WFM: Configuring DSP for MPX Rate: %.0f Hz -> Audio: %d Hz (De-emphasis: %.0fus)",
+    log_info("WFM: Configuring DSP for MPX Rate: %.15g Hz -> Audio: %d Hz (De-emphasis: %.15g us)",
              mpx_rate, AUDIO_SAMPLE_RATE, s_wfm_config.deemph_us);
 
     // 4. Create Liquid Objects

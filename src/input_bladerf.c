@@ -291,7 +291,7 @@ static bool bladerf_input_validate_options(AppConfig* config) {
             return false;
         }
         if (!s_bladerf_config.bit_depth_provided) {
-             log_warn("Sample rate of %.0f Hz exceeds the 61440000 Hz limit for 12-bit mode. Automatically switching to 8-bit mode.", config->sdr_general.sample_rate_hz);
+             log_warn("Sample rate of %.15g Hz exceeds the 61440000 Hz limit for 12-bit mode. Automatically switching to 8-bit mode.", config->sdr_general.sample_rate_hz);
         }
         s_bladerf_config.active_bit_depth = 8;
     } else {
@@ -507,7 +507,7 @@ static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf
     }
     double actual_rate_double = (double)actual_rate_from_device.integer + ((double)actual_rate_from_device.num / (double)actual_rate_from_device.den);
     app->module.source_info.sample_rate = (int)actual_rate_double;
-    log_info("BladeRF: Requested sample rate %.0f Hz, actual rate set to %d Hz.", config->sdr_general.sample_rate_hz, app->module.source_info.sample_rate);
+    log_info("BladeRF: Requested sample rate %.15g Hz, actual rate set to %.15g Hz.", config->sdr_general.sample_rate_hz, (double)app->module.source_info.sample_rate);
 
     status = bladerf_set_frequency(private_data->dev, rx_channel, config->sdr_general.rf_freq_hz);
     if (is_shutdown_requested()) { return false; }
@@ -534,7 +534,7 @@ static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_c
         log_error("Failed to set BladeRF sample rate: %s", bladerf_strerror(status));
         return false;
     }
-    log_info("BladeRF: Requested sample rate %u Hz, actual rate set to %u Hz.", requested_rate, actual_rate);
+    log_info("BladeRF: Requested sample rate %.15g Hz, actual rate set to %.15g Hz.", (double)requested_rate, (double)actual_rate);
     app->module.source_info.sample_rate = (int)actual_rate;
 
     bladerf_bandwidth requested_bw = s_bladerf_config.bandwidth_hz;

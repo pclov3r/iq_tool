@@ -311,7 +311,7 @@ static bool sdrplay_input_validate_options(AppConfig* config) {
         else if (fabs(bw_hz - 1200000.0) < 1.0) s_sdrplay_config.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_1_200;
         else if (fabs(bw_hz - 1700000.0) < 1.0) s_sdrplay_config.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_1_700;
         else {
-            log_error("Invalid HDR bandwidth '%.0f'. Valid values are 200e3, 500e3, 1.2e6, 1.7e6.", bw_hz);
+            log_error("Invalid HDR bandwidth '%.15g'. Valid values are 200e3, 500e3, 1.2e6, 1.7e6.", bw_hz);
             return false;
         }
         s_sdrplay_config.hdr_bw_mode_provided = true;
@@ -324,17 +324,17 @@ static bool sdrplay_input_validate_options(AppConfig* config) {
 
     if (config->sdr_general.sample_rate_provided) {
         if (config->sdr_general.sample_rate_hz < 2e6 || config->sdr_general.sample_rate_hz > 10e6) {
-            log_error("Invalid SDRplay sample rate %.0f Hz. Must be between 2,000,000 and 10,000,000.", config->sdr_general.sample_rate_hz);
+            log_error("Invalid SDRplay sample rate %.15g Hz. Must be between 2,000,000 and 10,000,000.", config->sdr_general.sample_rate_hz);
             return false;
         }
     }
 
     if (map_bw_hz_to_enum(s_sdrplay_config.bandwidth_hz) == sdrplay_api_BW_Undefined) {
-        log_error("Invalid SDRplay bandwidth %.0f Hz. See --help for valid values.", s_sdrplay_config.bandwidth_hz);
+        log_error("Invalid SDRplay bandwidth %.15g Hz. See --help for valid values.", s_sdrplay_config.bandwidth_hz);
         return false;
     }
     if (s_sdrplay_config.bandwidth_hz > config->sdr_general.sample_rate_hz) {
-        log_error("Bandwidth (%.0f Hz) cannot be greater than the sample rate (%.0f Hz).", s_sdrplay_config.bandwidth_hz, config->sdr_general.sample_rate_hz);
+        log_error("Bandwidth (%.15g Hz) cannot be greater than the sample rate (%.15g Hz).", s_sdrplay_config.bandwidth_hz, config->sdr_general.sample_rate_hz);
         return false;
     }
 
@@ -500,7 +500,7 @@ static void sdrplay_input_get_summary_info(const ModuleContext* ctx, InputSummar
     add_summary_item(info, "Input Format", "16-bit Signed Complex (cs16)");
     add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
 
-    add_summary_item(info, "Bandwidth", "%.0f Hz", s_sdrplay_config.bandwidth_hz);
+    add_summary_item(info, "Bandwidth", "%.15g Hz", s_sdrplay_config.bandwidth_hz);
 
     if (s_sdrplay_config.lna_state_provided || s_sdrplay_config.if_gain_db_provided) {
         // Manual gain mode is active. Show the status of both components.
@@ -653,8 +653,8 @@ static bool sdrplay_input_initialize(ModuleContext* ctx) {
     chParams->tunerParams.bwType = bw_enum;
     chParams->tunerParams.ifType = sdrplay_api_IF_Zero;
     chParams->tunerParams.rfFreq.rfHz = config->sdr_general.rf_freq_hz;
-    log_debug("SDRplay: API accepting sample rate %.0f Hz.", devParams->fsFreq.fsHz);
-    log_debug("SDRplay: API accepting bandwidth %.0f Hz.", s_sdrplay_config.bandwidth_hz);
+    log_debug("SDRplay: API accepting sample rate %.15g Hz.", devParams->fsFreq.fsHz);
+    log_debug("SDRplay: API accepting bandwidth %.15g Hz.", s_sdrplay_config.bandwidth_hz);
 
     if (s_sdrplay_config.use_hdr_mode) {
         if (private_data->sdr_device->hwVer != SDRPLAY_RSPdx_ID && private_data->sdr_device->hwVer != SDRPLAY_RSPdxR2_ID) {

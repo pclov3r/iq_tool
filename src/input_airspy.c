@@ -443,7 +443,7 @@ static bool airspy_input_initialize(ModuleContext* ctx) {
     }
 
     if (!rate_supported) {
-        log_error("Requested sample rate %.0f Hz is not supported by this Airspy device.", config->sdr_general.sample_rate_hz);
+        log_error("Requested sample rate %.15g Hz is not supported by this Airspy device.", config->sdr_general.sample_rate_hz);
         log_error("Supported rates are:");
         for (uint32_t i = 0; i < num_rates; i++) {
             log_error("  %u Hz", rates[i]);

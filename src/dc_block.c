@@ -20,8 +20,8 @@ bool dc_block_create(AppConfig* config, AppContext* app) {
     }
 
     if (app->module.source_info.sample_rate <= 0.0) {
-        log_error("DC Block: Cannot initialize with invalid sample rate (%.0f Hz).",
-                  app->module.source_info.sample_rate);
+        log_error("DC Block: Cannot initialize with invalid sample rate (%.15g Hz).",
+                  (double)app->module.source_info.sample_rate);
         return false;
     }
 

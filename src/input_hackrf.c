@@ -128,7 +128,7 @@ static bool hackrf_input_validate_options(AppConfig* config) {
 
     if (config->sdr_general.sample_rate_provided) {
         if (config->sdr_general.sample_rate_hz < 2e6 || config->sdr_general.sample_rate_hz > 20e6) {
-            log_error("Invalid HackRF sample rate %.0f Hz. Must be between 2,000,000 and 20,000,000.", config->sdr_general.sample_rate_hz);
+            log_error("Invalid HackRF sample rate %.15g Hz. Must be between 2,000,000 and 20,000,000.", config->sdr_general.sample_rate_hz);
             return false;
         }
     }

@@ -93,7 +93,7 @@ static bool calculate_and_validate_resample_ratio(AppConfig *config, AppContext*
     }
     else {
         app->dsp.is_passthrough = false;
-        log_info("Resampling enabled: %.10g Hz -> %.10g Hz (Ratio: %.10g)",
+        log_info("Resampling enabled: %.15g Hz -> %.15g Hz (Ratio: %.15g)",
                  input_rate_d, config->output_sample_rate.rate_hz, r);
     }
 
@@ -215,7 +215,7 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext* app, floa
 
     // FAIL FAST: If the input rate is unknown or invalid, we cannot safely configure the pipeline.
     if (input_rate <= 0.0) {
-        log_fatal("Internal Error: Input sample rate is invalid (%.0f Hz). Cannot calculate buffer depth.", input_rate);
+        log_fatal("Internal Error: Input sample rate is invalid (%.15g Hz). Cannot calculate buffer depth.", input_rate);
         log_error("Please check the input source configuration.");
         return false;
     }
@@ -303,7 +303,7 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext* app, floa
 
         app->pipeline.input_buffer_size = input_buffer_bytes;
 
-        log_info("Input Buffer: Allocating %zu bytes (%.2f sec capacity) at %.0f Hz.",
+        log_info("Input Buffer: Allocating %zu bytes (%.2f sec capacity) at %.15g Hz.",
                  input_buffer_bytes,
                  INPUT_BUFFER_DURATION_SEC,
                  input_rate);

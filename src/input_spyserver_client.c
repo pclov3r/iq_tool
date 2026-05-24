@@ -507,9 +507,9 @@ static bool spyserver_client_input_initialize(ModuleContext* ctx) {
     double actual_rate = supported_rates[best_rate_idx];
     uint32_t dec_index_to_send = min_dec + best_rate_idx;
     if (min_diff < 1.0) {
-        log_info("Using requested sample rate: %.0f Hz.", actual_rate);
+        log_info("Using requested sample rate: %.15g Hz.", actual_rate);
     } else {
-        log_info("Requested sample rate %.0f Hz. Using closest available rate: %.0f Hz.", user_rate, actual_rate);
+        log_info("Requested sample rate %.15g Hz. Using closest available rate: %.15g Hz.", user_rate, actual_rate);
     }
 
     app->module.source_info.sample_rate = (int)actual_rate;

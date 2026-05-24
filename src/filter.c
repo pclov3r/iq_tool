@@ -79,7 +79,7 @@ static bool _configure_filter_stage(AppConfig *config, AppContext* app) {
 
         if (max_filter_freq_hz > output_nyquist) {
             log_error("Filter configuration is incompatible with the output sample rate.");
-            log_error("The specified filter chain extends to %.0f Hz, but the output rate of %.0f Hz can only support frequencies up to %.0f Hz.",
+            log_error("The specified filter chain extends to %.15g Hz, but the output rate of %.15g Hz can only support frequencies up to %.15g Hz.",
                       max_filter_freq_hz, output_sample_rate, output_nyquist);
             return false;
         } else {

@@ -172,13 +172,13 @@ int main(int argc, char *argv[]) {
         double user_target_hz = config.sdr_general.rf_freq_hz;
         config.sdr_general.rf_freq_hz += config.sdr_general.frequency_offset_hz;
 
-        log_info("Applying Frequency Offset: Target %.0f Hz + Offset %+.0f Hz = Tuning to %.0f Hz",
+        log_info("Applying Frequency Offset: Target %.15g Hz + Offset %+.15g Hz = Tuning to %.15g Hz",
                  user_target_hz,
                  config.sdr_general.frequency_offset_hz,
                  config.sdr_general.rf_freq_hz);
 
         if (config.sdr_general.rf_freq_hz <= 0.0) {
-            log_error("Resulting hardware frequency is %.0f Hz, which is not valid. Aborting.", config.sdr_general.rf_freq_hz);
+            log_error("Resulting hardware frequency is %.15g Hz, which is not valid. Aborting.", config.sdr_general.rf_freq_hz);
             goto cleanup;
         }
     }
@@ -366,11 +366,11 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
     if (config->sdr_general.rf_freq_provided) {
         if (fabs(config->sdr_general.frequency_offset_hz) > 1e-9) {
             double user_target_hz = config->sdr_general.rf_freq_hz - config->sdr_general.frequency_offset_hz;
-            fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Actual Frequency", user_target_hz);
+            fprintf(stderr, " %-*s : %.15g Hz\n", max_label_len, "Actual Frequency", user_target_hz);
             fprintf(stderr, " %-*s : %+.0f Hz\n", max_label_len, "Frequency Offset", config->sdr_general.frequency_offset_hz);
-            fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Tuned Frequency", config->sdr_general.rf_freq_hz);
+            fprintf(stderr, " %-*s : %.15g Hz\n", max_label_len, "Tuned Frequency", config->sdr_general.rf_freq_hz);
         } else {
-            fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "RF Frequency", config->sdr_general.rf_freq_hz);
+            fprintf(stderr, " %-*s : %.15g Hz\n", max_label_len, "RF Frequency", config->sdr_general.rf_freq_hz);
         }
     }
 
@@ -430,10 +430,10 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
             char current_filter_desc[128];
             const FilterRequest* req = &config->dsp.filter.requests[i];
             switch (req->type) {
-                case FILTER_TYPE_LOWPASS: snprintf(current_filter_desc, sizeof(current_filter_desc), "LPF(%.0f Hz)", req->freq1_hz); break;
-                case FILTER_TYPE_HIGHPASS: snprintf(current_filter_desc, sizeof(current_filter_desc), "HPF(%.0f Hz)", req->freq1_hz); break;
-                case FILTER_TYPE_PASSBAND: snprintf(current_filter_desc, sizeof(current_filter_desc), "BPF(%.0f Hz, BW %.0f Hz)", req->freq1_hz, req->freq2_hz); break;
-                case FILTER_TYPE_STOPBAND: snprintf(current_filter_desc, sizeof(current_filter_desc), "BSF(%.0f Hz, BW %.0f Hz)", req->freq1_hz, req->freq2_hz); break;
+                case FILTER_TYPE_LOWPASS: snprintf(current_filter_desc, sizeof(current_filter_desc), "LPF(%.15g Hz)", req->freq1_hz); break;
+                case FILTER_TYPE_HIGHPASS: snprintf(current_filter_desc, sizeof(current_filter_desc), "HPF(%.15g Hz)", req->freq1_hz); break;
+                case FILTER_TYPE_PASSBAND: snprintf(current_filter_desc, sizeof(current_filter_desc), "BPF(%.15g Hz, BW %.15g Hz)", req->freq1_hz, req->freq2_hz); break;
+                case FILTER_TYPE_STOPBAND: snprintf(current_filter_desc, sizeof(current_filter_desc), "BSF(%.15g Hz, BW %.15g Hz)", req->freq1_hz, req->freq2_hz); break;
                 default: break;
             }
             if (i > 0) strncat(filter_buf, " + ", sizeof(filter_buf) - strlen(filter_buf) - 1);

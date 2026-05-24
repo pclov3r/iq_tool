@@ -193,7 +193,7 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
 
         case NRSC5_EVENT_SYNC:
             log_info("NRSC5: Synchronized");
-            log_info("NRSC5: Frequency offset: %.0f Hz", evt->sync.freq_offset);
+            log_info("NRSC5: Frequency offset: %.15g Hz", evt->sync.freq_offset);
             log_info("NRSC5: Primary service mode: %d", evt->sync.psmi);
             ctx->ber_min = 1.0f;
             ctx->ber_max = 0.0f;
