@@ -56,7 +56,7 @@ static bool stdin_input_validate_options(AppConfig* config) {
     }
 
     if (!s_stdin_config.sample_rate_provided) {
-        log_error("Missing required option --stdin-input-rate <hz> for stdin input.");
+        log_error("Missing required option --stdin-input-sample-rate <hz> for stdin input.");
         return false;
     }
     if (!s_stdin_config.format_str) {

@@ -155,7 +155,7 @@ bool validate_option_combinations(AppConfig *config) {
     if (!agc_validate_options(config)) return false;
 
     if (config->output_sample_rate.provided && config->preset_name) {
-        log_error("Option --output-rate cannot be used with --preset.");
+        log_error("Option --output-sample-rate cannot be used with --preset.");
         return false;
     }
     if (config->dsp.raw_passthrough) {
