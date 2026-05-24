@@ -391,7 +391,7 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
     const char* sample_type_str = get_format_info_by_enum(config->output.sample_format) ? get_format_info_by_enum(config->output.sample_format)->description_str : "Unknown";
     fprintf(stderr, " %-*s : %s\n", max_label_len, "Sample Type", sample_type_str);
 
-    fprintf(stderr, " %-*s : %.0f Hz\n", max_label_len, "Output Sample Rate", config->output_sample_rate.rate_hz);
+    fprintf(stderr, " %-*s : %.15g Hz\n", max_label_len, "Output Sample Rate", config->output_sample_rate.rate_hz);
 
     fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Input Gain", config->dsp.input_gain);
 

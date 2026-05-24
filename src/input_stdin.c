@@ -152,7 +152,7 @@ static void stdin_input_get_summary_info(const ModuleContext* ctx, InputSummaryI
     (void)ctx;
     add_summary_item(info, "Input Source", "Standard Input (stdin)");
     add_summary_item(info, "Input Format", "%s", s_stdin_config.format_str);
-    add_summary_item(info, "Input Sample Rate", "%.0f Hz", s_stdin_config.sample_rate_hz);
+    add_summary_item(info, "Input Sample Rate", "%.15g Hz", s_stdin_config.sample_rate_hz);
 }
 
 static InputModuleInterface s_stdin_input_api = {

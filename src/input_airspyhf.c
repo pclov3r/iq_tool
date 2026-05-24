@@ -204,7 +204,7 @@ static void airspyhf_input_get_summary_info(const ModuleContext* ctx, InputSumma
 
     add_summary_item(info, "Input Source", "Airspy HF+");
     add_summary_item(info, "Input Format", "32-bit Float Complex (cf32)");
-    add_summary_item(info, "Input Sample Rate", "%d Hz", app->module.source_info.sample_rate);
+    add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
 
     // Gain reporting
     if (s_airspyhf_config.agc_mode_provided) {

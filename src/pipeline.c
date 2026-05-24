@@ -74,7 +74,7 @@ static bool calculate_and_validate_resample_ratio(AppConfig *config, AppContext*
     // If the user didn't specify a rate (0), use the hardware/file input rate.
     if (config->output_sample_rate.rate_hz <= 0.0) {
         config->output_sample_rate.rate_hz = (double)app->module.source_info.sample_rate;
-        log_info("No output rate specified. Defaulting to native input rate: %.0f Hz", config->output_sample_rate.rate_hz);
+        log_info("No output rate specified. Defaulting to native input rate: %.15g Hz", config->output_sample_rate.rate_hz);
     }
 
     // --- Step 2: Calculate Ratio ---
@@ -232,7 +232,7 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext* app, floa
 
     app->pipeline.num_chunks = calculated_chunks;
 
-    log_info("Pipeline Sizing: Read=%zu samples, Alloc=%zu samples, Depth=%zu chunks (%.2f sec buffer at %.0f Hz)",
+    log_info("Pipeline Sizing: Read=%zu samples, Alloc=%zu samples, Depth=%zu chunks (%.2f sec buffer at %.15g Hz)",
               app->pipeline.read_chunk_size,
               app->pipeline.alloc_size_samples,
               app->pipeline.num_chunks,

@@ -162,7 +162,7 @@ static void hackrf_input_get_summary_info(const ModuleContext* ctx, InputSummary
     const AppContext* app = ctx->app;
     add_summary_item(info, "Input Source", "HackRF One");
     add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
-    add_summary_item(info, "Input Sample Rate", "%d Hz", app->module.source_info.sample_rate);
+    add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
 
     // as HackRF does not have a true hardware AGC. The gain is always fixed.
     add_summary_item(info, "LNA Gain", "%u dB", s_hackrf_config.lna_gain);

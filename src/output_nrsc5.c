@@ -591,7 +591,7 @@ static bool nrsc5_output_validate_options(AppConfig* config) {
     // Override User Settings
     if (config->output_sample_rate.rate_hz != required_rate) {
         if (config->output_sample_rate.provided) {
-            log_warn("NRSC5: Ignoring user output rate %.0f Hz. Forcing required rate %.5f Hz.",
+            log_warn("NRSC5: Ignoring user output rate %.15g Hz. Forcing required rate %.15g Hz.",
                      config->output_sample_rate.rate_hz, required_rate);
         }
         config->output_sample_rate.rate_hz = required_rate;
