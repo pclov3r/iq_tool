@@ -164,6 +164,10 @@ bool validate_option_combinations(AppConfig *config) {
             log_error("--raw-passthrough cannot be used with any other DSP options.");
             return false;
         }
+        if (config->output.type == OUTPUT_TYPE_AUDIO) {
+            log_error("Option --raw-passthrough cannot be used with audio demodulation modules.");
+            return false;
+        }
     }
 
     return true;
