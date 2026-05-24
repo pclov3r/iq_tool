@@ -12,11 +12,7 @@ if(NRSC5_INCLUDE_DIR AND NRSC5_LIBRARY)
 endif()
 
 if(NOT NRSC5_FOUND_MANUAL)
-    if(CMAKE_CROSSCOMPILING)
-         message(STATUS "Attempting explicit search for libnrsc5 (cross-compile)...")
-    else()
-         message(STATUS "Attempting explicit search for libnrsc5 (native)...")
-    endif()
+    message(STATUS "Attempting explicit search for libnrsc5...")
 
     find_path(NRSC5_INCLUDE_DIR NAMES nrsc5.h
         HINTS ENV NRSC5Include PATHS /usr/local/include /usr/include /opt/local/include)

@@ -13,7 +13,7 @@ if(EXPAT_INCLUDE_DIR AND EXPAT_LIBRARY)
 endif()
 
 if(NOT EXPAT_FOUND_MANUAL AND PKG_CONFIG_FOUND)
-    message(STATUS "Attempting pkg-config for Expat (native build)...")
+    message(STATUS "Attempting pkg-config for Expat...")
     pkg_check_modules(PC_EXPAT QUIET expat)
     if(PC_EXPAT_FOUND)
         set(Expat_INCLUDE_DIRS ${PC_EXPAT_INCLUDE_DIRS})

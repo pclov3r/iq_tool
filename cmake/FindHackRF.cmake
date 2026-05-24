@@ -13,7 +13,7 @@ if(HACKRF_INCLUDE_DIR AND HACKRF_LIBRARY)
 endif()
 
 if(NOT HACKRF_FOUND_MANUAL AND PKG_CONFIG_FOUND)
-    message(STATUS "Attempting pkg-config for libhackrf (native build)...")
+    message(STATUS "Attempting pkg-config for libhackrf...")
     pkg_check_modules(PC_HACKRF QUIET libhackrf)
     if(PC_HACKRF_FOUND)
         set(HackRF_INCLUDE_DIRS ${PC_HACKRF_INCLUDE_DIRS})

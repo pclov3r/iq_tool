@@ -13,7 +13,7 @@ if(AIRSPYHF_INCLUDE_DIR AND AIRSPYHF_LIBRARY)
 endif()
 
 if(NOT AIRSPYHF_FOUND_MANUAL AND PKG_CONFIG_FOUND)
-    message(STATUS "Attempting pkg-config for libairspyhf (native build)...")
+    message(STATUS "Attempting pkg-config for libairspyhf...")
     pkg_check_modules(PC_AIRSPYHF QUIET libairspyhf)
     if(PC_AIRSPYHF_FOUND)
         set(AirspyHF_INCLUDE_DIRS ${PC_AIRSPYHF_INCLUDE_DIRS})

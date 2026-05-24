@@ -13,7 +13,7 @@ if(LIBUSB_INCLUDE_DIR AND LIBUSB_LIBRARY)
 endif()
 
 if(NOT LIBUSB_FOUND_MANUAL AND PKG_CONFIG_FOUND)
-    message(STATUS "Attempting pkg-config for libusb-1.0 (native build)...")
+    message(STATUS "Attempting pkg-config for libusb-1.0...")
     pkg_check_modules(PC_LIBUSB QUIET libusb-1.0)
     if(PC_LIBUSB_FOUND)
         set(LibUSB_INCLUDE_DIRS ${PC_LIBUSB_INCLUDE_DIRS})

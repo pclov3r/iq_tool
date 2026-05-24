@@ -14,7 +14,7 @@ if(AIRSPY_INCLUDE_DIR AND AIRSPY_LIBRARY)
 endif()
 
 if(NOT AIRSPY_FOUND_MANUAL AND PKG_CONFIG_FOUND)
-    message(STATUS "Attempting pkg-config for libairspy (native build)...")
+    message(STATUS "Attempting pkg-config for libairspy...")
     pkg_check_modules(PC_AIRSPY QUIET libairspy)
     if(PC_AIRSPY_FOUND)
         set(Airspy_INCLUDE_DIRS ${PC_AIRSPY_INCLUDE_DIRS})

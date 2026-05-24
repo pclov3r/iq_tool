@@ -7,8 +7,11 @@ project(iq_tool C)
 # Add our local 'cmake' folder to the search path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-if(NOT CMAKE_BUILD_TYPE)
-   set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the build type: Debug Release RelWithDebInfo MinSizeRel" FORCE)
+# Set default build type to 'Release' if not specified and not a multi-config generator
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+   set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the build type: Debug Release DebugTSan DebugMSan RelWithDebInfo MinSizeRel" FORCE)
+   # Set the possible values for cmake-gui and IDE drop-down lists
+   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "DebugTSan" "DebugMSan" "MinSizeRel" "RelWithDebInfo")
    message(STATUS "Build type not specified: defaulting to 'Release'.")
 endif()
 message(STATUS "Build type set to '${CMAKE_BUILD_TYPE}'")
@@ -92,23 +95,15 @@ endif()
 #=======================================================================
 find_package(PkgConfig QUIET)
 
-message(STATUS "Looking for required library: libsndfile...")
+message(STATUS "Searching for required system libraries...")
 find_package(SndFile REQUIRED)
-
-message(STATUS "Looking for required library: liquid-dsp...")
 find_package(LiquidDSP REQUIRED)
-
-message(STATUS "Looking for required library: Expat...")
 find_package(Expat REQUIRED)
-
-message(STATUS "Looking for required threading library: pthreads...")
 find_package(Threads REQUIRED)
 
 # --- Redsea Dependency ---
 if(WITH_REDSEA)
-    message(STATUS "Looking for Redsea dependencies (IconV)...")
     if(ICONV_INCLUDE_DIR AND ICONV_LIBRARY)
-        message(STATUS "Using manual libiconv paths.")
         if(NOT TARGET Iconv::Iconv)
             add_library(Iconv::Iconv UNKNOWN IMPORTED)
             set_target_properties(Iconv::Iconv PROPERTIES
@@ -126,44 +121,34 @@ endif()
 
 # Hardware Dependency Logic
 if(WITH_RTLSDR OR WITH_AIRSPY OR WITH_AIRSPYHF OR WITH_HACKRF OR WITH_BLADERF)
-    message(STATUS "Looking for required library: libusb-1.0...")
     find_package(LibUSB REQUIRED)
-else()
-    message(STATUS "libusb-1.0 search skipped (no USB-based SDRs enabled).")
 endif()
 
 if(WITH_RTLSDR)
-    message(STATUS "Looking for required library: librtlsdr...")
     find_package(RtlSdr REQUIRED)
 endif()
 
 if(WITH_AIRSPY)
-    message(STATUS "Looking for required library: libairspy...")
     find_package(Airspy REQUIRED)
 endif()
 
 if(WITH_AIRSPYHF)
-    message(STATUS "Looking for required library: libairspyhf...")
     find_package(AirspyHF REQUIRED)
 endif()
 
 if(WITH_SDRPLAY)
-    message(STATUS "Looking for required library: SDRplay API...")
     find_package(SDRplay REQUIRED)
 endif()
 
 if(WITH_HACKRF)
-    message(STATUS "Looking for required library: libhackrf...")
     find_package(HackRF REQUIRED)
 endif()
 
 if(WITH_BLADERF)
-    message(STATUS "Looking for required library: libbladeRF...")
     find_package(BladeRF REQUIRED)
 endif()
 
 if(WITH_NRSC5)
-    message(STATUS "Looking for required library: libnrsc5...")
     find_package(NRSC5 REQUIRED)
 endif()
 
@@ -335,13 +320,13 @@ endif()
 include(CheckIPOSupported)
 check_ipo_supported(RESULT LTO_SUPPORTED)
 
-# Do not enable LTO in Debug mode. It breaks debugging and sanitizers.
+# Do not enable LTO in Debug, DebugTSan, or DebugMSan modes. It breaks debugging and sanitizers.
 if(LTO_SUPPORTED)
-    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
         set_property(TARGET iq_tool PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
         message(STATUS "Link-Time Optimization (LTO) enabled for target.")
     else()
-        message(STATUS "Link-Time Optimization (LTO) disabled for Debug build.")
+        message(STATUS "Link-Time Optimization (LTO) disabled for Debug/Sanitizer builds.")
     endif()
 endif()
 
@@ -368,15 +353,19 @@ endif()
 target_compile_definitions(iq_tool PRIVATE GIT_HASH="${VERSION_INFO}")
 target_compile_definitions(iq_tool PRIVATE APP_NAME="${PROJECT_NAME}")
 
-# Apply Compiler Options
+# Apply Compiler Options based on active Build Type
 target_compile_options(iq_tool PRIVATE
-    $<IF:$<CONFIG:Debug>,-ggdb -fsanitize=undefined -fsanitize=address -fno-omit-frame-pointer,>
-    $<IF:$<CONFIG:Release>,${RELEASE_COMPILE_OPTIONS},>
+    $<$<CONFIG:Debug>:-O0 -ggdb -fsanitize=address,undefined -fno-omit-frame-pointer>
+    $<$<CONFIG:DebugTSan>:-O0 -ggdb -fsanitize=thread -fno-omit-frame-pointer>
+    $<$<CONFIG:DebugMSan>:-O0 -ggdb -fsanitize=memory -fno-omit-frame-pointer>
+    $<$<CONFIG:Release>:${RELEASE_COMPILE_OPTIONS}>
 )
 
-# Ensure Sanitizers are passed to the Linker as well (Critical for ASan)
+# Ensure Sanitizers are passed to the Linker as well (Critical for Sanitizers)
 target_link_options(iq_tool PRIVATE
-    $<$<CONFIG:Debug>:-fsanitize=address -fsanitize=undefined>
+    $<$<CONFIG:Debug>:-fsanitize=address,undefined>
+    $<$<CONFIG:DebugTSan>:-fsanitize=thread>
+    $<$<CONFIG:DebugMSan>:-fsanitize=memory>
 )
 
 # Suppress LTO type mismatch warnings for Redsea C++/liquid-dsp interop
@@ -393,7 +382,6 @@ set_source_files_properties(${NETWORK_SOURCES} PROPERTIES COMPILE_OPTIONS "-fsta
 #=======================================================================
 # Linking
 #=======================================================================
-message(STATUS "Linking libraries...")
 target_link_libraries(iq_tool PRIVATE
     ${SndFile_LIBRARIES}
     ${LiquidDSP_LIBRARIES}
@@ -448,11 +436,9 @@ else()
     set(PRESET_INSTALL_PATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}")
     install(FILES iq_tool_presets.conf DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
-message(STATUS "Installing presets to: ${PRESET_INSTALL_PATH}")
 
 if(WITH_BLADERF AND UNIX)
     install(DIRECTORY fpga DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME})
-    message(STATUS "Installing BladeRF FPGA files to: ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/fpga")
 endif()
 
 if(BUILD_DOCUMENTATION)
@@ -468,13 +454,7 @@ message(STATUS "--------------------------------------------------")
 message(STATUS "Configuration Summary:")
 message(STATUS "  Build Type:          ${CMAKE_BUILD_TYPE}")
 message(STATUS "  CPU Target Arch:     ${CPU_TARGET_ARCHITECTURE}")
-if(WIN32)
-    message(STATUS "  Build Target:        Windows")
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    message(STATUS "  Build Target:        Linux")
-else()
-    message(STATUS "  Build Target:        ${CMAKE_SYSTEM_NAME}")
-endif()
+message(STATUS "  Build Target:        ${CMAKE_SYSTEM_NAME}")
 if(LTO_SUPPORTED AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     message(STATUS "  Link-Time Opt:       ENABLED")
 else()
@@ -494,7 +474,7 @@ message(STATUS "  Threads:             Threads::Threads")
 if(WITH_REDSEA)
     message(STATUS "  Redsea RDS:          ENABLED")
 else()
-    message(STATUS "  Redsea RDS:          DISABLED")
+    message(STATUS "  Redsea RDS:          DISABLED (use -DWITH_REDSEA=ON to enable)")
 endif()
 
 if(WITH_RTLSDR)

@@ -13,7 +13,7 @@ if(RTLSDR_INCLUDE_DIR AND RTLSDR_LIBRARY)
 endif()
 
 if(NOT RTLSDR_FOUND_MANUAL AND PKG_CONFIG_FOUND)
-    message(STATUS "Attempting pkg-config for librtlsdr (native build)...")
+    message(STATUS "Attempting pkg-config for librtlsdr...")
     pkg_check_modules(PC_RTLSDR QUIET librtlsdr)
     if(PC_RTLSDR_FOUND)
         set(RtlSdr_INCLUDE_DIRS ${PC_RTLSDR_INCLUDE_DIRS})

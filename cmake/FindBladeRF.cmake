@@ -13,7 +13,7 @@ if(BLADERF_INCLUDE_DIR AND BLADERF_LIBRARY)
 endif()
 
 if(NOT BLADERF_FOUND_MANUAL AND PKG_CONFIG_FOUND)
-    message(STATUS "Attempting pkg-config for libbladeRF (native build)...")
+    message(STATUS "Attempting pkg-config for libbladeRF...")
     pkg_check_modules(PC_BLADERF QUIET libbladeRF)
     if(PC_BLADERF_FOUND)
         set(BladeRF_INCLUDE_DIRS ${PC_BLADERF_INCLUDE_DIRS})
