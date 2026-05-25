@@ -216,7 +216,7 @@ int main(int argc, char *argv[]) {
     app.stats.start_time = time(NULL);
 
     if (!pipeline_run(&pipeline_context)) {
-        log_error("Pipeline execution failed.");
+        log_fatal("Pipeline execution failed.");
     }
 
     bool processing_ok = !app.stats.error_occurred;
