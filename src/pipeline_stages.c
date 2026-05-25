@@ -277,7 +277,7 @@ void* pipeline_thread_pre_processor(void* arg) {
             pre_processor_apply_chain(&app->dsp, item);
         }
 
-        if (app->dsp.is_passthrough) {
+        if (app->dsp.bypass_resampler) {
             item->frames_to_write = (unsigned int)item->frames_read;
             // Copy data to the post-resample buffer since the resampler thread is bypassed
             memcpy(item->post_resample_buffer, item->pre_resample_buffer, item->frames_to_write * sizeof(ComplexFloat));
@@ -319,7 +319,7 @@ void* pipeline_thread_resampler(void* arg) {
         }
 
         unsigned int output_frames_this_chunk = 0;
-        if (app->dsp.is_passthrough) {
+        if (app->dsp.bypass_resampler) {
             output_frames_this_chunk = (unsigned int)item->frames_read;
             memcpy(item->post_resample_buffer, item->pre_resample_buffer, output_frames_this_chunk * sizeof(ComplexFloat));
         } else if (item->frames_read > 0) {

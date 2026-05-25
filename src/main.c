@@ -451,7 +451,7 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Output AGC", "Disabled");
     }
 
-    fprintf(stderr, " %-*s : %s\n", max_label_len, "Resampling", app->dsp.is_passthrough ? "Disabled (Passthrough Mode)" : "Enabled");
+    fprintf(stderr, " %-*s : %s\n", max_label_len, "Resampling", app->dsp.bypass_resampler ? "Disabled (Passthrough Mode)" : "Enabled");
 
     if (config->output.path_arg != NULL) {
         const char* out_path;

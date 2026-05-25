@@ -234,7 +234,7 @@ typedef struct DspContext {
 
     float  resample_ratio;
     double nco_shift_hz;
-    bool   is_passthrough;
+    bool   bypass_resampler;
 } DspContext;
 
 // --- 4. Runtime Context (Metrics & Telemetry) ---

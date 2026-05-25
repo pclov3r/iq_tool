@@ -7,7 +7,7 @@
 
 Resampler* resampler_create(const AppConfig *config, AppContext* app, float resample_ratio) {
     (void)config; // config is not used here but kept for API consistency
-    if (app->dsp.is_passthrough) {
+    if (app->dsp.bypass_resampler) {
         return NULL; // No resampler needed in passthrough mode.
     }
 

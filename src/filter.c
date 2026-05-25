@@ -43,7 +43,7 @@
 static bool _configure_filter_stage(AppConfig *config, AppContext* app) {
     config->dsp.filter.apply_post_resample = false;
 
-    if (config->dsp.filter.count == 0 || app->dsp.is_passthrough || config->dsp.raw_passthrough) {
+    if (config->dsp.filter.count == 0 || app->dsp.bypass_resampler || config->dsp.raw_passthrough) {
         return true;
     }
 

@@ -84,15 +84,15 @@ static bool calculate_and_validate_resample_ratio(AppConfig *config, AppContext*
     // --- Step 3: Check for Passthrough Conditions ---
     if (config->dsp.raw_passthrough) {
         log_info("Raw Passthrough mode enabled: Bypassing all DSP blocks.");
-        app->dsp.is_passthrough = true;
+        app->dsp.bypass_resampler = true;
         r = 1.0f; // Force ratio to 1.0 for buffer calcs
     }
     else if (fabs(r - 1.0f) < 1e-6) {
-        app->dsp.is_passthrough = true;
+        app->dsp.bypass_resampler = true;
         r = 1.0f; // Snap to exact 1.0
     }
     else {
-        app->dsp.is_passthrough = false;
+        app->dsp.bypass_resampler = false;
         log_info("Resampling enabled: %.15g Hz -> %.15g Hz (Ratio: %.15g)",
                  input_rate_d, config->output_sample_rate.rate_hz, r);
     }
@@ -363,7 +363,7 @@ bool pipeline_run(PipelineContext* context) {
     if (threads_ok && !thread_manager_spawn_thread(&manager, "Reader", pipeline_thread_reader)) threads_ok = false;
     if (threads_ok && !config->dsp.raw_passthrough) {
         if (!thread_manager_spawn_thread(&manager, "Pre-Processor", pipeline_thread_pre_processor)) threads_ok = false;
-        if (threads_ok && !app->dsp.is_passthrough) {
+        if (threads_ok && !app->dsp.bypass_resampler) {
             if (!thread_manager_spawn_thread(&manager, "Resampler", pipeline_thread_resampler)) threads_ok = false;
         }
         if (threads_ok && !thread_manager_spawn_thread(&manager, "Post-Processor", pipeline_thread_post_processor)) threads_ok = false;
@@ -400,7 +400,7 @@ static bool _create_dsp_components(AppConfig* config, AppContext* app, float res
     if (!iq_correction_init(config, app, &app->pipeline.setup_arena)) return false;
     if (!freq_shift_create(config, app)) return false;
     app->dsp.resampler = resampler_create(config, app, resample_ratio);
-    if (!app->dsp.resampler && !app->dsp.is_passthrough) return false;
+    if (!app->dsp.resampler && !app->dsp.bypass_resampler) return false;
     if (!filter_create(config, app, &app->pipeline.setup_arena)) return false;
     if (!agc_create(config, app)) return false;
 
@@ -441,7 +441,7 @@ static bool _init_queues_and_buffers(AppConfig* config, AppContext* app) {
         last_output_queue = app->pipeline.pre_processor_output_queue;
     }
 
-    if (!config->dsp.raw_passthrough && !app->dsp.is_passthrough) {
+    if (!config->dsp.raw_passthrough && !app->dsp.bypass_resampler) {
         app->pipeline.resampler_input_queue = last_output_queue;
         app->pipeline.resampler_output_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
         if (!app->pipeline.resampler_output_queue || !queue_init(app->pipeline.resampler_output_queue, queue_capacity, arena)) return false;
