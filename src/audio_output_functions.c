@@ -56,7 +56,7 @@ AudioOutputContext* audio_output_create(struct MemoryArena* arena, int sample_ra
     ctx->channels = channels;
 
     // 1. Setup Audio Ring Buffer
-    ctx->audio_ring_buffer = ring_buffer_create(buffer_size_bytes);
+    ctx->audio_ring_buffer = ring_buffer_create(buffer_size_bytes, arena);
     if (!ctx->audio_ring_buffer) {
         log_fatal("AudioOutput: Failed to create ring buffer.");
         return NULL;

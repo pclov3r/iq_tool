@@ -7,6 +7,9 @@
 #include <string.h>
 #include <errno.h>
 
+// Ensure arena alignment is a power of 2 for our bitwise alignment math
+_Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_ARENA_ALIGNMENT must be a power of 2");
+
 /**
  * @brief Initializes a memory arena with a specified capacity.
  * @param arena Pointer to the MemoryArena struct to initialize.

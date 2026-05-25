@@ -14,7 +14,9 @@ typedef struct RingBuffer RingBuffer;
  * @param capacity The total size of the buffer in bytes.
  * @return A pointer to the new RingBuffer, or NULL on failure.
  */
-RingBuffer* ring_buffer_create(size_t capacity);
+struct MemoryArena;
+
+RingBuffer* ring_buffer_create(size_t capacity, struct MemoryArena* arena);
 
 /**
  * @brief Destroys an I/O buffer and frees all associated memory.

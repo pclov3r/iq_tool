@@ -37,18 +37,15 @@
  */
 #define MEM_ARENA_ALIGNMENT 32
 
-// Ensure arena alignment is a power of 2 for aligned_alloc
-_Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_ARENA_ALIGNMENT must be a power of 2");
-
 /**
  * @def MEM_ARENA_SIZE_BYTES
- * @brief The size of the single memory arena for all startup allocations.
+ * @brief The size of the single memory arena for all startup and buffer allocations.
  *
  * Purpose: To hold all DSP objects, configuration strings, and other setup data,
- * eliminating hundreds of small `malloc` calls at startup.
- * Trade-off: Must be large enough to hold all initialization data. 16MB is safe.
+ * eliminating hundreds of small malloc calls at startup.
+ * Trade-off: Must hold large SDR buffers. 1 GB is safe as allocation is virtual.
  */
-#define MEM_ARENA_SIZE_BYTES (16 * 1024 * 1024) // 16 MB
+#define MEM_ARENA_SIZE_BYTES (1024 * 1024 * 1024) // 1 GB
 
 /**
  * @def INPUT_BUFFER_DURATION_SEC

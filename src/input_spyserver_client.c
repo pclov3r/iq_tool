@@ -587,7 +587,7 @@ static bool spyserver_client_input_initialize(ModuleContext* ctx) {
              (double)desired_buffer_size / bytes_per_sec,
              SPYSERVER_PREBUFFER_TARGET_SECONDS);
 
-    p->stream_buffer = ring_buffer_create(desired_buffer_size);
+    p->stream_buffer = ring_buffer_create(desired_buffer_size, &app->pipeline.setup_arena);
     if (!p->stream_buffer) {
         networking_disconnect(p->net_ctx);
         networking_cleanup();

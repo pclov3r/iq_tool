@@ -1,4 +1,5 @@
 #include "ring_buffer.h"
+#include "mem_arena.h"
 #include "platform.h"
 #include "constants.h"
 #include <stdlib.h>
@@ -50,22 +51,22 @@ struct RingBuffer {
 #endif
 };
 
-RingBuffer* ring_buffer_create(size_t capacity) {
-    RingBuffer* iob = (RingBuffer*)malloc(sizeof(RingBuffer));
+RingBuffer* ring_buffer_create(size_t capacity, MemoryArena* arena) {
+    RingBuffer* iob = (RingBuffer*)mem_arena_alloc(arena, sizeof(RingBuffer), true);
     if (!iob) {
-        log_fatal("Failed to allocate memory for RingBuffer struct.");
+        log_fatal("Failed to allocate memory for RingBuffer struct from arena.");
         return NULL;
     }
 
-iob->buffer = (unsigned char*)aligned_alloc(MEM_ARENA_ALIGNMENT, capacity);
+    size_t aligned_capacity = (capacity + MEM_ARENA_ALIGNMENT - 1) & ~(MEM_ARENA_ALIGNMENT - 1);
 
+    iob->buffer = (unsigned char*)mem_arena_alloc(arena, aligned_capacity, false);
     if (!iob->buffer) {
-        log_fatal("Failed to allocate memory for RingBuffer data buffer of size %zu bytes.", capacity);
-        free(iob);
+        log_fatal("Failed to allocate memory for RingBuffer data buffer from arena.");
         return NULL;
     }
 
-    iob->capacity = capacity;
+    iob->capacity = aligned_capacity;
     atomic_init(&iob->write_pos, 0);
     atomic_init(&iob->read_pos, 0);
     atomic_init(&iob->end_of_stream, false);
@@ -75,14 +76,12 @@ iob->buffer = (unsigned char*)aligned_alloc(MEM_ARENA_ALIGNMENT, capacity);
     pthread_cond_init(&iob->space_free_cond, NULL);
 
 #ifdef _WIN32
-    // reset event, initially nonsignaled
     iob->block_ready_event = CreateEvent(NULL, FALSE, FALSE, NULL);
     if (!iob->block_ready_event) {
         log_fatal("Failed to create RingBuffer event.");
         return NULL;
     }
 #else
-    // Init POSIX manual event
     if (pthread_mutex_init(&iob->event_mutex, NULL) != 0) {
         log_fatal("Failed to initialize RingBuffer event mutex.");
         return NULL;
@@ -90,8 +89,6 @@ iob->buffer = (unsigned char*)aligned_alloc(MEM_ARENA_ALIGNMENT, capacity);
 
     pthread_condattr_t attr;
     pthread_condattr_init(&attr);
-    // Use Monotonic Clock.
-    // Prevents hangs if system time jumps backward (NTP).
     pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
 
     if (pthread_cond_init(&iob->event_cond, &attr) != 0) {
@@ -109,6 +106,7 @@ iob->buffer = (unsigned char*)aligned_alloc(MEM_ARENA_ALIGNMENT, capacity);
 
 void ring_buffer_destroy(RingBuffer* iob) {
     if (!iob) return;
+    
     pthread_mutex_destroy(&iob->sync_mutex);
     pthread_cond_destroy(&iob->space_free_cond);
 
@@ -120,11 +118,6 @@ void ring_buffer_destroy(RingBuffer* iob) {
     pthread_mutex_destroy(&iob->event_mutex);
     pthread_cond_destroy(&iob->event_cond);
 #endif
-
-    if (iob->buffer) {
-        aligned_free(iob->buffer);
-    }
-    free(iob);
 }
 
 // PRODUCER: High Priority, Lock-Free, Never Sleeps

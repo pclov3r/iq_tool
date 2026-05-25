@@ -474,7 +474,7 @@ static bool _init_queues_and_buffers(AppConfig* config, AppContext* app) {
     }
 
     if (app->pipeline_mode != PIPELINE_MODE_FILE_PROCESSING) {
-        app->pipeline.source_input_buffer = ring_buffer_create(app->pipeline.input_buffer_size);
+        app->pipeline.source_input_buffer = ring_buffer_create(app->pipeline.input_buffer_size, arena);
         if (!app->pipeline.source_input_buffer) return false;
     }
     return true;
