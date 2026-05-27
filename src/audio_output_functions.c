@@ -1,6 +1,6 @@
 /**
  * @file audio_output_functions.c
- * @brief Implements the unified audio output using Miniaudio and a lock-free RingBuffer.
+ * @brief Implements the unified audio output using a lock-free RingBuffer.
  */
 
 #include "audio_output_functions.h"
@@ -11,6 +11,7 @@
 #include "mem_arena.h"
 #include "signal_handler.h"
 #include <string.h>
+#include <sndfile.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -24,6 +25,7 @@ struct AudioOutputContext {
     bool audio_device_initialized;
     size_t buffer_size;
     int channels;
+    SNDFILE* wav_writer;
 };
 
 // --- Miniaudio Callback ---
@@ -41,19 +43,39 @@ static void miniaudio_data_callback(ma_device* pDevice, void* pOutput, const voi
         memset((uint8_t*)pOutput + available, 0, bytes_needed - available);
         return;
     }
-    
+
     // Normal: Pull the exact requested amount of data.
     ring_buffer_read(ctx->audio_ring_buffer, pOutput, bytes_needed);
 }
 
 // --- Public API ---
 
-AudioOutputContext* audio_output_create(struct MemoryArena* arena, int sample_rate, int channels, size_t buffer_size_bytes) {
+AudioOutputContext* audio_output_create(struct MemoryArena* arena, int sample_rate, int channels, size_t buffer_size_bytes, const char* writer_path, bool is_rf64, bool mute_audio) {
     AudioOutputContext* ctx = (AudioOutputContext*)mem_arena_alloc(arena, sizeof(AudioOutputContext), true);
     if (!ctx) return NULL;
 
     ctx->buffer_size = buffer_size_bytes;
     ctx->channels = channels;
+
+    ctx->wav_writer = NULL;
+    if (writer_path) {
+        if (utils_check_file_exists(writer_path)) {
+            if (!utils_prompt_for_overwrite(writer_path)) {
+                return NULL;
+            }
+        }
+        int format_flag = is_rf64 ? SF_FORMAT_RF64 : SF_FORMAT_WAV;
+        SF_INFO sfinfo = { .samplerate = sample_rate, .channels = channels, .format = format_flag | SF_FORMAT_PCM_16 };
+        ctx->wav_writer = sf_open(writer_path, SFM_WRITE, &sfinfo);
+        if (!ctx->wav_writer) log_error("AudioOutput: Failed to open audio writer file.");
+    }
+
+    if (mute_audio) {
+        log_info("AudioOutput: Playback muted. Pipeline will run at maximum speed.");
+        ctx->audio_device_initialized = false;
+        ctx->audio_ring_buffer = NULL;
+        return ctx;
+    }
 
     // 1. Setup Audio Ring Buffer
     ctx->audio_ring_buffer = ring_buffer_create(buffer_size_bytes, arena);
@@ -93,7 +115,15 @@ AudioOutputContext* audio_output_create(struct MemoryArena* arena, int sample_ra
 }
 
 size_t audio_output_write(AudioOutputContext* ctx, const void* pcm_data, size_t bytes, PipelineMode mode) {
-    if (!ctx || !ctx->audio_ring_buffer || bytes == 0) return 0;
+    if (!ctx || bytes == 0) return 0;
+
+    if (ctx->wav_writer) {
+        sf_write_short(ctx->wav_writer, (const short*)pcm_data, bytes / sizeof(int16_t));
+    }
+
+    if (!ctx->audio_device_initialized || !ctx->audio_ring_buffer) {
+        return bytes;
+    }
 
     // --- CONDITIONAL BACKPRESSURE ---
     if (mode == PIPELINE_MODE_FILE_PROCESSING) {
@@ -153,6 +183,10 @@ void audio_output_flush(AudioOutputContext* ctx) {
 
 void audio_output_destroy(AudioOutputContext* ctx) {
     if (!ctx) return;
+    if (ctx->wav_writer) {
+        sf_close(ctx->wav_writer);
+        ctx->wav_writer = NULL;
+    }
     if (ctx->audio_device_initialized) {
         ma_device_uninit(&ctx->audio_device);
         ctx->audio_device_initialized = false;

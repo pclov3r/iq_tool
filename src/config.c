@@ -51,7 +51,7 @@ static void add_filter_request(AppConfig *config, FilterType type, float f1, flo
 bool validate_output_type_and_sample_format(AppConfig *config) {
     const Module* out_mod = module_get(config->output.module_name, MODULE_TYPE_OUTPUT, NULL);
     if (out_mod) {
-        config->output.payload = out_mod->output_type;
+        config->output.payload = out_mod->payload;
     }
 
     if (!config->output.sample_format_str) {
@@ -148,6 +148,13 @@ bool validate_option_combinations(AppConfig *config) {
         int n = config->dsp.filter.args.fft_size;
         if (n <= 0 || ((n & (n - 1)) != 0)) {
             log_error("--filter-fft-size must be a positive power of two.");
+            return false;
+        }
+    }
+
+    if (config->dsp.audio_writer_path != NULL || config->dsp.mute_audio) {
+        if (config->output.payload != PAYLOAD_AUDIO) {
+            log_error("Options --audio-writer and --mute-audio can only be used with audio demodulation modules.");
             return false;
         }
     }

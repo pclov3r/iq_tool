@@ -27,28 +27,13 @@ typedef struct {
 } RawfileOutputContext;
 
 // --- Helper Functions (migrated from output_writer.c) ---
-static bool prompt_for_overwrite(const char* path_for_messages) {
-    fprintf(stderr, "\nOutput file %s exists.\nOverwrite? (y/n): ", path_for_messages);
-    int response = getchar();
-    if (response != '\n' && response != EOF) {
-        utils_clear_stdin();
-    }
-    response = tolower(response);
-    if (response != 'y') {
-        if (response != '\n' && response != EOF) {
-            log_info("Operation cancelled by user.");
-        }
-        return false;
-    }
-    return true;
-}
 
 #ifdef _WIN32
 static FILE* _secure_open_for_write(const AppConfig* config, const char* out_path_utf8) {
     HANDLE hFile = CreateFileW(config->output.effective_path_w, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
         if (GetLastError() == ERROR_FILE_EXISTS) {
-            if (!prompt_for_overwrite(out_path_utf8)) {
+            if (!utils_prompt_for_overwrite(out_path_utf8)) {
                 return NULL;
             }
             hFile = CreateFileW(config->output.effective_path_w, GENERIC_WRITE, 0, NULL, TRUNCATE_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -84,7 +69,7 @@ static FILE* _secure_open_for_write(const char* out_path_utf8) {
             close(fd);
             return NULL;
         }
-        if (!prompt_for_overwrite(out_path_utf8)) {
+        if (!utils_prompt_for_overwrite(out_path_utf8)) {
             close(fd);
             return NULL;
         }

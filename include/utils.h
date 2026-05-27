@@ -91,3 +91,8 @@ bool utils_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz,
 bool utils_check_file_exists(const char* full_path);
 
 #endif // UTILS_H_
+
+/**
+ * @brief Prompts the user for permission to overwrite a file.
+ */
+bool utils_prompt_for_overwrite(const char* path_for_messages);

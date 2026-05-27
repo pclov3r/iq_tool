@@ -116,7 +116,7 @@ static bool nfm_output_initialize(ModuleContext* ctx) {
     NfmContext* p = (NfmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(NfmContext), true);
     res->module.output_private_data = p;
 
-    p->audio_out = audio_output_create(&res->pipeline.setup_arena, NFM_AUDIO_RATE, NFM_AUDIO_CHANNELS, NFM_AUDIO_BUFFER_SIZE);
+    p->audio_out = audio_output_create(&res->pipeline.setup_arena, NFM_AUDIO_RATE, NFM_AUDIO_CHANNELS, NFM_AUDIO_BUFFER_SIZE, ctx->config->dsp.audio_writer_path, ctx->config->dsp.audio_writer_rf64, ctx->config->dsp.mute_audio);
     if (!p->audio_out) return false;
 
     // 3. DSP Setup

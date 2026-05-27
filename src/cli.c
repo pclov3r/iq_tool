@@ -80,8 +80,15 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_GROUP("Required Input & Output"),
         OPT_STRING('i', "input", &config->input.type_name, "Specifies the input module.", NULL, 0, 0),
         OPT_STRING('o', "output", &config->output.module_name, "Specifies the output module and optional file path", NULL, 0, 0),
+
         OPT_GROUP("Output Options"),
         OPT_STRING(0, "output-sample-format", &config->output.sample_format_str, "Sample format for output data {cs8|cu8|cs16|...}", NULL, 0, 0),
+
+        OPT_GROUP("Audio Output Options"),
+        OPT_STRING(0, "audio-writer", &config->dsp.audio_writer_path, "Save demodulated audio to a WAV file.", NULL, 0, 0),
+        OPT_BOOLEAN(0, "audio-writer-rf64", &config->dsp.audio_writer_rf64, "Use RF64 format for the audio writer (supports >4GB files).", NULL, 0, 0),
+        OPT_BOOLEAN(0, "mute-audio", &config->dsp.mute_audio, "Disable speaker playback", NULL, 0, 0),
+
         OPT_GROUP("Processing Options"),
         OPT_DOUBLE(0, "output-sample-rate", &config->output_sample_rate.user_arg, "Output sample rate in Hz.", NULL, 0, 0),
         OPT_FLOAT(0, "input-gain-multiplier", &config->dsp.input_gain, "Apply a linear gain multiplier to INPUT samples (before processing).", NULL, 0, 0),
@@ -93,6 +100,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_BOOLEAN(0, "dc-block", &config->dsp.dc_block.enable, "(Optional) Enable DC offset removal (high-pass filter).", NULL, 0, 0),
         OPT_STRING(0, "preset", &config->preset_name, "Use a preset for a common target.", NULL, 0, 0),
     };
+
     struct argparse_option sdr_general_options[] = {
         OPT_GROUP("SDR General Options"),
         OPT_DOUBLE(0, "sdr-rf-freq", &config->sdr_general.rf_freq_hz_arg, "(Required for SDR) Tuner center frequency in Hz", NULL, 0, 0),
@@ -100,6 +108,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_DOUBLE(0, "sdr-sample-rate", &config->sdr_general.sample_rate_hz_arg, "Set sample rate in Hz. (Device-specific default)", NULL, 0, 0),
         OPT_BOOLEAN(0, "sdr-bias-t", &config->sdr_general.bias_t_enable, "(Optional) Enable Bias-T power.", NULL, 0, 0),
     };
+
     struct argparse_option final_options[] = {
         OPT_GROUP("Help & Version"),
         OPT_BOOLEAN('v', "version", NULL, "show program's version number and exit", version_cb, 0, OPT_NONEG),

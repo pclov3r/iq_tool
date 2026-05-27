@@ -302,7 +302,7 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
     if (!p) return false;
     res->module.output_private_data = p;
 
-    p->audio_out = audio_output_create(&res->pipeline.setup_arena, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_BUFFER_SIZE);
+    p->audio_out = audio_output_create(&res->pipeline.setup_arena, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_BUFFER_SIZE, ctx->config->dsp.audio_writer_path, ctx->config->dsp.audio_writer_rf64, ctx->config->dsp.mute_audio);
     if (!p->audio_out) return false;
 
     // 3. DSP Configuration

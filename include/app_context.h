@@ -93,6 +93,9 @@ typedef struct AppConfig {
         double freq_shift_hz;
         int   shift_after_resample;
         int   raw_passthrough;
+        char* audio_writer_path;
+        bool  audio_writer_rf64;
+        bool  mute_audio;
 
         IqCorrectionConfig iq_correction;
         DcBlockConfig      dc_block;

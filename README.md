@@ -150,6 +150,11 @@ Required Input & Output
 Output Options
     --output-sample-format=<str>              Sample format for output data {cs8|cu8|cs16|...}
 
+Audio Output Options
+    --audio-writer=<str>                      Save demodulated audio to a WAV file.
+    --audio-writer-rf64                       Use RF64 format for the audio writer (supports >4GB files).
+    --mute-audio                              Disable speaker playback
+
 Processing Options
     --output-sample-rate=<flt>                Output sample rate in Hz.
     --input-gain-multiplier=<flt>             Apply a linear gain multiplier to INPUT samples (before processing).
@@ -294,7 +299,7 @@ WFM Output (wfm)
 
 NFM Output (nfm)
     --nfm-gain=<flt>                          Audio gain (default: 1.0)
-    --nfm-squelch=<flt>                       Squelch threshold in dB (default: -50.0)
+    --nfm-squelch=<flt>                       Squelch SNR threshold in dB (default: 10.0)
     --nfm-narrow                              Enable Narrow mode (2.5kHz dev). Default is Standard (5kHz dev).
     --nfm-no-squelch                          Disable squelch (force open audio)
     --nfm-no-discriminator-filter             Disable the discriminator filter.

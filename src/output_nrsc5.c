@@ -429,7 +429,7 @@ static bool nrsc5_output_initialize(ModuleContext* ctx) {
     nrsc5_get_version(&ver_str);
     log_info("NRSC5: Library version %s", SAFE_STR(ver_str));
 
-    p->audio_out = audio_output_create(&app->pipeline.setup_arena, NRSC5_AUDIO_SAMPLE_RATE, NRSC5_AUDIO_CHANNELS, NRSC5_AUDIO_BUFFER_SIZE);
+    p->audio_out = audio_output_create(&app->pipeline.setup_arena, NRSC5_AUDIO_SAMPLE_RATE, NRSC5_AUDIO_CHANNELS, NRSC5_AUDIO_BUFFER_SIZE, ctx->config->dsp.audio_writer_path, ctx->config->dsp.audio_writer_rf64, ctx->config->dsp.mute_audio);
     if (!p->audio_out) return false;
     log_info("NRSC5: Audio device initialized (%d Hz, %d Channels).", NRSC5_AUDIO_SAMPLE_RATE, NRSC5_AUDIO_CHANNELS);
 
@@ -598,7 +598,7 @@ static bool nrsc5_output_validate_options(AppConfig* config) {
     }
 
     if (config->output.sample_format != required_format) {
-        if (config->output.payload_provided) {
+        if (config->output.type_provided) {
              log_warn("NRSC5: Ignoring user format. Forcing required format for selected mode.");
         }
         config->output.sample_format = required_format;
