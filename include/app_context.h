@@ -67,7 +67,7 @@ typedef struct AppConfig {
         char* sample_format_str;
         char* type_name;
         bool  type_provided;
-        OutputType type;
+        OutputPayload payload;
         SampleFormat sample_format;
     #ifdef _WIN32
         wchar_t effective_path_w[MAX_PATH_BUFFER];

@@ -598,7 +598,7 @@ static bool nrsc5_output_validate_options(AppConfig* config) {
     }
 
     if (config->output.sample_format != required_format) {
-        if (config->output.type_provided) {
+        if (config->output.payload_provided) {
              log_warn("NRSC5: Ignoring user format. Forcing required format for selected mode.");
         }
         config->output.sample_format = required_format;

@@ -51,7 +51,7 @@ static void add_filter_request(AppConfig *config, FilterType type, float f1, flo
 bool validate_output_type_and_sample_format(AppConfig *config) {
     const Module* out_mod = module_get(config->output.module_name, MODULE_TYPE_OUTPUT, NULL);
     if (out_mod) {
-        config->output.type = out_mod->output_type;
+        config->output.payload = out_mod->output_type;
     }
 
     if (!config->output.sample_format_str) {
@@ -164,7 +164,7 @@ bool validate_option_combinations(AppConfig *config) {
             log_error("--raw-passthrough cannot be used with any other DSP options.");
             return false;
         }
-        if (config->output.type == OUTPUT_TYPE_AUDIO) {
+        if (config->output.payload == PAYLOAD_AUDIO) {
             log_error("Option --raw-passthrough cannot be used with audio demodulation modules.");
             return false;
         }

@@ -127,7 +127,6 @@ static InputModuleInterface s_rtlsdr_input_api = {
     .get_summary_info = rtlsdr_input_get_summary_info,
     .validate_options = rtlsdr_input_validate_options,
     .validate_generic_options = rtlsdr_input_validate_generic_options,
-    .has_known_length = _input_source_has_known_length_false,
     .pre_stream_iq_correction = NULL
 };
 
@@ -321,7 +320,6 @@ static bool rtlsdr_input_initialize(ModuleContext* ctx) {
     // This ensures we use the Async callback (rtlsdr_read_async) and the large RingBuffer.
     // This decouples the USB read timing from the output pipe backpressure, preventing
     // sample drops when piping to downstream tools.
-    app->pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT;
 
     success = true; // All steps succeeded
 

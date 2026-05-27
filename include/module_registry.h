@@ -30,13 +30,13 @@ typedef struct Module {
     const char* name; ///< The name used in the --input argument (e.g., "wav", "rtlsdr").
     ModuleType type;
     void* api; ///< Generic pointer to the module's interface (e.g., InputModuleInterface* or OutputModuleInterface*).
-    bool is_live_source; ///< Flag to indicate if this is a live source source.
+    PipelineMode pipeline_mode; ///< Flag to indicate if this is a live source source.
     void (*set_default_config)(struct AppConfig* config); ///< Pointer to the default config function.
     const struct argparse_option* (*get_cli_options)(int* count); ///< Pointer to the CLI option function.
     bool requires_output_path; ///< For output modules, indicates if a file path argument is needed.
     bool requires_input_path;  // For INPUT modules (read from file)
     bool module_defines_format;
-    OutputType output_type;
+    OutputPayload payload;
     float default_filter_attenuation_db;
 } Module;
 

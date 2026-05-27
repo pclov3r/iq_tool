@@ -75,7 +75,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = 0.0f,
             .api = input_wav_get_module_api(),
-            .is_live_source = false,
+            .pipeline_mode = PIPELINE_MODE_FILE_PROCESSING,
             .set_default_config = NULL,
             .get_cli_options = wav_input_get_cli_options,
             .requires_input_path = true,
@@ -86,7 +86,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = 0.0f,
             .api = input_rawfile_get_module_api(),
-            .is_live_source = false,
+            .pipeline_mode = PIPELINE_MODE_FILE_PROCESSING,
             .set_default_config = NULL,
             .get_cli_options = rawfile_input_get_cli_options,
             .requires_input_path = true,
@@ -97,7 +97,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = 0.0f,
             .api = input_stdin_get_module_api(),
-            .is_live_source = false,
+            .pipeline_mode = PIPELINE_MODE_FILE_PROCESSING,
             .set_default_config = NULL,
             .get_cli_options = stdin_input_get_cli_options,
             .requires_input_path = false,
@@ -109,7 +109,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = RTLSDR_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_rtlsdr_get_module_api(),
-            .is_live_source = true,
+            .pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT,
             .set_default_config = rtlsdr_set_default_config,
             .get_cli_options = rtlsdr_input_get_cli_options,
             .requires_input_path = false,
@@ -122,7 +122,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = SDRPLAY_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_sdrplay_get_module_api(),
-            .is_live_source = true,
+            .pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT,
             .set_default_config = sdrplay_set_default_config,
             .get_cli_options = sdrplay_input_get_cli_options,
             .requires_input_path = false,
@@ -135,7 +135,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = HACKRF_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_hackrf_get_module_api(),
-            .is_live_source = true,
+            .pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT,
             .set_default_config = hackrf_set_default_config,
             .get_cli_options = hackrf_input_get_cli_options,
             .requires_input_path = false,
@@ -148,7 +148,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = AIRSPY_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_airspy_get_module_api(),
-            .is_live_source = true,
+            .pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT,
             .set_default_config = airspy_set_default_config,
             .get_cli_options = airspy_input_get_cli_options,
             .requires_input_path = false,
@@ -161,7 +161,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = AIRSPYHF_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_airspyhf_get_module_api(),
-            .is_live_source = true,
+            .pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT,
             .set_default_config = airspyhf_set_default_config,
             .get_cli_options = airspyhf_input_get_cli_options,
             .requires_input_path = false,
@@ -174,7 +174,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = BLADERF_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_bladerf_get_module_api(),
-            .is_live_source = true,
+            .pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT,
             .set_default_config = bladerf_set_default_config,
             .get_cli_options = bladerf_input_get_cli_options,
             .requires_input_path = false,
@@ -186,7 +186,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = 0.0f,
             .api = input_spyserver_client_get_module_api(),
-            .is_live_source = true,
+            .pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT,
             .set_default_config = spyserver_client_set_default_config,
             .get_cli_options = spyserver_client_input_get_cli_options,
             .requires_input_path = false,
@@ -196,9 +196,8 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "rawfile",
             .type = MODULE_TYPE_OUTPUT,
-            .output_type = OUTPUT_TYPE_RAW,
+            .payload = PAYLOAD_IQ,
             .api = output_rawfile_get_module_api(),
-            .is_live_source = false,
             .set_default_config = NULL,
             .get_cli_options = rawfile_output_get_cli_options,
             .requires_input_path = false,
@@ -207,9 +206,8 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "wav", // The command for the standard WAV format
             .type = MODULE_TYPE_OUTPUT,
-            .output_type = OUTPUT_TYPE_WAV,
+            .payload = PAYLOAD_IQ,
             .api = output_wav_get_module_api(),
-            .is_live_source = false,
             .set_default_config = NULL,
             .get_cli_options = wav_output_get_cli_options,
             .requires_input_path = false,
@@ -218,9 +216,8 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "wav-rf64", // The command for the modern RF64 format
             .type = MODULE_TYPE_OUTPUT,
-            .output_type = OUTPUT_TYPE_WAV_RF64,
+            .payload = PAYLOAD_IQ,
             .api = output_wav_rf64_get_module_api(),
-            .is_live_source = false,
             .set_default_config = NULL,
             .get_cli_options = wav_rf64_output_get_cli_options,
             .requires_input_path = false,
@@ -229,9 +226,8 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "stdout",
             .type = MODULE_TYPE_OUTPUT,
-            .output_type = OUTPUT_TYPE_RAW,
+            .payload = PAYLOAD_IQ,
             .api = output_stdout_get_module_api(),
-            .is_live_source = false,
             .set_default_config = NULL,
             .get_cli_options = stdout_output_get_cli_options,
             .requires_input_path = false,
@@ -240,9 +236,8 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "directpipe",
             .type = MODULE_TYPE_OUTPUT,
-            .output_type = OUTPUT_TYPE_RAW,
+            .payload = PAYLOAD_IQ,
             .api = output_directpipe_get_module_api(),
-            .is_live_source = false,
             .set_default_config = NULL,
             .get_cli_options = directpipe_output_get_cli_options,
             .requires_input_path = false,
@@ -252,22 +247,20 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "nrsc5",
             .type = MODULE_TYPE_OUTPUT,
-            .output_type = OUTPUT_TYPE_AUDIO, // Consumes raw I/Q from pipeline
+            .payload = PAYLOAD_AUDIO,
             .api = output_nrsc5_get_module_api(),
-            .is_live_source = false,
             .set_default_config = NULL,
             .get_cli_options = nrsc5_output_get_cli_options,
             .requires_input_path = false,
-            .requires_output_path = false, // It plays audio, doesn't write to file
+            .requires_output_path = false,
             .module_defines_format = true,
         },
     #endif
         {
             .name = "wfm",
             .type = MODULE_TYPE_OUTPUT,
-            .output_type = OUTPUT_TYPE_AUDIO,
+            .payload = PAYLOAD_AUDIO,
             .api = output_wfm_get_module_api(),
-            .is_live_source = false,
             .set_default_config = NULL,
             .get_cli_options = wfm_output_get_cli_options,
             .requires_input_path = false,
@@ -277,9 +270,8 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "nfm",
             .type = MODULE_TYPE_OUTPUT,
-            .output_type = OUTPUT_TYPE_AUDIO,
+            .payload = PAYLOAD_AUDIO,
             .api = output_nfm_get_module_api(),
-            .is_live_source = false,
             .set_default_config = NULL,
             .get_cli_options = nfm_output_get_cli_options,
             .requires_input_path = false,
@@ -289,9 +281,8 @@ static void initialize_modules_list(MemoryArena* arena) {
         {
             .name = "am",
             .type = MODULE_TYPE_OUTPUT,
-            .output_type = OUTPUT_TYPE_AUDIO,
+            .payload = PAYLOAD_AUDIO,
             .api = output_am_get_module_api(),
-            .is_live_source = false,
             .set_default_config = NULL,
             .get_cli_options = am_output_get_cli_options,
             .requires_input_path = false,
@@ -347,7 +338,7 @@ const Module* module_get_all(int* count, MemoryArena* arena) {
 
 bool module_is_live_source(const char* name, MemoryArena* arena) {
     const Module* mod = _find_module_by_name_and_type(name, MODULE_TYPE_INPUT, arena);
-    return (mod != NULL && mod->is_live_source);
+    return (mod != NULL && mod->pipeline_mode == PIPELINE_MODE_BUFFERED_INPUT);
 }
 
 void module_populate_cli_options(

@@ -81,7 +81,6 @@ static InputModuleInterface s_rawfile_input_api = {
     .cleanup = rawfile_input_cleanup,
     .get_summary_info = rawfile_input_get_summary_info,
     .validate_options = rawfile_input_validate_options,
-    .has_known_length = _input_source_has_known_length_true,
     .validate_generic_options = NULL,
     .pre_stream_iq_correction = rawfile_input_pre_stream_iq_correction,
 };
@@ -173,7 +172,6 @@ static bool rawfile_input_initialize(ModuleContext* ctx) {
     app->module.source_info.sample_rate = sfinfo.samplerate;
     app->module.source_info.frames = sfinfo.frames;
 
-    app->pipeline_mode = PIPELINE_MODE_FILE_PROCESSING;
 
     return true;
 }

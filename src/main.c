@@ -204,7 +204,7 @@ int main(int argc, char *argv[]) {
     print_configuration_summary(&config, &app);
     fprintf(stderr, "\n");
 
-    if (!app.module.input_api->has_known_length()) {
+    if (app.pipeline_mode == PIPELINE_MODE_BUFFERED_INPUT) {
         log_info("Starting live source capture...");
     } else {
         log_info("Starting file processing...");
@@ -258,6 +258,7 @@ static bool init_input_source(AppConfig *config, AppContext* app) {
         return false;
     }
     app->module.input_api = (InputModuleInterface*)selected_input_module->api;
+    app->pipeline_mode = selected_input_module->pipeline_mode;
 
 
     log_info("Initializing the '%s' input module...", config->input.type_name);
@@ -461,7 +462,7 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
         out_path = config->output.effective_path;
 #endif
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Output File", out_path);
-    } else if (config->output.type == OUTPUT_TYPE_AUDIO) {
+    } else if (config->output.payload == PAYLOAD_AUDIO) {
         fprintf(stderr, " %-*s : %s\n", max_label_len, "Output Target", "Audio Device");
     }
 }
@@ -507,7 +508,7 @@ static void print_final_summary(const AppConfig *config, const AppContext* app, 
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
         fprintf(stderr, "%-*s %.2f MB/s\n", label_width, "Average Write Speed:", avg_write_speed_mbps);
     } else if (is_shutdown_requested()) {
-        bool source_has_known_length = app->module.input_api->has_known_length();
+        bool source_has_known_length = (app->pipeline_mode == PIPELINE_MODE_FILE_PROCESSING);
         if (!source_has_known_length) {
             fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Capture Stopped by User");
         } else {

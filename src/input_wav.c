@@ -711,7 +711,6 @@ static bool wav_input_initialize(ModuleContext* ctx) {
         app->dsp.nco_shift_hz = private_data->sdr_info.center_freq_hz - target_freq;
     }
 
-    app->pipeline_mode = PIPELINE_MODE_FILE_PROCESSING;
 
     return true;
 }
@@ -956,7 +955,6 @@ static InputModuleInterface s_wav_input_api = {
     .stop_stream = wav_input_stop_stream,
     .cleanup = wav_input_cleanup,
     .get_summary_info = wav_input_get_summary_info,
-    .has_known_length = _input_source_has_known_length_true,
     .validate_options = NULL,
     .validate_generic_options = NULL,
     .pre_stream_iq_correction = wav_input_pre_stream_iq_correction,

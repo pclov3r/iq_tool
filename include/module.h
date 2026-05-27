@@ -136,11 +136,6 @@ typedef struct InputModuleInterface {
      */
     bool (*validate_generic_options)(const struct AppConfig* config);
 
-    /**
-     * @brief Reports whether the input source has a known, finite length (file vs. stream).
-     * @return true if the source has a known length, false otherwise.
-     */
-    bool (*has_known_length)(void);
 
     // Optional function for file-based sources to perform initial I/Q correction.
     bool (*pre_stream_iq_correction)(struct ModuleContext* ctx);
