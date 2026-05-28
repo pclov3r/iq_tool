@@ -27,7 +27,6 @@
 #include "src/constants.hh"
 #include "src/dsp/liquid_wrappers.hh"
 #include "src/io/bitbuffer.hh"
-#include "src/io/input.hh"
 #include "src/util/maybe.hh"
 
 namespace redsea {

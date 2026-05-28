@@ -17,6 +17,9 @@
 #ifndef CONSTANTS_H_
 #define CONSTANTS_H_
 
+#include <chrono>
+#include <array>
+
 namespace redsea {
 
 // RDS bitrate
@@ -38,5 +41,18 @@ constexpr float kMaxResampleRatio = kTargetSampleRate_Hz / kMinimumSampleRate_Hz
 // Channels take up memory, and we don't want to fill it up by accident.
 constexpr int kMaxNumChannels{32};
 
+
+// Relocated from input.hh
+constexpr std::size_t kInputChunkSize = 8192;
+constexpr auto kBufferSize = static_cast<std::size_t>(kInputChunkSize * kMaxResampleRatio) + 1;
+
+class MPXBuffer {
+ public:
+  std::array<float, kBufferSize> data{};
+  std::size_t used_size{};
+  std::chrono::time_point<std::chrono::system_clock> time_received;
+};
+
 }  // namespace redsea
+
 #endif  // CONSTANTS_H_

@@ -461,10 +461,16 @@ void Station::decodeType2(const Group& group, ObjectTree& out) {
     radiotext_.previous_potentially_complete_message = potentially_complete_message;
   }
 
+  // Allows the same message to be output again in a new cycle (#118)
+  if (radiotext_position == 0) {
+    radiotext_.output_this_cycle = false;
+  }
+
   // The transmitter requests us to clear the buffer (message contents will change).
   // Note: This is sometimes overused in the wild.
   if (is_ab_changed) {
     radiotext_.text.clear();
+    radiotext_.output_this_cycle = false;
   }
 
   if (group.getType().value.version == GroupType::Version::A) {
@@ -483,11 +489,18 @@ void Station::decodeType2(const Group& group, ObjectTree& out) {
 
   // Transmitter used Method 1 or 2 convey the length of the string.
   if (radiotext_.text.isComplete()) {
-    out["radiotext"] = rtrim(radiotext_.text.getLastCompleteString());
+    // Only output once per cycle to avoid duplicates when padding follows terminator (#118)
+    if (!radiotext_.output_this_cycle) {
+      out["radiotext"]             = rtrim(radiotext_.text.getLastCompleteString());
+      radiotext_.output_this_cycle = true;
+    }
 
     // Method 3 was used instead (and was confirmed by a repeat).
   } else if (has_potentially_complete_message) {
-    out["radiotext"] = rtrim(std::move(potentially_complete_message));
+    if (!radiotext_.output_this_cycle) {
+      out["radiotext"]             = rtrim(std::move(potentially_complete_message));
+      radiotext_.output_this_cycle = true;
+    }
 
     // The string is not complete yet, but user wants to see it anyway.
   } else if (options_.show_partial) {
@@ -543,6 +556,8 @@ void Station::decodeType3A(const Group& group, ObjectTree& out) {
 
     // Enhanced RadioText (eRT)
     case 0x6552:
+      // eRT can be up to 128 bytes (32 segments x 4 bytes)
+      ert_.text.resize(128);
       ert_.text.setEncoding(getBool(oda_message, 0) ? RDSString::Encoding::UTF8
                                                     : RDSString::Encoding::UCS2);
       ert_.text.setDirection(getBool(oda_message, 1) ? RDSString::Direction::RTL
@@ -830,11 +845,12 @@ void Station::decodeType15A(const Group& group, ObjectTree& out) {
   }
 
   if ((group.has(BLOCK3) || group.has(BLOCK4)) && long_ps_.text.isComplete()) {
-    out["long_ps"] = rtrim(long_ps_.text.getLastCompleteString());
+    // Long PS uses UTF-8 encoding, sanitize before output
+    out["long_ps"] = sanitizeUtf8(rtrim(long_ps_.text.getLastCompleteString()));
   } else if (options_.show_partial) {
     try {
-      // May throw if UCS-2
-      out["partial_long_ps"] = long_ps_.text.str();
+      // May throw if UCS-2; sanitize UTF-8 for partial display
+      out["partial_long_ps"] = sanitizeUtf8(long_ps_.text.str());
     } catch (const std::exception& e) {
       out["debug"].push_back(e.what());
       return;
@@ -1069,7 +1085,8 @@ void parseRadioTextPlus(const Group& group, RadioText& rt, ObjectTree& out) {
     if (text.length() > 0 && tag.content_type != 0) {
       ObjectTree tag_tree;
       tag_tree["content-type"] = getRTPlusContentTypeString(tag.content_type);
-      tag_tree["data"]         = rtrim(text);
+      // Sanitize UTF-8 for eRT+ to handle incomplete multi-byte sequences
+      tag_tree["data"]         = sanitizeUtf8(rtrim(text));
       out["tags"].push_back(tag_tree);
     }
   }
@@ -1086,7 +1103,8 @@ void Station::parseEnhancedRT(const Group& group, ObjectTree& out) {
   }
 
   if (ert_.text.isComplete()) {
-    out["enhanced_radiotext"] = rtrim(ert_.text.getLastCompleteString());
+    // Sanitize UTF-8 before output to handle incomplete multi-byte sequences
+    out["enhanced_radiotext"] = sanitizeUtf8(rtrim(ert_.text.getLastCompleteString()));
   }
 }
 
