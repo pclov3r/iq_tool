@@ -121,7 +121,7 @@ typedef struct {
 static struct {
     float gain_val;         // Linear gain
     float audio_cutoff;     // Audio LPF cutoff in Hz
-    int force_envelope;     // Force Envelope Detection (Disable Sync)
+    bool force_envelope;     // Force Envelope Detection (Disable Sync)
 } s_am_config = {
     .gain_val = 1.0f,
     .audio_cutoff = 10000.0f, // Default: 10kHz (Standard AM Broadcast Bandwidth)

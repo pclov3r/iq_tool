@@ -77,10 +77,10 @@ typedef struct {
 static struct {
     float gain;
     float squelch_snr;       // Squelch SNR threshold in dB
-    int squelch_disabled;    // 1 = disabled (Audio always open)
+    bool squelch_disabled;    // 1 = disabled (Audio always open)
 
-    int is_narrow;           // 1 = Use 2.5kHz deviation (True NFM)
-    int disable_discriminator_filter; // 1 = Disable De-emphasis & LPF (Raw/Data Mode)
+    bool is_narrow;           // 1 = Use 2.5kHz deviation (True NFM)
+    bool disable_discriminator_filter; // 1 = Disable De-emphasis & LPF (Raw/Data Mode)
 } s_nfm_config = {
     .gain = 1.0f,
     .squelch_snr = 10.0f,    // default: opens at 10.0 dB SNR (closes at 8.0 dB due to hysteresis)

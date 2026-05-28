@@ -11,11 +11,12 @@
  * 'LICENSE' file of this project.
  */
 
+#include <assert.h>
+#include <errno.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
-#include <errno.h>
 #include "argparse.h"
 
 #define OPT_UNSET 1
@@ -60,14 +61,12 @@ argparse_getvalue(struct argparse *self, const struct argparse_option *opt,
     if (!opt->value)
         goto skipped;
     switch (opt->type) {
+    // CHANGE: Modified ARGPARSE_OPT_BOOLEAN to use bool instead of int counter semantics.
     case ARGPARSE_OPT_BOOLEAN:
         if (flags & OPT_UNSET) {
-            *(int *)opt->value = *(int *)opt->value - 1;
+            *(bool *)opt->value = false;
         } else {
-            *(int *)opt->value = *(int *)opt->value + 1;
-        }
-        if (*(int *)opt->value < 0) {
-            *(int *)opt->value = 0;
+            *(bool *)opt->value = true;
         }
         break;
     case ARGPARSE_OPT_BIT:

@@ -170,14 +170,14 @@ typedef struct {
 static struct {
     float deemph_us;
     float gain_val;
-    int force_stereo;
-    int force_mono;
-    int raw_mpx_stdout;
+    bool force_stereo;
+    bool force_mono;
+    bool raw_mpx_stdout;
 #ifdef WITH_REDSEA
-    int rds_disable;
+    bool rds_disable;
     RdsStandard rds_standard; // The final, resolved standard after parsing CLI flags
-    int use_world_rds;        // Temporary flag from CLI to select the non-default standard
-    int rds_partial;
+    bool use_world_rds;        // Temporary flag from CLI to select the non-default standard
+    bool rds_partial;
 #endif
 } s_wfm_config = {
     .deemph_us = 75.0f,

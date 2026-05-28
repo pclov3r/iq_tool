@@ -91,8 +91,8 @@ typedef struct AppConfig {
         float output_gain;
         bool  output_gain_provided;
         double freq_shift_hz;
-        int   shift_after_resample;
-        int   raw_passthrough;
+        bool   shift_after_resample;
+        bool   raw_passthrough;
         char* audio_writer_path;
         bool  audio_writer_rf64;
         bool  mute_audio;
