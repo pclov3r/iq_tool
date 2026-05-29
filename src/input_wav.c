@@ -569,6 +569,11 @@ static bool _probe_split_sequence(WavInputContext* p, const AppConfig* config, A
 
         p->file_list[i] = arena_strdup(arena, resolved_path);
 
+        if (!p->file_list[i]) {
+            log_fatal("Failed to allocate memory for split file names in arena.");
+            return false;
+        }
+
         // Open briefly to sum up the frames
         SF_INFO temp_sfinfo;
         memset(&temp_sfinfo, 0, sizeof(SF_INFO));
