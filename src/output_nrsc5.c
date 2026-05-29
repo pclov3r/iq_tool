@@ -55,7 +55,7 @@ typedef struct {
 
 static Nrsc5WinApi nrsc5_api = { NULL };
 
-// --- Surgical Preprocessor Overrides ---
+// --- Windows Preprocessor Overrides ---
 #define nrsc5_get_version             nrsc5_api.get_version
 #define nrsc5_open_pipe               nrsc5_api.open_pipe
 #define nrsc5_close                   nrsc5_api.close
@@ -85,14 +85,18 @@ static bool load_nrsc5_dll(void) {
         return false;
     }
 
-    // Bind function pointers
+    // Bind function pointers using memcpy to prevent ISO C pedantic warnings
     #define BIND_FUNC(name) \
-        nrsc5_api.name = (void*)GetProcAddress(nrsc5_api.dll_handle, "nrsc5_" #name); \
-        if (!nrsc5_api.name) { \
-            log_error("Failed to bind nrsc5_" #name " from DLL."); \
-            FreeLibrary(nrsc5_api.dll_handle); \
-            nrsc5_api.dll_handle = NULL; \
-            return false;         }
+        do { \
+            FARPROC proc = GetProcAddress(nrsc5_api.dll_handle, "nrsc5_" #name); \
+            if (!proc) { \
+                log_error("Failed to bind nrsc5_" #name " from DLL."); \
+                FreeLibrary(nrsc5_api.dll_handle); \
+                nrsc5_api.dll_handle = NULL; \
+                return false; \
+            } \
+            memcpy(&nrsc5_api.name, &proc, sizeof(nrsc5_api.name)); \
+        } while (0)
 
     BIND_FUNC(get_version);
     BIND_FUNC(open_pipe);
@@ -106,6 +110,8 @@ static bool load_nrsc5_dll(void) {
     BIND_FUNC(program_type_name);
     BIND_FUNC(service_data_type_name);
     BIND_FUNC(alert_category_name);
+
+    #undef BIND_FUNC
 
     log_debug("All NRSC5 symbols bound successfully.");
     return true;
