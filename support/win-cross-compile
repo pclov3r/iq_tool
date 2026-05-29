@@ -313,11 +313,6 @@ if [ "$DO_PACKAGE" = "YES" ]; then
         fi
     fi
 
-    if [ -n "$WITH_NRSC5" ]; then
-        echo "Copying NRSC5 DLLs..."
-        cp "${NRSC5_DLL}" "${dist_dir}/"
-    fi
-
     if [ -n "$WITH_AIRSPY" ]; then
         echo "Copying Airspy DLLs..."
         cp "${AIRSPY_DLL}" "${dist_dir}/"
@@ -334,4 +329,13 @@ if [ "$DO_PACKAGE" = "YES" ]; then
 
     echo "Packaging complete!"
     echo "Distribution file created at: ${prefix}/${zip_file_name}"
+
+    if [ -n "$WITH_NRSC5" ]; then
+        echo "----------------------------------------------------------------------"
+        echo "NOTICE: 'libnrsc5.dll' was intentionally excluded from this ZIP."
+        echo "        After extracting the package, please manually copy"
+        echo "        ${NRSC5_DLL}"
+        echo "        into your extracted program folder."
+        echo "----------------------------------------------------------------------"
+    fi
 fi

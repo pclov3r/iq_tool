@@ -33,6 +33,85 @@
 #include "queue.h"
 #include "constants.h"
 
+#ifdef _WIN32
+#include <windows.h>
+
+// --- Windows Dynamic Function Pointer Definitions ---
+typedef struct {
+    HINSTANCE dll_handle;
+    void (*get_version)(const char **version);
+    int  (*open_pipe)(nrsc5_t **nrsc5);
+    void (*close)(nrsc5_t *nrsc5);
+    int  (*set_mode)(nrsc5_t *nrsc5, int mode);
+    void (*set_callback)(nrsc5_t *nrsc5, nrsc5_callback_t callback, void *opaque);
+    int  (*start)(nrsc5_t *nrsc5);
+    int  (*stop)(nrsc5_t *nrsc5);
+    int  (*pipe_samples_cu8)(nrsc5_t *nrsc5, uint8_t *samples, unsigned int count);
+    int  (*pipe_samples_cs16)(nrsc5_t *nrsc5, int16_t *samples, unsigned int count);
+    void (*program_type_name)(unsigned int pty, const char **name);
+    void (*service_data_type_name)(unsigned int type, const char **name);
+    void (*alert_category_name)(unsigned int category, const char **name);
+} Nrsc5WinApi;
+
+static Nrsc5WinApi nrsc5_api = { NULL };
+
+// --- Surgical Preprocessor Overrides ---
+#define nrsc5_get_version             nrsc5_api.get_version
+#define nrsc5_open_pipe               nrsc5_api.open_pipe
+#define nrsc5_close                   nrsc5_api.close
+#define nrsc5_set_mode                nrsc5_api.set_mode
+#define nrsc5_set_callback            nrsc5_api.set_callback
+#define nrsc5_start                   nrsc5_api.start
+#define nrsc5_stop                    nrsc5_api.stop
+#define nrsc5_pipe_samples_cu8        nrsc5_api.pipe_samples_cu8
+#define nrsc5_pipe_samples_cs16       nrsc5_api.pipe_samples_cs16
+#define nrsc5_program_type_name       nrsc5_api.program_type_name
+#define nrsc5_service_data_type_name  nrsc5_api.service_data_type_name
+#define nrsc5_alert_category_name     nrsc5_api.alert_category_name
+
+static bool load_nrsc5_dll(void) {
+    if (nrsc5_api.dll_handle) return true;
+
+    log_debug("Attempting to dynamically load the NRSC5 library...");
+
+    // Target libnrsc5.dll exclusively
+    nrsc5_api.dll_handle = LoadLibraryA("libnrsc5.dll");
+
+    if (!nrsc5_api.dll_handle) {
+        log_error("NRSC5: 'libnrsc5.dll' is missing in the program folder.");
+        log_error("NRSC5: To enable the NRSC5 output module, please see compilation instructions at:");
+        log_error("NRSC5:   https://github.com/theori-io/nrsc5#building-for-windows");
+        log_error("NRSC5: Once compiled, copy 'libnrsc5.dll' into the program folder.");
+        return false;
+    }
+
+    // Bind function pointers
+    #define BIND_FUNC(name) \
+        nrsc5_api.name = (void*)GetProcAddress(nrsc5_api.dll_handle, "nrsc5_" #name); \
+        if (!nrsc5_api.name) { \
+            log_error("Failed to bind nrsc5_" #name " from DLL."); \
+            FreeLibrary(nrsc5_api.dll_handle); \
+            nrsc5_api.dll_handle = NULL; \
+            return false;         }
+
+    BIND_FUNC(get_version);
+    BIND_FUNC(open_pipe);
+    BIND_FUNC(close);
+    BIND_FUNC(set_mode);
+    BIND_FUNC(set_callback);
+    BIND_FUNC(start);
+    BIND_FUNC(stop);
+    BIND_FUNC(pipe_samples_cu8);
+    BIND_FUNC(pipe_samples_cs16);
+    BIND_FUNC(program_type_name);
+    BIND_FUNC(service_data_type_name);
+    BIND_FUNC(alert_category_name);
+
+    log_debug("All NRSC5 symbols bound successfully.");
+    return true;
+}
+#endif
+
 // --- Configuration Constants ---
 #define NRSC5_AUDIO_BUFFER_SIZE (1536 * 1024)
 #define NRSC5_AUDIO_CHANNELS 2
@@ -419,6 +498,12 @@ static double calculate_buffer_power(const void* buffer, unsigned int frames, Nr
 
 static bool nrsc5_output_initialize(ModuleContext* ctx) {
     AppContext* app = ctx->app;
+
+#ifdef _WIN32
+    if (!load_nrsc5_dll()) {
+        return false;
+    }
+#endif
 
     Nrsc5Context* p = (Nrsc5Context*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(Nrsc5Context), true);
     if (!p) return false;
