@@ -96,3 +96,4 @@ bool utils_check_file_exists(const char* full_path);
  * @brief Prompts the user for permission to overwrite a file.
  */
 bool utils_prompt_for_overwrite(const char* path_for_messages);
+bool utils_verify_output_path(const struct AppConfig* config, const char* out_path_utf8);

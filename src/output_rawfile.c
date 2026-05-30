@@ -26,108 +26,49 @@ typedef struct {
     long long total_bytes_written;
 } RawfileOutputContext;
 
-// --- Helper Functions (migrated from output_writer.c) ---
-
-#ifdef _WIN32
-static FILE* _secure_open_for_write(const AppConfig* config, const char* out_path_utf8) {
-    HANDLE hFile = CreateFileW(config->output.effective_path_w, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (hFile == INVALID_HANDLE_VALUE) {
-        if (GetLastError() == ERROR_FILE_EXISTS) {
-            if (!utils_prompt_for_overwrite(out_path_utf8)) {
-                return NULL;
-            }
-            hFile = CreateFileW(config->output.effective_path_w, GENERIC_WRITE, 0, NULL, TRUNCATE_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-            if (hFile == INVALID_HANDLE_VALUE) {
-                print_win_error("CreateFileW (overwrite)", GetLastError());
-                return NULL;
-            }
-        } else {
-            print_win_error("CreateFileW (create new)", GetLastError());
-            return NULL;
-        }
-    }
-    int fd = _open_osfhandle((intptr_t)hFile, _O_WRONLY | _O_BINARY);
-    if (fd == -1) {
-        CloseHandle(hFile);
-        log_fatal("Failed to associate C file descriptor with Windows handle.");
-        return NULL;
-    }
-    return _fdopen(fd, "wb");
-}
-#else
-static FILE* _secure_open_for_write(const char* out_path_utf8) {
-    int fd = open(out_path_utf8, O_WRONLY | O_NOFOLLOW);
-    if (fd >= 0) {
-        struct stat stat_buf;
-        if (fstat(fd, &stat_buf) != 0) {
-            log_fatal("Could not fstat opened file %s: %s", out_path_utf8, strerror(errno));
-            close(fd);
-            return NULL;
-        }
-        if (!S_ISREG(stat_buf.st_mode) && !S_ISCHR(stat_buf.st_mode)) {
-            log_error("Output path '%s' exists but is not a regular file. Aborting.", out_path_utf8);
-            close(fd);
-            return NULL;
-        }
-        if (!utils_prompt_for_overwrite(out_path_utf8)) {
-            close(fd);
-            return NULL;
-        }
-        if (S_ISREG(stat_buf.st_mode)) {
-            if (ftruncate(fd, 0) != 0) {
-                log_fatal("Could not truncate file %s: %s", out_path_utf8, strerror(errno));
-                close(fd);
-                return NULL;
-            }
-        }
-    } else if (errno == ENOENT) {
-        fd = open(out_path_utf8, O_WRONLY | O_CREAT | O_NOFOLLOW, 0666);
-        if (fd < 0) {
-            log_fatal("Could not create file %s: %s", out_path_utf8, strerror(errno));
-            return NULL;
-        }
-    } else {
-        log_error("Error opening output file %s: %s", out_path_utf8, strerror(errno));
-        return NULL;
-    }
-    FILE *file_stream = fdopen(fd, "wb");
-    if (!file_stream) {
-        log_fatal("Could not associate FILE stream with file descriptor: %s", strerror(errno));
-        close(fd);
-        return NULL;
-    }
-    return file_stream;
-}
-#endif
-
-// --- Module Implementation ---
+// --- Helper Functions ---
 
 static bool rawfile_output_initialize(ModuleContext* ctx) {
     const AppConfig* config = ctx->config;
     AppContext* app = ctx->app;
 
     RawfileOutputContext* data = (RawfileOutputContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RawfileOutputContext), true);
-    if (!data) {
+    if (!data) return false;
+    app->module.output_private_data = data;
+
+    #ifdef _WIN32
+    if (config->output.effective_path_utf8[0] == '\0') {
+    #else
+    if (!config->output.effective_path || config->output.effective_path[0] == '\0') {
+    #endif
+        log_error("Rawfile output requires a valid file path.");
         return false;
     }
 
     #ifdef _WIN32
     const char* out_path = config->output.effective_path_utf8;
-    data->handle = _secure_open_for_write(config, out_path);
     #else
     const char* out_path = config->output.effective_path;
-    data->handle = _secure_open_for_write(out_path);
+    #endif
+
+    if (!utils_verify_output_path(config, out_path)) {
+        return false;
+    }
+
+    #ifdef _WIN32
+    data->handle = _wfopen(config->output.effective_path_w, L"wb");
+    #else
+    data->handle = fopen(out_path, "wb");
     #endif
 
     if (!data->handle) {
+        log_error("Error opening output file %s: %s", out_path, strerror(errno));
         return false;
     }
 
     app->module.output_private_data = data;
     return true;
 }
-
-
 
 static size_t rawfile_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
     AppContext* app = ctx->app;

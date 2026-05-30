@@ -59,10 +59,8 @@ AudioOutputContext* audio_output_create(struct MemoryArena* arena, int sample_ra
 
     ctx->wav_writer = NULL;
     if (writer_path) {
-        if (utils_check_file_exists(writer_path)) {
-            if (!utils_prompt_for_overwrite(writer_path)) {
-                return NULL;
-            }
+        if (!utils_verify_output_path(NULL, writer_path)) {
+            return NULL;
         }
         int format_flag = is_rf64 ? SF_FORMAT_RF64 : SF_FORMAT_WAV;
         SF_INFO sfinfo = { .samplerate = sample_rate, .channels = channels, .format = format_flag | SF_FORMAT_PCM_16 };

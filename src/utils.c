@@ -18,6 +18,7 @@
 #define strcasecmp _stricmp
 #else
 #include <libgen.h>
+#include <sys/stat.h>
 #include <strings.h>
 #include <unistd.h>
 #endif
@@ -193,5 +194,48 @@ bool utils_prompt_for_overwrite(const char* path_for_messages) {
         }
         return false;
     }
+    return true;
+}
+
+bool utils_verify_output_path(const AppConfig* config, const char* out_path_utf8) {
+#ifdef _WIN32
+    DWORD attrs;
+    if (config && config->output.effective_path_w[0] != L'\0') {
+        attrs = GetFileAttributesW(config->output.effective_path_w);
+    } else {
+        wchar_t wide_path[MAX_PATH];
+        MultiByteToWideChar(CP_UTF8, 0, out_path_utf8, -1, wide_path, MAX_PATH);
+        attrs = GetFileAttributesW(wide_path);
+    }
+    
+    if (attrs != INVALID_FILE_ATTRIBUTES) {
+        if (attrs & FILE_ATTRIBUTE_DIRECTORY) { 
+            log_error("Output path '%s' is a directory. Aborting.", out_path_utf8); 
+            return false; 
+        }
+        // Windows doesn't have FIFOs or S_ISCHR in the same way, prompt for any existing file
+        if (!utils_prompt_for_overwrite(out_path_utf8)) {
+            return false;
+        }
+    }
+#else
+    (void)config; // Not needed on Linux where we use out_path_utf8
+    struct stat stat_buf;
+    if (lstat(out_path_utf8, &stat_buf) == 0) {
+        // Explicitly reject directories
+        if (S_ISDIR(stat_buf.st_mode)) { 
+            log_error("Output path '%s' is a directory. Aborting.", out_path_utf8); 
+            return false; 
+        }
+        
+        // Only trigger the interactive overwrite prompt if it's a regular file.
+        // This allows /dev/null (S_ISCHR) and FIFOs (S_ISFIFO) to stream seamlessly
+        if (S_ISREG(stat_buf.st_mode)) {
+            if (!utils_prompt_for_overwrite(out_path_utf8)) {
+                return false;
+            }
+        }
+    }
+#endif
     return true;
 }

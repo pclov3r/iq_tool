@@ -53,26 +53,8 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
     const char* out_path = config->output.effective_path;
     #endif
 
-    // Check if the file exists and prompt for overwrite if necessary.
-    bool file_exists = false;
-    #ifdef _WIN32
-    DWORD attrs = GetFileAttributesW(config->output.effective_path_w);
-    if (attrs != INVALID_FILE_ATTRIBUTES) {
-        if (attrs & FILE_ATTRIBUTE_DIRECTORY) { log_error("Output path '%s' is a directory. Aborting.", out_path); return false; }
-        file_exists = true;
-    }
-    #else
-    struct stat stat_buf;
-    if (lstat(out_path, &stat_buf) == 0) {
-        file_exists = true;
-        if (!S_ISREG(stat_buf.st_mode)) { log_error("Output path '%s' exists but is not a regular file. Aborting.", out_path); return false; }
-    }
-    #endif
-
-    if (file_exists) {
-        if (!utils_prompt_for_overwrite(out_path)) {
-            return false;
-        }
+    if (!utils_verify_output_path(config, out_path)) {
+        return false;
     }
 
     // Prepare the libsndfile info struct.
@@ -111,8 +93,6 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
         strftime(time_created, sizeof(time_created), "%d-%b-%Y %H:%M", tm_info);
         strftime(date_only, sizeof(date_only), "%d-%b-%Y", tm_info);
     }
-
-
 
     size_t bps = (size_t)config->output_sample_rate.rate_hz * app->module.output_bytes_per_iq_sample * 2;
     int bits = (int)app->module.output_bytes_per_iq_sample * 8;
