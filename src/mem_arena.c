@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <assert.h>
 
 // Ensure arena alignment is a power of 2 for our bitwise alignment math
 _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0, "MEM_ARENA_ALIGNMENT must be a power of 2");
@@ -45,15 +46,22 @@ bool mem_arena_init(MemoryArena* arena, size_t capacity) {
  * @return A void pointer to the allocated memory, or NULL if the arena is full.
  */
 void* mem_arena_alloc(MemoryArena* arena, size_t size, bool zero_memory) {
-    // Align the size to the next multiple of the alignment constant for performance
-    size_t aligned_size = (size + MEM_ARENA_ALIGNMENT - 1) & ~(MEM_ARENA_ALIGNMENT - 1);
-    if (!arena) {
+    if (!arena || !arena->memory) return NULL;
+
+    if (size > arena->capacity) {
+        log_fatal("Requested arena allocation size (%zu) exceeds total capacity.", size);
+        assert(size <= arena->capacity && "Allocation request exceeds total arena capacity.");
         return NULL;
     }
-    if (!arena->memory) return NULL;
+
+    // Align the size to the next multiple of the alignment constant for performance
+    size_t aligned_size = (size + MEM_ARENA_ALIGNMENT - 1) & ~(MEM_ARENA_ALIGNMENT - 1);
+
     size_t old_offset = atomic_fetch_add_explicit(&arena->offset, aligned_size, memory_order_relaxed);
     if (old_offset + aligned_size > arena->capacity) {
-        log_error("Memory arena exhausted. Requested %zu bytes, but only %zu remaining.", size, arena->capacity - old_offset);
+        log_error("Memory arena exhausted. Requested %zu bytes, but only %zu remaining.",
+                  size,
+                  (old_offset > arena->capacity) ? 0 : (arena->capacity - old_offset));
         return NULL;
     }
     void* ptr = (char*)arena->memory + old_offset;
