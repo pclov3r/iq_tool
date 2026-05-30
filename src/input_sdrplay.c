@@ -94,6 +94,8 @@ static wchar_t* get_sdrplay_dll_path(void) {
         return NULL;
     }
 
+    api_path_buf[MAX_PATH_BUFFER - 1] = L'\0';
+
 #ifdef _WIN64
     PathAppendW(api_path_buf, L"x64");
 #else
@@ -525,7 +527,7 @@ static void sdrplay_input_get_summary_info(const ModuleContext* ctx, InputSummar
         }
         add_summary_item(info, "HDR Mode", "Enabled (BW: %s Hz)", bw_str);
     }
- 
+
     // Notch Filter Summary
     if (s_sdrplay_config.notch_fm)  add_summary_item(info, "FM Notch", "Enabled");
     if (s_sdrplay_config.notch_dab) add_summary_item(info, "DAB Notch", "Enabled");
