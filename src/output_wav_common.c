@@ -16,7 +16,8 @@
 #include <string.h>
 #include <errno.h>
 #include <ctype.h>
-
+#include <time.h>
+#include <stdint.h>
 #ifdef _WIN32
 #else
 #include <sys/stat.h>
@@ -98,10 +99,113 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
     #endif
 
     if (!data->handle) { log_error("Error opening output WAV file %s: %s", out_path, sf_strerror(NULL)); return false; }
+
+    // --- SDR-XML Metadata Injection ---
+    time_t now = time(NULL);
+    struct tm* tm_info = gmtime(&now);
+    char time_utc[64] = {0};
+    char time_created[64] = {0};
+    char date_only[64] = {0};
+    if (tm_info) {
+        strftime(time_utc, sizeof(time_utc), "%d-%m-%Y %H:%M:%S", tm_info);
+        strftime(time_created, sizeof(time_created), "%d-%b-%Y %H:%M", tm_info);
+        strftime(date_only, sizeof(date_only), "%d-%b-%Y", tm_info);
+    }
+
+
+
+    size_t bps = (size_t)config->output_sample_rate.rate_hz * app->module.output_bytes_per_iq_sample * 2;
+    int bits = (int)app->module.output_bytes_per_iq_sample * 8;
+    const char* radio_model = config->input.type_name ? config->input.type_name : "iq_tool";
+
+#ifndef GIT_HASH
+#define GIT_HASH "unknown"
+#endif
+
+    // Construct the strictly formatted filename exclusively for the XML attributes to satisfy SDR Console's regex parser
+    char sdr_console_xml_filename[256];
+    snprintf(sdr_console_xml_filename, sizeof(sdr_console_xml_filename), "%s %02d%02d%02d.000 %.3fMHz.wav",
+        date_only, tm_info ? tm_info->tm_hour : 0, tm_info ? tm_info->tm_min : 0, tm_info ? tm_info->tm_sec : 0,
+        config->sdr_general.rf_freq_hz / 1000000.0);
+
+    // Construct the true Title string that SDR Console uses natively for its UI
+    char true_title[256];
+    snprintf(true_title, sizeof(true_title), "%.3f MHz, BW %.0f kHz, %04d-%02d-%02d %02d:%02d",
+        config->sdr_general.rf_freq_hz / 1000000.0,
+        config->output_sample_rate.rate_hz / 1000.0,
+        tm_info ? tm_info->tm_year + 1900 : 0,
+        tm_info ? tm_info->tm_mon + 1 : 0,
+        tm_info ? tm_info->tm_mday : 0,
+        tm_info ? tm_info->tm_hour : 0,
+        tm_info ? tm_info->tm_min : 0);
+
+    char xml_buf[2048];
+    int xml_len = snprintf(xml_buf, sizeof(xml_buf),
+        "<?xml version=\"1.0\"?>"
+        "<SDR-XML-Root Description=\"Saved recording data\" Created=\"%s\">"
+        "<Definition CurrentTimeUTC=\"%s\" "
+        "Filename=\"%s\" "
+        "FirstFile=\"%s\" "
+        "Folder=\"\" "
+        "InternalTag=\"iq_tool_recording\" "
+        "PreviousFile=\"\" "
+        "RadioModel=\"%s\" "
+        "RadioSerial=\"\" "
+        "SoftwareName=\"iq_tool\" "
+        "SoftwareVersion=\"%s\" "
+        "UTC=\"%s\" "
+        "XMLLevel=\"XMLLevel003\" "
+        "CreatedBy=\"iq_tool\" "
+        "TimeZoneStatus=\"0\" "
+        "TimeZoneInfo=\"\" "
+        "DualMode=\"0\" "
+        "Sequence=\"0\" "
+        "ADFrequency=\"0\" "
+        "BitsPerSample=\"%d\" "
+        "BytesPerSecond=\"%zu\" "
+        "RadioCenterFreq=\"%.0f\" "
+        "SampleRate=\"%.0f\" "
+        "UTCSeconds=\"%lld\"/>"
+        "</SDR-XML-Root>",
+        time_created, time_utc, sdr_console_xml_filename, sdr_console_xml_filename, radio_model, GIT_HASH, time_utc,
+        bits, bps, config->sdr_general.rf_freq_hz, config->output_sample_rate.rate_hz, (long long)now
+    );
+
+    if (xml_len > 0 && xml_len < (int)sizeof(xml_buf)) {
+        size_t utf16_size = (size_t)(xml_len + 1) * 2;
+        uint8_t* utf16_buf = (uint8_t*)mem_arena_alloc(&app->pipeline.setup_arena, utf16_size, true);
+        if (utf16_buf) {
+            for (int i = 0; i < xml_len; i++) {
+                utf16_buf[i * 2] = (uint8_t)xml_buf[i];
+                utf16_buf[i * 2 + 1] = 0x00;
+            }
+            utf16_buf[xml_len * 2] = 0x00;
+            utf16_buf[xml_len * 2 + 1] = 0x00;
+
+            SF_CHUNK_INFO chunk;
+            memset(&chunk, 0, sizeof(chunk));
+            strncpy(chunk.id, "auxi", sizeof(chunk.id));
+            chunk.id_size = 4;
+            chunk.datalen = utf16_size;
+            chunk.data = utf16_buf;
+
+            int set_res = sf_set_chunk(data->handle, &chunk);
+            if (set_res != SF_ERR_NO_ERROR) {
+                log_warn("Failed to write XML metadata chunk: %s", sf_error_number(set_res));
+            }
+        }
+    }
+
+    // Fallback: Also write standard WAV RIFF INFO tags!
+    // SDR Console (and other audio players) often read Title and Artist from here instead of the custom XML.
+    // Use true_title so it perfectly matches the native SDR Console UI format
+    sf_set_string(data->handle, SF_STR_TITLE, true_title);
+    sf_set_string(data->handle, SF_STR_SOFTWARE, "iq_tool");
+    sf_set_string(data->handle, SF_STR_COMMENT, radio_model);
+    sf_set_string(data->handle, SF_STR_ARTIST, radio_model);
+
     return true;
 }
-
-
 
 size_t wav_common_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
     AppContext* app = ctx->app;
