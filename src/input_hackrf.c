@@ -107,21 +107,25 @@ static bool hackrf_input_validate_generic_options(const AppConfig* config) {
 static bool hackrf_input_validate_options(AppConfig* config) {
     if (s_hackrf_config.hackrf_lna_gain_arg != HACKRF_DEFAULT_LNA_GAIN) {
         int lna_gain = s_hackrf_config.hackrf_lna_gain_arg;
-        if (lna_gain < 0 || lna_gain > 40 || (lna_gain % 8 != 0)) {
-            log_error("Invalid LNA gain %ld dB. Must be 0-40 in 8 dB steps.", lna_gain);
-            return false;
+        if (lna_gain < 0) lna_gain = 0;
+        if (lna_gain > 40) lna_gain = 40;
+        int rounded_lna = ((lna_gain + 4) / 8) * 8; // Round to nearest 8
+        if (rounded_lna != s_hackrf_config.hackrf_lna_gain_arg) {
+            log_info("Requested LNA gain: %d dB -> Actual LNA gain set: %d dB", s_hackrf_config.hackrf_lna_gain_arg, rounded_lna);
         }
-        s_hackrf_config.lna_gain = (uint32_t)lna_gain;
+        s_hackrf_config.lna_gain = (uint32_t)rounded_lna;
         s_hackrf_config.lna_gain_provided = true;
     }
 
     if (s_hackrf_config.hackrf_vga_gain_arg != HACKRF_DEFAULT_VGA_GAIN) {
         int vga_gain = s_hackrf_config.hackrf_vga_gain_arg;
-        if (vga_gain < 0 || vga_gain > 62 || (vga_gain % 2 != 0)) {
-            log_error("Invalid VGA gain %ld dB. Must be 0-62 in 2 dB steps.", vga_gain);
-            return false;
+        if (vga_gain < 0) vga_gain = 0;
+        if (vga_gain > 62) vga_gain = 62;
+        int rounded_vga = ((vga_gain + 1) / 2) * 2; // Round to nearest 2
+        if (rounded_vga != s_hackrf_config.hackrf_vga_gain_arg) {
+            log_info("Requested VGA gain: %d dB -> Actual VGA gain set: %d dB", s_hackrf_config.hackrf_vga_gain_arg, rounded_vga);
         }
-        s_hackrf_config.vga_gain = (uint32_t)vga_gain;
+        s_hackrf_config.vga_gain = (uint32_t)rounded_vga;
         s_hackrf_config.vga_gain_provided = true;
     }
 
