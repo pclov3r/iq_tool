@@ -117,7 +117,9 @@ You'll find the `iq_tool` executable in the `build` directory.
 
 #### Using Pre-compiled Binaries
 
-Pre-compiled binaries for Windows without NRSC5 output module support are available on the project's **[releases page](https://github.com/pclov3r/iq_tool/releases)**.
+Pre-compiled binaries for Windows are available on the project's **[releases page](https://github.com/pclov3r/iq_tool/releases)**.
+
+> **NRSC5 Support:** To use the NRSC5 output module on Windows, you must source the `libnrsc5.dll` library yourself or compile it yourself following the **[Windows build instructions](https://github.com/theori-io/nrsc5#building-for-windows)**, and copy it into the same folder as the `iq_tool.exe` executable. If the DLL is not found, the program will return an error saying the library is missing.
 
 > **Note:** Not every commit will result in a new release and Windows binary. Releases are typically made after significant changes.
 
