@@ -47,7 +47,17 @@ size_t audio_output_write(AudioOutputContext* ctx, const void* pcm_data, size_t 
 /**
  * @brief Blocks until the internal audio buffer drains (useful at End-of-Stream).
  */
+void audio_output_drain(AudioOutputContext* ctx);
+
+/**
+ * @brief Flushes and quits fast.
+ */
 void audio_output_flush(AudioOutputContext* ctx);
+
+/**
+ * @brief Clears the audio buffer immediately without draining.
+ */
+void audio_output_clear(AudioOutputContext* ctx);
 
 /**
  * @brief Stops the audio driver and frees internal buffers.

@@ -579,7 +579,7 @@ static void nrsc5_output_reset(ModuleContext* ctx) { (void)ctx; }
 
 static void nrsc5_output_flush(ModuleContext* ctx) {
     Nrsc5Context* p = (Nrsc5Context*)ctx->app->module.output_private_data;
-    audio_output_flush(p->audio_out);
+    audio_output_clear(p->audio_out);
 }
 
 static size_t nrsc5_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {

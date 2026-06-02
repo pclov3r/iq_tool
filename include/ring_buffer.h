@@ -86,4 +86,9 @@ size_t ring_buffer_get_size(RingBuffer* iob);
  */
 size_t ring_buffer_get_capacity(RingBuffer* iob);
 
+/**
+ * @brief Clears the ring buffer.
+ */
+void ring_buffer_clear(RingBuffer* iob);
+
 #endif // RING_BUFFER_H_

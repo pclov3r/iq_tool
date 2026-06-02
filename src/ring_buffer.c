@@ -348,3 +348,13 @@ size_t ring_buffer_get_capacity(RingBuffer* iob) {
     if (!iob) return 0;
     return iob->capacity;
 }
+
+void ring_buffer_clear(RingBuffer* iob) {
+    if (!iob) return;
+    atomic_store_explicit(&iob->read_pos, 0, memory_order_release);
+    atomic_store_explicit(&iob->write_pos, 0, memory_order_release);
+    
+    pthread_mutex_lock(&iob->sync_mutex);
+    pthread_cond_broadcast(&iob->space_free_cond);
+    pthread_mutex_unlock(&iob->sync_mutex);
+}

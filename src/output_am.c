@@ -241,7 +241,7 @@ static bool am_output_initialize(ModuleContext* ctx) {
 static void am_output_reset(ModuleContext* ctx) { (void)ctx; /* TODO: Reset PLL state */ }
 static void am_output_flush(ModuleContext* ctx) {
     AmContext* p = (AmContext*)ctx->app->module.output_private_data;
-    audio_output_flush(p->audio_out);
+    audio_output_clear(p->audio_out);
 }
 static size_t am_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
     AppContext* res = ctx->app;

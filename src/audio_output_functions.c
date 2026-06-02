@@ -179,6 +179,51 @@ void audio_output_flush(AudioOutputContext* ctx) {
     }
 }
 
+void audio_output_drain(AudioOutputContext* ctx) {
+    if (!ctx || !ctx->audio_ring_buffer) return;
+
+    // --- Audio Drain Parameters ---
+    const int poll_interval_ms = 10;
+    const int stall_timeout_ms = 200;
+    const int hardware_padding_ms = 200;
+
+    size_t last_size = (size_t)-1;
+    int stall_count = 0;
+    int max_stall_iterations = stall_timeout_ms / poll_interval_ms;
+    if (max_stall_iterations < 1) max_stall_iterations = 1;
+
+    while (true) {
+        size_t curr_size = ring_buffer_get_size(ctx->audio_ring_buffer);
+        if (curr_size == 0) break; // Success
+        
+        // Stall Detection
+        if (curr_size == last_size) {
+            stall_count++;
+            if (stall_count > max_stall_iterations) break;
+        } else {
+            stall_count = 0;
+            last_size = curr_size;
+        }
+
+        #ifdef _WIN32
+        Sleep(poll_interval_ms);
+        #else
+        usleep(poll_interval_ms * 1000);
+        #endif
+    }
+
+    #ifdef _WIN32
+    Sleep(hardware_padding_ms);
+    #else
+    usleep(hardware_padding_ms * 1000);
+    #endif
+}
+
+void audio_output_clear(AudioOutputContext* ctx) {
+    if (!ctx || !ctx->audio_ring_buffer) return;
+    ring_buffer_clear(ctx->audio_ring_buffer);
+}
+
 void audio_output_destroy(AudioOutputContext* ctx) {
     if (!ctx) return;
     if (ctx->wav_writer) {

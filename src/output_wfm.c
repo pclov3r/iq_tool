@@ -403,7 +403,7 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
 static void wfm_output_reset(ModuleContext* ctx) { (void)ctx; /* TODO: Reset PLL state */ }
 static void wfm_output_flush(ModuleContext* ctx) {
     WfmContext* p = (WfmContext*)ctx->app->module.output_private_data;
-    audio_output_flush(p->audio_out);
+    audio_output_clear(p->audio_out);
 }
 static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
     AppContext* res = ctx->app;

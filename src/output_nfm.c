@@ -164,7 +164,7 @@ static bool nfm_output_initialize(ModuleContext* ctx) {
 static void nfm_output_reset(ModuleContext* ctx) { (void)ctx; }
 static void nfm_output_flush(ModuleContext* ctx) {
     NfmContext* p = (NfmContext*)ctx->app->module.output_private_data;
-    audio_output_flush(p->audio_out);
+    audio_output_clear(p->audio_out);
 }
 static size_t nfm_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
     AppContext* res = ctx->app;
