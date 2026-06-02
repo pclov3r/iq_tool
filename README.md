@@ -286,7 +286,7 @@ Direct Pipe Output (directpipe)
 
 NRSC5 Output (nrsc5)
     --nrsc5-mode=<str>                        Set decoder mode {cs16-fm|cs16-am|cu8-fm|cu8-am}. (Default: cs16-fm)
-    --nrsc5-program=<int>                     Select HD program/subchannel (0-7). (Required)
+    --nrsc5-program=<int>                     Select initial HD program/subchannel (0-7). (Required) Press keys 0-7 during playback to switch.
     --nrsc5-aas-dir=<str>                     Directory to dump AAS files (logos, maps, etc).
 
 WFM Output (wfm)

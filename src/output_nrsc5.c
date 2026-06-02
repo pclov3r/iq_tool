@@ -728,13 +728,35 @@ static void nrsc5_output_get_summary_info(const ModuleContext* ctx, OutputSummar
 static const struct argparse_option nrsc5_output_cli_options[] = {
     OPT_GROUP("NRSC5 Output (nrsc5)"),
     OPT_STRING(0, "nrsc5-mode", &s_nrsc5_config.mode_str, "Set decoder mode {cs16-fm|cs16-am|cu8-fm|cu8-am}. (Default: cs16-fm)", NULL, 0, 0),
-    OPT_INTEGER(0, "nrsc5-program", &s_nrsc5_config.program_id, "Select HD program/subchannel (0-7). (Required)", NULL, 0, 0),
+    OPT_INTEGER(0, "nrsc5-program", &s_nrsc5_config.program_id, "Select initial HD program/subchannel (0-7). (Required) Press keys 0-7 during playback to switch.", NULL, 0, 0),
     OPT_STRING(0, "nrsc5-aas-dir", &s_nrsc5_config.aas_dir_arg, "Directory to dump AAS files (logos, maps, etc).", NULL, 0, 0),
 };
 
 const struct argparse_option* nrsc5_output_get_cli_options(int* count) {
     *count = sizeof(nrsc5_output_cli_options) / sizeof(nrsc5_output_cli_options[0]);
     return nrsc5_output_cli_options;
+}
+
+static void nrsc5_output_on_keypress(ModuleContext* ctx, int key) {
+    if (key >= '0' && key <= '7') {
+        unsigned int new_program = key - '0';
+        Nrsc5Context* p = (Nrsc5Context*)ctx->app->module.output_private_data;
+        if (p->active_program != new_program) {
+            p->active_program = new_program;
+            audio_output_clear(p->audio_out);
+
+            // Inject 138ms of silence (Exactly 3 HDC frames) to build a pre-buffer and prevent stuttering
+            size_t silence_frames = (size_t)(NRSC5_AUDIO_SAMPLE_RATE * 0.138);
+            size_t silence_bytes = silence_frames * NRSC5_AUDIO_CHANNELS * sizeof(int16_t);
+            int16_t* silence = calloc(1, silence_bytes);
+            if (silence) {
+                audio_output_write(p->audio_out, silence, silence_bytes, p->pipeline_mode);
+                free(silence);
+            }
+
+            log_info("NRSC5: Switched to program %u (HD%u)", new_program, new_program + 1);
+        }
+    }
 }
 
 // --- The V-Table ---
@@ -747,6 +769,7 @@ static OutputModuleInterface s_nrsc5_output_api = {
     .flush = nrsc5_output_flush,
     .cleanup = nrsc5_output_cleanup,
     .get_summary_info = nrsc5_output_get_summary_info,
+    .on_keypress = nrsc5_output_on_keypress,
 };
 
 OutputModuleInterface* output_nrsc5_get_module_api(void) {
