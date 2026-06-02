@@ -312,13 +312,8 @@ AM Output (am)
     --am-envelope                             Disable Synchronous AM (PLL) and use Magnitude Envelope Detection.
 
 Available Presets
-    cu8-nrsc5                                 Sets sample type to cu8, rate to 1488375.0 Hz for piping to external nrsc5 (FM/AM). Use --output stdout
-    cu8-nrsc5-usb                             Sets sample type to cu8, rate to 1488375.0 Hz, isolates USB sideband (102-215kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
-    cu8-nrsc5-lsb                             Sets sample type to cu8, rate to 1488375.0 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
-    cs16-fm-nrsc5                             Sets sample type to cs16, rate to 744187.5 Hz for piping to external nrsc5 (FM). Use --output stdout
-    cs16-fm-nrsc5-usb                         Sets sample type to cs16, rate to 744187.5 Hz, isolates USB sideband (102-215kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
-    cs16-fm-nrsc5-lsb                         Sets sample type to cs16, rate to 744187.5 Hz, isolates LSB sideband (-215 to -102kHz) (Hack) for piping to external nrsc5 (FM). Use --output stdout
-    cs16-am-nrsc5                             Sets sample type to cs16, rate to 46511.71875 Hz for piping to external nrsc5 (AM). Use --output stdout
+    nrsc5-usb                                 Isolates the Upper Sideband (USB) of an HD Radio signal.
+    nrsc5-lsb                                 Isolates the Lower Sideband (LSB) of an HD Radio signal.
 
 Help & Version
     -v, --version                             show program's version number and exit
@@ -330,25 +325,31 @@ Help & Version
 **Example 1: Basic File Resampling**
 Resample a WAV file to a 16-bit RF64 (large WAV) file with a custom output rate.
 ```bash
-iq_tool --input wav my_capture.wav --output wav-rf64 processed.wav --output-sample-format cs16 --output-rate 240000
+iq_tool --input wav my_capture.wav --output wav-rf64 processed.wav --output-sample-format cs16 --output-sample-rate 240000
 ```
 
 **Example 2: Channel Selection (FFT Filter)**
 Isolate a specific range of frequencies from a live SDR stream. The tool will automatically select the `fft` filter because this is an asymmetric (offset) filter.
 ```bash
-iq_tool --input rtlsdr --sdr-rf-freq 98.5e6 --pass-range 50e3:250e3 --output stdout --output-rate 240000 --output-sample-format cs16 | ...
+iq_tool --input rtlsdr --sdr-rf-freq 98.5e6 --pass-range 50e3:250e3 --output stdout --output-sample-rate 240000 --output-sample-format cs16 | ...
 ```
 
-**Example 3: Piping to a Decoder with a Preset (WAV Input)**
-Use the `cu8-nrsc5` preset to resample and automatically correct the frequency, then pipe it to `nrsc5`. (Assumes the WAV has frequency metadata).
+**Example 3: Decoding HD Radio (WAV Input)**
+Decode an HD Radio capture. (Assumes the WAV has frequency metadata).
 ```bash
-iq_tool --input wav my_capture.wav --wav-center-target-freq 97.3e6 --preset cu8-nrsc5 --output stdout | nrsc5 -r - 0
+iq_tool --input wav my_capture.wav --wav-center-target-freq 97.3e6 --output nrsc5 --nrsc5-program 0
 ```
 
-**Example 4: Streaming from an SDRplay Device with Preset**
-Tune an SDRplay RSPdx to 102.5 MHz, set a manual gain level (using LNA state) and select an antenna port before piping to nrsc5.
+**Example 4: Streaming HD Radio from an SDRplay Device**
+Tune an SDRplay RSPdx to 102.5 MHz, set a manual gain level (using LNA state) and select an antenna port before outputting to nrsc5.
 ```bash
-iq_tool --input sdrplay --sdr-rf-freq 102.5e6 --sdrplay-lna-state 4 --sdrplay-antenna B --preset cu8-nrsc5 --output stdout | nrsc5 -r - 0
+iq_tool --input sdrplay --sdr-rf-freq 102.5e6 --sdrplay-lna-state 4 --sdrplay-antenna B --output nrsc5 --nrsc5-program 0
+```
+
+**Example 5: Piping to rtl_433 (ISM Band Decoding)**
+Tune an Airspy to 433.92 MHz with linearity gain, downsample to 250 ksps, and pipe the `cu8` output to `rtl_433` for decoding weather stations and sensors.
+```bash
+iq_tool --input airspy --sdr-rf-freq 433.92e6 --airspy-gain-mode linearity --airspy-gain-value 15 --output stdout --output-sample-rate 250000 --output-sample-format cu8 | rtl_433 -r -
 ```
 
 ### Configuration via Presets
