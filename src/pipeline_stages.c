@@ -165,7 +165,7 @@ void* pipeline_thread_reader(void* arg) {
                     item->packet_sample_format = app->module.input_format;
                     item->input_bytes_per_iq_sample = app->module.input_bytes_per_iq_sample;
                     item->stream_discontinuity_event = false;
-                    item->is_last_chunk = (bytes_read < bytes_requested); // EOF reached
+                    item->is_last_chunk = (bytes_read == 0); // EOF reached
 
                     if (item->frames_read > 0) {
                         atomic_fetch_add_explicit(&app->stats.total_frames_read, item->frames_read, memory_order_relaxed);
