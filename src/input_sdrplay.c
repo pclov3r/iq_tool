@@ -23,7 +23,16 @@
 #include <stdarg.h>
 
 // Module-specific includes
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif
+
 #include "sdrplay_api.h"
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 // --- Configuration Constants ---
 #define SDRPLAY_TARGET_VERSION 3.15f
