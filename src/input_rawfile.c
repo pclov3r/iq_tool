@@ -253,6 +253,11 @@ static void rawfile_input_get_summary_info(const ModuleContext* ctx, InputSummar
     add_summary_item(info, "Input File Size", "%s", utils_format_size(file_size_bytes, size_buf, sizeof(size_buf)));
 }
 
+static size_t raw_iq_cal_read_cb(void* user_data, void* buffer, size_t bytes) {
+    SNDFILE* infile = (SNDFILE*)user_data;
+    return (size_t)sf_read_raw(infile, buffer, bytes);
+}
+
 static bool rawfile_input_pre_stream_iq_correction(ModuleContext* ctx) {
     AppConfig* config = (AppConfig*)ctx->config;
     RawfileInputContext* private_data = (RawfileInputContext*)ctx->app->module.input_private_data;
@@ -267,14 +272,8 @@ static bool rawfile_input_pre_stream_iq_correction(ModuleContext* ctx) {
     void* raw_buffer = mem_arena_alloc(&ctx->app->pipeline.setup_arena, raw_buffer_size, false);
     if (!raw_buffer) return false;
 
-    sf_count_t frames_read_bytes = sf_read_raw(private_data->infile, raw_buffer, raw_buffer_size);
-    if (frames_read_bytes < (sf_count_t)raw_buffer_size) {
-        log_warn("Failed to read enough samples for I/Q calibration. Skipping.");
-        sf_seek(private_data->infile, 0, SEEK_SET);
-        return true;
-    }
-
-    bool result = iq_correction_run_initial_calibration(ctx, raw_buffer, frames_read_bytes);
+    // We do an initial read inside the calibration function now
+    bool result = iq_correction_run_initial_calibration(ctx, raw_buffer, raw_buffer_size, raw_iq_cal_read_cb, private_data->infile);
 
     if (sf_seek(private_data->infile, 0, SEEK_SET) < 0) {
         log_fatal("Failed to rewind file after calibration.");

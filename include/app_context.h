@@ -167,7 +167,8 @@ typedef struct PipelineInfrastructure {
     Queue* post_processor_input_queue;
     Queue* post_processor_output_queue;
     Queue* writer_input_queue;
-    Queue* iq_optimization_data_queue;
+    Queue* iq_estimation_data_queue;
+    Queue* iq_estimation_free_queue;
 
     struct RingBuffer* source_input_buffer;
 

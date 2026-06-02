@@ -32,15 +32,15 @@
  * @param arg A void pointer to the PipelineContext struct.
  * @return NULL.
  */
-void* pipeline_thread_iq_optimizer(void* arg) {
+void* pipeline_thread_iq_estimator(void* arg) {
     PipelineContext* args = (PipelineContext*)arg;
     AppContext* app = args->app;
 
-    SampleChunk* item;
-    while ((item = (SampleChunk*)queue_dequeue(app->pipeline.iq_optimization_data_queue)) != NULL) {
-        iq_correction_run_optimization(&app->dsp, item->pre_resample_buffer);
+    void* buffer;
+    while ((buffer = queue_dequeue(app->pipeline.iq_estimation_data_queue)) != NULL) {
+        iq_correction_run_estimation(&app->dsp, (ComplexFloat*)buffer);
         // Return the chunk to the free pool for reuse
-        queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
+        queue_enqueue(app->pipeline.iq_estimation_free_queue, buffer);
     }
     log_debug("I/Q optimization thread is exiting.");
     return NULL;

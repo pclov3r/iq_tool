@@ -275,6 +275,14 @@ void* pipeline_thread_pre_processor(void* arg) {
 
         if (item->frames_read > 0) {
             pre_processor_apply_chain(&app->dsp, item);
+
+            if (app->dsp.config->dsp.iq_correction.enable && item->frames_read >= 4096) {
+                void* buffer = queue_try_dequeue(app->pipeline.iq_estimation_free_queue);
+                if (buffer) {
+                    memcpy(buffer, item->pre_resample_buffer, 4096 * sizeof(ComplexFloat));
+                    queue_enqueue(app->pipeline.iq_estimation_data_queue, buffer);
+                }
+            }
         }
 
         if (app->dsp.bypass_resampler) {
@@ -289,8 +297,8 @@ void* pipeline_thread_pre_processor(void* arg) {
         }
 
         if (is_last) {
-            if (app->pipeline.iq_optimization_data_queue) {
-                queue_signal_shutdown(app->pipeline.iq_optimization_data_queue);
+            if (app->pipeline.iq_estimation_data_queue) {
+                queue_signal_shutdown(app->pipeline.iq_estimation_data_queue);
             }
             break;
         }

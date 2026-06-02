@@ -74,7 +74,7 @@ void iq_correction_apply(DspContext* dsp, ComplexFloat* samples, int num_samples
  * @param app Pointer to the application app.
  * @param optimization_data Pointer to the block of complex float samples to analyze.
  */
-void iq_correction_run_optimization(DspContext* dsp, const ComplexFloat* optimization_data);
+void iq_correction_run_estimation(DspContext* dsp, const ComplexFloat* optimization_data);
 
 /**
  * @brief Cleans up app allocated by the I/Q correction module.
@@ -90,6 +90,6 @@ void iq_correction_destroy(AppContext* app);
  * @param infile The handle to the open input file (e.g., from libsndfile).
  * @return true on success, false on a critical failure.
  */
-bool iq_correction_run_initial_calibration(ModuleContext* ctx, const void* raw_buffer, size_t num_bytes);
+bool iq_correction_run_initial_calibration(ModuleContext* ctx, void* raw_buffer, size_t num_bytes, size_t (*read_cb)(void* user_data, void* buffer, size_t bytes), void* user_data);
 
 #endif // IQ_CORRECTION_H_

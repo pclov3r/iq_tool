@@ -270,7 +270,7 @@ void iq_correction_apply(DspContext* dsp, ComplexFloat* samples, int num_samples
     st->last_amplitude = current_amp;
 }
 
-void iq_correction_run_optimization(DspContext* dsp, const ComplexFloat* optimization_data) {
+void iq_correction_run_estimation(DspContext* dsp, const ComplexFloat* optimization_data) {
     if (!dsp->config->dsp.iq_correction.enable || !dsp->iq_correct.internal_state) return;
 
     atomic_store_explicit(&dsp->iq_correct.last_optimization_time, utils_get_time(), memory_order_relaxed);
@@ -315,21 +315,16 @@ void iq_correction_destroy(AppContext* app) {
     }
 }
 
-bool iq_correction_run_initial_calibration(ModuleContext* ctx, const void* raw_buffer, size_t num_bytes) {
+bool iq_correction_run_initial_calibration(ModuleContext* ctx, void* raw_buffer, size_t num_bytes, 
+                                           size_t (*read_cb)(void* user_data, void* buffer, size_t bytes), void* user_data) {
     AppContext* app = ctx->app;
 
-    if (!raw_buffer || num_bytes == 0) {
-        log_warn("Cannot perform initial I/Q correction without valid input data.");
+    if (!raw_buffer || num_bytes == 0 || !read_cb) {
+        log_warn("Cannot perform initial I/Q correction without valid input data or reader.");
         return true;
     }
 
     log_info("Performing initial I/Q calibration for file input...");
-
-    size_t frames = num_bytes / app->module.input_bytes_per_iq_sample;
-    if (frames < IQ_CORRECTION_FFT_SIZE) {
-        log_warn("Input data is too short for I/Q calibration. Skipping.");
-        return true;
-    }
 
     ComplexFloat* cf32_buffer = (ComplexFloat*)mem_arena_alloc(&app->pipeline.setup_arena, IQ_CORRECTION_FFT_SIZE * sizeof(ComplexFloat), false);
     if (!cf32_buffer) {
@@ -340,14 +335,17 @@ bool iq_correction_run_initial_calibration(ModuleContext* ctx, const void* raw_b
     SampleChunk temp_chunk;
     memset(&temp_chunk, 0, sizeof(SampleChunk));
     temp_chunk.raw_input_data = (void*)raw_buffer;
-    temp_chunk.frames_read = IQ_CORRECTION_FFT_SIZE;
     temp_chunk.packet_sample_format = app->module.input_format;
     temp_chunk.pre_resample_buffer = cf32_buffer;
 
-    pre_processor_apply_chain(&app->dsp, &temp_chunk);
-
     for(int i=0; i<64; i++) {
-        iq_correction_run_optimization(&app->dsp, temp_chunk.pre_resample_buffer);
+        size_t bytes_read = read_cb(user_data, raw_buffer, num_bytes);
+        if (bytes_read < num_bytes) break;
+        
+        temp_chunk.frames_read = IQ_CORRECTION_FFT_SIZE;
+        pre_processor_apply_chain(&app->dsp, &temp_chunk);
+        
+        iq_correction_run_estimation(&app->dsp, temp_chunk.pre_resample_buffer);
         app->dsp.iq_correct.last_optimization_time = 0.0;
     }
 

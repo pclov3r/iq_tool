@@ -14,7 +14,7 @@
  * @param arg A void pointer to the PipelineContext struct.
  * @return NULL.
  */
-void* pipeline_thread_iq_optimizer(void* arg);
+void* pipeline_thread_iq_estimator(void* arg);
 
 /**
  * @brief The main function for the Source Watchdog utility thread.
