@@ -289,7 +289,7 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext* app, floa
     // -------------------------------------------------------------------------
 
     // Calculate input buffer size (for buffered mode)
-    if (app->pipeline_mode != PIPELINE_MODE_FILE_PROCESSING) {
+    if (app->pipeline_mode != PIPELINE_MODE_SYNCHRONOUS_PULL) {
         size_t input_buffer_bytes = (size_t)(
             input_rate *
             INPUT_BUFFER_DURATION_SEC *
@@ -357,7 +357,7 @@ bool pipeline_run(PipelineContext* context) {
     // --- Step 5: Spawn threads based on configuration (Direct Command Model) ---
     log_debug("Spawning pipeline threads...");
     bool threads_ok = true;
-    if (app->pipeline_mode != PIPELINE_MODE_FILE_PROCESSING) {
+    if (app->pipeline_mode != PIPELINE_MODE_SYNCHRONOUS_PULL) {
         if (!thread_manager_spawn_thread(&manager, "Source", pipeline_thread_source)) threads_ok = false;
     }
     if (threads_ok && !thread_manager_spawn_thread(&manager, "Reader", pipeline_thread_reader)) threads_ok = false;
@@ -473,7 +473,7 @@ static bool _init_queues_and_buffers(AppConfig* config, AppContext* app) {
         }
     }
 
-    if (app->pipeline_mode != PIPELINE_MODE_FILE_PROCESSING) {
+    if (app->pipeline_mode != PIPELINE_MODE_SYNCHRONOUS_PULL) {
         app->pipeline.source_input_buffer = ring_buffer_create(app->pipeline.input_buffer_size, arena);
         if (!app->pipeline.source_input_buffer) return false;
     }

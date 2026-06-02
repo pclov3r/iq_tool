@@ -124,7 +124,7 @@ size_t audio_output_write(AudioOutputContext* ctx, const void* pcm_data, size_t 
     }
 
     // --- CONDITIONAL BACKPRESSURE ---
-    if (mode == PIPELINE_MODE_FILE_PROCESSING) {
+    if (mode == PIPELINE_MODE_SYNCHRONOUS_PULL) {
         const size_t THROTTLE_THRESHOLD = (size_t)(ctx->buffer_size * 0.8);
         ring_buffer_wait_for_threshold(ctx->audio_ring_buffer, THROTTLE_THRESHOLD);
         if (is_shutdown_requested()) return 0;

@@ -351,7 +351,7 @@ static void* rtlsdr_input_start_stream(ModuleContext* ctx, QueueSamples queue_sa
             }
             break;
 
-        case PIPELINE_MODE_FILE_PROCESSING:
+        case PIPELINE_MODE_SYNCHRONOUS_PULL:
             break;
     }
 

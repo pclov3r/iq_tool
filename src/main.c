@@ -508,7 +508,7 @@ static void print_final_summary(const AppConfig *config, const AppContext* app, 
         fprintf(stderr, "%-*s %s\n", label_width, "Final Output Size:", size_buf);
         fprintf(stderr, "%-*s %.2f MB/s\n", label_width, "Average Write Speed:", avg_write_speed_mbps);
     } else if (is_shutdown_requested()) {
-        bool source_has_known_length = (app->pipeline_mode == PIPELINE_MODE_FILE_PROCESSING);
+        bool source_has_known_length = (app->pipeline_mode == PIPELINE_MODE_SYNCHRONOUS_PULL);
         if (!source_has_known_length) {
             fprintf(stderr, "%-*s %s\n", label_width, "Status:", "Capture Stopped by User");
         } else {

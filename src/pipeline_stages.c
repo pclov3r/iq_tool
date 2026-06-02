@@ -142,7 +142,7 @@ void* pipeline_thread_reader(void* arg) {
             break;
         }
 
-        case PIPELINE_MODE_FILE_PROCESSING: {
+        case PIPELINE_MODE_SYNCHRONOUS_PULL: {
             ModuleContext ctx = { .config = config, .app = app };
             InputModuleInterface* in_api = app->module.input_api;
 

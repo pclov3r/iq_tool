@@ -68,7 +68,7 @@ typedef enum {
 
 typedef enum {
     PIPELINE_MODE_BUFFERED_INPUT,
-    PIPELINE_MODE_FILE_PROCESSING
+    PIPELINE_MODE_SYNCHRONOUS_PULL
 } PipelineMode;
 
 
