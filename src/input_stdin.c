@@ -135,8 +135,21 @@ static void* stdin_input_start_stream(ModuleContext* ctx, QueueSamples queue_sam
 }
 
 static size_t stdin_input_read_chunk(ModuleContext* ctx, void* buffer, size_t bytes_to_read) {
-    (void)ctx; (void)buffer; (void)bytes_to_read;
-    return 0;
+    size_t total_read = 0;
+    unsigned char* ptr = (unsigned char*)buffer;
+
+    while (total_read < bytes_to_read && !is_shutdown_requested()) {
+        size_t bytes_read = fread(ptr + total_read, 1, bytes_to_read - total_read, stdin);
+        if (bytes_read > 0) {
+            total_read += bytes_read;
+        } else {
+            if (ferror(stdin)) {
+                handle_fatal_thread_error("Error reading from stdin pipe.", ctx->app);
+            }
+            break; // EOF or Error
+        }
+    }
+    return total_read;
 }
 
 static void stdin_input_stop_stream(ModuleContext* ctx) {
