@@ -5,7 +5,7 @@
 #include "app_context.h"
 #include "log.h"
 #include "ring_buffer.h"
-#include "utils.h"
+#include "utilities.h"
 #include "signal_handler.h"
 #include "sample_convert.h"
 #include "queue.h"
@@ -111,16 +111,16 @@ static bool nfm_output_validate_options(AppConfig* config) {
     return true;
 }
 
-static bool nfm_output_initialize(ModuleContext* ctx) {
-    AppContext* res = ctx->app;
+static bool nfm_output_initialize(ModuleContext* context) {
+    AppContext* res = context->app;
     NfmContext* p = (NfmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(NfmContext), true);
     res->module.output_private_data = p;
 
-    p->audio_out = audio_output_create(&res->pipeline.setup_arena, NFM_AUDIO_RATE, NFM_AUDIO_CHANNELS, NFM_AUDIO_BUFFER_SIZE, ctx->config->dsp.audio_writer_path, ctx->config->dsp.audio_writer_rf64, ctx->config->dsp.mute_audio);
+    p->audio_out = audio_output_create(&res->pipeline.setup_arena, NFM_AUDIO_RATE, NFM_AUDIO_CHANNELS, NFM_AUDIO_BUFFER_SIZE, context->config->dsp.audio_writer_path, context->config->dsp.audio_writer_rf64, context->config->dsp.mute_audio);
     if (!p->audio_out) return false;
 
     // 3. DSP Setup
-    p->input_samplerate = (float)ctx->config->output_sample_rate.rate_hz;
+    p->input_samplerate = (float)context->config->output_sample_rate.rate_hz;
     p->output_ratio = (float)NFM_AUDIO_RATE / p->input_samplerate;
 
     // A. Determine Deviation (Modulation Index)
@@ -135,7 +135,7 @@ static bool nfm_output_initialize(ModuleContext* ctx) {
     p->audio_lpf = iirfilt_rrrf_create_lowpass(4, NFM_AUDIO_CUTOFF / p->input_samplerate);
 
     // D. Output Resampler
-    p->resampler = msresamp_rrrf_create(p->output_ratio, ctx->config->dsp.filter.args.attenuation);
+    p->resampler = msresamp_rrrf_create(p->output_ratio, context->config->dsp.filter.args.attenuation);
 
     // Squelch state
     p->squelch_open = false;
@@ -161,13 +161,13 @@ static bool nfm_output_initialize(ModuleContext* ctx) {
 }
 
 
-static void nfm_output_reset(ModuleContext* ctx) { (void)ctx; }
-static void nfm_output_flush(ModuleContext* ctx) {
-    NfmContext* p = (NfmContext*)ctx->app->module.output_private_data;
+static void nfm_output_reset(ModuleContext* context) { (void)context; }
+static void nfm_output_flush(ModuleContext* context) {
+    NfmContext* p = (NfmContext*)context->app->module.output_private_data;
     audio_output_clear(p->audio_out);
 }
-static size_t nfm_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
-    AppContext* res = ctx->app;
+static size_t nfm_output_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
+    AppContext* res = context->app;
     NfmContext* p = (NfmContext*)res->module.output_private_data;
 
     static size_t stat_counter = 0;
@@ -265,8 +265,8 @@ static size_t nfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
     return input_bytes;
 }
 
-static void nfm_output_cleanup(ModuleContext* ctx) {
-    AppContext* res = ctx->app;
+static void nfm_output_cleanup(ModuleContext* context) {
+    AppContext* res = context->app;
     if (!res->module.output_private_data) return;
     NfmContext* p = (NfmContext*)res->module.output_private_data;
 
@@ -277,8 +277,8 @@ static void nfm_output_cleanup(ModuleContext* ctx) {
     if (p->resampler) msresamp_rrrf_destroy(p->resampler);
 }
 
-static void nfm_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
-    (void)ctx;
+static void nfm_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+    (void)context;
     const char* mode = s_nfm_config.is_narrow ? "Narrow (2.5k Dev)" : "Standard (5k Dev)";
     const char* type = s_nfm_config.disable_discriminator_filter ? "Discriminator Filter Disabled" : "Discriminator Filter Enabled";
 

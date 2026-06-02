@@ -3,7 +3,7 @@
 #include "constants.h"
 #include "log.h"
 #include "module_registry.h"
-#include "utils.h"
+#include "utilities.h"
 #include "sample_format_table.h"
 #include "agc.h"
 #include <string.h>
@@ -166,7 +166,7 @@ bool validate_option_combinations(AppConfig *config) {
         return false;
     }
     if (config->dsp.raw_passthrough) {
-        if (config->dsp.filter.count > 0 || config->dsp.freq_shift_hz != 0.0f ||
+        if (config->dsp.filter.count > 0 || config->dsp.frequency_shift_hz != 0.0f ||
             config->dsp.iq_correction.enable || config->dsp.dc_block.enable) {
             log_error("--raw-passthrough cannot be used with any other DSP options.");
             return false;

@@ -3,7 +3,7 @@
 #include "app_context.h"
 #include "log.h"
 #include "platform.h"
-#include "utils.h"
+#include "utilities.h"
 #include "signal_handler.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,9 +28,9 @@ typedef struct {
 
 // --- Helper Functions ---
 
-static bool rawfile_output_initialize(ModuleContext* ctx) {
-    const AppConfig* config = ctx->config;
-    AppContext* app = ctx->app;
+static bool rawfile_output_initialize(ModuleContext* context) {
+    const AppConfig* config = context->config;
+    AppContext* app = context->app;
 
     RawfileOutputContext* data = (RawfileOutputContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RawfileOutputContext), true);
     if (!data) return false;
@@ -51,7 +51,7 @@ static bool rawfile_output_initialize(ModuleContext* ctx) {
     const char* out_path = config->output.effective_path;
     #endif
 
-    if (!utils_verify_output_path(config, out_path)) {
+    if (!utility_verify_output_path(config, out_path)) {
         return false;
     }
 
@@ -70,8 +70,8 @@ static bool rawfile_output_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static size_t rawfile_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
-    AppContext* app = ctx->app;
+static size_t rawfile_output_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write) {
+    AppContext* app = context->app;
     RawfileOutputContext* data = (RawfileOutputContext*)app->module.output_private_data;
     if (!data || !data->handle) return 0;
 
@@ -82,8 +82,8 @@ static size_t rawfile_output_write_chunk(ModuleContext* ctx, const void* buffer,
     return written;
 }
 
-static void rawfile_output_cleanup(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void rawfile_output_cleanup(ModuleContext* context) {
+    AppContext* app = context->app;
     if (!app->module.output_private_data) return;
     RawfileOutputContext* data = (RawfileOutputContext*)app->module.output_private_data;
 
@@ -94,8 +94,8 @@ static void rawfile_output_cleanup(ModuleContext* ctx) {
     app->stats.final_output_size_bytes = data->total_bytes_written;
 }
 
-static void rawfile_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
-    (void)ctx;
+static void rawfile_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+    (void)context;
     add_summary_item(info, "Output Type", "RAW File");
 }
 

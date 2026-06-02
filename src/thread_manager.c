@@ -43,9 +43,9 @@ bool thread_manager_spawn_thread(ThreadManager* manager, const char* name, void*
         return false;
     }
 
-    int ret = pthread_create(&manager->thread_handles[manager->num_threads_started], NULL, func, manager->thread_context);
-    if (ret != 0) {
-        log_fatal("Failed to create '%s' thread: %s", name, strerror(ret));
+    int return_code = pthread_create(&manager->thread_handles[manager->num_threads_started], NULL, func, manager->thread_context);
+    if (return_code != 0) {
+        log_fatal("Failed to create '%s' thread: %s", name, strerror(return_code));
         // Do not increment num_threads_started on failure.
         return false;
     }

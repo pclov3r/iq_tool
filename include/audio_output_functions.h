@@ -36,32 +36,32 @@ AudioOutputContext* audio_output_create(struct MemoryArena* arena, int sample_ra
  * a file (to maintain 1x playback speed), but will drop samples if processing
  * a live source (to preserve digital RF sync).
  *
- * @param ctx The audio output handle.
+ * @param context The audio output handle.
  * @param pcm_data Pointer to the interleaved 16-bit PCM data.
  * @param bytes The number of bytes to write.
  * @param mode The current pipeline mode (File vs. Live SDR).
  * @return The number of bytes successfully written.
  */
-size_t audio_output_write(AudioOutputContext* ctx, const void* pcm_data, size_t bytes, PipelineMode mode);
+size_t audio_output_write(AudioOutputContext* context, const void* pcm_data, size_t bytes, PipelineMode mode);
 
 /**
  * @brief Blocks until the internal audio buffer drains (useful at End-of-Stream).
  */
-void audio_output_drain(AudioOutputContext* ctx);
+void audio_output_drain(AudioOutputContext* context);
 
 /**
  * @brief Flushes and quits fast.
  */
-void audio_output_flush(AudioOutputContext* ctx);
+void audio_output_flush(AudioOutputContext* context);
 
 /**
  * @brief Clears the audio buffer immediately without draining.
  */
-void audio_output_clear(AudioOutputContext* ctx);
+void audio_output_clear(AudioOutputContext* context);
 
 /**
  * @brief Stops the audio driver and frees internal buffers.
  */
-void audio_output_destroy(AudioOutputContext* ctx);
+void audio_output_destroy(AudioOutputContext* context);
 
 #endif // AUDIO_OUTPUT_FUNCTIONS_H_

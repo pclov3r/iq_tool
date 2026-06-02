@@ -30,7 +30,7 @@
  */
 static void* keyboard_listener_thread(void* arg) {
     AppContext* app = (AppContext*)arg;
-    ModuleContext ctx = { .config = app->config, .app = app };
+    ModuleContext context = { .config = app->config, .app = app };
 
 #ifndef _WIN32
     // Open the controlling terminal directly (bypasses stdin redirection)
@@ -71,10 +71,10 @@ static void* keyboard_listener_thread(void* arg) {
             log_debug("Keyboard command received: '%c' (0x%02X)", key, key);
             // Broadcast keystroke to active modules
             if (app->module.input_api && app->module.input_api->on_keypress) {
-                app->module.input_api->on_keypress(&ctx, key);
+                app->module.input_api->on_keypress(&context, key);
             }
             if (app->module.output_api && app->module.output_api->on_keypress) {
-                app->module.output_api->on_keypress(&ctx, key);
+                app->module.output_api->on_keypress(&context, key);
             }
         }
 

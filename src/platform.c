@@ -178,8 +178,8 @@ bool get_absolute_path_windows(const char* path_arg_mbcs,
 
 bool platform_get_executable_dir(char* buffer, size_t buffer_size) {
     wchar_t w_path[MAX_PATH_BUFFER];
-    DWORD len = GetModuleFileNameW(NULL, w_path, MAX_PATH_BUFFER);
-    if (len == 0 || len >= MAX_PATH_BUFFER) {
+    DWORD length = GetModuleFileNameW(NULL, w_path, MAX_PATH_BUFFER);
+    if (length == 0 || length >= MAX_PATH_BUFFER) {
         log_error("GetModuleFileNameW failed or buffer too small.");
         return false;
     }

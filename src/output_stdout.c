@@ -3,7 +3,7 @@
 #include "app_context.h"
 #include "log.h"
 #include "signal_handler.h"
-#include "utils.h"
+#include "utilities.h"
 #include "mem_arena.h"
 #include <stdio.h>
 #include <string.h>
@@ -22,8 +22,8 @@ typedef struct {
 
 // --- Module Implementation ---
 
-static bool stdout_output_initialize(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static bool stdout_output_initialize(ModuleContext* context) {
+    AppContext* app = context->app;
 
     StdoutContext* data = (StdoutContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(StdoutContext), true);
     if (!data) {
@@ -45,8 +45,8 @@ static bool stdout_output_initialize(ModuleContext* ctx) {
 
 
 
-static size_t stdout_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
-    AppContext* app = ctx->app;
+static size_t stdout_output_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write) {
+    AppContext* app = context->app;
     StdoutContext* data = (StdoutContext*)app->module.output_private_data;
     if (!data) return 0;
 
@@ -57,8 +57,8 @@ static size_t stdout_output_write_chunk(ModuleContext* ctx, const void* buffer, 
     return written;
 }
 
-static void stdout_output_cleanup(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void stdout_output_cleanup(ModuleContext* context) {
+    AppContext* app = context->app;
     if (!app->module.output_private_data) return;
     StdoutContext* data = (StdoutContext*)app->module.output_private_data;
 
@@ -66,8 +66,8 @@ static void stdout_output_cleanup(ModuleContext* ctx) {
     app->stats.final_output_size_bytes = data->total_bytes_written;
 }
 
-static void stdout_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
-    (void)ctx;
+static void stdout_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+    (void)context;
     add_summary_item(info, "Output Type", "stdout");
 }
 

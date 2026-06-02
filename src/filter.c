@@ -91,11 +91,11 @@ static bool _configure_filter_stage(AppConfig *config, AppContext* app) {
     return true;
 }
 
-static inline void _invert_filter_spectrum(float* taps, unsigned int len) {
-    for (unsigned int k = 0; k < len; k++) {
+static inline void _invert_filter_spectrum(float* taps, unsigned int length) {
+    for (unsigned int k = 0; k < length; k++) {
         taps[k] = -taps[k];
     }
-    taps[(len - 1) / 2] += 1.0f;
+    taps[(length - 1) / 2] += 1.0f;
 }
 
 static unsigned int

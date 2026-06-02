@@ -9,7 +9,7 @@
 
 #include "output_wav_rf64.h"
 #include "output_wav_common.h" // Include the shared implementation
-#include "utils.h"             // For add_summary_item
+#include "utilities.h"             // For add_summary_item
 #include <sndfile.h>           // For the SF_FORMAT_RF64 constant
 
 /**
@@ -18,16 +18,16 @@
  * This function's sole responsibility is to pass the specific format flag
  * for RF64 files to the shared initialization logic.
  */
-static bool wav_rf64_output_initialize(ModuleContext* ctx) {
+static bool wav_rf64_output_initialize(ModuleContext* context) {
     // Call the common implementation, specifying the RF64 format.
-    return wav_common_initialize(ctx, SF_FORMAT_RF64);
+    return wav_common_initialize(context, SF_FORMAT_RF64);
 }
 
 /**
  * @brief Populates the summary info for a WAV/RF64 output.
  */
-static void wav_rf64_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
-    (void)ctx; // Unused in this simple implementation
+static void wav_rf64_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+    (void)context; // Unused in this simple implementation
     add_summary_item(info, "Output Type", "WAV-RF64");
 }
 

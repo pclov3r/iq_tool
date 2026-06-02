@@ -1,5 +1,5 @@
 /**
- * @file utils.h
+ * @file utilities.h
  * @brief Defines the interface for general-purpose utility and helper functions.
  *
  * This module contains a collection of miscellaneous helper functions that are
@@ -24,12 +24,12 @@
  * @brief Gets a high-resolution monotonic time in seconds.
  * @return The time in seconds as a double.
  */
-double utils_get_time(void);
+double utility_get_time(void);
 
 /**
  * @brief Clears the standard input buffer up to the next newline or EOF.
  */
-void utils_clear_stdin(void);
+void utility_clear_stdin(void);
 
 /**
  * @brief Formats a file size in bytes into a human-readable string (B, KB, MB, GB).
@@ -38,7 +38,7 @@ void utils_clear_stdin(void);
  * @param buffer_size The size of the character buffer.
  * @return A pointer to the provided buffer containing the formatted string.
  */
-const char* utils_format_size(long long size_bytes, char* buffer, size_t buffer_size);
+const char* utility_format_size(long long size_bytes, char* buffer, size_t buffer_size);
 
 /**
  * @brief Platform-independent helper to get the base filename from a full path.
@@ -61,10 +61,10 @@ void add_summary_item(InputSummaryInfo* info, const char* label, const char* val
 
 /**
  * @brief Helper function to trim leading/trailing whitespace from a string in-place.
- * @param str The string to trim.
+ * @param input_string The string to trim.
  * @return A pointer to the beginning of the trimmed content within the original string.
  */
-char* utils_trim_whitespace(char* str);
+char* utility_trim_whitespace(char* input_string);
 
 /**
  * @brief Formats a duration in seconds into a human-readable HH:MM:SS string.
@@ -72,7 +72,7 @@ char* utils_trim_whitespace(char* str);
  * @param buffer A character buffer to store the formatted string.
  * @param buffer_size The size of the character buffer.
  */
-void utils_format_duration(double total_seconds, char* buffer, size_t buffer_size);
+void utility_format_duration(double total_seconds, char* buffer, size_t buffer_size);
 
 /**
  * @brief Checks if a given frequency exceeds the Nyquist frequency for a sample rate and warns the user.
@@ -81,19 +81,19 @@ void utils_format_duration(double total_seconds, char* buffer, size_t buffer_siz
  * @param context_str A string describing the context (e.g., "Filter Cutoff").
  * @return true to continue, false if the user chose to cancel.
  */
-bool utils_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz, const char* context_str);
+bool utility_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz, const char* context_str);
 
 /**
  * @brief Checks if a file exists at the given path and is accessible for reading.
  * @param full_path The full path to the file.
  * @return true if the file exists and can be opened for reading, false otherwise.
  */
-bool utils_check_file_exists(const char* full_path);
+bool utility_check_file_exists(const char* full_path);
 
 #endif // UTILS_H_
 
 /**
  * @brief Prompts the user for permission to overwrite a file.
  */
-bool utils_prompt_for_overwrite(const char* path_for_messages);
-bool utils_verify_output_path(const struct AppConfig* config, const char* out_path_utf8);
+bool utility_prompt_for_overwrite(const char* path_for_messages);
+bool utility_verify_output_path(const struct AppConfig* config, const char* out_path_utf8);

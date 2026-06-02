@@ -4,7 +4,7 @@
 #include "log.h"
 #include "signal_handler.h"
 #include "app_context.h"
-#include "utils.h"
+#include "utilities.h"
 #include "sample_format_table.h"
 #include "sample_convert.h"
 #include "input_common.h"
@@ -54,7 +54,7 @@ void rtlsdr_set_default_config(AppConfig* config) {
 
 static const struct argparse_option rtlsdr_input_cli_options[] = {
     OPT_GROUP("RTL-SDR Input (rtlsdr)"),
-    OPT_INTEGER(0, "rtlsdr-device-idx", &s_rtlsdr_config.device_index, "Select specific RTL-SDR device by index (0-indexed). (Default: 0)", NULL, 0, 0),
+    OPT_INTEGER(0, "rtlsdr-device-index", &s_rtlsdr_config.device_index, "Select specific RTL-SDR device by index (0-indexed). (Default: 0)", NULL, 0, 0),
     OPT_FLOAT(0, "rtlsdr-gain", &s_rtlsdr_config.rtlsdr_gain_db_arg, "Set manual tuner gain in dB (e.g., 28.0, 49.6). Disables AGC.", NULL, 0, 0),
     OPT_INTEGER(0, "rtlsdr-ppm", &s_rtlsdr_config.ppm, "Set frequency correction in parts-per-million. (Optional, Default: 0)", NULL, 0, 0),
     OPT_INTEGER(0, "rtlsdr-direct-sampling", &s_rtlsdr_config.direct_sampling_mode, "Enable direct sampling mode for HF reception (1=I-branch, 2=Q-branch)", NULL, 0, 0),
@@ -65,15 +65,15 @@ const struct argparse_option* rtlsdr_input_get_cli_options(int* count) {
     return rtlsdr_input_cli_options;
 }
 
-static bool rtlsdr_input_initialize(ModuleContext* ctx);
-static void* rtlsdr_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
-static void rtlsdr_input_stop_stream(ModuleContext* ctx);
-static void rtlsdr_input_cleanup(ModuleContext* ctx);
-static void rtlsdr_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
+static bool rtlsdr_input_initialize(ModuleContext* context);
+static void* rtlsdr_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
+static void rtlsdr_input_stop_stream(ModuleContext* context);
+static void rtlsdr_input_cleanup(ModuleContext* context);
+static void rtlsdr_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool rtlsdr_input_validate_options(AppConfig* config);
 static bool rtlsdr_input_validate_generic_options(const AppConfig* config);
 
-static void rtlsdr_input_stream_callback(unsigned char *buf, uint32_t len, void *cb_ctx);
+static void rtlsdr_input_stream_callback(unsigned char *buffer, uint32_t length, void *cb_context);
 
 static int rtlsdr_find_nearest_gain(rtlsdr_dev_t *dev,
                                     int requested_gain_tenths,
@@ -170,8 +170,8 @@ static bool rtlsdr_input_validate_options(AppConfig* config) {
     return true;
 }
 
-static void rtlsdr_input_stream_callback(unsigned char *buf, uint32_t len, void *cb_ctx) {
-    AppContext* app = (AppContext*)cb_ctx;
+static void rtlsdr_input_stream_callback(unsigned char *buffer, uint32_t length, void *cb_context) {
+    AppContext* app = (AppContext*)cb_context;
 
     // --- HEARTBEAT ---
 
@@ -182,16 +182,16 @@ static void rtlsdr_input_stream_callback(unsigned char *buf, uint32_t len, void 
     // --- NEW ARCHITECTURE: DUMP THE WHOLE BLOCK ---
     // RTL-SDR provides interleaved CU8 (1 byte I, 1 byte Q = 2 bytes per sample).
     // We no longer chop this up. We send the full hardware buffer to the ring buffer.
-    uint32_t num_samples = len / 2;
+    uint32_t num_samples = length / 2;
 
-    if (!app->module.queue_samples(app->module.pipeline_ctx, buf, num_samples, CU8)) {
+    if (!app->module.queue_samples(app->module.pipeline_context, buffer, num_samples, CU8)) {
         /* Warning handled internally by pipeline */
     }
 }
 
-static bool rtlsdr_input_initialize(ModuleContext* ctx) {
-    const AppConfig *config = ctx->config;
-    AppContext* app = ctx->app;
+static bool rtlsdr_input_initialize(ModuleContext* context) {
+    const AppConfig *config = context->config;
+    AppContext* app = context->app;
     int result;
     uint32_t device_count;
     uint32_t device_index = s_rtlsdr_config.device_index;
@@ -330,10 +330,10 @@ cleanup:
     return success;
 }
 
-static void* rtlsdr_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
-    ctx->app->module.queue_samples = queue_samples;
-    ctx->app->module.pipeline_ctx = pipeline_ctx;
-    AppContext* app = ctx->app;
+static void* rtlsdr_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+    context->app->module.queue_samples = queue_samples;
+    context->app->module.pipeline_context = pipeline_context;
+    AppContext* app = context->app;
     RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
     int result;
 
@@ -358,8 +358,8 @@ static void* rtlsdr_input_start_stream(ModuleContext* ctx, QueueSamples queue_sa
     return NULL;
 }
 
-static void rtlsdr_input_stop_stream(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void rtlsdr_input_stop_stream(ModuleContext* context) {
+    AppContext* app = context->app;
     RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
     if (private_data && private_data->dev) {
         log_debug("Stopping RTL-SDR stream...");
@@ -367,8 +367,8 @@ static void rtlsdr_input_stop_stream(ModuleContext* ctx) {
     }
 }
 
-static void rtlsdr_input_cleanup(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void rtlsdr_input_cleanup(ModuleContext* context) {
+    AppContext* app = context->app;
     if (app->module.input_private_data) {
         RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
         pthread_mutex_lock(&private_data->driver_mutex);
@@ -385,9 +385,9 @@ static void rtlsdr_input_cleanup(ModuleContext* ctx) {
     }
 }
 
-static void rtlsdr_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
-    const AppConfig *config = ctx->config;
-    AppContext* app = ctx->app;
+static void rtlsdr_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+    const AppConfig *config = context->config;
+    AppContext* app = context->app;
     RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
 
     char source_name_buf[775];

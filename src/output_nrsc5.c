@@ -27,7 +27,7 @@
 #include "log.h"
 #include "platform.h"
 #include "ring_buffer.h"
-#include "utils.h"
+#include "utilities.h"
 #include "signal_handler.h"
 #include "nrsc5.h"
 #include "queue.h"
@@ -185,14 +185,14 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque);
 // ==========================================
 
 // --- Helper: BER Stats ---
-static void update_ber_stats(Nrsc5Context* ctx, float cber) {
-    ctx->ber_sum += cber;
-    ctx->ber_count += 1.0f;
-    if (cber < ctx->ber_min) ctx->ber_min = cber;
-    if (cber > ctx->ber_max) ctx->ber_max = cber;
+static void update_ber_stats(Nrsc5Context* context, float cber) {
+    context->ber_sum += cber;
+    context->ber_count += 1.0f;
+    if (cber < context->ber_min) context->ber_min = cber;
+    if (cber > context->ber_max) context->ber_max = cber;
 
     log_info("NRSC5: BER: %f, avg: %f, min: %f, max: %f",
-             cber, ctx->ber_sum / ctx->ber_count, ctx->ber_min, ctx->ber_max);
+             cber, context->ber_sum / context->ber_count, context->ber_min, context->ber_max);
 }
 
 /**
@@ -217,7 +217,7 @@ static void sanitize_aas_filename(const char* raw, char* out, size_t max_len) {
 /**
  * @brief Safely dumps AAS/AAA files to disk using pre-allocated arena memory.
  */
-static void dump_aas_file(Nrsc5Context* ctx, const nrsc5_event_t *evt) {
+static void dump_aas_file(Nrsc5Context* context, const nrsc5_event_t *evt) {
     if (is_shutdown_requested()) return;
 
     const char *name_raw = NULL;
@@ -250,15 +250,15 @@ static void dump_aas_file(Nrsc5Context* ctx, const nrsc5_event_t *evt) {
     char safe_name[256];
     sanitize_aas_filename(name_raw, safe_name, sizeof(safe_name));
 
-    snprintf(ctx->filepath_buffer, MAX_PATH_BUFFER, "%s" PATH_SEPARATOR "%u_%s",
+    snprintf(context->filepath_buffer, MAX_PATH_BUFFER, "%s" PATH_SEPARATOR "%u_%s",
              s_nrsc5_config.aas_dir_arg, number, safe_name);
 
-    FILE *fp = fopen(ctx->filepath_buffer, "wb");
+    FILE *fp = fopen(context->filepath_buffer, "wb");
     if (fp) {
         size_t written = fwrite(data, 1, size, fp);
         fclose(fp);
         if (written == size) {
-            log_info("NRSC5: AAS file saved: %s (%u bytes)", ctx->filepath_buffer, size);
+            log_info("NRSC5: AAS file saved: %s (%u bytes)", context->filepath_buffer, size);
         }
     } else {
         log_warn("NRSC5: Failed to save AAS file '%s': %s", safe_name, strerror(errno));
@@ -267,7 +267,7 @@ static void dump_aas_file(Nrsc5Context* ctx, const nrsc5_event_t *evt) {
 
 // --- NRSC5 Event Callback ---
 static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
-    Nrsc5Context* ctx = (Nrsc5Context*)opaque;
+    Nrsc5Context* context = (Nrsc5Context*)opaque;
     const char* name_ptr = NULL;
     char time_str[64];
 
@@ -280,10 +280,10 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
             log_info("NRSC5: Synchronized");
             log_info("NRSC5: Frequency offset: %.15g Hz", evt->sync.freq_offset);
             log_info("NRSC5: Primary service mode: %d", evt->sync.psmi);
-            ctx->ber_min = 1.0f;
-            ctx->ber_max = 0.0f;
-            ctx->ber_sum = 0.0f;
-            ctx->ber_count = 0.0f;
+            context->ber_min = 1.0f;
+            context->ber_max = 0.0f;
+            context->ber_sum = 0.0f;
+            context->ber_count = 0.0f;
             break;
 
         case NRSC5_EVENT_LOST_SYNC:
@@ -295,50 +295,50 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
             break;
 
         case NRSC5_EVENT_BER:
-            update_ber_stats(ctx, evt->ber.cber);
+            update_ber_stats(context, evt->ber.cber);
             break;
 
         case NRSC5_EVENT_HDC:
-            if (evt->hdc.program == ctx->active_program) {
-                ctx->audio_bytes += evt->hdc.count;
-                ctx->audio_packets++;
+            if (evt->hdc.program == context->active_program) {
+                context->audio_bytes += evt->hdc.count;
+                context->audio_packets++;
 
                 if (evt->hdc.flags & NRSC5_PKT_FLAGS_CRC_ERROR) {
-                    ctx->audio_errors++;
-                    ctx->total_audio_errors++;
+                    context->audio_errors++;
+                    context->total_audio_errors++;
                 } else {
-                    ctx->audio_packets_valid++;
+                    context->audio_packets_valid++;
                 }
 
-                if (ctx->audio_packets_valid >= 32) {
-                    float kbps = (float)ctx->audio_bytes * 8.0f * NRSC5_SAMPLE_RATE_AUDIO /
-                                 NRSC5_AUDIO_FRAME_SAMPLES / ctx->audio_packets_valid / 1000.0f;
+                if (context->audio_packets_valid >= 32) {
+                    float kbps = (float)context->audio_bytes * 8.0f * NRSC5_SAMPLE_RATE_AUDIO /
+                                 NRSC5_AUDIO_FRAME_SAMPLES / context->audio_packets_valid / 1000.0f;
                     log_info("NRSC5: Audio bit rate: %.1f kbps", kbps);
-                    ctx->audio_packets_valid = 0;
-                    ctx->audio_bytes = 0;
+                    context->audio_packets_valid = 0;
+                    context->audio_bytes = 0;
                 }
 
-                if (ctx->audio_packets >= 32) {
-                    if (ctx->audio_errors > 0) {
-                        log_warn("NRSC5: Audio CRC errors (recent): %d", ctx->audio_errors);
-                        log_warn("NRSC5: Audio CRC errors (total): %d", ctx->total_audio_errors);
+                if (context->audio_packets >= 32) {
+                    if (context->audio_errors > 0) {
+                        log_warn("NRSC5: Audio CRC errors (recent): %d", context->audio_errors);
+                        log_warn("NRSC5: Audio CRC errors (total): %d", context->total_audio_errors);
                     }
-                    ctx->audio_packets = 0;
-                    ctx->audio_errors = 0;
+                    context->audio_packets = 0;
+                    context->audio_errors = 0;
                 }
             }
             break;
 
         case NRSC5_EVENT_AUDIO:
-            if (evt->audio.program == ctx->active_program) {
+            if (evt->audio.program == context->active_program) {
                 if (!evt->audio.data || evt->audio.count == 0 || evt->audio.count > 100000) return;
                 size_t bytes = evt->audio.count * sizeof(int16_t);
-                audio_output_write(ctx->audio_out, evt->audio.data, bytes, ctx->pipeline_mode);
+                audio_output_write(context->audio_out, evt->audio.data, bytes, context->pipeline_mode);
             }
             break;
 
         case NRSC5_EVENT_ID3:
-            if (evt->id3.program == ctx->active_program) {
+            if (evt->id3.program == context->active_program) {
                 if (evt->id3.title)  log_info("NRSC5: Title: %s", evt->id3.title);
                 if (evt->id3.artist) log_info("NRSC5: Artist: %s", evt->id3.artist);
                 if (evt->id3.album)  log_info("NRSC5: Album: %s", evt->id3.album);
@@ -460,7 +460,7 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
                      evt->here_image.image_type == NRSC5_HERE_IMAGE_TRAFFIC ? "TRAFFIC" : "WEATHER",
                      evt->here_image.seq, evt->here_image.n1, evt->here_image.n2, time_str,
                      SAFE_STR(evt->here_image.name), evt->here_image.size);
-            if (s_nrsc5_config.aas_dir_arg) dump_aas_file(ctx, evt);
+            if (s_nrsc5_config.aas_dir_arg) dump_aas_file(context, evt);
             break;
 
         case NRSC5_EVENT_LOT:
@@ -468,7 +468,7 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
             log_info("NRSC5: LOT file: port=%04X lot=%d name=%s size=%d mime=%08X expiry=%s",
                      evt->lot.component->data.port, evt->lot.lot, SAFE_STR(evt->lot.name),
                      evt->lot.size, evt->lot.mime, time_str);
-            if (s_nrsc5_config.aas_dir_arg) dump_aas_file(ctx, evt);
+            if (s_nrsc5_config.aas_dir_arg) dump_aas_file(context, evt);
             break;
 
         default:
@@ -482,17 +482,17 @@ static double calculate_buffer_power(const void* buffer, unsigned int frames, Nr
     double accum_mag_sq_sum = 0.0;
 
     if (mode == NRSC5_MODE_CS16_FM || mode == NRSC5_MODE_CS16_AM) {
-        const int16_t* ptr = (const int16_t*)buffer;
+        const int16_t* samples = (const int16_t*)buffer;
         for (unsigned int i = 0; i < frames; i++) {
-            float i_val = (float)ptr[2*i] * (1.0f / 32768.0f);
-            float q_val = (float)ptr[2*i+1] * (1.0f / 32768.0f);
+            float i_val = (float)samples[2*i] * (1.0f / 32768.0f);
+            float q_val = (float)samples[2*i+1] * (1.0f / 32768.0f);
             accum_mag_sq_sum += (double)(i_val*i_val + q_val*q_val);
         }
     } else {
-        const uint8_t* ptr = (const uint8_t*)buffer;
+        const uint8_t* samples = (const uint8_t*)buffer;
         for (unsigned int i = 0; i < frames; i++) {
-            float i_val = ((float)ptr[2*i] - 127.5f) * (1.0f / 128.0f);
-            float q_val = ((float)ptr[2*i+1] - 127.5f) * (1.0f / 128.0f);
+            float i_val = ((float)samples[2*i] - 127.5f) * (1.0f / 128.0f);
+            float q_val = ((float)samples[2*i+1] - 127.5f) * (1.0f / 128.0f);
             accum_mag_sq_sum += (double)(i_val*i_val + q_val*q_val);
         }
     }
@@ -502,8 +502,8 @@ static double calculate_buffer_power(const void* buffer, unsigned int frames, Nr
 
 // --- Module Interface Implementation ---
 
-static bool nrsc5_output_initialize(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static bool nrsc5_output_initialize(ModuleContext* context) {
+    AppContext* app = context->app;
 
 #ifdef _WIN32
     if (!load_nrsc5_dll()) {
@@ -511,24 +511,24 @@ static bool nrsc5_output_initialize(ModuleContext* ctx) {
     }
 #endif
 
-    Nrsc5Context* p = (Nrsc5Context*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(Nrsc5Context), true);
-    if (!p) return false;
-    app->module.output_private_data = p;
+    Nrsc5Context* nrsc5_decoder = (Nrsc5Context*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(Nrsc5Context), true);
+    if (!nrsc5_decoder) return false;
+    app->module.output_private_data = nrsc5_decoder;
 
     // Direct API call
     const char* ver_str = NULL;
     nrsc5_get_version(&ver_str);
     log_info("NRSC5: Library version %s", SAFE_STR(ver_str));
 
-    p->audio_out = audio_output_create(&app->pipeline.setup_arena, NRSC5_AUDIO_SAMPLE_RATE, NRSC5_AUDIO_CHANNELS, NRSC5_AUDIO_BUFFER_SIZE, ctx->config->dsp.audio_writer_path, ctx->config->dsp.audio_writer_rf64, ctx->config->dsp.mute_audio);
-    if (!p->audio_out) return false;
+    nrsc5_decoder->audio_out = audio_output_create(&app->pipeline.setup_arena, NRSC5_AUDIO_SAMPLE_RATE, NRSC5_AUDIO_CHANNELS, NRSC5_AUDIO_BUFFER_SIZE, context->config->dsp.audio_writer_path, context->config->dsp.audio_writer_rf64, context->config->dsp.mute_audio);
+    if (!nrsc5_decoder->audio_out) return false;
     log_info("NRSC5: Audio device initialized (%d Hz, %d Channels).", NRSC5_AUDIO_SAMPLE_RATE, NRSC5_AUDIO_CHANNELS);
 
-    p->pipeline_mode = app->pipeline_mode;
+    nrsc5_decoder->pipeline_mode = app->pipeline_mode;
 
     // Initialize NRSC5 Instance
     log_debug("NRSC5: Opening pipe...");
-    if (nrsc5_open_pipe(&p->nrsc5_inst) != 0) {
+    if (nrsc5_open_pipe(&nrsc5_decoder->nrsc5_inst) != 0) {
         log_fatal("NRSC5: Failed to open decoder pipe.");
         return false;
     }
@@ -540,7 +540,7 @@ static bool nrsc5_output_initialize(ModuleContext* ctx) {
         decoder_mode = NRSC5_MODE_AM;
     }
 
-    if (nrsc5_set_mode(p->nrsc5_inst, decoder_mode) != 0) {
+    if (nrsc5_set_mode(nrsc5_decoder->nrsc5_inst, decoder_mode) != 0) {
         log_fatal("NRSC5: Failed to set decoder mode.");
         return false;
     }
@@ -555,12 +555,12 @@ static bool nrsc5_output_initialize(ModuleContext* ctx) {
     log_info("NRSC5: Using mode: %s", mode_desc);
 
     // Set Callback
-    p->active_program = (unsigned int)s_nrsc5_config.program_id;
-    nrsc5_set_callback(p->nrsc5_inst, nrsc5_event_callback, p);
+    nrsc5_decoder->active_program = (unsigned int)s_nrsc5_config.program_id;
+    nrsc5_set_callback(nrsc5_decoder->nrsc5_inst, nrsc5_event_callback, nrsc5_decoder);
 
     // Start Decoder Thread
     log_debug("NRSC5: Starting decoder thread...");
-    nrsc5_start(p->nrsc5_inst);
+    nrsc5_start(nrsc5_decoder->nrsc5_inst);
 
 
 
@@ -575,16 +575,16 @@ static bool nrsc5_output_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void nrsc5_output_reset(ModuleContext* ctx) { (void)ctx; }
+static void nrsc5_output_reset(ModuleContext* context) { (void)context; }
 
-static void nrsc5_output_flush(ModuleContext* ctx) {
-    Nrsc5Context* p = (Nrsc5Context*)ctx->app->module.output_private_data;
-    audio_output_clear(p->audio_out);
+static void nrsc5_output_flush(ModuleContext* context) {
+    Nrsc5Context* nrsc5_decoder = (Nrsc5Context*)context->app->module.output_private_data;
+    audio_output_clear(nrsc5_decoder->audio_out);
 }
 
-static size_t nrsc5_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
-    AppContext* app = ctx->app;
-    Nrsc5Context* p = (Nrsc5Context*)app->module.output_private_data;
+static size_t nrsc5_output_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
+    AppContext* app = context->app;
+    Nrsc5Context* nrsc5_decoder = (Nrsc5Context*)app->module.output_private_data;
     if (input_bytes == 0) return 0;
 
     unsigned int frames = input_bytes / app->module.output_bytes_per_iq_sample;
@@ -596,7 +596,7 @@ static size_t nrsc5_output_write_chunk(ModuleContext* ctx, const void* buffer, s
     static size_t stat_rate_threshold = 0;
 
     if (stat_rate_threshold == 0) {
-        stat_rate_threshold = (size_t)(ctx->config->output_sample_rate.rate_hz * CONSOLE_UPDATE_INTERVAL_SEC);
+        stat_rate_threshold = (size_t)(context->config->output_sample_rate.rate_hz * CONSOLE_UPDATE_INTERVAL_SEC);
         if (stat_rate_threshold == 0) stat_rate_threshold = (size_t)(744187 * CONSOLE_UPDATE_INTERVAL_SEC);
     }
 
@@ -618,11 +618,11 @@ static size_t nrsc5_output_write_chunk(ModuleContext* ctx, const void* buffer, s
     switch (s_nrsc5_config.active_mode) {
         case NRSC5_MODE_CU8_FM:
         case NRSC5_MODE_CU8_AM:
-            res = nrsc5_pipe_samples_cu8(p->nrsc5_inst, (uint8_t*)buffer, num_scalars);
+            res = nrsc5_pipe_samples_cu8(nrsc5_decoder->nrsc5_inst, (uint8_t*)buffer, num_scalars);
             break;
         case NRSC5_MODE_CS16_FM:
         case NRSC5_MODE_CS16_AM:
-            res = nrsc5_pipe_samples_cs16(p->nrsc5_inst, (int16_t*)buffer, num_scalars);
+            res = nrsc5_pipe_samples_cs16(nrsc5_decoder->nrsc5_inst, (int16_t*)buffer, num_scalars);
             break;
         default: break;
     }
@@ -630,17 +630,17 @@ static size_t nrsc5_output_write_chunk(ModuleContext* ctx, const void* buffer, s
     return input_bytes;
 }
 
-static void nrsc5_output_cleanup(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void nrsc5_output_cleanup(ModuleContext* context) {
+    AppContext* app = context->app;
     if (!app->module.output_private_data) return;
-    Nrsc5Context* p = (Nrsc5Context*)app->module.output_private_data;
+    Nrsc5Context* nrsc5_decoder = (Nrsc5Context*)app->module.output_private_data;
 
-    audio_output_destroy(p->audio_out);
+    audio_output_destroy(nrsc5_decoder->audio_out);
 
-    if (p->nrsc5_inst) {
-        nrsc5_stop(p->nrsc5_inst);
-        nrsc5_close(p->nrsc5_inst);
-        p->nrsc5_inst = NULL;
+    if (nrsc5_decoder->nrsc5_inst) {
+        nrsc5_stop(nrsc5_decoder->nrsc5_inst);
+        nrsc5_close(nrsc5_decoder->nrsc5_inst);
+        nrsc5_decoder->nrsc5_inst = NULL;
     }
 }
 
@@ -709,8 +709,8 @@ static bool nrsc5_output_validate_options(AppConfig* config) {
     return true;
 }
 
-static void nrsc5_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
-    (void)ctx;
+static void nrsc5_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+    (void)context;
     add_summary_item(info, "Output Type", "NRSC5 (HD Radio Player)");
 
     const char* mode_desc = "Unknown";
@@ -737,20 +737,20 @@ const struct argparse_option* nrsc5_output_get_cli_options(int* count) {
     return nrsc5_output_cli_options;
 }
 
-static void nrsc5_output_on_keypress(ModuleContext* ctx, int key) {
+static void nrsc5_output_on_keypress(ModuleContext* context, int key) {
     if (key >= '0' && key <= '7') {
         unsigned int new_program = key - '0';
-        Nrsc5Context* p = (Nrsc5Context*)ctx->app->module.output_private_data;
-        if (p->active_program != new_program) {
-            p->active_program = new_program;
-            audio_output_clear(p->audio_out);
+        Nrsc5Context* nrsc5_decoder = (Nrsc5Context*)context->app->module.output_private_data;
+        if (nrsc5_decoder->active_program != new_program) {
+            nrsc5_decoder->active_program = new_program;
+            audio_output_clear(nrsc5_decoder->audio_out);
 
             // Inject 138ms of silence (Exactly 3 HDC frames) to build a pre-buffer and prevent stuttering
             size_t silence_frames = (size_t)(NRSC5_AUDIO_SAMPLE_RATE * 0.138);
             size_t silence_bytes = silence_frames * NRSC5_AUDIO_CHANNELS * sizeof(int16_t);
             int16_t* silence = calloc(1, silence_bytes);
             if (silence) {
-                audio_output_write(p->audio_out, silence, silence_bytes, p->pipeline_mode);
+                audio_output_write(nrsc5_decoder->audio_out, silence, silence_bytes, nrsc5_decoder->pipeline_mode);
                 free(silence);
             }
 

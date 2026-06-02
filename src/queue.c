@@ -29,18 +29,18 @@ bool queue_init(Queue* queue, size_t capacity, MemoryArena* arena) {
     queue->tail = 0;
     queue->shutting_down = false;
 
-    int ret;
-    if ((ret = pthread_mutex_init(&queue->mutex, NULL)) != 0) {
-        log_fatal("pthread_mutex_init failed: %s", strerror(ret));
+    int return_code;
+    if ((return_code = pthread_mutex_init(&queue->mutex, NULL)) != 0) {
+        log_fatal("pthread_mutex_init failed: %s", strerror(return_code));
         return false;
     }
-    if ((ret = pthread_cond_init(&queue->not_empty_cond, NULL)) != 0) {
-        log_fatal("pthread_cond_init (not_empty) failed: %s", strerror(ret));
+    if ((return_code = pthread_cond_init(&queue->not_empty_cond, NULL)) != 0) {
+        log_fatal("pthread_cond_init (not_empty) failed: %s", strerror(return_code));
         pthread_mutex_destroy(&queue->mutex);
         return false;
     }
-    if ((ret = pthread_cond_init(&queue->not_full_cond, NULL)) != 0) {
-        log_fatal("pthread_cond_init (not_full) failed: %s", strerror(ret));
+    if ((return_code = pthread_cond_init(&queue->not_full_cond, NULL)) != 0) {
+        log_fatal("pthread_cond_init (not_full) failed: %s", strerror(return_code));
         pthread_cond_destroy(&queue->not_empty_cond);
         pthread_mutex_destroy(&queue->mutex);
         return false;

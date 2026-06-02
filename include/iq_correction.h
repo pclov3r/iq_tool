@@ -86,10 +86,10 @@ void iq_correction_destroy(AppContext* app);
 /**
  * @brief Performs a synchronous, one-shot I/Q calibration pass for file-based inputs.
  *
- * @param ctx The application context.
+ * @param context The application context.
  * @param infile The handle to the open input file (e.g., from libsndfile).
  * @return true on success, false on a critical failure.
  */
-bool iq_correction_run_initial_calibration(ModuleContext* ctx, void* raw_buffer, size_t num_bytes, size_t (*read_cb)(void* user_data, void* buffer, size_t bytes), void* user_data);
+bool iq_correction_run_initial_calibration(ModuleContext* context, void* raw_buffer, size_t num_bytes, size_t (*read_cb)(void* user_data, void* buffer, size_t bytes), void* user_data);
 
 #endif // IQ_CORRECTION_H_

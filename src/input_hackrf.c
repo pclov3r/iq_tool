@@ -4,8 +4,8 @@
 #include "app_context.h"
 #include "signal_handler.h"
 #include "log.h"
-#include "freq_shift.h"
-#include "utils.h"
+#include "frequency_shift.h"
+#include "utilities.h"
 #include "sample_format_table.h"
 #include "sample_convert.h"
 #include "input_common.h"
@@ -70,11 +70,11 @@ const struct argparse_option* hackrf_input_get_cli_options(int* count) {
     return hackrf_input_cli_options;
 }
 
-static bool hackrf_input_initialize(ModuleContext* ctx);
-static void* hackrf_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
-static void hackrf_input_stop_stream(ModuleContext* ctx);
-static void hackrf_input_cleanup(ModuleContext* ctx);
-static void hackrf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
+static bool hackrf_input_initialize(ModuleContext* context);
+static void* hackrf_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
+static void hackrf_input_stop_stream(ModuleContext* context);
+static void hackrf_input_cleanup(ModuleContext* context);
+static void hackrf_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool hackrf_input_validate_options(AppConfig* config);
 static bool hackrf_input_validate_generic_options(const AppConfig* config);
 
@@ -151,7 +151,7 @@ static int hackrf_input_buffered_stream_callback(hackrf_transfer* transfer) {
     // --- NEW ARCHITECTURE: DUMP THE WHOLE BLOCK ---
     // HackRF provides interleaved CS8 (2 bytes per sample).
     // valid_length is in bytes.
-    if (!app->module.queue_samples(app->module.pipeline_ctx, // num_samples
+    if (!app->module.queue_samples(app->module.pipeline_context, // num_samples
             transfer->buffer, transfer->valid_length / 2, CS8)) {
         /* Warning handled internally by pipeline */
     }
@@ -160,9 +160,9 @@ static int hackrf_input_buffered_stream_callback(hackrf_transfer* transfer) {
 }
 
 
-static void hackrf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
-    const AppConfig *config = ctx->config;
-    const AppContext* app = ctx->app;
+static void hackrf_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+    const AppConfig *config = context->config;
+    const AppContext* app = context->app;
     add_summary_item(info, "Input Source", "HackRF One");
     add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
     add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
@@ -174,9 +174,9 @@ static void hackrf_input_get_summary_info(const ModuleContext* ctx, InputSummary
     add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
-static bool hackrf_input_initialize(ModuleContext* ctx) {
-    const AppConfig *config = ctx->config;
-    AppContext* app = ctx->app;
+static bool hackrf_input_initialize(ModuleContext* context) {
+    const AppConfig *config = context->config;
+    AppContext* app = context->app;
     int result;
     bool success = false; // Assume failure until the very end
 
@@ -259,10 +259,10 @@ cleanup:
     return success;
 }
 
-static void* hackrf_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
-    ctx->app->module.queue_samples = queue_samples;
-    ctx->app->module.pipeline_ctx = pipeline_ctx;
-    AppContext* app = ctx->app;
+static void* hackrf_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+    context->app->module.queue_samples = queue_samples;
+    context->app->module.pipeline_context = pipeline_context;
+    AppContext* app = context->app;
     HackrfContext* private_data = (HackrfContext*)app->module.input_private_data;
     int result;
     hackrf_sample_block_cb_fn callback_fn;
@@ -283,14 +283,14 @@ static void* hackrf_input_start_stream(ModuleContext* ctx, QueueSamples queue_sa
     }
 
     if (!is_shutdown_requested()) {
-        hackrf_input_stop_stream(ctx);
+        hackrf_input_stop_stream(context);
     }
 
     return NULL;
 }
 
-static void hackrf_input_stop_stream(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void hackrf_input_stop_stream(ModuleContext* context) {
+    AppContext* app = context->app;
     HackrfContext* private_data = (HackrfContext*)app->module.input_private_data;
     if (private_data) {
     pthread_mutex_lock(&private_data->driver_mutex);
@@ -305,8 +305,8 @@ static void hackrf_input_stop_stream(ModuleContext* ctx) {
 }
 }
 
-static void hackrf_input_cleanup(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void hackrf_input_cleanup(ModuleContext* context) {
+    AppContext* app = context->app;
     if (app->module.input_private_data) {
         HackrfContext* private_data = (HackrfContext*)app->module.input_private_data;
         pthread_mutex_lock(&private_data->driver_mutex);

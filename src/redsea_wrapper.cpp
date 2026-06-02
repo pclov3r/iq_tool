@@ -58,23 +58,23 @@ struct RDSContext_T {
 static void clean_rds_string(char* s) {
     if (!s || *s == '\0') return;
 
-    size_t len = strlen(s);
-    if (len == 0) return;
+    size_t length = strlen(s);
+    if (length == 0) return;
 
     // 1. Find the first non-space char
     size_t start = 0;
-    while (start < len && std::isspace((unsigned char)s[start])) {
+    while (start < length && std::isspace((unsigned char)s[start])) {
         start++;
     }
 
     // If string is all spaces, empty it
-    if (start == len) {
+    if (start == length) {
         s[0] = '\0';
         return;
     }
 
     // 2. Find the last non-space char
-    size_t end = len - 1;
+    size_t end = length - 1;
     while (end > start && std::isspace((unsigned char)s[end])) {
         end--;
     }

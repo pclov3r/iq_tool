@@ -5,8 +5,8 @@
 #include "app_context.h"
 #include "signal_handler.h"
 #include "log.h"
-#include "freq_shift.h"
-#include "utils.h"
+#include "frequency_shift.h"
+#include "utilities.h"
 #include "sample_format_table.h"
 #include "input_common.h"
 #include "mem_arena.h"
@@ -69,11 +69,11 @@ const struct argparse_option* airspyhf_input_get_cli_options(int* count) {
     return airspyhf_input_cli_options;
 }
 
-static bool airspyhf_input_initialize(ModuleContext* ctx);
-static void* airspyhf_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
-static void airspyhf_input_stop_stream(ModuleContext* ctx);
-static void airspyhf_input_cleanup(ModuleContext* ctx);
-static void airspyhf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
+static bool airspyhf_input_initialize(ModuleContext* context);
+static void* airspyhf_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
+static void airspyhf_input_stop_stream(ModuleContext* context);
+static void airspyhf_input_cleanup(ModuleContext* context);
+static void airspyhf_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool airspyhf_input_validate_options(AppConfig* config);
 static bool airspyhf_input_validate_generic_options(const AppConfig* config);
 
@@ -189,7 +189,7 @@ static int airspyhf_input_buffered_stream_callback(airspyhf_transfer_t* transfer
     }
 
     // Airspy HF+ always outputs CF32
-    if (!app->module.queue_samples(app->module.pipeline_ctx, transfer->samples, transfer->sample_count, CF32)) {
+    if (!app->module.queue_samples(app->module.pipeline_context, transfer->samples, transfer->sample_count, CF32)) {
         /* Warning handled internally by pipeline */
     }
 
@@ -197,9 +197,9 @@ static int airspyhf_input_buffered_stream_callback(airspyhf_transfer_t* transfer
 }
 
 
-static void airspyhf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
-    const AppConfig *config = ctx->config;
-    const AppContext* app = ctx->app;
+static void airspyhf_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+    const AppConfig *config = context->config;
+    const AppContext* app = context->app;
 
     add_summary_item(info, "Input Source", "Airspy HF+");
     add_summary_item(info, "Input Format", "32-bit Float Complex (cf32)");
@@ -230,9 +230,9 @@ static void airspyhf_input_get_summary_info(const ModuleContext* ctx, InputSumma
     add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
-static bool airspyhf_input_initialize(ModuleContext* ctx) {
-    const AppConfig *config = ctx->config;
-    AppContext* app = ctx->app;
+static bool airspyhf_input_initialize(ModuleContext* context) {
+    const AppConfig *config = context->config;
+    AppContext* app = context->app;
     int result;
     bool success = false;
 
@@ -427,10 +427,10 @@ cleanup:
     return success;
 }
 
-static void* airspyhf_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
-    ctx->app->module.queue_samples = queue_samples;
-    ctx->app->module.pipeline_ctx = pipeline_ctx;
-    AppContext* app = ctx->app;
+static void* airspyhf_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+    context->app->module.queue_samples = queue_samples;
+    context->app->module.pipeline_context = pipeline_context;
+    AppContext* app = context->app;
     AirspyHFContext* private_data = (AirspyHFContext*)app->module.input_private_data;
     int result;
     airspyhf_sample_block_cb_fn callback_fn;
@@ -451,14 +451,14 @@ static void* airspyhf_input_start_stream(ModuleContext* ctx, QueueSamples queue_
     }
 
     if (!is_shutdown_requested()) {
-        airspyhf_input_stop_stream(ctx);
+        airspyhf_input_stop_stream(context);
     }
 
     return NULL;
 }
 
-static void airspyhf_input_stop_stream(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void airspyhf_input_stop_stream(ModuleContext* context) {
+    AppContext* app = context->app;
     AirspyHFContext* private_data = (AirspyHFContext*)app->module.input_private_data;
     if (private_data) {
     pthread_mutex_lock(&private_data->driver_mutex);
@@ -473,8 +473,8 @@ static void airspyhf_input_stop_stream(ModuleContext* ctx) {
 }
 }
 
-static void airspyhf_input_cleanup(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void airspyhf_input_cleanup(ModuleContext* context) {
+    AppContext* app = context->app;
     if (app->module.input_private_data) {
         AirspyHFContext* private_data = (AirspyHFContext*)app->module.input_private_data;
         pthread_mutex_lock(&private_data->driver_mutex);

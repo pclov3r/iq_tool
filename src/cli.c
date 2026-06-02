@@ -3,7 +3,7 @@
 #include "app_context.h"
 #include "config.h"
 #include "log.h"
-#include "utils.h"
+#include "utilities.h"
 #include "platform.h"
 #ifndef _WIN32
 #include <libgen.h>
@@ -93,7 +93,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_DOUBLE(0, "output-sample-rate", &config->output_sample_rate.user_arg, "Output sample rate in Hz.", NULL, 0, 0),
         OPT_FLOAT(0, "input-gain-multiplier", &config->dsp.input_gain, "Apply a linear gain multiplier to INPUT samples (before processing).", NULL, 0, 0),
         OPT_FLOAT(0, "output-gain-multiplier", &config->dsp.output_gain, "Apply a linear gain multiplier to OUTPUT samples (after processing).", NULL, 0, 0),
-        OPT_DOUBLE(0, "freq-shift", &config->dsp.freq_shift_hz, "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0, 0),
+        OPT_DOUBLE(0, "freq-shift", &config->dsp.frequency_shift_hz, "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0, 0),
         OPT_BOOLEAN(0, "shift-after-resample", &config->dsp.shift_after_resample, "Apply frequency shift AFTER resampling (default is before)", NULL, 0, 0),
         OPT_BOOLEAN(0, "raw-passthrough", &config->dsp.raw_passthrough, "Bypass all processing. Copies raw input bytes directly to output.", NULL, 0, 0),
         OPT_BOOLEAN(0, "iq-correction", &config->dsp.iq_correction.enable, "(Optional) Enable automatic I/Q imbalance correction.", NULL, 0, 0),

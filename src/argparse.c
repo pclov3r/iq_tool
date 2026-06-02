@@ -23,20 +23,20 @@
 #define OPT_LONG  (1 << 1)
 
 static const char *
-prefix_skip(const char *str, const char *prefix)
+prefix_skip(const char *input_string, const char *prefix)
 {
-    size_t len = strlen(prefix);
-    return strncmp(str, prefix, len) ? NULL : str + len;
+    size_t length = strlen(prefix);
+    return strncmp(input_string, prefix, length) ? NULL : input_string + length;
 }
 
 static int
-prefix_cmp(const char *str, const char *prefix)
+prefix_cmp(const char *input_string, const char *prefix)
 {
-    for (;; str++, prefix++)
+    for (;; input_string++, prefix++)
         if (!*prefix) {
             return 0;
-        } else if (*str != *prefix) {
-            return (unsigned char)*prefix - (unsigned char)*str;
+        } else if (*input_string != *prefix) {
+            return (unsigned char)*prefix - (unsigned char)*input_string;
         }
 }
 
@@ -332,37 +332,37 @@ argparse_usage(struct argparse *self)
 
     // figure out best width
     size_t usage_opts_width = 0;
-    size_t len;
+    size_t length;
     options = self->options;
     for (; options->type != ARGPARSE_OPT_END; options++) {
-        len = 0;
+        length = 0;
         if ((options)->short_name) {
-            len += 2;
+            length += 2;
         }
         if ((options)->short_name && (options)->long_name) {
-            len += 2;           // separator ", "
+            length += 2;           // separator ", "
         }
         if ((options)->long_name) {
-            len += strlen((options)->long_name);
+            length += strlen((options)->long_name);
             if (!(options->flags & OPT_LONG_NOPREFIX)) {
-                len += 2;
+                length += 2;
             }
         }
         if (options->type == ARGPARSE_OPT_INTEGER) {
-            len += strlen("=<int>");
+            length += strlen("=<int>");
         }
         if (options->type == ARGPARSE_OPT_FLOAT) {
-            len += strlen("=<flt>");
+            length += strlen("=<flt>");
         } else if (options->type == ARGPARSE_OPT_STRING) {
-            len += strlen("=<str>");
+            length += strlen("=<input_string>");
         }
         // CHANGE: Added double precision support
         if (options->type == ARGPARSE_OPT_DOUBLE) {
-            len += strlen("=<flt>");
+            length += strlen("=<flt>");
         }
-        len = (len + 3) - ((len + 3) & 3);
-        if (usage_opts_width < len) {
-            usage_opts_width = len;
+        length = (length + 3) - ((length + 3) & 3);
+        if (usage_opts_width < length) {
+            usage_opts_width = length;
         }
     }
     usage_opts_width += 4;      // 4 spaces prefix
@@ -409,7 +409,7 @@ argparse_usage(struct argparse *self)
         } else if (options->type == ARGPARSE_OPT_FLOAT) {
             pos += fprintf(stdout, "=<flt>");
         } else if (options->type == ARGPARSE_OPT_STRING) {
-            pos += fprintf(stdout, "=<str>");
+            pos += fprintf(stdout, "=<input_string>");
         }
         // CHANGE: Added double precision support
         else if (options->type == ARGPARSE_OPT_DOUBLE) {

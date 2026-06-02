@@ -40,18 +40,18 @@ NetworkingContext* networking_connect(const char* hostname, int port, struct Mem
  * @brief Disconnects a network connection.
  * This function ONLY closes the socket. It does NOT free the context handle,
  * as its memory is managed by the memory arena.
- * @param ctx The context handle to disconnect.
+ * @param context The context handle to disconnect.
  */
-void networking_disconnect(NetworkingContext* ctx);
+void networking_disconnect(NetworkingContext* context);
 
 /**
  * @brief Reliably sends a block of bytes over the connection.
  */
-bool networking_send_all(NetworkingContext* ctx, const void* data, size_t len);
+bool networking_send_all(NetworkingContext* context, const void* data, size_t length);
 
 /**
  * @brief Reliably receives a block of bytes from the connection.
  */
-bool networking_recv_all(NetworkingContext* ctx, void* data, size_t len);
+bool networking_recv_all(NetworkingContext* context, void* data, size_t length);
 
 #endif // NETWORKING_H_

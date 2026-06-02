@@ -46,7 +46,7 @@
 #include "log.h"
 #include "platform.h"
 #include "ring_buffer.h"
-#include "utils.h"
+#include "utilities.h"
 #include "signal_handler.h"
 #include "queue.h"
 #include "sample_convert.h"
@@ -113,7 +113,7 @@ typedef enum {
 typedef struct {
     float buffer[WFM_BUFFER_SIZE];
     float sum;
-    int idx;
+    int index;
 } RunningAverage;
 
 typedef struct {
@@ -202,21 +202,21 @@ static float angular_freq(float hertz, float sample_rate) {
 static void running_average_init(RunningAverage* ra) {
     memset(ra->buffer, 0, sizeof(ra->buffer));
     ra->sum = 0.0f;
-    ra->idx = 0;
+    ra->index = 0;
     // Pre-fill as done in demux.cpp
     for (int i = 0; i < WFM_BUFFER_SIZE; i++) {
-        ra->sum -= ra->buffer[ra->idx];
-        ra->buffer[ra->idx] = 9.0f;
-        ra->sum += ra->buffer[ra->idx];
-        ra->idx = (ra->idx + 1) % WFM_BUFFER_SIZE;
+        ra->sum -= ra->buffer[ra->index];
+        ra->buffer[ra->index] = 9.0f;
+        ra->sum += ra->buffer[ra->index];
+        ra->index = (ra->index + 1) % WFM_BUFFER_SIZE;
     }
 }
 
 static void running_average_push(RunningAverage* ra, float val) {
-    ra->sum -= ra->buffer[ra->idx];
-    ra->buffer[ra->idx] = val;
-    ra->sum += ra->buffer[ra->idx];
-    ra->idx = (ra->idx + 1) % WFM_BUFFER_SIZE;
+    ra->sum -= ra->buffer[ra->index];
+    ra->buffer[ra->index] = val;
+    ra->sum += ra->buffer[ra->index];
+    ra->index = (ra->index + 1) % WFM_BUFFER_SIZE;
 }
 
 static float running_average_get(RunningAverage* ra) {
@@ -284,8 +284,8 @@ static bool wfm_output_validate_options(AppConfig* config) {
     return true;
 }
 
-static bool wfm_output_initialize(ModuleContext* ctx) {
-    AppContext* res = ctx->app;
+static bool wfm_output_initialize(ModuleContext* context) {
+    AppContext* res = context->app;
 
     // Windows: stdout defaults to text mode (\n -> \r\n), which corrupts binary I/Q data.
     // We must forcefully set it to binary if the user requested raw output.
@@ -298,17 +298,17 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
         #endif
     }
 
-    WfmContext* p = (WfmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(WfmContext), true);
-    if (!p) return false;
-    res->module.output_private_data = p;
+    WfmContext* wfm_decoder = (WfmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(WfmContext), true);
+    if (!wfm_decoder) return false;
+    res->module.output_private_data = wfm_decoder;
 
-    p->audio_out = audio_output_create(&res->pipeline.setup_arena, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_BUFFER_SIZE, ctx->config->dsp.audio_writer_path, ctx->config->dsp.audio_writer_rf64, ctx->config->dsp.mute_audio);
-    if (!p->audio_out) return false;
+    wfm_decoder->audio_out = audio_output_create(&res->pipeline.setup_arena, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_BUFFER_SIZE, context->config->dsp.audio_writer_path, context->config->dsp.audio_writer_rf64, context->config->dsp.mute_audio);
+    if (!wfm_decoder->audio_out) return false;
 
     // 3. DSP Configuration
-    float mpx_rate = (float)ctx->config->output_sample_rate.rate_hz;
-    p->input_samplerate = mpx_rate;
-    p->gain = s_wfm_config.gain_val;
+    float mpx_rate = (float)context->config->output_sample_rate.rate_hz;
+    wfm_decoder->input_samplerate = mpx_rate;
+    wfm_decoder->gain = s_wfm_config.gain_val;
 
     log_info("WFM: Configuring DSP for MPX Rate: %.15g Hz -> Audio: %d Hz (De-emphasis: %.15g us)",
              mpx_rate, AUDIO_SAMPLE_RATE, s_wfm_config.deemph_us);
@@ -320,62 +320,62 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
     // This results in a "hot" signal (75kHz = 1.0), so we apply WFM_MPX_SCALING_FACTOR
     // in the writer loop to create headroom for stereo processing.
     float kf = deviation / mpx_rate;
-    p->fm_demod = freqdem_create(kf);
+    wfm_decoder->fm_demod = freqdem_create(kf);
 
-    p->nco_pilot_approx = nco_crcf_create(LIQUID_VCO);
-    nco_crcf_set_frequency(p->nco_pilot_approx, angular_freq(WFM_PILOT_HZ, mpx_rate));
+    wfm_decoder->nco_pilot_approx = nco_crcf_create(LIQUID_VCO);
+    nco_crcf_set_frequency(wfm_decoder->nco_pilot_approx, angular_freq(WFM_PILOT_HZ, mpx_rate));
 
-    p->nco_pilot_exact = nco_crcf_create(LIQUID_VCO);
-    nco_crcf_set_frequency(p->nco_pilot_exact, angular_freq(WFM_PILOT_HZ, mpx_rate));
-    nco_crcf_pll_set_bandwidth(p->nco_pilot_exact, WFM_PLL_BW_HZ / mpx_rate);
+    wfm_decoder->nco_pilot_exact = nco_crcf_create(LIQUID_VCO);
+    nco_crcf_set_frequency(wfm_decoder->nco_pilot_exact, angular_freq(WFM_PILOT_HZ, mpx_rate));
+    nco_crcf_pll_set_bandwidth(wfm_decoder->nco_pilot_exact, WFM_PLL_BW_HZ / mpx_rate);
 
-    p->nco_stereo_subcarrier = nco_crcf_create(LIQUID_VCO);
-    nco_crcf_set_frequency(p->nco_stereo_subcarrier, 2.0f * angular_freq(WFM_PILOT_HZ, mpx_rate));
+    wfm_decoder->nco_stereo_subcarrier = nco_crcf_create(LIQUID_VCO);
+    nco_crcf_set_frequency(wfm_decoder->nco_stereo_subcarrier, 2.0f * angular_freq(WFM_PILOT_HZ, mpx_rate));
 
     // Filters
     int pilot_fir_half_len = (int)(mpx_rate * 1e-6f * WFM_PILOT_FIR_USEC);
     int pilot_fir_len = pilot_fir_half_len * 2 + 1;
-    p->fir_pilot = firfilt_crcf_create_kaiser(pilot_fir_len, WFM_PILOT_FIR_HALFBAND / mpx_rate, ctx->config->dsp.filter.args.attenuation, 0.0f);
-    firfilt_crcf_set_scale(p->fir_pilot, 2.0f * (WFM_PILOT_FIR_HALFBAND / mpx_rate));
+    wfm_decoder->fir_pilot = firfilt_crcf_create_kaiser(pilot_fir_len, WFM_PILOT_FIR_HALFBAND / mpx_rate, context->config->dsp.filter.args.attenuation, 0.0f);
+    firfilt_crcf_set_scale(wfm_decoder->fir_pilot, 2.0f * (WFM_PILOT_FIR_HALFBAND / mpx_rate));
 
     int audio_fir_len = (int)(WFM_AUDIO_FIR_LEN_USEC * 1e-6f * mpx_rate);
     if (audio_fir_len % 2 == 0) audio_fir_len++;
     float audio_fc = WFM_AUDIO_FIR_CUTOFF / mpx_rate;
 
-    p->fir_sum = firfilt_rrrf_create_kaiser(audio_fir_len, audio_fc, ctx->config->dsp.filter.args.attenuation, 0.0f);
-    firfilt_rrrf_set_scale(p->fir_sum, 2.0f * audio_fc);
+    wfm_decoder->fir_sum = firfilt_rrrf_create_kaiser(audio_fir_len, audio_fc, context->config->dsp.filter.args.attenuation, 0.0f);
+    firfilt_rrrf_set_scale(wfm_decoder->fir_sum, 2.0f * audio_fc);
 
-    p->fir_diff = firfilt_rrrf_create_kaiser(audio_fir_len, audio_fc, ctx->config->dsp.filter.args.attenuation, 0.0f);
-    firfilt_rrrf_set_scale(p->fir_diff, 2.0f * audio_fc);
+    wfm_decoder->fir_diff = firfilt_rrrf_create_kaiser(audio_fir_len, audio_fc, context->config->dsp.filter.args.attenuation, 0.0f);
+    firfilt_rrrf_set_scale(wfm_decoder->fir_diff, 2.0f * audio_fc);
 
-    deemphasis_init(&p->deemphasis, s_wfm_config.deemph_us, mpx_rate);
-    running_average_init(&p->pilotnoise);
+    deemphasis_init(&wfm_decoder->deemphasis, s_wfm_config.deemph_us, mpx_rate);
+    running_average_init(&wfm_decoder->pilotnoise);
 
     // Output Resamplers
-    p->output_resample_ratio = (float)AUDIO_SAMPLE_RATE / mpx_rate;
-    p->resamp_out_l = msresamp_rrrf_create(p->output_resample_ratio, ctx->config->dsp.filter.args.attenuation);
-    p->resamp_out_r = msresamp_rrrf_create(p->output_resample_ratio, ctx->config->dsp.filter.args.attenuation);
+    wfm_decoder->output_resample_ratio = (float)AUDIO_SAMPLE_RATE / mpx_rate;
+    wfm_decoder->resamp_out_l = msresamp_rrrf_create(wfm_decoder->output_resample_ratio, context->config->dsp.filter.args.attenuation);
+    wfm_decoder->resamp_out_r = msresamp_rrrf_create(wfm_decoder->output_resample_ratio, context->config->dsp.filter.args.attenuation);
 
     // 5. Scratch Buffers (Local Elastic Allocation)
     // We calculate the maximum buffer size required for ANY stage of this specific module.
     // If upsampling (e.g. 32k -> 48k), the output buffer needs more space than the input.
     size_t buf_samples = res->pipeline.alloc_size_samples;
-    size_t out_buf_samples = (size_t)ceil(buf_samples * p->output_resample_ratio) + 128;
+    size_t out_buf_samples = (size_t)ceil(buf_samples * wfm_decoder->output_resample_ratio) + 128;
     size_t max_dsp_samples = (buf_samples > out_buf_samples) ? buf_samples : out_buf_samples;
 
-    p->mpx_buffer = mem_arena_alloc(&res->pipeline.setup_arena, max_dsp_samples * sizeof(float), false);
-    p->audio_out_l = mem_arena_alloc(&res->pipeline.setup_arena, max_dsp_samples * sizeof(float), false);
-    p->audio_out_r = mem_arena_alloc(&res->pipeline.setup_arena, max_dsp_samples * sizeof(float), false);
+    wfm_decoder->mpx_buffer = mem_arena_alloc(&res->pipeline.setup_arena, max_dsp_samples * sizeof(float), false);
+    wfm_decoder->audio_out_l = mem_arena_alloc(&res->pipeline.setup_arena, max_dsp_samples * sizeof(float), false);
+    wfm_decoder->audio_out_r = mem_arena_alloc(&res->pipeline.setup_arena, max_dsp_samples * sizeof(float), false);
 
     // Interleaved buffer is always sized for the output
-    p->interleaved_pcm = mem_arena_alloc(&res->pipeline.setup_arena, out_buf_samples * 2 * sizeof(int16_t), false);
+    wfm_decoder->interleaved_pcm = mem_arena_alloc(&res->pipeline.setup_arena, out_buf_samples * 2 * sizeof(int16_t), false);
 
-    if (!p->mpx_buffer || !p->audio_out_l || !p->audio_out_r || !p->interleaved_pcm) return false;
+    if (!wfm_decoder->mpx_buffer || !wfm_decoder->audio_out_l || !wfm_decoder->audio_out_r || !wfm_decoder->interleaved_pcm) return false;
 
     // Optional: Allocate S16 buffer for MPX stdout if requested
     if (s_wfm_config.raw_mpx_stdout) {
-        p->mpx_s16_buffer = mem_arena_alloc(&res->pipeline.setup_arena, max_dsp_samples * sizeof(int16_t), false);
-        if (!p->mpx_s16_buffer) return false;
+        wfm_decoder->mpx_s16_buffer = mem_arena_alloc(&res->pipeline.setup_arena, max_dsp_samples * sizeof(int16_t), false);
+        if (!wfm_decoder->mpx_s16_buffer) return false;
     }
 
 #ifdef WITH_REDSEA
@@ -383,31 +383,31 @@ static bool wfm_output_initialize(ModuleContext* ctx) {
     if (!s_wfm_config.rds_disable) {
         // The `is_rbds` parameter for redsea is determined by our final enum state.
         bool is_rbds = (s_wfm_config.rds_standard == RDS_STANDARD_RBDS);
-        p->redsea = redsea_init(p->input_samplerate, is_rbds, s_wfm_config.rds_partial);
-        memset(&p->last_rds_state, 0, sizeof(RdsState));
+        wfm_decoder->redsea = redsea_init(wfm_decoder->input_samplerate, is_rbds, s_wfm_config.rds_partial);
+        memset(&wfm_decoder->last_rds_state, 0, sizeof(RdsState));
 
-        p->rds_display_counter = 0;
-        p->rds_display_threshold = (size_t)(p->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC); // 1 second
+        wfm_decoder->rds_display_counter = 0;
+        wfm_decoder->rds_display_threshold = (size_t)(wfm_decoder->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC); // 1 second
 
         log_info("WFM: RDS Decoder enabled (Standard: %s%s)",
                  is_rbds ? "RBDS (US, Default)" : "RDS (World)",
                  s_wfm_config.rds_partial ? ", Partial Text" : "");
     } else {
-        p->redsea = NULL;
+        wfm_decoder->redsea = NULL;
     }
 #endif
 
     return true;
 }
 
-static void wfm_output_reset(ModuleContext* ctx) { (void)ctx; /* TODO: Reset PLL state */ }
-static void wfm_output_flush(ModuleContext* ctx) {
-    WfmContext* p = (WfmContext*)ctx->app->module.output_private_data;
-    audio_output_clear(p->audio_out);
+static void wfm_output_reset(ModuleContext* context) { (void)context; /* TODO: Reset PLL state */ }
+static void wfm_output_flush(ModuleContext* context) {
+    WfmContext* wfm_decoder = (WfmContext*)context->app->module.output_private_data;
+    audio_output_clear(wfm_decoder->audio_out);
 }
-static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
-    AppContext* res = ctx->app;
-    WfmContext* p = (WfmContext*)res->module.output_private_data;
+static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
+    AppContext* res = context->app;
+    WfmContext* wfm_decoder = (WfmContext*)res->module.output_private_data;
 
     static size_t stat_counter = 0;
     static double accum_mag_sum = 0.0, accum_mag_sq_sum = 0.0, accum_pilot_mag_sum = 0.0;
@@ -417,7 +417,7 @@ static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
     static size_t stat_rate_threshold = 0;
     static bool _first_run = true;
     if (_first_run) {
-        stat_rate_threshold = (size_t)(p->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC);
+        stat_rate_threshold = (size_t)(wfm_decoder->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC);
         _first_run = false;
     }
 
@@ -434,25 +434,25 @@ static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
     }
     stat_counter += num_frames;
 
-    freqdem_demodulate_block(p->fm_demod, iq_ptr, num_frames, p->mpx_buffer);
+    freqdem_demodulate_block(wfm_decoder->fm_demod, iq_ptr, num_frames, wfm_decoder->mpx_buffer);
 
-    if (s_wfm_config.raw_mpx_stdout && p->mpx_s16_buffer) {
+    if (s_wfm_config.raw_mpx_stdout && wfm_decoder->mpx_s16_buffer) {
         for (unsigned int k = 0; k < num_frames; k++) {
-            float sample = p->mpx_buffer[k] * 32767.0f;
+            float sample = wfm_decoder->mpx_buffer[k] * 32767.0f;
             if (sample > 32767.0f) sample = 32767.0f;
             if (sample < -32768.0f) sample = -32768.0f;
-            p->mpx_s16_buffer[k] = (int16_t)sample;
+            wfm_decoder->mpx_s16_buffer[k] = (int16_t)sample;
         }
-        fwrite(p->mpx_s16_buffer, sizeof(int16_t), num_frames, stdout);
+        fwrite(wfm_decoder->mpx_s16_buffer, sizeof(int16_t), num_frames, stdout);
     }
 
 #ifdef WITH_REDSEA
-    if (p->redsea) {
+    if (wfm_decoder->redsea) {
         RdsState current;
-        redsea_process_mpx(p->redsea, p->mpx_buffer, num_frames, &current);
-        p->rds_display_counter += num_frames;
-        if (p->rds_display_counter >= p->rds_display_threshold && current.valid) {
-            p->rds_display_counter = 0;
+        redsea_process_mpx(wfm_decoder->redsea, wfm_decoder->mpx_buffer, num_frames, &current);
+        wfm_decoder->rds_display_counter += num_frames;
+        if (wfm_decoder->rds_display_counter >= wfm_decoder->rds_display_threshold && current.valid) {
+            wfm_decoder->rds_display_counter = 0;
             char clean_rt[65];
             strncpy(clean_rt, current.radiotext, 64);
             clean_rt[64] = '\0';
@@ -466,51 +466,51 @@ static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
                  log_info("RDS PI: %04X | PS: %s | PTY: %s | PTYN: %s | RT: %s | TP: %d | TA: %d | MS: %d | ST: %d | CMP: %d | DYN: %d",
                          current.pi_code, current.ps_name, current.program_type, current.pty_name, clean_rt, current.tp, current.ta, current.is_music, current.stereo, current.compressed, current.dynamic);
             }
-            if (current.clock_time[0] != '\0' && strcmp(current.clock_time, p->last_rds_state.clock_time) != 0) {
+            if (current.clock_time[0] != '\0' && strcmp(current.clock_time, wfm_decoder->last_rds_state.clock_time) != 0) {
                 log_info("RDS/RBDS CT: %s", current.clock_time);
             }
-            p->last_rds_state = current;
+            wfm_decoder->last_rds_state = current;
         }
     }
 #endif
     for (unsigned int i = 0; i < num_frames; i++) {
-        float insample = p->mpx_buffer[i] * WFM_MPX_SCALING_FACTOR;
+        float insample = wfm_decoder->mpx_buffer[i] * WFM_MPX_SCALING_FACTOR;
         liquid_float_complex pilot_mix_down;
-        nco_crcf_mix_down(p->nco_pilot_approx, insample + 0.0f * I, &pilot_mix_down);
-        firfilt_crcf_push(p->fir_pilot, pilot_mix_down);
+        nco_crcf_mix_down(wfm_decoder->nco_pilot_approx, insample + 0.0f * I, &pilot_mix_down);
+        firfilt_crcf_push(wfm_decoder->fir_pilot, pilot_mix_down);
         liquid_float_complex fir_out;
-        firfilt_crcf_execute(p->fir_pilot, &fir_out);
+        firfilt_crcf_execute(wfm_decoder->fir_pilot, &fir_out);
         accum_pilot_mag_sum += cabsf(fir_out);
         liquid_float_complex pilot;
-        nco_crcf_mix_up(p->nco_pilot_approx, fir_out, &pilot);
-        nco_crcf_step(p->nco_pilot_approx);
-        float pilot_phase = nco_crcf_get_phase(p->nco_pilot_exact);
-        nco_crcf_set_phase(p->nco_stereo_subcarrier, 2.0f * pilot_phase);
+        nco_crcf_mix_up(wfm_decoder->nco_pilot_approx, fir_out, &pilot);
+        nco_crcf_step(wfm_decoder->nco_pilot_approx);
+        float pilot_phase = nco_crcf_get_phase(wfm_decoder->nco_pilot_exact);
+        nco_crcf_set_phase(wfm_decoder->nco_stereo_subcarrier, 2.0f * pilot_phase);
         liquid_float_complex pll_val;
-        nco_crcf_cexpf(p->nco_pilot_exact, &pll_val);
+        nco_crcf_cexpf(wfm_decoder->nco_pilot_exact, &pll_val);
         float phase_error = cargf(pilot * conjf(pll_val));
         if (i % 4 == 0) {
-            nco_crcf_pll_step(p->nco_pilot_exact, phase_error);
+            nco_crcf_pll_step(wfm_decoder->nco_pilot_exact, phase_error);
             accum_pilot_err_sq_sum += (phase_error * phase_error);
             accum_pilot_count++;
-            running_average_push(&p->pilotnoise, phase_error * phase_error);
+            running_average_push(&wfm_decoder->pilotnoise, phase_error * phase_error);
         }
-        nco_crcf_step(p->nco_pilot_exact);
-        float stereogain = s_wfm_config.force_mono ? 0.0f : (s_wfm_config.force_stereo ? 1.0f : fmaxf(0.0f, fminf(1.0f, WFM_STEREO_SEPARATION - running_average_get(&p->pilotnoise))));
+        nco_crcf_step(wfm_decoder->nco_pilot_exact);
+        float stereogain = s_wfm_config.force_mono ? 0.0f : (s_wfm_config.force_stereo ? 1.0f : fmaxf(0.0f, fminf(1.0f, WFM_STEREO_SEPARATION - running_average_get(&wfm_decoder->pilotnoise))));
         accum_stereo_pct_sum += (stereogain * 100.0f);
-        firfilt_rrrf_push(p->fir_sum, insample);
+        firfilt_rrrf_push(wfm_decoder->fir_sum, insample);
         liquid_float_complex sc_mix;
-        nco_crcf_mix_down(p->nco_stereo_subcarrier, insample + 0.0f * I, &sc_mix);
-        firfilt_rrrf_push(p->fir_diff, cimagf(sc_mix));
+        nco_crcf_mix_down(wfm_decoder->nco_stereo_subcarrier, insample + 0.0f * I, &sc_mix);
+        firfilt_rrrf_push(wfm_decoder->fir_diff, cimagf(sc_mix));
         float sum, diff;
-        firfilt_rrrf_execute(p->fir_sum, &sum);
-        firfilt_rrrf_execute(p->fir_diff, &diff);
+        firfilt_rrrf_execute(wfm_decoder->fir_sum, &sum);
+        firfilt_rrrf_execute(wfm_decoder->fir_diff, &diff);
         diff = 2.0f * diff * stereogain;
-        float left = (sum + diff) * p->gain;
-        float right = (sum - diff) * p->gain;
-        deemphasis_execute(&p->deemphasis, left, right, &left, &right);
-        p->audio_out_l[i] = left;
-        p->audio_out_r[i] = right;
+        float left = (sum + diff) * wfm_decoder->gain;
+        float right = (sum - diff) * wfm_decoder->gain;
+        deemphasis_execute(&wfm_decoder->deemphasis, left, right, &left, &right);
+        wfm_decoder->audio_out_l[i] = left;
+        wfm_decoder->audio_out_r[i] = right;
     }
 
         if (stat_counter >= stat_rate_threshold) {
@@ -536,41 +536,41 @@ static size_t wfm_output_write_chunk(ModuleContext* ctx, const void* buffer, siz
     }
 
     unsigned int num_resampled;
-    msresamp_rrrf_execute(p->resamp_out_l, p->audio_out_l, num_frames, p->audio_out_l, &num_resampled);
-    msresamp_rrrf_execute(p->resamp_out_r, p->audio_out_r, num_frames, p->audio_out_r, &num_resampled);
-    sample_convert_interleave_f32_to_s16(p->audio_out_l, p->audio_out_r, p->interleaved_pcm, num_resampled);
-    audio_output_write(p->audio_out, p->interleaved_pcm, num_resampled * 2 * sizeof(int16_t), res->pipeline_mode);
+    msresamp_rrrf_execute(wfm_decoder->resamp_out_l, wfm_decoder->audio_out_l, num_frames, wfm_decoder->audio_out_l, &num_resampled);
+    msresamp_rrrf_execute(wfm_decoder->resamp_out_r, wfm_decoder->audio_out_r, num_frames, wfm_decoder->audio_out_r, &num_resampled);
+    sample_convert_interleave_f32_to_s16(wfm_decoder->audio_out_l, wfm_decoder->audio_out_r, wfm_decoder->interleaved_pcm, num_resampled);
+    audio_output_write(wfm_decoder->audio_out, wfm_decoder->interleaved_pcm, num_resampled * 2 * sizeof(int16_t), res->pipeline_mode);
     return input_bytes;
 }
 
-static void wfm_output_cleanup(ModuleContext* ctx) {
-    AppContext* res = ctx->app;
+static void wfm_output_cleanup(ModuleContext* context) {
+    AppContext* res = context->app;
     if (!res->module.output_private_data) return;
-    WfmContext* p = (WfmContext*)res->module.output_private_data;
+    WfmContext* wfm_decoder = (WfmContext*)res->module.output_private_data;
 
-    audio_output_destroy(p->audio_out);
+    audio_output_destroy(wfm_decoder->audio_out);
 
-    if (p->fm_demod) freqdem_destroy(p->fm_demod);
-    if (p->nco_pilot_approx) nco_crcf_destroy(p->nco_pilot_approx);
-    if (p->nco_pilot_exact) nco_crcf_destroy(p->nco_pilot_exact);
-    if (p->nco_stereo_subcarrier) nco_crcf_destroy(p->nco_stereo_subcarrier);
-    if (p->fir_pilot) firfilt_crcf_destroy(p->fir_pilot);
-    if (p->fir_sum) firfilt_rrrf_destroy(p->fir_sum);
-    if (p->fir_diff) firfilt_rrrf_destroy(p->fir_diff);
-    deemphasis_destroy(&p->deemphasis);
-    if (p->resamp_out_l) msresamp_rrrf_destroy(p->resamp_out_l);
-    if (p->resamp_out_r) msresamp_rrrf_destroy(p->resamp_out_r);
+    if (wfm_decoder->fm_demod) freqdem_destroy(wfm_decoder->fm_demod);
+    if (wfm_decoder->nco_pilot_approx) nco_crcf_destroy(wfm_decoder->nco_pilot_approx);
+    if (wfm_decoder->nco_pilot_exact) nco_crcf_destroy(wfm_decoder->nco_pilot_exact);
+    if (wfm_decoder->nco_stereo_subcarrier) nco_crcf_destroy(wfm_decoder->nco_stereo_subcarrier);
+    if (wfm_decoder->fir_pilot) firfilt_crcf_destroy(wfm_decoder->fir_pilot);
+    if (wfm_decoder->fir_sum) firfilt_rrrf_destroy(wfm_decoder->fir_sum);
+    if (wfm_decoder->fir_diff) firfilt_rrrf_destroy(wfm_decoder->fir_diff);
+    deemphasis_destroy(&wfm_decoder->deemphasis);
+    if (wfm_decoder->resamp_out_l) msresamp_rrrf_destroy(wfm_decoder->resamp_out_l);
+    if (wfm_decoder->resamp_out_r) msresamp_rrrf_destroy(wfm_decoder->resamp_out_r);
 
 #ifdef WITH_REDSEA
-    if (p->redsea) {
-        redsea_free(p->redsea);
-        p->redsea = NULL;
+    if (wfm_decoder->redsea) {
+        redsea_free(wfm_decoder->redsea);
+        wfm_decoder->redsea = NULL;
     }
 #endif
 }
 
-static void wfm_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
-    (void)ctx;
+static void wfm_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+    (void)context;
     add_summary_item(info, "Output Type", "WFM Stereo Audio");
     add_summary_item(info, "Audio Sample Rate", "%d Hz", AUDIO_SAMPLE_RATE);
     add_summary_item(info, "De-emphasis", "%.0f us", s_wfm_config.deemph_us);

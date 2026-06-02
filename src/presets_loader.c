@@ -2,7 +2,7 @@
 #include "constants.h"
 #include "log.h"
 #include "app_context.h"
-#include "utils.h"
+#include "utilities.h"
 #include "platform.h"
 #include "mem_arena.h"
 #include <stdio.h>
@@ -52,10 +52,10 @@ static const size_t num_key_handlers = sizeof(key_handlers) / sizeof(key_handler
 
 static char* arena_strdup(MemoryArena* arena, const char* s) {
     if (!s) return NULL;
-    size_t len = strlen(s) + 1;
-    char* new_s = (char*)mem_arena_alloc(arena, len, false);
+    size_t length = strlen(s) + 1;
+    char* new_s = (char*)mem_arena_alloc(arena, length, false);
     if (new_s) {
-        memcpy(new_s, s, len);
+        memcpy(new_s, s, length);
     }
     return new_s;
 }
@@ -233,7 +233,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
     int line_num = 0;
     while (fgets(line, sizeof(line), fp)) {
         line_num++;
-        char* trimmed_line = utils_trim_whitespace(line);
+        char* trimmed_line = utility_trim_whitespace(line);
 
         if (trimmed_line[0] == '#' || trimmed_line[0] == ';' || trimmed_line[0] == '\0') {
             continue;
@@ -262,7 +262,7 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
             char* name_end = strchr(name_start, ']');
             if (name_end) {
                 *name_end = '\0';
-                current_preset->name = arena_strdup(arena, utils_trim_whitespace(name_start));
+                current_preset->name = arena_strdup(arena, utility_trim_whitespace(name_start));
                 if (!current_preset->name) {
                     fclose(fp);
                     return false;
@@ -279,8 +279,8 @@ bool presets_load_from_file(AppConfig* config, MemoryArena* arena) {
                 log_warn("Malformed key-value pair at line %d.", line_num);
                 continue;
             }
-            key = utils_trim_whitespace(key);
-            value = utils_trim_whitespace(value);
+            key = utility_trim_whitespace(key);
+            value = utility_trim_whitespace(value);
 
             bool key_found = false;
             for (size_t i = 0; i < num_key_handlers; ++i) {

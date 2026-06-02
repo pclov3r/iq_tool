@@ -90,7 +90,7 @@ typedef struct AppConfig {
         bool  input_gain_provided;
         float output_gain;
         bool  output_gain_provided;
-        double freq_shift_hz;
+        double frequency_shift_hz;
         bool   shift_after_resample;
         bool   raw_passthrough;
         char* audio_writer_path;
@@ -187,7 +187,7 @@ typedef struct ModuleState {
     void*                  output_private_data;
     size_t                 output_bytes_per_iq_sample;
     QueueSamples           queue_samples;
-    void*                  pipeline_ctx;
+    void*                  pipeline_context;
 } ModuleState;
 
 // --- 3. DSP Context (Math & Signal Processing) ---

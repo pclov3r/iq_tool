@@ -366,10 +366,10 @@ void module_populate_cli_options(
 
 
                 // Allocate our warning context once
-                InactiveWarningContext* warning_ctx = (InactiveWarningContext*)mem_arena_alloc(arena, sizeof(InactiveWarningContext), true);
-                if (warning_ctx) {
-                    warning_ctx->active_input = active_input_type;
-                    warning_ctx->active_output = active_output_type;
+                InactiveWarningContext* warning_context = (InactiveWarningContext*)mem_arena_alloc(arena, sizeof(InactiveWarningContext), true);
+                if (warning_context) {
+                    warning_context->active_input = active_input_type;
+                    warning_context->active_output = active_output_type;
                 }
 
                 // Check if this module is INACTIVE
@@ -381,7 +381,7 @@ void module_populate_cli_options(
                         struct argparse_option* opt = &dest_buffer[*total_opts_ptr + j];
                         if (opt->type != ARGPARSE_OPT_GROUP) {
                             opt->callback = inactive_option_warning_cb;
-                            opt->data = (intptr_t)warning_ctx;
+                            opt->data = (intptr_t)warning_context;
                         }
                     }
                 }
@@ -400,20 +400,20 @@ const Module* module_get(const char* name, ModuleType type, MemoryArena* arena) 
 // Callback triggered when a user provides a flag for a module that isn't currently active.
 static int inactive_option_warning_cb(struct argparse *self, const struct argparse_option *opt) {
     if (opt->type != ARGPARSE_OPT_GROUP && opt->data != 0) {
-        InactiveWarningContext* ctx = (InactiveWarningContext*)opt->data;
+        InactiveWarningContext* context = (InactiveWarningContext*)opt->data;
 
         const char* user_value = self->optvalue;
 
         if (user_value) {
             log_warn("Ignoring '--%s %s' because it does not apply to the selected input ('%s') or output ('%s') module.",
                      opt->long_name, user_value,
-                     ctx->active_input ? ctx->active_input : "unknown",
-                     ctx->active_output ? ctx->active_output : "unknown");
+                     context->active_input ? context->active_input : "unknown",
+                     context->active_output ? context->active_output : "unknown");
         } else {
             log_warn("Ignoring '--%s' because it does not apply to the selected input ('%s') or output ('%s') module.",
                      opt->long_name,
-                     ctx->active_input ? ctx->active_input : "unknown",
-                     ctx->active_output ? ctx->active_output : "unknown");
+                     context->active_input ? context->active_input : "unknown",
+                     context->active_output ? context->active_output : "unknown");
         }
     }
     return 0;

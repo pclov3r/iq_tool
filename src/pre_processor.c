@@ -1,7 +1,7 @@
 #include "pre_processor.h"
 #include "dc_block.h"
 #include "iq_correction.h"
-#include "freq_shift.h"
+#include "frequency_shift.h"
 #include "sample_convert.h"
 #include "filter.h"
 #include "signal_handler.h"
@@ -36,7 +36,7 @@ void pre_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
     // Step 4: Pre-Resample Frequency Shifting (if enabled)
     if (dsp->pre_resample_nco) {
         // This is an in-place operation.
-        freq_shift_apply(dsp->pre_resample_nco,
+        frequency_shift_apply(dsp->pre_resample_nco,
                          dsp->nco_shift_hz,
                          item->pre_resample_buffer,
                          item->pre_resample_buffer,
@@ -54,6 +54,6 @@ void pre_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
 
 void pre_processor_reset(DspContext* dsp) {
     dc_block_reset(dsp);
-    freq_shift_reset_nco(dsp->pre_resample_nco);
+    frequency_shift_reset_nco(dsp->pre_resample_nco);
     filter_reset(dsp);
 }

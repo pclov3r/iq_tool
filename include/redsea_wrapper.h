@@ -65,19 +65,19 @@ RedseaHandle redsea_init(float sample_rate, bool is_rbds, bool show_partial);
 /**
  * @brief Free the Redsea decoder instance.
  * 
- * @param ctx The handle to free. Safe to call with NULL.
+ * @param context The handle to free. Safe to call with NULL.
  */
-void redsea_free(RedseaHandle ctx);
+void redsea_free(RedseaHandle context);
 
 /**
  * @brief Process a chunk of raw MPX audio and retrieve the latest state.
  * 
- * @param ctx The decoder handle.
+ * @param context The decoder handle.
  * @param mpx_data Pointer to the float array containing raw MPX samples.
  * @param num_samples Number of samples in the buffer.
  * @param out_state Pointer to a struct where the decoded state will be written.
  */
-void redsea_process_mpx(RedseaHandle ctx, const float* mpx_data, int num_samples, RdsState* out_state);
+void redsea_process_mpx(RedseaHandle context, const float* mpx_data, int num_samples, RdsState* out_state);
 
 #ifdef __cplusplus
 }

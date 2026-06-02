@@ -9,7 +9,7 @@
 #include "log.h"
 #include "platform.h"
 #include "ring_buffer.h"
-#include "utils.h"
+#include "utilities.h"
 #include "signal_handler.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,9 +37,9 @@ bool wav_common_validate_options(AppConfig* config) {
     return true;
 }
 
-bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
-    const AppConfig* config = ctx->config;
-    AppContext* app = ctx->app;
+bool wav_common_initialize(ModuleContext* context, int sf_format_flag) {
+    const AppConfig* config = context->config;
+    AppContext* app = context->app;
 
     // Allocate the private data struct for this module instance.
     WavCommonContext* data = (WavCommonContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(WavCommonContext), true);
@@ -53,7 +53,7 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
     const char* out_path = config->output.effective_path;
     #endif
 
-    if (!utils_verify_output_path(config, out_path)) {
+    if (!utility_verify_output_path(config, out_path)) {
         return false;
     }
 
@@ -187,8 +187,8 @@ bool wav_common_initialize(ModuleContext* ctx, int sf_format_flag) {
     return true;
 }
 
-size_t wav_common_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
-    AppContext* app = ctx->app;
+size_t wav_common_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write) {
+    AppContext* app = context->app;
     WavCommonContext* data = (WavCommonContext*)app->module.output_private_data;
     if (!data || !data->handle || bytes_to_write == 0) return 0;
     sf_count_t written = sf_write_raw(data->handle, buffer, bytes_to_write);
@@ -196,8 +196,8 @@ size_t wav_common_write_chunk(ModuleContext* ctx, const void* buffer, size_t byt
     return (size_t)written;
 }
 
-void wav_common_cleanup(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+void wav_common_cleanup(ModuleContext* context) {
+    AppContext* app = context->app;
     if (!app->module.output_private_data) return;
     WavCommonContext* data = (WavCommonContext*)app->module.output_private_data;
     if (data->handle) {

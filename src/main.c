@@ -40,7 +40,7 @@
 #include "module.h"
 #include "pipeline_context.h"
 #include "cli.h"
-#include "utils.h"
+#include "utilities.h"
 #include "module_registry.h"
 #include "presets_loader.h"
 #include "platform.h"
@@ -99,20 +99,20 @@ int main(int argc, char *argv[]) {
     AppConfig config;
     memset(&config, 0, sizeof(AppConfig));
 
-    int ret;
+    int return_code;
 
     pthread_mutexattr_t attr;
-    if ((ret = pthread_mutexattr_init(&attr)) != 0) {
-        fprintf(stderr, "FATAL: Failed to initialize mutex attributes: %s\n", strerror(ret));
+    if ((return_code = pthread_mutexattr_init(&attr)) != 0) {
+        fprintf(stderr, "FATAL: Failed to initialize mutex attributes: %s\n", strerror(return_code));
         return EXIT_FAILURE;
     }
-    if ((ret = pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE)) != 0) {
-        fprintf(stderr, "FATAL: Failed to set mutex type to recursive: %s\n", strerror(ret));
+    if ((return_code = pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE)) != 0) {
+        fprintf(stderr, "FATAL: Failed to set mutex type to recursive: %s\n", strerror(return_code));
         pthread_mutexattr_destroy(&attr);
         return EXIT_FAILURE;
     }
-    if ((ret = pthread_mutex_init(&g_console_mutex, &attr)) != 0) {
-        fprintf(stderr, "FATAL: Failed to initialize console mutex: %s\n", strerror(ret));
+    if ((return_code = pthread_mutex_init(&g_console_mutex, &attr)) != 0) {
+        fprintf(stderr, "FATAL: Failed to initialize console mutex: %s\n", strerror(return_code));
         pthread_mutexattr_destroy(&attr);
         return EXIT_FAILURE;
     }
@@ -189,8 +189,8 @@ int main(int argc, char *argv[]) {
     }
     // Perform pre-stream calibration if needed (requires open source)
     if (app.module.input_api->pre_stream_iq_correction) {
-        ModuleContext ctx = { .config = &config, .app = &app };
-        if (!app.module.input_api->pre_stream_iq_correction(&ctx)) goto cleanup;
+        ModuleContext context = { .config = &config, .app = &app };
+        if (!app.module.input_api->pre_stream_iq_correction(&context)) goto cleanup;
     }
     PipelineContext pipeline_context = { .config = &config, .app = &app };
     if (!pipeline_setup_buffers(&pipeline_context)) {
@@ -253,7 +253,7 @@ cleanup:
 static bool init_input_source(AppConfig *config, AppContext* app) {
     app->config = config;
     app->dsp.config = config;
-    ModuleContext ctx = { .config = config, .app = app };
+    ModuleContext context = { .config = config, .app = app };
 
     const Module* selected_input_module = module_get(config->input.type_name, MODULE_TYPE_INPUT, &app->pipeline.setup_arena);
     if (!selected_input_module) {
@@ -265,11 +265,11 @@ static bool init_input_source(AppConfig *config, AppContext* app) {
 
 
     log_info("Initializing the '%s' input module...", config->input.type_name);
-    return app->module.input_api->initialize(&ctx);
+    return app->module.input_api->initialize(&context);
 }
 
 static bool init_output_module(AppConfig *config, AppContext* app) {
-    ModuleContext ctx = { .config = config, .app = app };
+    ModuleContext context = { .config = config, .app = app };
 
     const Module* selected_output_module = module_get(config->output.module_name, MODULE_TYPE_OUTPUT, &app->pipeline.setup_arena);
     if (!selected_output_module) {
@@ -284,22 +284,22 @@ static bool init_output_module(AppConfig *config, AppContext* app) {
     }
 
     log_info("Initializing the '%s' output module...", config->output.module_name);
-    return app->module.output_api->initialize(&ctx);
+    return app->module.output_api->initialize(&context);
 }
 
 static void close_input_source(AppConfig *config, AppContext* app) {
     if (!app || !app->module.input_api) return;
-    ModuleContext ctx = { .config = config, .app = app };
+    ModuleContext context = { .config = config, .app = app };
     if (app->module.input_api->cleanup) {
-        app->module.input_api->cleanup(&ctx);
+        app->module.input_api->cleanup(&context);
     }
 }
 
 static void close_output_module(AppConfig *config, AppContext* app) {
     if (!app || !app->module.output_api) return;
-    ModuleContext ctx = { .config = config, .app = app };
+    ModuleContext context = { .config = config, .app = app };
     if (app->module.output_api->cleanup) {
-        app->module.output_api->cleanup(&ctx);
+        app->module.output_api->cleanup(&context);
     }
 }
 
@@ -328,15 +328,15 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
 
     InputSummaryInfo summary_info;
     memset(&summary_info, 0, sizeof(InputSummaryInfo));
-    const ModuleContext ctx = { .config = config, .app = (AppContext*)app };
-    app->module.input_api->get_summary_info(&ctx, &summary_info);
+    const ModuleContext context = { .config = config, .app = (AppContext*)app };
+    app->module.input_api->get_summary_info(&context, &summary_info);
 
     int max_label_len = 0;
     if (summary_info.count > 0) {
         for (int i = 0; i < summary_info.count; i++) {
-            int len = (int)strlen(summary_info.items[i].label);
-            if (len > max_label_len) {
-                max_label_len = len;
+            int length = (int)strlen(summary_info.items[i].label);
+            if (length > max_label_len) {
+                max_label_len = length;
             }
         }
     }
@@ -344,8 +344,8 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
     if (config->sdr_general.rf_freq_provided) {
         const char* offset_labels[] = { "Actual Frequency", "Frequency Offset", "Tuned Frequency", "RF Frequency" };
         for (int i = 0; i < 4; i++) {
-            int len = (int)strlen(offset_labels[i]);
-            if (len > max_label_len) max_label_len = len;
+            int length = (int)strlen(offset_labels[i]);
+            if (length > max_label_len) max_label_len = length;
         }
     }
 
@@ -354,9 +354,9 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
         "Resampling", "Output Target", "FIR Filter", "FFT Filter", "Output AGC"
     };
     for (size_t i = 0; i < sizeof(base_output_labels) / sizeof(base_output_labels[0]); i++) {
-        int len = (int)strlen(base_output_labels[i]);
-        if (len > max_label_len) {
-            max_label_len = len;
+        int length = (int)strlen(base_output_labels[i]);
+        if (length > max_label_len) {
+            max_label_len = length;
         }
     }
 
@@ -386,7 +386,7 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
     if (app->module.output_api && app->module.output_api->get_summary_info) {
         OutputSummaryInfo output_summary;
         memset(&output_summary, 0, sizeof(output_summary));
-        app->module.output_api->get_summary_info(&ctx, &output_summary);
+        app->module.output_api->get_summary_info(&context, &output_summary);
         for (int i = 0; i < output_summary.count; i++) {
             fprintf(stderr, " %-*s : %s\n", max_label_len, output_summary.items[i].label, output_summary.items[i].value);
         }
@@ -482,9 +482,9 @@ static void print_final_summary(const AppConfig *config, const AppContext* app, 
     char size_buf[40];
     char duration_buf[40];
 
-    utils_format_size(app->stats.final_output_size_bytes, size_buf, sizeof(size_buf));
+    utility_format_size(app->stats.final_output_size_bytes, size_buf, sizeof(size_buf));
     double duration_secs = difftime(time(NULL), app->stats.start_time);
-    utils_format_duration(duration_secs, duration_buf, sizeof(duration_buf));
+    utility_format_duration(duration_secs, duration_buf, sizeof(duration_buf));
 
     unsigned long long total_input_samples = (unsigned long long)atomic_load(&app->stats.total_frames_read) * 2;
     unsigned long long total_output_samples = (unsigned long long)atomic_load(&app->stats.total_output_frames) * 2;
@@ -556,7 +556,7 @@ static void application_progress_callback(unsigned long long current_output_fram
     static double last_progress_log_time = 0.0;
     static long long last_bytes_written = 0;
 
-    double current_time = utils_get_time();
+    double current_time = utility_get_time();
 
     if (current_time - last_progress_log_time >= CONSOLE_UPDATE_INTERVAL_SEC) {
         double rate_mb_per_sec = 0.0;

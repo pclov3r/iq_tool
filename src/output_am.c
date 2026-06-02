@@ -7,7 +7,7 @@
 #include "platform.h"
 #include "ring_buffer.h"
 #include "signal_handler.h"
-#include "utils.h"
+#include "utilities.h"
 #include "queue.h"
 #include "sample_convert.h"
 #include <stdio.h>
@@ -151,18 +151,18 @@ static bool am_output_validate_options(AppConfig* config) {
     return true;
 }
 
-static bool am_output_initialize(ModuleContext* ctx) {
-    AppContext* res = ctx->app;
+static bool am_output_initialize(ModuleContext* context) {
+    AppContext* res = context->app;
 
     AmContext* p = (AmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(AmContext), true);
     if (!p) return false;
     res->module.output_private_data = p;
 
-    p->audio_out = audio_output_create(&res->pipeline.setup_arena, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_BUFFER_SIZE, ctx->config->dsp.audio_writer_path, ctx->config->dsp.audio_writer_rf64, ctx->config->dsp.mute_audio);
+    p->audio_out = audio_output_create(&res->pipeline.setup_arena, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_BUFFER_SIZE, context->config->dsp.audio_writer_path, context->config->dsp.audio_writer_rf64, context->config->dsp.mute_audio);
     if (!p->audio_out) return false;
 
     // 3. DSP Configuration
-    float input_rate = (float)ctx->config->output_sample_rate.rate_hz;
+    float input_rate = (float)context->config->output_sample_rate.rate_hz;
     if (input_rate < 1.0f) input_rate = 48000.0f;
 
     p->input_samplerate = input_rate;
@@ -196,14 +196,14 @@ static bool am_output_initialize(ModuleContext* ctx) {
 
     // C. Resampler
     p->output_resample_ratio = (float)AUDIO_SAMPLE_RATE / input_rate;
-    p->resamp_out = msresamp_rrrf_create(p->output_resample_ratio, ctx->config->dsp.filter.args.attenuation);
+    p->resamp_out = msresamp_rrrf_create(p->output_resample_ratio, context->config->dsp.filter.args.attenuation);
 
     // D. Audio Lowpass Filter
     unsigned int h_len = 63;
     float h[63];
     float fc = s_am_config.audio_cutoff / (float)AUDIO_SAMPLE_RATE;
     if (fc > 0.49f) fc = 0.49f;
-    liquid_firdes_kaiser(h_len, fc, ctx->config->dsp.filter.args.attenuation, 0.0f, h);
+    liquid_firdes_kaiser(h_len, fc, context->config->dsp.filter.args.attenuation, 0.0f, h);
     p->audio_lpf = firfilt_rrrf_create(h, h_len);
 
     // E. AGC
@@ -238,13 +238,13 @@ static bool am_output_initialize(ModuleContext* ctx) {
 }
 
 
-static void am_output_reset(ModuleContext* ctx) { (void)ctx; /* TODO: Reset PLL state */ }
-static void am_output_flush(ModuleContext* ctx) {
-    AmContext* p = (AmContext*)ctx->app->module.output_private_data;
+static void am_output_reset(ModuleContext* context) { (void)context; /* TODO: Reset PLL state */ }
+static void am_output_flush(ModuleContext* context) {
+    AmContext* p = (AmContext*)context->app->module.output_private_data;
     audio_output_clear(p->audio_out);
 }
-static size_t am_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t input_bytes) {
-    AppContext* res = ctx->app;
+static size_t am_output_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
+    AppContext* res = context->app;
     AmContext* p = (AmContext*)res->module.output_private_data;
 
     
@@ -345,8 +345,8 @@ static size_t am_output_write_chunk(ModuleContext* ctx, const void* buffer, size
 }
 
 
-static void am_output_cleanup(ModuleContext* ctx) {
-    AppContext* res = ctx->app;
+static void am_output_cleanup(ModuleContext* context) {
+    AppContext* res = context->app;
     if (!res->module.output_private_data) return;
     AmContext* p = (AmContext*)res->module.output_private_data;
 
@@ -358,8 +358,8 @@ static void am_output_cleanup(ModuleContext* ctx) {
     if (p->resamp_out) msresamp_rrrf_destroy(p->resamp_out);
 }
 
-static void am_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
-    (void)ctx;
+static void am_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+    (void)context;
     add_summary_item(info, "Output Type", "AM Audio");
     add_summary_item(info, "Mode", "%s", s_am_config.force_envelope ? "Envelope (Mag)" : "Synchronous (PLL)");
     add_summary_item(info, "Audio Sample Rate", "%d Hz", AUDIO_SAMPLE_RATE);

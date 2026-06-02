@@ -2,7 +2,7 @@
 #include "constants.h"
 #include "log.h"
 #include "signal_handler.h"
-#include "utils.h"
+#include "utilities.h"
 #include "sample_format_table.h"
 #include "app_context.h"
 #include "platform.h"
@@ -64,14 +64,14 @@ const struct argparse_option* rawfile_input_get_cli_options(int* count) {
     return rawfile_input_cli_options;
 }
 
-static bool rawfile_input_initialize(ModuleContext* ctx);
-static void* rawfile_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
-static size_t rawfile_input_read_chunk(ModuleContext* ctx, void* buffer, size_t bytes_to_read);
-static void rawfile_input_stop_stream(ModuleContext* ctx);
-static void rawfile_input_cleanup(ModuleContext* ctx);
-static void rawfile_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
+static bool rawfile_input_initialize(ModuleContext* context);
+static void* rawfile_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
+static size_t rawfile_input_read_chunk(ModuleContext* context, void* buffer, size_t bytes_to_read);
+static void rawfile_input_stop_stream(ModuleContext* context);
+static void rawfile_input_cleanup(ModuleContext* context);
+static void rawfile_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool rawfile_input_validate_options(AppConfig* config);
-static bool rawfile_input_pre_stream_iq_correction(ModuleContext* ctx);
+static bool rawfile_input_pre_stream_iq_correction(ModuleContext* context);
 
 static InputModuleInterface s_rawfile_input_api = {
     .initialize = rawfile_input_initialize,
@@ -111,9 +111,9 @@ static bool rawfile_input_validate_options(AppConfig* config) {
     return true;
 }
 
-static bool rawfile_input_initialize(ModuleContext* ctx) {
-    const AppConfig *config = ctx->config;
-    AppContext* app = ctx->app;
+static bool rawfile_input_initialize(ModuleContext* context) {
+    const AppConfig *config = context->config;
+    AppContext* app = context->app;
 
     RawfileInputContext* private_data = (RawfileInputContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RawfileInputContext), true);
     if (!private_data) {
@@ -176,8 +176,8 @@ static bool rawfile_input_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static size_t rawfile_input_read_chunk(ModuleContext* ctx, void* buffer, size_t bytes_to_read) {
-    AppContext* app = ctx->app;
+static size_t rawfile_input_read_chunk(ModuleContext* context, void* buffer, size_t bytes_to_read) {
+    AppContext* app = context->app;
     RawfileInputContext* p = (RawfileInputContext*)app->module.input_private_data;
     if (!p || !p->infile || bytes_to_read == 0) return 0;
 
@@ -212,16 +212,16 @@ static size_t rawfile_input_read_chunk(ModuleContext* ctx, void* buffer, size_t 
     return bytes_read_total;
 }
 
-static void* rawfile_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
-    (void)ctx; (void)queue_samples; (void)pipeline_ctx;
+static void* rawfile_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+    (void)context; (void)queue_samples; (void)pipeline_context;
     return NULL; // Not used for synchronous file readers
 }
-static void rawfile_input_stop_stream(ModuleContext* ctx) {
-    (void)ctx;
+static void rawfile_input_stop_stream(ModuleContext* context) {
+    (void)context;
 }
 
-static void rawfile_input_cleanup(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void rawfile_input_cleanup(ModuleContext* context) {
+    AppContext* app = context->app;
     if (app->module.input_private_data) {
         RawfileInputContext* private_data = (RawfileInputContext*)app->module.input_private_data;
         if (private_data->infile) {
@@ -233,9 +233,9 @@ static void rawfile_input_cleanup(ModuleContext* ctx) {
     }
 }
 
-static void rawfile_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
-    const AppConfig *config = ctx->config;
-    const AppContext* app = ctx->app;
+static void rawfile_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+    const AppConfig *config = context->config;
+    const AppContext* app = context->app;
     const char* display_path = config->input.path_arg;
 #ifdef _WIN32
     if (config->input.effective_path_utf8[0] != '\0') {
@@ -250,7 +250,7 @@ static void rawfile_input_get_summary_info(const ModuleContext* ctx, InputSummar
 
     char size_buf[40];
     long long file_size_bytes = app->module.source_info.frames * app->module.input_bytes_per_iq_sample;
-    add_summary_item(info, "Input File Size", "%s", utils_format_size(file_size_bytes, size_buf, sizeof(size_buf)));
+    add_summary_item(info, "Input File Size", "%s", utility_format_size(file_size_bytes, size_buf, sizeof(size_buf)));
 }
 
 static size_t raw_iq_cal_read_cb(void* user_data, void* buffer, size_t bytes) {
@@ -258,9 +258,9 @@ static size_t raw_iq_cal_read_cb(void* user_data, void* buffer, size_t bytes) {
     return (size_t)sf_read_raw(infile, buffer, bytes);
 }
 
-static bool rawfile_input_pre_stream_iq_correction(ModuleContext* ctx) {
-    AppConfig* config = (AppConfig*)ctx->config;
-    RawfileInputContext* private_data = (RawfileInputContext*)ctx->app->module.input_private_data;
+static bool rawfile_input_pre_stream_iq_correction(ModuleContext* context) {
+    AppConfig* config = (AppConfig*)context->config;
+    RawfileInputContext* private_data = (RawfileInputContext*)context->app->module.input_private_data;
 
     // This routine is only necessary if I/Q correction is enabled.
     if (!config->dsp.iq_correction.enable) {
@@ -268,12 +268,12 @@ static bool rawfile_input_pre_stream_iq_correction(ModuleContext* ctx) {
     }
 
     // The module's only job is to call the calibration service with its private file handle.
-    size_t raw_buffer_size = 4096 * ctx->app->module.input_bytes_per_iq_sample; // IQ_CORRECTION_FFT_SIZE
-    void* raw_buffer = mem_arena_alloc(&ctx->app->pipeline.setup_arena, raw_buffer_size, false);
+    size_t raw_buffer_size = 4096 * context->app->module.input_bytes_per_iq_sample; // IQ_CORRECTION_FFT_SIZE
+    void* raw_buffer = mem_arena_alloc(&context->app->pipeline.setup_arena, raw_buffer_size, false);
     if (!raw_buffer) return false;
 
     // We do an initial read inside the calibration function now
-    bool result = iq_correction_run_initial_calibration(ctx, raw_buffer, raw_buffer_size, raw_iq_cal_read_cb, private_data->infile);
+    bool result = iq_correction_run_initial_calibration(context, raw_buffer, raw_buffer_size, raw_iq_cal_read_cb, private_data->infile);
 
     if (sf_seek(private_data->infile, 0, SEEK_SET) < 0) {
         log_fatal("Failed to rewind file after calibration.");

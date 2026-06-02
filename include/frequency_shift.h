@@ -28,7 +28,7 @@
  * @param app Pointer to the application app where the NCOs will be stored.
  * @return true on success or if no shift is needed, false on failure.
  */
-bool freq_shift_create(AppConfig *config, AppContext* app);
+bool frequency_shift_create(AppConfig *config, AppContext* app);
 
 /**
  * @brief Applies the frequency shift to a block of complex samples using a specific NCO.
@@ -42,7 +42,7 @@ bool freq_shift_create(AppConfig *config, AppContext* app);
 struct freq_shifter_s;
 typedef struct freq_shifter_s FreqShifter;
 
-void freq_shift_apply(FreqShifter* nco, double shift_hz, ComplexFloat* input_buffer, ComplexFloat* output_buffer, unsigned int num_frames);
+void frequency_shift_apply(FreqShifter* nco, double shift_hz, ComplexFloat* input_buffer, ComplexFloat* output_buffer, unsigned int num_frames);
 
 /**
  * @brief Resets the internal phase of a specific NCO.
@@ -52,13 +52,13 @@ void freq_shift_apply(FreqShifter* nco, double shift_hz, ComplexFloat* input_buf
  *
  * @param nco The NCO object to reset.
  */
-void freq_shift_reset_nco(FreqShifter* nco);
+void frequency_shift_reset_nco(FreqShifter* nco);
 
 /**
  * @brief Destroys the NCO objects if they were created.
  * @param app Pointer to the application app containing the NCOs.
  */
-void freq_shift_destroy_ncos(AppContext* app);
+void frequency_shift_destroy_ncos(AppContext* app);
 
 
 #endif // FREQ_SHIFT_H_

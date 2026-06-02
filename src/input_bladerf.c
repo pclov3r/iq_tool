@@ -5,7 +5,7 @@
 #include "signal_handler.h"
 #include "app_context.h"
 #include "mem_arena.h"
-#include "utils.h"
+#include "utilities.h"
 #include "sample_format_table.h"
 #include "sample_convert.h"
 #include "platform.h"
@@ -201,7 +201,7 @@ void bladerf_set_default_config(AppConfig* config) {
 
 static const struct argparse_option bladerf_input_cli_options[] = {
     OPT_GROUP("BladeRF Input (bladerf)"),
-    OPT_INTEGER(0, "bladerf-device-idx", &s_bladerf_config.device_index, "Select specific BladeRF device by index (0-indexed). (Default: 0)", NULL, 0, 0),
+    OPT_INTEGER(0, "bladerf-device-index", &s_bladerf_config.device_index, "Select specific BladeRF device by index (0-indexed). (Default: 0)", NULL, 0, 0),
     OPT_STRING(0, "bladerf-load-fpga", &s_bladerf_config.fpga_file_path, "Load an FPGA bitstream from the specified file.", NULL, 0, 0),
     OPT_FLOAT(0, "bladerf-bandwidth", &s_bladerf_config.bladerf_bandwidth_hz_arg, "Set analog bandwidth in Hz. (Not applicable in 8-bit high-speed mode)", NULL, 0, 0),
     OPT_INTEGER(0, "bladerf-gain", &s_bladerf_config.bladerf_gain_arg, "Set overall manual gain in dB. Disables AGC.", NULL, 0, 0),
@@ -215,11 +215,11 @@ const struct argparse_option* bladerf_input_get_cli_options(int* count) {
 }
 
 // Forward declarations for static functions
-static bool bladerf_input_initialize(ModuleContext* ctx);
-static void* bladerf_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
-static void bladerf_input_stop_stream(ModuleContext* ctx);
-static void bladerf_input_cleanup(ModuleContext* ctx);
-static void bladerf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
+static bool bladerf_input_initialize(ModuleContext* context);
+static void* bladerf_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
+static void bladerf_input_stop_stream(ModuleContext* context);
+static void bladerf_input_cleanup(ModuleContext* context);
+static void bladerf_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static void* bladerf_rx_stream_callback(struct bladerf *dev, struct bladerf_stream *stream,
                                         struct bladerf_metadata *meta, void *samples,
                                         size_t num_samples, void *user_data);
@@ -231,8 +231,8 @@ static bool bladerf_input_validate_options(AppConfig* config);
 static bool bladerf_input_validate_generic_options(const AppConfig* config);
 
 static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev);
-static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel);
-static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel);
+static bool bladerf_configure_standard_rate_and_rf(ModuleContext* context, bladerf_channel rx_channel);
+static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* context, bladerf_channel rx_channel);
 
 
 static InputModuleInterface s_bladerf_input_api = {
@@ -313,9 +313,9 @@ static bool bladerf_input_validate_options(AppConfig* config) {
     return true;
 }
 
-static bool bladerf_input_initialize(ModuleContext* ctx) {
-    AppConfig *config = (AppConfig*)ctx->config;
-    AppContext* app = ctx->app;
+static bool bladerf_input_initialize(ModuleContext* context) {
+    AppConfig *config = (AppConfig*)context->config;
+    AppContext* app = context->app;
     int status;
     char device_identifier[32];
     bool success = false; // Assume failure until the very end.
@@ -428,9 +428,9 @@ static bool bladerf_input_initialize(ModuleContext* ctx) {
             log_error("Invalid configuration: Sample rates above 61440000 Hz are only supported on BladeRF 2.0 devices.");
             goto cleanup;
         }
-        if (!bladerf_configure_high_speed_rate_and_rf(ctx, rx_channel)) goto cleanup;
+        if (!bladerf_configure_high_speed_rate_and_rf(context, rx_channel)) goto cleanup;
     } else {
-        if (!bladerf_configure_standard_rate_and_rf(ctx, rx_channel)) goto cleanup;
+        if (!bladerf_configure_standard_rate_and_rf(context, rx_channel)) goto cleanup;
     }
 
     if (app->module.source_info.sample_rate == 0) {
@@ -477,9 +477,9 @@ cleanup:
     return success;
 }
 
-static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel) {
-    AppConfig *config = (AppConfig*)ctx->config;
-    AppContext* app = ctx->app;
+static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* context, bladerf_channel rx_channel) {
+    AppConfig *config = (AppConfig*)context->config;
+    AppContext* app = context->app;
     BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
     int status;
 
@@ -518,9 +518,9 @@ static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* ctx, bladerf
     return true;
 }
 
-static bool bladerf_configure_standard_rate_and_rf(ModuleContext* ctx, bladerf_channel rx_channel) {
-    AppConfig *config = (AppConfig*)ctx->config;
-    AppContext* app = ctx->app;
+static bool bladerf_configure_standard_rate_and_rf(ModuleContext* context, bladerf_channel rx_channel) {
+    AppConfig *config = (AppConfig*)context->config;
+    AppContext* app = context->app;
     BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
     int status;
 
@@ -578,7 +578,7 @@ static void* bladerf_rx_stream_callback(struct bladerf *dev, struct bladerf_stre
         packet_serializer_write_reset_event(app->pipeline.source_input_buffer);
     }
 
-    if (!app->module.queue_samples(app->module.pipeline_ctx, samples, num_samples, app->module.input_format)) {
+    if (!app->module.queue_samples(app->module.pipeline_context, samples, num_samples, app->module.input_format)) {
         /* Warning handled internally by pipeline */
     }
 
@@ -591,10 +591,10 @@ static void* bladerf_rx_stream_callback(struct bladerf *dev, struct bladerf_stre
     return private_data->stream_buffers[0];
 }
 
-static void* bladerf_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
-    ctx->app->module.queue_samples = queue_samples;
-    ctx->app->module.pipeline_ctx = pipeline_ctx;
-    AppContext* app = ctx->app;
+static void* bladerf_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+    context->app->module.queue_samples = queue_samples;
+    context->app->module.pipeline_context = pipeline_context;
+    AppContext* app = context->app;
     BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
     int status;
     bladerf_channel rx_channel;
@@ -673,12 +673,12 @@ static void* bladerf_input_start_stream(ModuleContext* ctx, QueueSamples queue_s
         handle_fatal_thread_error(error_buf, app);
     }
 
-    bladerf_input_stop_stream(ctx);
+    bladerf_input_stop_stream(context);
     return NULL;
 }
 
-static void bladerf_input_stop_stream(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void bladerf_input_stop_stream(ModuleContext* context) {
+    AppContext* app = context->app;
     BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
     if (private_data && private_data->dev) {
         // Set error flag so callback returns BLADERF_STREAM_SHUTDOWN
@@ -705,8 +705,8 @@ static void bladerf_input_stop_stream(ModuleContext* ctx) {
     }
 }
 
-static void bladerf_input_cleanup(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void bladerf_input_cleanup(ModuleContext* context) {
+    AppContext* app = context->app;
     if (app->module.input_private_data) {
         BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
         pthread_mutex_lock(&private_data->driver_mutex);
@@ -728,9 +728,9 @@ static void bladerf_input_cleanup(ModuleContext* ctx) {
 #endif
 }
 
-static void bladerf_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
-    const AppConfig *config = ctx->config;
-    AppContext* app = ctx->app;
+static void bladerf_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+    const AppConfig *config = context->config;
+    AppContext* app = context->app;
     BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
     add_summary_item(info, "Input Source", "%s", private_data->display_name);
 
@@ -812,9 +812,9 @@ static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev) {
     char exe_dir[MAX_PATH_BUFFER] = {0};
     char parent_dir_buf[MAX_PATH_BUFFER] = {0};
 
-    ssize_t len = readlink("/proc/self/exe", exe_path_buf, sizeof(exe_path_buf) - 1);
-    if (len > 0) {
-        exe_path_buf[len] = '\0';
+    ssize_t length = readlink("/proc/self/exe", exe_path_buf, sizeof(exe_path_buf) - 1);
+    if (length > 0) {
+        exe_path_buf[length] = '\0';
         char temp_path1[MAX_PATH_BUFFER];
         snprintf(temp_path1, sizeof(temp_path1), "%s", exe_path_buf);
         snprintf(exe_dir, sizeof(exe_dir), "%s", dirname(temp_path1));

@@ -1,4 +1,4 @@
-#include "utils.h"
+#include "utilities.h"
 #include "log.h"
 #include "mem_arena.h"
 #include "app_context.h"
@@ -23,7 +23,7 @@
 #include <unistd.h>
 #endif
 
-double utils_get_time(void) {
+double utility_get_time(void) {
 #ifdef _WIN32
     LARGE_INTEGER freq, count;
     if (QueryPerformanceFrequency(&freq) && QueryPerformanceCounter(&count)) {
@@ -41,12 +41,12 @@ double utils_get_time(void) {
 #endif
 }
 
-void utils_clear_stdin(void) {
+void utility_clear_stdin(void) {
     int c;
     while ((c = getchar()) != '\n' && c != EOF);
 }
 
-const char* utils_format_size(long long size_bytes, char* buffer, size_t buffer_size) {
+const char* utility_format_size(long long size_bytes, char* buffer, size_t buffer_size) {
     static const char* error_msg = "(N/A)";
     if (!buffer || buffer_size == 0) return error_msg;
     if (size_bytes < 0) {
@@ -80,8 +80,8 @@ const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size
     }
 #else
     if (config->input.effective_path) {
-        size_t len = strlen(config->input.effective_path) + 1;
-        char* temp_copy = (char*)mem_arena_alloc(arena, len, false);
+        size_t length = strlen(config->input.effective_path) + 1;
+        char* temp_copy = (char*)mem_arena_alloc(arena, length, false);
         if (temp_copy) {
             strcpy(temp_copy, config->input.effective_path);
             char* base = basename(temp_copy);
@@ -109,20 +109,20 @@ void add_summary_item(InputSummaryInfo* info, const char* label, const char* val
     info->count++;
 }
 
-char* utils_trim_whitespace(char* str) {
-    if (!str) return NULL;
+char* utility_trim_whitespace(char* input_string) {
+    if (!input_string) return NULL;
     char* end;
-    while (isspace((unsigned char)*str)) str++;
-    if (*str == 0) {
-        return str;
+    while (isspace((unsigned char)*input_string)) input_string++;
+    if (*input_string == 0) {
+        return input_string;
     }
-    end = str + strlen(str) - 1;
-    while (end > str && isspace((unsigned char)*end)) end--;
+    end = input_string + strlen(input_string) - 1;
+    while (end > input_string && isspace((unsigned char)*end)) end--;
     end[1] = '\0';
-    return str;
+    return input_string;
 }
 
-void utils_format_duration(double total_seconds, char* buffer, size_t buffer_size) {
+void utility_format_duration(double total_seconds, char* buffer, size_t buffer_size) {
     if (!isfinite(total_seconds) || total_seconds < 0) {
         snprintf(buffer, buffer_size, "N/A");
         return;
@@ -140,7 +140,7 @@ void utils_format_duration(double total_seconds, char* buffer, size_t buffer_siz
     snprintf(buffer, buffer_size, "%02d:%02d:%02d", hours, minutes, seconds);
 }
 
-bool utils_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz, const char* context_str) {
+bool utility_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz, const char* context_str) {
     if (!context_str || sample_rate_hz <= 0) {
         return true; // Cannot perform check, so allow continuation.
     }
@@ -160,7 +160,7 @@ bool utils_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz,
                 fprintf(stderr, "\nEOF detected. Cancelling.\n");
                 return false;
             }
-            utils_clear_stdin();
+            utility_clear_stdin();
             response = tolower(response);
             if (response == 'n') {
                 log_info("Operation cancelled by user.");
@@ -171,7 +171,7 @@ bool utils_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz,
     return true;
 }
 
-bool utils_check_file_exists(const char* full_path) {
+bool utility_check_file_exists(const char* full_path) {
     FILE* fp = fopen(full_path, "r");
     if (fp) {
         fclose(fp);
@@ -181,11 +181,11 @@ bool utils_check_file_exists(const char* full_path) {
 }
 
 
-bool utils_prompt_for_overwrite(const char* path_for_messages) {
+bool utility_prompt_for_overwrite(const char* path_for_messages) {
     fprintf(stderr, "\nOutput file %s exists.\nOverwrite? (y/n): ", path_for_messages);
     int response = getchar();
     if (response != '\n' && response != EOF) {
-        utils_clear_stdin();
+        utility_clear_stdin();
     }
     response = tolower(response);
     if (response != 'y') {
@@ -197,7 +197,7 @@ bool utils_prompt_for_overwrite(const char* path_for_messages) {
     return true;
 }
 
-bool utils_verify_output_path(const AppConfig* config, const char* out_path_utf8) {
+bool utility_verify_output_path(const AppConfig* config, const char* out_path_utf8) {
 #ifdef _WIN32
     DWORD attrs;
     if (config && config->output.effective_path_w[0] != L'\0') {
@@ -214,7 +214,7 @@ bool utils_verify_output_path(const AppConfig* config, const char* out_path_utf8
             return false; 
         }
         // Windows doesn't have FIFOs or S_ISCHR in the same way, prompt for any existing file
-        if (!utils_prompt_for_overwrite(out_path_utf8)) {
+        if (!utility_prompt_for_overwrite(out_path_utf8)) {
             return false;
         }
     }
@@ -231,7 +231,7 @@ bool utils_verify_output_path(const AppConfig* config, const char* out_path_utf8
         // Only trigger the interactive overwrite prompt if it's a regular file.
         // This allows /dev/null (S_ISCHR) and FIFOs (S_ISFIFO) to stream seamlessly
         if (S_ISREG(stat_buf.st_mode)) {
-            if (!utils_prompt_for_overwrite(out_path_utf8)) {
+            if (!utility_prompt_for_overwrite(out_path_utf8)) {
                 return false;
             }
         }

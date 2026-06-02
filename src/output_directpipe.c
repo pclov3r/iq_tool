@@ -3,7 +3,7 @@
 #include "app_context.h"
 #include "log.h"
 #include "mem_arena.h"
-#include "utils.h"
+#include "utilities.h"
 #include <string.h>
 #include <stdbool.h>
 #include <errno.h>
@@ -26,8 +26,8 @@ typedef struct {
     long long total_bytes_written;
 } DirectPipeContext;
 
-static bool directpipe_output_initialize(ModuleContext* ctx) {
-    DirectPipeContext* data = (DirectPipeContext*)mem_arena_alloc(&ctx->app->pipeline.setup_arena, sizeof(DirectPipeContext), true);
+static bool directpipe_output_initialize(ModuleContext* context) {
+    DirectPipeContext* data = (DirectPipeContext*)mem_arena_alloc(&context->app->pipeline.setup_arena, sizeof(DirectPipeContext), true);
     if (!data) return false;
 
 #ifndef _WIN32
@@ -45,15 +45,15 @@ static bool directpipe_output_initialize(ModuleContext* ctx) {
     _setmode(TARGET_FD, _O_BINARY);
 #endif
 
-    ctx->app->module.output_private_data = data;
+    context->app->module.output_private_data = data;
     return true;
 }
 
-static size_t directpipe_output_write_chunk(ModuleContext* ctx, const void* buffer, size_t bytes_to_write) {
-    DirectPipeContext* data = (DirectPipeContext*)ctx->app->module.output_private_data;
+static size_t directpipe_output_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write) {
+    DirectPipeContext* data = (DirectPipeContext*)context->app->module.output_private_data;
     if (!data || bytes_to_write == 0) return 0;
 
-    const char* ptr = (const char*)buffer;
+    const char* output_bytes = (const char*)buffer;
     size_t bytes_left = bytes_to_write;
 
     /*
@@ -61,10 +61,10 @@ static size_t directpipe_output_write_chunk(ModuleContext* ctx, const void* buff
      * Handles partial writes, signals, and full pipes seamlessly.
      */
     while (bytes_left > 0) {
-        ssize_t written = WRITE(TARGET_FD, ptr, bytes_left);
+        ssize_t written = WRITE(TARGET_FD, output_bytes, bytes_left);
 
         if (written > 0) {
-            ptr += written;
+            output_bytes += written;
             bytes_left -= written;
             data->total_bytes_written += written;
         }
@@ -92,15 +92,15 @@ static size_t directpipe_output_write_chunk(ModuleContext* ctx, const void* buff
     return (bytes_to_write - bytes_left);
 }
 
-static void directpipe_output_cleanup(ModuleContext* ctx) {
-    DirectPipeContext* data = (DirectPipeContext*)ctx->app->module.output_private_data;
+static void directpipe_output_cleanup(ModuleContext* context) {
+    DirectPipeContext* data = (DirectPipeContext*)context->app->module.output_private_data;
     if (data) {
-        ctx->app->stats.final_output_size_bytes = data->total_bytes_written;
+        context->app->stats.final_output_size_bytes = data->total_bytes_written;
     }
 }
 
-static void directpipe_output_get_summary_info(const ModuleContext* ctx, OutputSummaryInfo* info) {
-    (void)ctx;
+static void directpipe_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+    (void)context;
     add_summary_item(info, "Output Type", "directpipe");
 }
 

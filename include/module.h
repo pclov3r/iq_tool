@@ -81,53 +81,53 @@ typedef struct ModuleContext {
  * @struct InputModuleInterface
  * @brief The "vtable" of function pointers that defines the module interface.
  */
-typedef bool (*QueueSamples)(void* pipeline_ctx, const void* data, size_t num_samples, SampleFormat format);
+typedef bool (*QueueSamples)(void* pipeline_context, const void* data, size_t num_samples, SampleFormat format);
 
 typedef struct InputModuleInterface {
     /**
      * @brief Performs initial setup (e.g., open file, select SDR device, set SDR parameters).
-     * @param ctx The application context.
+     * @param context The application context.
      * @return true on success, false on failure.
      */
-    bool (*initialize)(struct ModuleContext* ctx);
+    bool (*initialize)(struct ModuleContext* context);
 
     /**
      * @brief Starts the data stream. This is a blocking call that runs in the reader thread.
-     * @param ctx The application context.
+     * @param context The application context.
      * @return NULL on normal exit.
      */
-    void* (*start_stream)(struct ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
+    void* (*start_stream)(struct ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
 
     /**
      * @brief Reads a chunk of data synchronously from a file-based source.
      */
-    size_t (*read_chunk)(struct ModuleContext* ctx, void* buffer, size_t bytes_to_read);
+    size_t (*read_chunk)(struct ModuleContext* context, void* buffer, size_t bytes_to_read);
 
     /**
      * @brief Gracefully stops the data stream (e.g., cancels an async SDR read).
-     * @param ctx The application context.
+     * @param context The application context.
      */
-    void (*stop_stream)(struct ModuleContext* ctx);
+    void (*stop_stream)(struct ModuleContext* context);
 
     /**
      * @brief Releases all app allocated by the input source.
-     * @param ctx The application context.
+     * @param context The application context.
      */
-    void (*cleanup)(struct ModuleContext* ctx);
+    void (*cleanup)(struct ModuleContext* context);
 
     /**
      * @brief Populates a summary struct with details specific to this input source.
-     * @param ctx A read-only pointer to the application context.
+     * @param context A read-only pointer to the application context.
      * @param info A pointer to the summary struct to be populated.
      */
-    void (*get_summary_info)(const struct ModuleContext* ctx, struct InputSummaryInfo* info);
+    void (*get_summary_info)(const struct ModuleContext* context, struct InputSummaryInfo* info);
 
     /**
      * @brief Passes keypress events to the module.
-     * @param ctx The application context.
+     * @param context The application context.
      * @param key The integer key code.
      */
-    void (*on_keypress)(struct ModuleContext* ctx, int key);
+    void (*on_keypress)(struct ModuleContext* context, int key);
 
     /**
      * @brief Validates and post-processes command-line options specific to this module.
@@ -145,7 +145,7 @@ typedef struct InputModuleInterface {
 
 
     // Optional function for file-based sources to perform initial I/Q correction.
-    bool (*pre_stream_iq_correction)(struct ModuleContext* ctx);
+    bool (*pre_stream_iq_correction)(struct ModuleContext* context);
 
 } InputModuleInterface;
 
@@ -161,27 +161,27 @@ typedef struct OutputModuleInterface {
     const struct argparse_option* (*get_cli_options)(int* count);
 
     // Performs all one-time setup for the writer (opens files, etc.)
-    bool (*initialize)(struct ModuleContext* ctx);
+    bool (*initialize)(struct ModuleContext* context);
 
-    void (*reset)(struct ModuleContext* ctx);
-    void (*flush)(struct ModuleContext* ctx);
+    void (*reset)(struct ModuleContext* context);
+    void (*flush)(struct ModuleContext* context);
 
     /**
      * @brief Writes a single chunk of data directly to the output.
      * This is used for special cases like raw_passthrough mode.
-     * @param ctx The application context.
+     * @param context The application context.
      * @param buffer Pointer to the data to write.
      * @param bytes_to_write The number of bytes to write.
      * @return The number of bytes successfully written.
      */
-    size_t (*write_chunk)(struct ModuleContext* ctx, const void* buffer, size_t bytes_to_write);
+    size_t (*write_chunk)(struct ModuleContext* context, const void* buffer, size_t bytes_to_write);
 
     // Finalizes the output (e.g., updates WAV headers) and closes handles
-    void (*cleanup)(struct ModuleContext* ctx);
+    void (*cleanup)(struct ModuleContext* context);
 
     // Populates a summary struct with output details
-    void (*get_summary_info)(const ModuleContext* ctx, OutputSummaryInfo* info);
-    void (*on_keypress)(ModuleContext* ctx, int key);
+    void (*get_summary_info)(const ModuleContext* context, OutputSummaryInfo* info);
+    void (*on_keypress)(ModuleContext* context, int key);
 } OutputModuleInterface;
 
 

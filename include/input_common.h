@@ -5,8 +5,8 @@
 
 #include <stdbool.h>
 #include "app_context.h" // Needed for AppContext
-#include "utils.h"
-#include <stdatomic.h>       // Needed for utils_get_time
+#include "utilities.h"
+#include <stdatomic.h>       // Needed for utility_get_time
 
 // --- Common Implementations for the InputModuleInterface Interface ---
 
@@ -36,7 +36,7 @@ static inline bool _input_source_has_known_length_false(void) {
  * @param app A pointer to the application's app.
  */
 static inline void source_update_heartbeat(AppContext* app) {
-    atomic_store_explicit(&app->stats.last_source_heartbeat_time, utils_get_time(), memory_order_relaxed);
+    atomic_store_explicit(&app->stats.last_source_heartbeat_time, utility_get_time(), memory_order_relaxed);
 }
 
 #endif // INPUT_COMMON_H_

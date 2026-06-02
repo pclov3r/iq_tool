@@ -4,8 +4,8 @@
 #include "log.h"
 #include "signal_handler.h"
 #include "app_context.h"
-#include "freq_shift.h"
-#include "utils.h"
+#include "frequency_shift.h"
+#include "utilities.h"
 #include "sample_format_table.h"
 #include "sample_convert.h"
 #include "input_common.h"
@@ -229,7 +229,7 @@ void sdrplay_set_default_config(AppConfig* config) {
 static const struct argparse_option sdrplay_input_cli_options[] = {
     OPT_GROUP("SDRplay Input (sdrplay)"),
     OPT_FLOAT(0, "sdrplay-bandwidth", &s_sdrplay_config.sdrplay_bandwidth_hz_arg, "Set analog bandwidth in Hz. (Optional, Default: 1.536e6)", NULL, 0, 0),
-    OPT_INTEGER(0, "sdrplay-device-idx", &s_sdrplay_config.device_index, "Select specific SDRplay device by index (0-indexed). (Default: 0)", NULL, 0, 0),
+    OPT_INTEGER(0, "sdrplay-device-index", &s_sdrplay_config.device_index, "Select specific SDRplay device by index (0-indexed). (Default: 0)", NULL, 0, 0),
     OPT_INTEGER(0, "sdrplay-lna-state", &s_sdrplay_config.lna_state, "Set LNA state (0=min gain). Disables AGC.", NULL, 0, 0),
     OPT_INTEGER(0, "sdrplay-if-gain", &s_sdrplay_config.sdrplay_if_gain_db_arg, "Set IF gain in dB (fine gain, e.g., -20, -35, -59). (Default: -50 if --sdrplay-lna-state is specified.) Disables AGC.", NULL, 0, 0),
     OPT_STRING(0, "sdrplay-antenna", &s_sdrplay_config.antenna_port_name, "Select antenna port (device-specific).", NULL, 0, 0),
@@ -246,11 +246,11 @@ const struct argparse_option* sdrplay_input_get_cli_options(int* count) {
     return sdrplay_input_cli_options;
 }
 
-static bool sdrplay_input_initialize(ModuleContext* ctx);
-static void* sdrplay_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
-static void sdrplay_input_stop_stream(ModuleContext* ctx);
-static void sdrplay_input_cleanup(ModuleContext* ctx);
-static void sdrplay_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
+static bool sdrplay_input_initialize(ModuleContext* context);
+static void* sdrplay_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
+static void sdrplay_input_stop_stream(ModuleContext* context);
+static void sdrplay_input_cleanup(ModuleContext* context);
+static void sdrplay_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool sdrplay_input_validate_options(AppConfig* config);
 static bool sdrplay_input_validate_generic_options(const AppConfig* config);
 
@@ -430,7 +430,7 @@ static void sdrplay_input_buffered_stream_callback(short *xi, short *xq, sdrplay
         sample_convert_interleave_s16(xi, xq, interleaved_data, numSamples);
 
         // 3. Write single Interleaved block to RingBuffer
-        if (!app->module.queue_samples(app->module.pipeline_ctx, interleaved_data, numSamples, CS16)) {
+        if (!app->module.queue_samples(app->module.pipeline_context, interleaved_data, numSamples, CS16)) {
         /* Warning handled internally by pipeline */
     }
     }
@@ -488,9 +488,9 @@ static void sdrplay_input_event_callback(sdrplay_api_EventT eventId, sdrplay_api
     }
 }
 
-static void sdrplay_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
-    const AppConfig *config = ctx->config;
-    AppContext* app = ctx->app;
+static void sdrplay_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+    const AppConfig *config = context->config;
+    AppContext* app = context->app;
     SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
     if (!private_data || !private_data->sdr_device) return;
 
@@ -536,10 +536,10 @@ static void sdrplay_input_get_summary_info(const ModuleContext* ctx, InputSummar
     add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
-static bool sdrplay_input_initialize(ModuleContext* ctx) {
-    const AppConfig *config = ctx->config;
-    AppContext* app = ctx->app;
-    sdrplay_api_ErrT err;
+static bool sdrplay_input_initialize(ModuleContext* context) {
+    const AppConfig *config = context->config;
+    AppContext* app = context->app;
+    sdrplay_api_ErrT api_error;
     bool success = false;
 
     SdrplayContext* private_data = (SdrplayContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(SdrplayContext), true);
@@ -565,9 +565,9 @@ static bool sdrplay_input_initialize(ModuleContext* ctx) {
     if (!sdrplay_load_api()) goto cleanup;
 #endif
 
-    err = sdrplay_api_Open();
-    if (err != sdrplay_api_Success) {
-        log_error("Failed to open SDRplay API: %s", sdrplay_api_GetErrorString(err));
+    api_error = sdrplay_api_Open();
+    if (api_error != sdrplay_api_Success) {
+        log_error("Failed to open SDRplay API: %s", sdrplay_api_GetErrorString(api_error));
         goto cleanup;
     }
     private_data->sdr_api_is_open = true;
@@ -590,9 +590,9 @@ static bool sdrplay_input_initialize(ModuleContext* ctx) {
 
     sdrplay_api_DeviceT devs[SDRPLAY_MAX_DEVICES];
     unsigned int numDevs = 0;
-    err = sdrplay_api_GetDevices(devs, &numDevs, SDRPLAY_MAX_DEVICES);
-    if (err != sdrplay_api_Success) {
-        log_error("Failed to list SDRplay devices: %s", sdrplay_api_GetErrorString(err));
+    api_error = sdrplay_api_GetDevices(devs, &numDevs, SDRPLAY_MAX_DEVICES);
+    if (api_error != sdrplay_api_Success) {
+        log_error("Failed to list SDRplay devices: %s", sdrplay_api_GetErrorString(api_error));
         sdrplay_api_UnlockDeviceApi(); // Early unlock
         goto cleanup;
     }
@@ -615,13 +615,13 @@ static bool sdrplay_input_initialize(ModuleContext* ctx) {
     }
     memcpy(private_data->sdr_device, &devs[s_sdrplay_config.device_index], sizeof(sdrplay_api_DeviceT));
 
-    err = sdrplay_api_SelectDevice(private_data->sdr_device);
+    api_error = sdrplay_api_SelectDevice(private_data->sdr_device);
 
     // --- UNLOCK API ---
     sdrplay_api_UnlockDeviceApi();
 
-    if (err != sdrplay_api_Success) {
-        log_fatal("Failed to select SDRplay device %d: %s", s_sdrplay_config.device_index, sdrplay_api_GetErrorString(err));
+    if (api_error != sdrplay_api_Success) {
+        log_fatal("Failed to select SDRplay device %d: %s", s_sdrplay_config.device_index, sdrplay_api_GetErrorString(api_error));
         private_data->sdr_device = NULL;
         goto cleanup;
     }
@@ -630,9 +630,9 @@ static bool sdrplay_input_initialize(ModuleContext* ctx) {
     log_info("Using SDRplay device: %s (S/N: %s)",
              get_sdrplay_device_name(private_data->sdr_device->hwVer), private_data->sdr_device->SerNo);
 
-    err = sdrplay_api_GetDeviceParams(private_data->sdr_device->dev, &private_data->sdr_device_params);
-    if (err != sdrplay_api_Success) {
-        log_fatal("Failed to get device parameters: %s", sdrplay_api_GetErrorString(err));
+    api_error = sdrplay_api_GetDeviceParams(private_data->sdr_device->dev, &private_data->sdr_device_params);
+    if (api_error != sdrplay_api_Success) {
+        log_fatal("Failed to get device parameters: %s", sdrplay_api_GetErrorString(api_error));
         goto cleanup;
     }
 
@@ -844,10 +844,10 @@ cleanup:
     return success;
 }
 
-static void* sdrplay_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
-    ctx->app->module.queue_samples = queue_samples;
-    ctx->app->module.pipeline_ctx = pipeline_ctx;
-    AppContext* app = ctx->app;
+static void* sdrplay_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+    context->app->module.queue_samples = queue_samples;
+    context->app->module.pipeline_context = pipeline_context;
+    AppContext* app = context->app;
     SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
     sdrplay_api_CallbackFnsT cbFns;
     cbFns.StreamBCbFn = NULL;
@@ -855,11 +855,11 @@ static void* sdrplay_input_start_stream(ModuleContext* ctx, QueueSamples queue_s
     log_info("Starting sdrplay stream...");
     cbFns.StreamACbFn = sdrplay_input_buffered_stream_callback;
 
-    sdrplay_api_ErrT err = sdrplay_api_Init(private_data->sdr_device->dev, &cbFns, app);
-    if (err == sdrplay_api_Success) private_data->is_streaming = true;
+    sdrplay_api_ErrT api_error = sdrplay_api_Init(private_data->sdr_device->dev, &cbFns, app);
+    if (api_error == sdrplay_api_Success) private_data->is_streaming = true;
 
     // After a successful Init, explicitly apply the Bias-T setting if requested.
-    if (err == sdrplay_api_Success && app->config->sdr_general.bias_t_enable) {
+    if (api_error == sdrplay_api_Success && app->config->sdr_general.bias_t_enable) {
         log_info("Enabling Bias-T");
         sdrplay_api_ReasonForUpdateT reasonForUpdate = sdrplay_api_Update_None;
         sdrplay_api_ReasonForUpdateExtension1T reasonForUpdateExt1 = sdrplay_api_Update_Ext1_None;
@@ -887,17 +887,17 @@ static void* sdrplay_input_start_stream(ModuleContext* ctx, QueueSamples queue_s
         }
 
         if (biast_request_handled) {
-            err = sdrplay_api_Update(private_data->sdr_device->dev, private_data->sdr_device->tuner, reasonForUpdate, reasonForUpdateExt1);
-            if (err != sdrplay_api_Success) {
-                log_error("Failed to enable Bias-T: %s", sdrplay_api_GetErrorString(err));
+            api_error = sdrplay_api_Update(private_data->sdr_device->dev, private_data->sdr_device->tuner, reasonForUpdate, reasonForUpdateExt1);
+            if (api_error != sdrplay_api_Success) {
+                log_error("Failed to enable Bias-T: %s", sdrplay_api_GetErrorString(api_error));
             }
         }
     }
 
-    if (err != sdrplay_api_Success && err != sdrplay_api_StopPending) {
+    if (api_error != sdrplay_api_Success && api_error != sdrplay_api_StopPending) {
         sdrplay_api_ErrorInfoT *errorInfo = sdrplay_api_GetLastError(private_data->sdr_device);
         char error_buf[1536];
-        snprintf(error_buf, sizeof(error_buf), "sdrplay_api_Init() failed: %s", sdrplay_api_GetErrorString(err));
+        snprintf(error_buf, sizeof(error_buf), "sdrplay_api_Init() failed: %s", sdrplay_api_GetErrorString(api_error));
         if (errorInfo && strlen(errorInfo->message) > 0) {
             snprintf(error_buf + strlen(error_buf), sizeof(error_buf) - strlen(error_buf), " - API Message: %s", errorInfo->message);
         }
@@ -910,32 +910,32 @@ static void* sdrplay_input_start_stream(ModuleContext* ctx, QueueSamples queue_s
     }
 
     if (!is_shutdown_requested()) {
-        sdrplay_input_stop_stream(ctx);
+        sdrplay_input_stop_stream(context);
     }
 
     return NULL;
 }
 
-static void sdrplay_input_stop_stream(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void sdrplay_input_stop_stream(ModuleContext* context) {
+    AppContext* app = context->app;
     SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
     if (private_data) {
     pthread_mutex_lock(&private_data->driver_mutex);
     if (private_data && private_data->sdr_device && private_data->is_streaming) {
         log_debug("Stopping SDRplay stream...");
         private_data->is_streaming = false;
-        sdrplay_api_ErrT err = sdrplay_api_Uninit(private_data->sdr_device->dev);
+        sdrplay_api_ErrT api_error = sdrplay_api_Uninit(private_data->sdr_device->dev);
         // Ignore NotInitialised error, as it may happen during a race condition on shutdown
-        if (err != sdrplay_api_Success && err != sdrplay_api_StopPending && err != sdrplay_api_NotInitialised) {
-            log_error("Failed to uninitialize SDRplay device: %s", sdrplay_api_GetErrorString(err));
+        if (api_error != sdrplay_api_Success && api_error != sdrplay_api_StopPending && api_error != sdrplay_api_NotInitialised) {
+            log_error("Failed to uninitialize SDRplay device: %s", sdrplay_api_GetErrorString(api_error));
         }
     }
     pthread_mutex_unlock(&private_data->driver_mutex);
 }
 }
 
-static void sdrplay_input_cleanup(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void sdrplay_input_cleanup(ModuleContext* context) {
+    AppContext* app = context->app;
     if (app->module.input_private_data) {
         SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
         pthread_mutex_lock(&private_data->driver_mutex);

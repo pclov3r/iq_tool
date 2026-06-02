@@ -1,6 +1,6 @@
 #include "post_processor.h"
 #include "filter.h"
-#include "freq_shift.h"
+#include "frequency_shift.h"
 #include "agc.h"
 #include "sample_convert.h"
 #include "signal_handler.h"
@@ -16,7 +16,7 @@ void post_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
 
         // Step 1: Post-Resample Frequency Shifting (NCO runs FIRST)
         if (dsp->post_resample_nco) {
-            freq_shift_apply(dsp->post_resample_nco,
+            frequency_shift_apply(dsp->post_resample_nco,
                              dsp->nco_shift_hz,
                              buffer,  // Input
                              buffer,  // Output (In-place)
@@ -51,7 +51,7 @@ void post_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
 }
 
 void post_processor_reset(DspContext* dsp) {
-    freq_shift_reset_nco(dsp->post_resample_nco);
+    frequency_shift_reset_nco(dsp->post_resample_nco);
     filter_reset(dsp); 
     agc_reset(dsp);    
 }

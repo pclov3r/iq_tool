@@ -15,7 +15,7 @@
 #include "input_common.h"
 #include "constants.h"
 #include "app_context.h"
-#include "utils.h"
+#include "utilities.h"
 #include "platform.h" // Added for thread priority abstraction
 #include "signal_handler.h"
 #include "log.h"
@@ -24,7 +24,7 @@
 #include "post_processor.h"
 #include "dc_block.h"
 #include "iq_correction.h"
-#include "freq_shift.h"
+#include "frequency_shift.h"
 #include "resampler.h"
 #include "filter.h"
 #include "agc.h" // Added for Output AGC
@@ -398,7 +398,7 @@ bool pipeline_run(PipelineContext* context) {
 static bool _create_dsp_components(AppConfig* config, AppContext* app, float resample_ratio) {
     if (!dc_block_create(config, app)) return false;
     if (!iq_correction_init(config, app, &app->pipeline.setup_arena)) return false;
-    if (!freq_shift_create(config, app)) return false;
+    if (!frequency_shift_create(config, app)) return false;
     app->dsp.resampler = resampler_create(config, app, resample_ratio);
     if (!app->dsp.resampler && !app->dsp.bypass_resampler) return false;
     if (!filter_create(config, app, &app->pipeline.setup_arena)) return false;
@@ -418,7 +418,7 @@ static void _destroy_dsp_components(AppContext* app) {
     filter_destroy(app);
     resampler_destroy(app->dsp.resampler);
     app->dsp.resampler = NULL;
-    freq_shift_destroy_ncos(app);
+    frequency_shift_destroy_ncos(app);
     iq_correction_destroy(app);
     dc_block_destroy(app);
 }

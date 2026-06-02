@@ -15,12 +15,12 @@ RedseaHandle redsea_init(float sample_rate, bool is_rbds, bool show_partial) {
     return NULL;
 }
 
-void redsea_free(RedseaHandle ctx) {
-    (void)ctx;
+void redsea_free(RedseaHandle context) {
+    (void)context;
 }
 
-void redsea_process_mpx(RedseaHandle ctx, const float* mpx_data, int num_samples, RdsState* out_state) {
-    (void)ctx;
+void redsea_process_mpx(RedseaHandle context, const float* mpx_data, int num_samples, RdsState* out_state) {
+    (void)context;
     (void)mpx_data;
     (void)num_samples;
 

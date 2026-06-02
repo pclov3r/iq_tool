@@ -174,7 +174,7 @@ set(COMPILE_WITH_FFAST_MATH_SOURCES
     src/agc.c
     src/dc_block.c
     src/filter.c
-    src/freq_shift.c
+    src/frequency_shift.c
     src/iq_correction.c
     src/keyboard_handler.c
     src/main.c
@@ -222,7 +222,7 @@ set(OTHER_SOURCES
     src/sample_format_table.c
     src/signal_handler.c
     src/thread_manager.c
-    src/utils.c
+    src/utilities.c
     src/wait_event.c
 )
 

@@ -14,7 +14,7 @@
 #include "pipeline_context.h"
 #include "constants.h"
 #include "app_context.h"
-#include "utils.h"
+#include "utilities.h"
 #include "signal_handler.h"
 #include "log.h"
 #include "iq_correction.h"
@@ -75,7 +75,7 @@ void* pipeline_thread_watchdog(void* arg) {
         sleep(WATCHDOG_INTERVAL_MS / 1000);
 #endif
 
-        double current_time = utils_get_time();
+        double current_time = utility_get_time();
         bool timed_out = false;
 
         double last_heartbeat = atomic_load_explicit(&app->stats.last_source_heartbeat_time, memory_order_relaxed);
@@ -85,19 +85,19 @@ void* pipeline_thread_watchdog(void* arg) {
 
         if (timed_out) {
             #ifndef _WIN32
-            const char msg[] = "\nFATAL: Source Watchdog triggered.\n"
+            const char fatal_message[] = "\nFATAL: Source Watchdog triggered.\n"
                                "FATAL: No data received from device.\n"
                                "FATAL: The input driver has likely hung due to a crash or device removal.\n"
                                "FATAL: Forcing application exit.\n";
-            write(STDERR_FILENO, msg, sizeof(msg) - 1);
+            write(STDERR_FILENO, fatal_message, sizeof(fatal_message) - 1);
 #else
             HANDLE hStdErr = GetStdHandle(STD_ERROR_HANDLE);
             DWORD written;
-            const char* msg = "\nFATAL: Source Watchdog triggered.\n"
+            const char* fatal_message = "\nFATAL: Source Watchdog triggered.\n"
                               "FATAL: No data received from device.\n"
                               "FATAL: The input driver has likely hung due to a crash or device removal.\n"
                               "FATAL: Forcing application exit.\n";
-            WriteFile(hStdErr, msg, (DWORD)strlen(msg), &written, NULL);
+            WriteFile(hStdErr, fatal_message, (DWORD)strlen(fatal_message), &written, NULL);
 #endif
 
             // Terminate the entire process immediately. This is the only correct action

@@ -2,7 +2,7 @@
 #include "constants.h"
 #include "log.h"
 #include "signal_handler.h"
-#include "utils.h"
+#include "utilities.h"
 #include "sample_format_table.h"
 #include "app_context.h"
 #include "platform.h"
@@ -469,15 +469,15 @@ static struct {
 // --- Helper function to safely duplicate strings into the Arena (MOVED HERE) ---
 static char* arena_strdup(MemoryArena* arena, const char* s) {
     if (!s) return NULL;
-    size_t len = strlen(s) + 1;
-    char* dest = (char*)mem_arena_alloc(arena, len, false);
+    size_t length = strlen(s) + 1;
+    char* dest = (char*)mem_arena_alloc(arena, length, false);
     if (dest) {
-        memcpy(dest, s, len);
+        memcpy(dest, s, length);
     }
     return dest;
 }
 
-static bool _probe_split_sequence(WavInputContext* p, const AppConfig* config, AppContext* app, MemoryArena* arena) {
+static bool _probe_split_sequence(WavInputContext* wav_input, const AppConfig* config, AppContext* app, MemoryArena* arena) {
     const char* filename;
     #ifdef _WIN32
         filename = config->input.effective_path_utf8;
@@ -526,13 +526,13 @@ static bool _probe_split_sequence(WavInputContext* p, const AppConfig* config, A
         return true;
     }
 
-    p->active_pattern = matched;
+    wav_input->active_pattern = matched;
 
     // Isolate the base path by copying up to the separator position
     char base_path[MAX_PATH_BUFFER];
     strncpy(base_path, filename, MAX_PATH_BUFFER - 1);
     base_path[suffix_start_pos] = '\0'; // Truncate cleanly at the separator
-    p->base_path_no_suffix = arena_strdup(arena, base_path);
+    wav_input->base_path_no_suffix = arena_strdup(arena, base_path);
 
     // Pass 1: Probe the directory to count existing sequential files
     int file_count = 0;
@@ -542,9 +542,9 @@ static bool _probe_split_sequence(WavInputContext* p, const AppConfig* config, A
 
         // Use the dynamically measured digit_width (e.g. 3 for "000")
         snprintf(test_path, sizeof(test_path), matched->format_template,
-                 p->base_path_no_suffix, digit_width, current_idx);
+                 wav_input->base_path_no_suffix, digit_width, current_idx);
 
-        if (!utils_check_file_exists(test_path)) {
+        if (!utility_check_file_exists(test_path)) {
             break; // No more files in sequence
         }
         file_count++;
@@ -556,20 +556,20 @@ static bool _probe_split_sequence(WavInputContext* p, const AppConfig* config, A
         return true;
     }
 
-    p->total_files = file_count;
+    wav_input->total_files = file_count;
 
     // Pass 2: Allocate the file list array and gather cumulative metadata
-    p->file_list = (char**)mem_arena_alloc(arena, sizeof(char*) * file_count, true);
+    wav_input->file_list = (char**)mem_arena_alloc(arena, sizeof(char*) * file_count, true);
     sf_count_t cumulative_frames = 0;
 
     for (int i = 0; i < file_count; i++) {
         char resolved_path[MAX_PATH_BUFFER];
         snprintf(resolved_path, sizeof(resolved_path), matched->format_template,
-                 p->base_path_no_suffix, digit_width, starting_index + i);
+                 wav_input->base_path_no_suffix, digit_width, starting_index + i);
 
-        p->file_list[i] = arena_strdup(arena, resolved_path);
+        wav_input->file_list[i] = arena_strdup(arena, resolved_path);
 
-        if (!p->file_list[i]) {
+        if (!wav_input->file_list[i]) {
             log_fatal("Failed to allocate memory for split file names in arena.");
             return false;
         }
@@ -577,12 +577,12 @@ static bool _probe_split_sequence(WavInputContext* p, const AppConfig* config, A
         // Open briefly to sum up the frames
         SF_INFO temp_sfinfo;
         memset(&temp_sfinfo, 0, sizeof(SF_INFO));
-        SNDFILE* temp_file = sf_open(p->file_list[i], SFM_READ, &temp_sfinfo);
+        SNDFILE* temp_file = sf_open(wav_input->file_list[i], SFM_READ, &temp_sfinfo);
         if (temp_file) {
             cumulative_frames += temp_sfinfo.frames;
             sf_close(temp_file);
         } else {
-            log_fatal("Failed to probe WAV file in sequence: %s", p->file_list[i]);
+            log_fatal("Failed to probe WAV file in sequence: %s", wav_input->file_list[i]);
             return false;
         }
     }
@@ -590,7 +590,7 @@ static bool _probe_split_sequence(WavInputContext* p, const AppConfig* config, A
     // Overwrite global frames with the true, cumulative sequence total
     app->module.source_info.frames = cumulative_frames;
 
-    log_info("Found %d split WAV files.", p->total_files);
+    log_info("Found %d split WAV files.", wav_input->total_files);
     log_debug("Cumulative frames: %lld", (long long)cumulative_frames);
 
     return true;
@@ -608,9 +608,9 @@ const struct argparse_option* wav_input_get_cli_options(int* count) {
     return wav_cli_options;
 }
 
-static bool wav_input_initialize(ModuleContext* ctx) {
-    const AppConfig *config = ctx->config;
-    AppContext* app = ctx->app;
+static bool wav_input_initialize(ModuleContext* context) {
+    const AppConfig *config = context->config;
+    AppContext* app = context->app;
 
     WavInputContext* private_data = (WavInputContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(WavInputContext), true);
     if (!private_data) {
@@ -700,7 +700,7 @@ static bool wav_input_initialize(ModuleContext* ctx) {
     }
 
     if (s_wav_config.center_target_hz_arg != 0.0f) {
-        if (config->dsp.freq_shift_hz != 0.0f) {
+        if (config->dsp.frequency_shift_hz != 0.0f) {
             log_error("Conflicting frequency shift options provided. Cannot use --freq-shift and --wav-center-target-freq at the same time.");
             sf_close(private_data->infile);
             return false;
@@ -720,20 +720,20 @@ static bool wav_input_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static size_t wav_input_read_chunk(ModuleContext* ctx, void* buffer, size_t bytes_to_read) {
-    AppContext* app = ctx->app;
-    WavInputContext* p = (WavInputContext*)app->module.input_private_data;
-    if (!p || !p->infile || bytes_to_read == 0) return 0;
+static size_t wav_input_read_chunk(ModuleContext* context, void* buffer, size_t bytes_to_read) {
+    AppContext* app = context->app;
+    WavInputContext* wav_input = (WavInputContext*)app->module.input_private_data;
+    if (!wav_input || !wav_input->infile || bytes_to_read == 0) return 0;
 
     size_t bytes_read_total = 0;
     size_t bytes_left = bytes_to_read;
 
     while (bytes_left > 0) {
         // Read directly into the offset buffer
-        sf_count_t read_this_pass = sf_read_raw(p->infile, (char*)buffer + bytes_read_total, bytes_left);
+        sf_count_t read_this_pass = sf_read_raw(wav_input->infile, (char*)buffer + bytes_read_total, bytes_left);
 
         if (read_this_pass < 0) {
-            log_error("libsndfile read error: %s", sf_strerror(p->infile));
+            log_error("libsndfile read error: %s", sf_strerror(wav_input->infile));
             handle_fatal_thread_error("File read error.", app);
             return 0;
         }
@@ -744,18 +744,18 @@ static size_t wav_input_read_chunk(ModuleContext* ctx, void* buffer, size_t byte
         } else {
             // EOF reached for the current file handle
             // If split mode is enabled, attempt to roll over to the next file in the list
-            if (p->split_enabled && (p->current_file_index < p->total_files - 1)) {
-                sf_close(p->infile);
-                p->current_file_index++;
+            if (wav_input->split_enabled && (wav_input->current_file_index < wav_input->total_files - 1)) {
+                sf_close(wav_input->infile);
+                wav_input->current_file_index++;
 
-                log_info("Transitioning to split file: %s", p->file_list[p->current_file_index]);
+                log_info("Transitioning to split file: %s", wav_input->file_list[wav_input->current_file_index]);
 
                 SF_INFO new_sfinfo;
                 memset(&new_sfinfo, 0, sizeof(SF_INFO));
-                p->infile = sf_open(p->file_list[p->current_file_index], SFM_READ, &new_sfinfo);
+                wav_input->infile = sf_open(wav_input->file_list[wav_input->current_file_index], SFM_READ, &new_sfinfo);
 
-                if (!p->infile) {
-                    log_fatal("Failed to open next split file: %s", p->file_list[p->current_file_index]);
+                if (!wav_input->infile) {
+                    log_fatal("Failed to open next split file: %s", wav_input->file_list[wav_input->current_file_index]);
                     handle_fatal_thread_error("Next split file failed to open.", app);
                     return 0;
                 }
@@ -767,18 +767,18 @@ static size_t wav_input_read_chunk(ModuleContext* ctx, void* buffer, size_t byte
                     handle_fatal_thread_error("Format mismatch during rollover.", app);
                     return 0;
                 }
-            } else if (p->repeat_enabled) {
+            } else if (wav_input->repeat_enabled) {
                 // Loop back to the very first file in the list (works for both single and split-WAV!)
-                sf_close(p->infile);
-                p->current_file_index = 0;
+                sf_close(wav_input->infile);
+                wav_input->current_file_index = 0;
 
                 log_info("Looping WAV input back to start.");
 
                 SF_INFO new_sfinfo;
                 memset(&new_sfinfo, 0, sizeof(SF_INFO));
-                p->infile = sf_open(p->file_list[0], SFM_READ, &new_sfinfo);
+                wav_input->infile = sf_open(wav_input->file_list[0], SFM_READ, &new_sfinfo);
 
-                if (!p->infile) {
+                if (!wav_input->infile) {
                     log_fatal("Failed to reopen first WAV file during loop.");
                     handle_fatal_thread_error("WAV loop reopen failed.", app);
                     return 0;
@@ -801,17 +801,17 @@ static size_t wav_input_read_chunk(ModuleContext* ctx, void* buffer, size_t byte
     return bytes_read_total;
 }
 
-static void* wav_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
-    (void)ctx; (void)queue_samples; (void)pipeline_ctx;
+static void* wav_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+    (void)context; (void)queue_samples; (void)pipeline_context;
     return NULL; // Not used for synchronous file readers
 }
 
-static void wav_input_stop_stream(ModuleContext* ctx) {
-    (void)ctx;
+static void wav_input_stop_stream(ModuleContext* context) {
+    (void)context;
 }
 
-static void wav_input_cleanup(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void wav_input_cleanup(ModuleContext* context) {
+    AppContext* app = context->app;
     if (app->module.input_private_data) {
         WavInputContext* private_data = (WavInputContext*)app->module.input_private_data;
         if (private_data->infile) {
@@ -828,9 +828,9 @@ static size_t wav_iq_cal_read_cb(void* user_data, void* buffer, size_t bytes) {
     return (size_t)sf_read_raw(infile, buffer, bytes);
 }
 
-static bool wav_input_pre_stream_iq_correction(ModuleContext* ctx) {
-    AppConfig* config = (AppConfig*)ctx->config;
-    WavInputContext* private_data = (WavInputContext*)ctx->app->module.input_private_data;
+static bool wav_input_pre_stream_iq_correction(ModuleContext* context) {
+    AppConfig* config = (AppConfig*)context->config;
+    WavInputContext* private_data = (WavInputContext*)context->app->module.input_private_data;
 
     // This routine is only necessary if I/Q correction is enabled.
     if (!config->dsp.iq_correction.enable) {
@@ -838,12 +838,12 @@ static bool wav_input_pre_stream_iq_correction(ModuleContext* ctx) {
     }
 
     // The module's only job is to call the calibration service with its private file handle.
-    size_t raw_buffer_size = 4096 * ctx->app->module.input_bytes_per_iq_sample; // IQ_CORRECTION_FFT_SIZE
-    void* raw_buffer = mem_arena_alloc(&ctx->app->pipeline.setup_arena, raw_buffer_size, false);
+    size_t raw_buffer_size = 4096 * context->app->module.input_bytes_per_iq_sample; // IQ_CORRECTION_FFT_SIZE
+    void* raw_buffer = mem_arena_alloc(&context->app->pipeline.setup_arena, raw_buffer_size, false);
     if (!raw_buffer) return false;
 
     // We do an initial read inside the calibration function now
-    bool result = iq_correction_run_initial_calibration(ctx, raw_buffer, raw_buffer_size, wav_iq_cal_read_cb, private_data->infile);
+    bool result = iq_correction_run_initial_calibration(context, raw_buffer, raw_buffer_size, wav_iq_cal_read_cb, private_data->infile);
 
     if (sf_seek(private_data->infile, 0, SEEK_SET) < 0) {
         log_fatal("Failed to rewind file after calibration.");
@@ -852,9 +852,9 @@ static bool wav_input_pre_stream_iq_correction(ModuleContext* ctx) {
     return result;
 }
 
-static void wav_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
-    const AppConfig *config = ctx->config;
-    const AppContext* app = ctx->app;
+static void wav_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+    const AppConfig *config = context->config;
+    const AppContext* app = context->app;
     WavInputContext* private_data = (WavInputContext*)app->module.input_private_data;
 
     const char* display_path = config->input.path_arg;
@@ -884,12 +884,12 @@ static void wav_input_get_summary_info(const ModuleContext* ctx, InputSummaryInf
         // Exact mathematical calculation of the total cumulative file sizes combined
         long long combined_bytes = (long long)app->module.source_info.frames * app->module.input_bytes_per_iq_sample;
         char size_buf[40];
-        add_summary_item(info, "Total Size", "%s", utils_format_size(combined_bytes, size_buf, sizeof(size_buf)));
+        add_summary_item(info, "Total Size", "%s", utility_format_size(combined_bytes, size_buf, sizeof(size_buf)));
 
-        // Reuse existing utils.c duration parser for combined HH:MM:SS formatting
+        // Reuse existing utilities.c duration parser for combined HH:MM:SS formatting
         double total_seconds = (double)app->module.source_info.frames / (double)app->module.source_info.sample_rate;
         char duration_buf[40];
-        utils_format_duration(total_seconds, duration_buf, sizeof(duration_buf));
+        utility_format_duration(total_seconds, duration_buf, sizeof(duration_buf));
         add_summary_item(info, "Total Duration", "%s", duration_buf);
     } else {
         // Standard single file fallback
@@ -906,7 +906,7 @@ static void wav_input_get_summary_info(const ModuleContext* ctx, InputSummaryInf
                 input_file_size = stat_buf.st_size;
         #endif
         char size_buf[40];
-        add_summary_item(info, "Input File Size", "%s", utils_format_size(input_file_size, size_buf, sizeof(size_buf)));
+        add_summary_item(info, "Input File Size", "%s", utility_format_size(input_file_size, size_buf, sizeof(size_buf)));
     }
 
     const char *format_str;

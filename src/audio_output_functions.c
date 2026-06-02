@@ -7,7 +7,7 @@
 #include "miniaudio.h"
 #include "ring_buffer.h"
 #include "log.h"
-#include "utils.h"
+#include "utilities.h"
 #include "mem_arena.h"
 #include "signal_handler.h"
 #include <string.h>
@@ -31,53 +31,53 @@ struct AudioOutputContext {
 // --- Miniaudio Callback ---
 static void miniaudio_data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
     (void)pInput;
-    AudioOutputContext* ctx = (AudioOutputContext*)pDevice->pUserData;
+    AudioOutputContext* context = (AudioOutputContext*)pDevice->pUserData;
     if (frameCount == 0) return;
 
-    size_t bytes_needed = frameCount * ctx->channels * sizeof(int16_t);
-    size_t available = ring_buffer_get_size(ctx->audio_ring_buffer);
+    size_t bytes_needed = frameCount * context->channels * sizeof(int16_t);
+    size_t available = ring_buffer_get_size(context->audio_ring_buffer);
 
     if (available < bytes_needed) {
         // Underrun: Play whatever is left, pad the rest with silence.
-        if (available > 0) ring_buffer_read(ctx->audio_ring_buffer, pOutput, available);
+        if (available > 0) ring_buffer_read(context->audio_ring_buffer, pOutput, available);
         memset((uint8_t*)pOutput + available, 0, bytes_needed - available);
         return;
     }
 
     // Normal: Pull the exact requested amount of data.
-    ring_buffer_read(ctx->audio_ring_buffer, pOutput, bytes_needed);
+    ring_buffer_read(context->audio_ring_buffer, pOutput, bytes_needed);
 }
 
 // --- Public API ---
 
 AudioOutputContext* audio_output_create(struct MemoryArena* arena, int sample_rate, int channels, size_t buffer_size_bytes, const char* writer_path, bool is_rf64, bool mute_audio) {
-    AudioOutputContext* ctx = (AudioOutputContext*)mem_arena_alloc(arena, sizeof(AudioOutputContext), true);
-    if (!ctx) return NULL;
+    AudioOutputContext* context = (AudioOutputContext*)mem_arena_alloc(arena, sizeof(AudioOutputContext), true);
+    if (!context) return NULL;
 
-    ctx->buffer_size = buffer_size_bytes;
-    ctx->channels = channels;
+    context->buffer_size = buffer_size_bytes;
+    context->channels = channels;
 
-    ctx->wav_writer = NULL;
+    context->wav_writer = NULL;
     if (writer_path) {
-        if (!utils_verify_output_path(NULL, writer_path)) {
+        if (!utility_verify_output_path(NULL, writer_path)) {
             return NULL;
         }
         int format_flag = is_rf64 ? SF_FORMAT_RF64 : SF_FORMAT_WAV;
         SF_INFO sfinfo = { .samplerate = sample_rate, .channels = channels, .format = format_flag | SF_FORMAT_PCM_16 };
-        ctx->wav_writer = sf_open(writer_path, SFM_WRITE, &sfinfo);
-        if (!ctx->wav_writer) log_error("AudioOutput: Failed to open audio writer file.");
+        context->wav_writer = sf_open(writer_path, SFM_WRITE, &sfinfo);
+        if (!context->wav_writer) log_error("AudioOutput: Failed to open audio writer file.");
     }
 
     if (mute_audio) {
         log_info("AudioOutput: Playback muted. Pipeline will run at maximum speed.");
-        ctx->audio_device_initialized = false;
-        ctx->audio_ring_buffer = NULL;
-        return ctx;
+        context->audio_device_initialized = false;
+        context->audio_ring_buffer = NULL;
+        return context;
     }
 
     // 1. Setup Audio Ring Buffer
-    ctx->audio_ring_buffer = ring_buffer_create(buffer_size_bytes, arena);
-    if (!ctx->audio_ring_buffer) {
+    context->audio_ring_buffer = ring_buffer_create(buffer_size_bytes, arena);
+    if (!context->audio_ring_buffer) {
         log_fatal("AudioOutput: Failed to create ring buffer.");
         return NULL;
     }
@@ -92,50 +92,50 @@ AudioOutputContext* audio_output_create(struct MemoryArena* arena, int sample_ra
     deviceConfig.playback.channels = channels;
     deviceConfig.sampleRate        = sample_rate;
     deviceConfig.dataCallback      = miniaudio_data_callback;
-    deviceConfig.pUserData         = ctx;
+    deviceConfig.pUserData         = context;
 
-    if (ma_device_init(NULL, &deviceConfig, &ctx->audio_device) != MA_SUCCESS) {
+    if (ma_device_init(NULL, &deviceConfig, &context->audio_device) != MA_SUCCESS) {
         log_fatal("AudioOutput: Failed to initialize OS audio device.");
-        ring_buffer_destroy(ctx->audio_ring_buffer);
+        ring_buffer_destroy(context->audio_ring_buffer);
         return NULL;
     }
-    ctx->audio_device_initialized = true;
+    context->audio_device_initialized = true;
 
     // 3. Start Audio Hardware
-    if (ma_device_start(&ctx->audio_device) != MA_SUCCESS) {
+    if (ma_device_start(&context->audio_device) != MA_SUCCESS) {
         log_fatal("AudioOutput: Failed to start OS audio device.");
-        ma_device_uninit(&ctx->audio_device);
-        ring_buffer_destroy(ctx->audio_ring_buffer);
+        ma_device_uninit(&context->audio_device);
+        ring_buffer_destroy(context->audio_ring_buffer);
         return NULL;
     }
 
-    return ctx;
+    return context;
 }
 
-size_t audio_output_write(AudioOutputContext* ctx, const void* pcm_data, size_t bytes, PipelineMode mode) {
-    if (!ctx || bytes == 0) return 0;
+size_t audio_output_write(AudioOutputContext* context, const void* pcm_data, size_t bytes, PipelineMode mode) {
+    if (!context || bytes == 0) return 0;
 
-    if (ctx->wav_writer) {
-        sf_write_short(ctx->wav_writer, (const short*)pcm_data, bytes / sizeof(int16_t));
+    if (context->wav_writer) {
+        sf_write_short(context->wav_writer, (const short*)pcm_data, bytes / sizeof(int16_t));
     }
 
-    if (!ctx->audio_device_initialized || !ctx->audio_ring_buffer) {
+    if (!context->audio_device_initialized || !context->audio_ring_buffer) {
         return bytes;
     }
 
     // --- CONDITIONAL BACKPRESSURE ---
     if (mode == PIPELINE_MODE_SYNCHRONOUS_PULL) {
-        const size_t THROTTLE_THRESHOLD = (size_t)(ctx->buffer_size * 0.8);
-        ring_buffer_wait_for_threshold(ctx->audio_ring_buffer, THROTTLE_THRESHOLD);
+        const size_t THROTTLE_THRESHOLD = (size_t)(context->buffer_size * 0.8);
+        ring_buffer_wait_for_threshold(context->audio_ring_buffer, THROTTLE_THRESHOLD);
         if (is_shutdown_requested()) return 0;
     }
 
-    ring_buffer_write(ctx->audio_ring_buffer, pcm_data, bytes);
+    ring_buffer_write(context->audio_ring_buffer, pcm_data, bytes);
     return bytes;
 }
 
-void audio_output_flush(AudioOutputContext* ctx) {
-    if (!ctx || !ctx->audio_ring_buffer) return;
+void audio_output_flush(AudioOutputContext* context) {
+    if (!context || !context->audio_ring_buffer) return;
 
     // --- Audio Drain Parameters ---
     const int poll_interval_ms = 10;
@@ -148,7 +148,7 @@ void audio_output_flush(AudioOutputContext* ctx) {
     if (max_stall_iterations < 1) max_stall_iterations = 1;
 
     while (true) {
-        size_t curr_size = ring_buffer_get_size(ctx->audio_ring_buffer);
+        size_t curr_size = ring_buffer_get_size(context->audio_ring_buffer);
 
         if (curr_size == 0) break; // Success
         if (is_shutdown_requested()) break; // Global Abort
@@ -179,8 +179,8 @@ void audio_output_flush(AudioOutputContext* ctx) {
     }
 }
 
-void audio_output_drain(AudioOutputContext* ctx) {
-    if (!ctx || !ctx->audio_ring_buffer) return;
+void audio_output_drain(AudioOutputContext* context) {
+    if (!context || !context->audio_ring_buffer) return;
 
     // --- Audio Drain Parameters ---
     const int poll_interval_ms = 10;
@@ -193,7 +193,7 @@ void audio_output_drain(AudioOutputContext* ctx) {
     if (max_stall_iterations < 1) max_stall_iterations = 1;
 
     while (true) {
-        size_t curr_size = ring_buffer_get_size(ctx->audio_ring_buffer);
+        size_t curr_size = ring_buffer_get_size(context->audio_ring_buffer);
         if (curr_size == 0) break; // Success
         
         // Stall Detection
@@ -219,23 +219,23 @@ void audio_output_drain(AudioOutputContext* ctx) {
     #endif
 }
 
-void audio_output_clear(AudioOutputContext* ctx) {
-    if (!ctx || !ctx->audio_ring_buffer) return;
-    ring_buffer_clear(ctx->audio_ring_buffer);
+void audio_output_clear(AudioOutputContext* context) {
+    if (!context || !context->audio_ring_buffer) return;
+    ring_buffer_clear(context->audio_ring_buffer);
 }
 
-void audio_output_destroy(AudioOutputContext* ctx) {
-    if (!ctx) return;
-    if (ctx->wav_writer) {
-        sf_close(ctx->wav_writer);
-        ctx->wav_writer = NULL;
+void audio_output_destroy(AudioOutputContext* context) {
+    if (!context) return;
+    if (context->wav_writer) {
+        sf_close(context->wav_writer);
+        context->wav_writer = NULL;
     }
-    if (ctx->audio_device_initialized) {
-        ma_device_uninit(&ctx->audio_device);
-        ctx->audio_device_initialized = false;
+    if (context->audio_device_initialized) {
+        ma_device_uninit(&context->audio_device);
+        context->audio_device_initialized = false;
     }
-    if (ctx->audio_ring_buffer) {
-        ring_buffer_destroy(ctx->audio_ring_buffer);
-        ctx->audio_ring_buffer = NULL;
+    if (context->audio_ring_buffer) {
+        ring_buffer_destroy(context->audio_ring_buffer);
+        context->audio_ring_buffer = NULL;
     }
 }

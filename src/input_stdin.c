@@ -2,7 +2,7 @@
 #include "constants.h"
 #include "log.h"
 #include "signal_handler.h"
-#include "utils.h"
+#include "utilities.h"
 #include "sample_format_table.h"
 #include "app_context.h"
 #include "platform.h"
@@ -68,10 +68,10 @@ static bool stdin_input_validate_options(AppConfig* config) {
     return true;
 }
 
-static bool stdin_input_initialize(ModuleContext* ctx) {
-    const AppConfig *config = ctx->config;
+static bool stdin_input_initialize(ModuleContext* context) {
+    const AppConfig *config = context->config;
     (void)config;
-    AppContext* app = ctx->app;
+    AppContext* app = context->app;
 
 #ifdef _WIN32
     if (_setmode(_fileno(stdin), _O_BINARY) == -1) {
@@ -108,8 +108,8 @@ static bool stdin_input_initialize(ModuleContext* ctx) {
     return true;
 }
 
-static void* stdin_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
-    AppContext* app = ctx->app;
+static void* stdin_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+    AppContext* app = context->app;
     StdinContext* p = (StdinContext*)app->module.input_private_data;
 
     while (!is_shutdown_requested() && !app->stats.error_occurred) {
@@ -125,7 +125,7 @@ static void* stdin_input_start_stream(ModuleContext* ctx, QueueSamples queue_sam
 
         size_t frames_read = bytes_read / app->module.input_bytes_per_iq_sample;
 
-        if (!queue_samples(pipeline_ctx, p->rx_buffer, frames_read, app->module.input_format)) {
+        if (!queue_samples(pipeline_context, p->rx_buffer, frames_read, app->module.input_format)) {
             // Drop logic handled by pipeline
         }
     }
@@ -134,7 +134,7 @@ static void* stdin_input_start_stream(ModuleContext* ctx, QueueSamples queue_sam
     return NULL;
 }
 
-static size_t stdin_input_read_chunk(ModuleContext* ctx, void* buffer, size_t bytes_to_read) {
+static size_t stdin_input_read_chunk(ModuleContext* context, void* buffer, size_t bytes_to_read) {
     size_t total_read = 0;
     unsigned char* ptr = (unsigned char*)buffer;
 
@@ -144,7 +144,7 @@ static size_t stdin_input_read_chunk(ModuleContext* ctx, void* buffer, size_t by
             total_read += bytes_read;
         } else {
             if (ferror(stdin)) {
-                handle_fatal_thread_error("Error reading from stdin pipe.", ctx->app);
+                handle_fatal_thread_error("Error reading from stdin pipe.", context->app);
             }
             break; // EOF or Error
         }
@@ -152,16 +152,16 @@ static size_t stdin_input_read_chunk(ModuleContext* ctx, void* buffer, size_t by
     return total_read;
 }
 
-static void stdin_input_stop_stream(ModuleContext* ctx) {
-    (void)ctx;
+static void stdin_input_stop_stream(ModuleContext* context) {
+    (void)context;
 }
 
-static void stdin_input_cleanup(ModuleContext* ctx) {
-    (void)ctx;
+static void stdin_input_cleanup(ModuleContext* context) {
+    (void)context;
 }
 
-static void stdin_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
-    (void)ctx;
+static void stdin_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+    (void)context;
     add_summary_item(info, "Input Source", "Standard Input (stdin)");
     add_summary_item(info, "Input Format", "%s", s_stdin_config.format_str);
     add_summary_item(info, "Input Sample Rate", "%.15g Hz", s_stdin_config.sample_rate_hz);

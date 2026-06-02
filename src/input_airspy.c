@@ -5,8 +5,8 @@
 #include "app_context.h"
 #include "signal_handler.h"
 #include "log.h"
-#include "freq_shift.h"
-#include "utils.h"
+#include "frequency_shift.h"
+#include "utilities.h"
 #include "sample_format_table.h"
 #include "input_common.h"
 #include "mem_arena.h"
@@ -109,11 +109,11 @@ const struct argparse_option* airspy_input_get_cli_options(int* count) {
     return airspy_input_cli_options;
 }
 
-static bool airspy_input_initialize(ModuleContext* ctx);
-static void* airspy_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx);
-static void airspy_input_stop_stream(ModuleContext* ctx);
-static void airspy_input_cleanup(ModuleContext* ctx);
-static void airspy_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info);
+static bool airspy_input_initialize(ModuleContext* context);
+static void* airspy_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
+static void airspy_input_stop_stream(ModuleContext* context);
+static void airspy_input_cleanup(ModuleContext* context);
+static void airspy_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool airspy_input_validate_options(AppConfig* config);
 static bool airspy_input_validate_generic_options(const AppConfig* config);
 
@@ -272,13 +272,13 @@ static int airspy_input_buffered_stream_callback(airspy_transfer* transfer) {
     switch (transfer->sample_type) {
         case AIRSPY_SAMPLE_INT16_IQ:
             // When packing is enabled, the library unpacks to INT16_IQ automatically
-            if (!app->module.queue_samples(app->module.pipeline_ctx, transfer->samples, transfer->sample_count, CS16)) {
+            if (!app->module.queue_samples(app->module.pipeline_context, transfer->samples, transfer->sample_count, CS16)) {
         /* Warning handled internally by pipeline */
     }
             break;
 
         case AIRSPY_SAMPLE_FLOAT32_IQ:
-            if (!app->module.queue_samples(app->module.pipeline_ctx, transfer->samples, transfer->sample_count, CF32)) {
+            if (!app->module.queue_samples(app->module.pipeline_context, transfer->samples, transfer->sample_count, CF32)) {
         /* Warning handled internally by pipeline */
     }
             break;
@@ -305,9 +305,9 @@ static int airspy_input_buffered_stream_callback(airspy_transfer* transfer) {
 }
 
 
-static void airspy_input_get_summary_info(const ModuleContext* ctx, InputSummaryInfo* info) {
-    const AppConfig *config = ctx->config;
-    const AppContext* app = ctx->app;
+static void airspy_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+    const AppConfig *config = context->config;
+    const AppContext* app = context->app;
     AirspyContext* private_data = (AirspyContext*)app->module.input_private_data;
 
     // Use dynamic board name if available, else fallback
@@ -348,9 +348,9 @@ static void airspy_input_get_summary_info(const ModuleContext* ctx, InputSummary
     add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
-static bool airspy_input_initialize(ModuleContext* ctx) {
-    const AppConfig *config = ctx->config;
-    AppContext* app = ctx->app;
+static bool airspy_input_initialize(ModuleContext* context) {
+    const AppConfig *config = context->config;
+    AppContext* app = context->app;
     int result;
     bool success = false;
 
@@ -592,10 +592,10 @@ cleanup:
     return success;
 }
 
-static void* airspy_input_start_stream(ModuleContext* ctx, QueueSamples queue_samples, void* pipeline_ctx) {
-    ctx->app->module.queue_samples = queue_samples;
-    ctx->app->module.pipeline_ctx = pipeline_ctx;
-    AppContext* app = ctx->app;
+static void* airspy_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+    context->app->module.queue_samples = queue_samples;
+    context->app->module.pipeline_context = pipeline_context;
+    AppContext* app = context->app;
     AirspyContext* private_data = (AirspyContext*)app->module.input_private_data;
     int result;
     airspy_sample_block_cb_fn callback_fn;
@@ -616,14 +616,14 @@ static void* airspy_input_start_stream(ModuleContext* ctx, QueueSamples queue_sa
     }
 
     if (!is_shutdown_requested()) {
-        airspy_input_stop_stream(ctx);
+        airspy_input_stop_stream(context);
     }
 
     return NULL;
 }
 
-static void airspy_input_stop_stream(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void airspy_input_stop_stream(ModuleContext* context) {
+    AppContext* app = context->app;
     AirspyContext* private_data = (AirspyContext*)app->module.input_private_data;
     if (private_data) {
     pthread_mutex_lock(&private_data->driver_mutex);
@@ -638,8 +638,8 @@ static void airspy_input_stop_stream(ModuleContext* ctx) {
 }
 }
 
-static void airspy_input_cleanup(ModuleContext* ctx) {
-    AppContext* app = ctx->app;
+static void airspy_input_cleanup(ModuleContext* context) {
+    AppContext* app = context->app;
     if (app->module.input_private_data) {
         AirspyContext* private_data = (AirspyContext*)app->module.input_private_data;
         pthread_mutex_lock(&private_data->driver_mutex);

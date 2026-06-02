@@ -315,13 +315,13 @@ bool sample_convert_cf32_to_block(const ComplexFloat* restrict input_buffer, voi
             size_t i = 0;
 
             // Converts one float component to int32 via double precision
-            #define CS32_OUT_STEP(idx) \
+            #define CS32_OUT_STEP(index) \
                 do { \
-                    double d = (double)in_raw[i*2 + (idx)] * scale; \
+                    double d = (double)in_raw[i*2 + (index)] * scale; \
                     d = (d > 0.0) ? d + 0.5 : d - 0.5; \
                     if (d > max_val) d = max_val; \
                     else if (d < min_val) d = min_val; \
-                    out_ptr[i*2 + (idx)] = (int32_t)d; \
+                    out_ptr[i*2 + (index)] = (int32_t)d; \
                 } while (0)
 
             // Unrolled Loop: Processes 2 samples (4 components) per iteration.
@@ -353,13 +353,13 @@ bool sample_convert_cf32_to_block(const ComplexFloat* restrict input_buffer, voi
             size_t i = 0;
 
             // Converts one float component to uint32 via double precision
-            #define CU32_OUT_STEP(idx) \
+            #define CU32_OUT_STEP(index) \
                 do { \
-                    double d = ((double)in_raw[i*2 + (idx)] * scale) + offset; \
+                    double d = ((double)in_raw[i*2 + (index)] * scale) + offset; \
                     d += 0.5; \
                     if (d > max_val) d = max_val; \
                     else if (d < 0.0) d = 0.0; \
-                    out_ptr[i*2 + (idx)] = (uint32_t)d; \
+                    out_ptr[i*2 + (index)] = (uint32_t)d; \
                 } while (0)
 
             // Unrolled Loop: Processes 2 samples (4 components) per iteration.

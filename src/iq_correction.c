@@ -53,7 +53,7 @@
 #include "log.h"
 #include "app_context.h"
 #include "mem_arena.h"
-#include "utils.h"
+#include "utilities.h"
 #include "pre_processor.h" // Needed for initial calibration chain
 #include "sample_convert.h"
 #include <stdatomic.h> // Needed for byte size calculations
@@ -136,18 +136,18 @@ typedef struct iq_state_s {
 
 // --- Forward Declarations ---
 
-static inline uint64_t pack_iq_state(float p, float a) {
+static inline uint64_t pack_iq_state(float phase, float amplitude) {
     uint32_t pi, ai;
-    memcpy(&pi, &p, sizeof(float));
-    memcpy(&ai, &a, sizeof(float));
+    memcpy(&pi, &phase, sizeof(float));
+    memcpy(&ai, &amplitude, sizeof(float));
     return ((uint64_t)pi << 32) | ai;
 }
 
-static inline void unpack_iq_state(uint64_t packed, float* p, float* a) {
+static inline void unpack_iq_state(uint64_t packed, float* phase, float* amplitude) {
     uint32_t pi = (uint32_t)(packed >> 32);
     uint32_t ai = (uint32_t)(packed & 0xFFFFFFFF);
-    memcpy(p, &pi, sizeof(float));
-    memcpy(a, &ai, sizeof(float));
+    memcpy(phase, &pi, sizeof(float));
+    memcpy(amplitude, &ai, sizeof(float));
 }
 
 static void init_window(float * restrict w, int length);
@@ -273,7 +273,7 @@ void iq_correction_apply(DspContext* dsp, ComplexFloat* samples, int num_samples
 void iq_correction_run_estimation(DspContext* dsp, const ComplexFloat* optimization_data) {
     if (!dsp->config->dsp.iq_correction.enable || !dsp->iq_correct.internal_state) return;
 
-    atomic_store_explicit(&dsp->iq_correct.last_optimization_time, utils_get_time(), memory_order_relaxed);
+    atomic_store_explicit(&dsp->iq_correct.last_optimization_time, utility_get_time(), memory_order_relaxed);
     IqState* st = (IqState*)dsp->iq_correct.internal_state;
 
     // Snapshot current values lock-free.
@@ -315,9 +315,9 @@ void iq_correction_destroy(AppContext* app) {
     }
 }
 
-bool iq_correction_run_initial_calibration(ModuleContext* ctx, void* raw_buffer, size_t num_bytes, 
+bool iq_correction_run_initial_calibration(ModuleContext* context, void* raw_buffer, size_t num_bytes, 
                                            size_t (*read_cb)(void* user_data, void* buffer, size_t bytes), void* user_data) {
-    AppContext* app = ctx->app;
+    AppContext* app = context->app;
 
     if (!raw_buffer || num_bytes == 0 || !read_cb) {
         log_warn("Cannot perform initial I/Q correction without valid input data or reader.");
@@ -500,12 +500,12 @@ static void estimate_imbalance(IqState *st, const complex float* restrict iq, in
             // Calculate boost (spectral power density)
             for (i = EdgeBinsToSkip; i <= FFTBins - EdgeBinsToSkip; i++)
             {
-                float p = crealf(fftPtr[i])*crealf(fftPtr[i]) + cimagf(fftPtr[i])*cimagf(fftPtr[i]);
-                st->boost[i] += p;
+                float bin_power = crealf(fftPtr[i])*crealf(fftPtr[i]) + cimagf(fftPtr[i])*cimagf(fftPtr[i]);
+                st->boost[i] += bin_power;
                 if (st->optimal_bin == FFTBins/2)
-                    st->integrated_image_power += p;
+                    st->integrated_image_power += bin_power;
                 else
-                    st->integrated_image_power += p * __boost_window[abs(FFTBins - i - st->optimal_bin)];
+                    st->integrated_image_power += bin_power * __boost_window[abs(FFTBins - i - st->optimal_bin)];
             }
             st->integrated_total_power += power;
             count++;
@@ -591,9 +591,9 @@ static void estimate_imbalance(IqState *st, const complex float* restrict iq, in
 
     for (j = 0; j < st->no_of_raw; j++) // Correction: Loop over valid raw entries
     {
-        int idx = (st->raw_ptr + MaxLookback - j) & (MaxLookback - 1);
-        phase += st->raw_phases[idx];
-        amplitude += st->raw_amplitudes[idx];
+        int index = (st->raw_ptr + MaxLookback - j) & (MaxLookback - 1);
+        phase += st->raw_phases[index];
+        amplitude += st->raw_amplitudes[index];
     }
     phase /= st->no_of_raw;
     amplitude /= st->no_of_raw;

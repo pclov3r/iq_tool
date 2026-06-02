@@ -8,7 +8,7 @@
 #include "app_context.h"
 #include "constants.h"
 #include "log.h"
-#include "utils.h"
+#include "utilities.h"
 #include "platform.h"
 #include "signal_handler.h"
 #include "queue.h"
@@ -32,8 +32,8 @@
 
 // --- Pipeline Thread Function Implementations (Private to this module) ---
 // Universal Ingest Callback
-static bool pipeline_queue_samples(void* ctx, const void* data, size_t num_samples, SampleFormat format) {
-    AppContext* app = (AppContext*)ctx;
+static bool pipeline_queue_samples(void* context, const void* data, size_t num_samples, SampleFormat format) {
+    AppContext* app = (AppContext*)context;
     source_update_heartbeat(app);
     if (is_shutdown_requested() || atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed)) return false;
 
@@ -42,7 +42,7 @@ static bool pipeline_queue_samples(void* ctx, const void* data, size_t num_sampl
         static size_t accumulated_drops = 0;
         
         accumulated_drops += num_samples;
-        double current_time = utils_get_time();
+        double current_time = utility_get_time();
         
         if (current_time - last_drop_log_time >= CONSOLE_UPDATE_INTERVAL_SEC) {
             log_warn("Pipeline input overrun! Dropped %zu samples.", accumulated_drops);
@@ -59,9 +59,9 @@ void* pipeline_thread_source(void* arg) {
 
     PipelineContext* args = (PipelineContext*)arg;
     AppContext* app = args->app;
-    ModuleContext ctx = { .config = args->config, .app = app };
+    ModuleContext context = { .config = args->config, .app = app };
 
-    app->module.input_api->start_stream(&ctx, pipeline_queue_samples, app);
+    app->module.input_api->start_stream(&context, pipeline_queue_samples, app);
 
     if (app->pipeline.source_input_buffer) {
         ring_buffer_signal_end_of_stream(app->pipeline.source_input_buffer);
@@ -143,7 +143,7 @@ void* pipeline_thread_reader(void* arg) {
         }
 
         case PIPELINE_MODE_SYNCHRONOUS_PULL: {
-            ModuleContext ctx = { .config = config, .app = app };
+            ModuleContext context = { .config = config, .app = app };
             InputModuleInterface* in_api = app->module.input_api;
 
             if (!in_api->read_chunk) {
@@ -158,7 +158,7 @@ void* pipeline_thread_reader(void* arg) {
                     if (bytes_requested > capacity_bytes) bytes_requested = capacity_bytes;
 
                     void* target_buffer = config->dsp.raw_passthrough ? item->final_output_data : item->raw_input_data;
-                    size_t bytes_read = in_api->read_chunk(&ctx, target_buffer, bytes_requested);
+                    size_t bytes_read = in_api->read_chunk(&context, target_buffer, bytes_requested);
 
                     item->frames_read = bytes_read / app->module.input_bytes_per_iq_sample;
                     item->frames_to_write = (unsigned int)item->frames_read;
@@ -204,7 +204,7 @@ void* pipeline_thread_writer(void* arg) {
     PipelineContext* args = (PipelineContext*)arg;
     AppContext* app = args->app;
     OutputModuleInterface* out_api = app->module.output_api;
-    ModuleContext ctx = { .config = args->config, .app = app };
+    ModuleContext context = { .config = args->config, .app = app };
 
     if (!out_api || !out_api->write_chunk) {
         log_error("Output module does not implement write_chunk.");
@@ -219,7 +219,7 @@ void* pipeline_thread_writer(void* arg) {
         // This ensures the partial "tail" of a file is written before we exit.
         if (item->frames_to_write > 0 && !item->stream_discontinuity_event) {
             size_t bytes_to_write = item->frames_to_write * app->module.output_bytes_per_iq_sample;
-            size_t written = out_api->write_chunk(&ctx, item->final_output_data, bytes_to_write);
+            size_t written = out_api->write_chunk(&context, item->final_output_data, bytes_to_write);
 
             // Stats & Progress Reporting (Only for file outputs)
             if (args->config->output.path_arg != NULL && app->stats.progress_callback && written > 0) {
@@ -237,12 +237,12 @@ void* pipeline_thread_writer(void* arg) {
 
         // 2. Handle Reset Event (Source Overrun)
         if (item->stream_discontinuity_event) {
-            if (out_api->reset) out_api->reset(&ctx);
+            if (out_api->reset) out_api->reset(&context);
         }
 
         // 3. Handle End-of-Stream
         if (item->is_last_chunk) {
-            if (out_api->flush) out_api->flush(&ctx);
+            if (out_api->flush) out_api->flush(&context);
             queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
             break; // Loop exit happens here, AFTER processing data/flush
         }

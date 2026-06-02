@@ -1,7 +1,7 @@
-#include "freq_shift.h"
+#include "frequency_shift.h"
 #include "constants.h"
 #include "app_context.h"
-#include "utils.h"
+#include "utilities.h"
 #include "log.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,7 +16,7 @@
 /**
  * @brief Creates and configures the NCOs (frequency shifters) based on user arguments.
  */
-bool freq_shift_create(AppConfig *config, AppContext* app) {
+bool frequency_shift_create(AppConfig *config, AppContext* app) {
     if (!config || !app) return false;
 
     app->dsp.pre_resample_nco = NULL;
@@ -24,8 +24,8 @@ bool freq_shift_create(AppConfig *config, AppContext* app) {
 
     // First, resolve the final shift value. If a module (like WAV) hasn't already
     // calculated a shift, check for the generic manual shift option from the CLI.
-    if (app->dsp.nco_shift_hz == 0.0 && config->dsp.freq_shift_hz != 0.0f) {
-        app->dsp.nco_shift_hz = config->dsp.freq_shift_hz;
+    if (app->dsp.nco_shift_hz == 0.0 && config->dsp.frequency_shift_hz != 0.0f) {
+        app->dsp.nco_shift_hz = config->dsp.frequency_shift_hz;
     }
 
     // Now that the final shift value is resolved, validate dependent options.
@@ -65,7 +65,7 @@ bool freq_shift_create(AppConfig *config, AppContext* app) {
         app->dsp.post_resample_nco = (struct freq_shifter_s*)nco_crcf_create(LIQUID_NCO);
         if (!app->dsp.post_resample_nco) {
             log_error("Failed to create post-resample NCO (frequency shifter).");
-            freq_shift_destroy_ncos(app); // Clean up pre-resample NCO if it was created
+            frequency_shift_destroy_ncos(app); // Clean up pre-resample NCO if it was created
             return false;
         }
         float nco_freq_rad_per_sample = (float)(2.0 * M_PI * fabs(app->dsp.nco_shift_hz) / rate_for_nco);
@@ -78,7 +78,7 @@ bool freq_shift_create(AppConfig *config, AppContext* app) {
 /**
  * @brief Applies the frequency shift to a block of complex samples using a specific NCO.
  */
-void freq_shift_apply(FreqShifter* nco, double shift_hz, ComplexFloat* input_buffer, ComplexFloat* output_buffer, unsigned int num_frames) {
+void frequency_shift_apply(FreqShifter* nco, double shift_hz, ComplexFloat* input_buffer, ComplexFloat* output_buffer, unsigned int num_frames) {
     if (!nco || num_frames == 0) {
         return;
     }
@@ -94,7 +94,7 @@ void freq_shift_apply(FreqShifter* nco, double shift_hz, ComplexFloat* input_buf
  * @brief Resets the NCO's phase accumulator without destroying its frequency.
  * This is the safe way to handle stream discontinuities from SDRs.
  */
-void freq_shift_reset_nco(FreqShifter* nco) {
+void frequency_shift_reset_nco(FreqShifter* nco) {
     if (nco) {
         // This only resets the phase, leaving the frequency configuration intact.
         nco_crcf_set_phase((nco_crcf)nco, 0.0f);
@@ -104,7 +104,7 @@ void freq_shift_reset_nco(FreqShifter* nco) {
 /**
  * @brief Destroys the NCO objects if they were created.
  */
-void freq_shift_destroy_ncos(AppContext* app) {
+void frequency_shift_destroy_ncos(AppContext* app) {
     if (app) {
         if (app->dsp.pre_resample_nco) {
             nco_crcf_destroy((nco_crcf)app->dsp.pre_resample_nco);
