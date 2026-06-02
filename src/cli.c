@@ -85,9 +85,9 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_STRING(0, "output-sample-format", &config->output.sample_format_str, "Sample format for output data {cs8|cu8|cs16|...}", NULL, 0, 0),
 
         OPT_GROUP("Audio Output Options"),
-        OPT_STRING(0, "audio-writer", &config->dsp.audio_writer_path, "Save demodulated audio to a WAV file.", NULL, 0, 0),
-        OPT_BOOLEAN(0, "audio-writer-rf64", &config->dsp.audio_writer_rf64, "Use RF64 format for the audio writer (supports >4GB files).", NULL, 0, 0),
-        OPT_BOOLEAN(0, "mute-audio", &config->dsp.mute_audio, "Disable speaker playback", NULL, 0, 0),
+        OPT_STRING(0, "audio-writer", &config->audio.writer_path, "Save demodulated audio to a WAV file.", NULL, 0, 0),
+        OPT_BOOLEAN(0, "audio-writer-rf64", &config->audio.writer_rf64, "Use RF64 format for the audio writer (supports >4GB files).", NULL, 0, 0),
+        OPT_BOOLEAN(0, "mute-audio", &config->audio.mute, "Disable speaker playback", NULL, 0, 0),
 
         OPT_GROUP("Processing Options"),
         OPT_DOUBLE(0, "output-sample-rate", &config->output_sample_rate.user_arg, "Output sample rate in Hz.", NULL, 0, 0),

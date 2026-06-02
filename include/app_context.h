@@ -84,6 +84,13 @@ typedef struct AppConfig {
         bool   provided;
     } output_sample_rate;
 
+    // --- Audio Configuration ---
+    struct {
+        char* writer_path;
+        bool  writer_rf64;
+        bool  mute;
+    } audio;
+
     // --- DSP Configuration ---
     struct {
         float input_gain;
@@ -93,9 +100,6 @@ typedef struct AppConfig {
         double frequency_shift_hz;
         bool   shift_after_resample;
         bool   raw_passthrough;
-        char* audio_writer_path;
-        bool  audio_writer_rf64;
-        bool  mute_audio;
 
         IqCorrectionConfig iq_correction;
         DcBlockConfig      dc_block;
