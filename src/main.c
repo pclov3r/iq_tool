@@ -45,6 +45,7 @@
 #include "presets_loader.h"
 #include "platform.h"
 #include "mem_arena.h"
+#include "keyboard_handler.h"
 #include "sample_format_table.h"
 #include "pipeline.h"
 #include "agc.h"
@@ -214,6 +215,8 @@ int main(int argc, char *argv[]) {
     app.stats.progress_callback_udata = &g_console_mutex;
 
     app.stats.start_time = time(NULL);
+
+    setup_keyboard_handler(&app);
 
     if (!pipeline_run(&pipeline_context)) {
         log_fatal("Pipeline execution failed.");

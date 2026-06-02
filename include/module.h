@@ -123,6 +123,13 @@ typedef struct InputModuleInterface {
     void (*get_summary_info)(const struct ModuleContext* ctx, struct InputSummaryInfo* info);
 
     /**
+     * @brief Passes keypress events to the module.
+     * @param ctx The application context.
+     * @param key The integer key code.
+     */
+    void (*on_keypress)(struct ModuleContext* ctx, int key);
+
+    /**
      * @brief Validates and post-processes command-line options specific to this module.
      * @param config A pointer to the application configuration, which can be modified.
      * @return true if the options are valid, false otherwise.
@@ -173,9 +180,8 @@ typedef struct OutputModuleInterface {
     void (*cleanup)(struct ModuleContext* ctx);
 
     // Populates a summary struct with output details
-    // CHANGE THIS LINE to use the new type.
-    void (*get_summary_info)(const struct ModuleContext* ctx, OutputSummaryInfo* info);
-
+    void (*get_summary_info)(const ModuleContext* ctx, OutputSummaryInfo* info);
+    void (*on_keypress)(ModuleContext* ctx, int key);
 } OutputModuleInterface;
 
 
