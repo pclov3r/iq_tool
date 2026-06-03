@@ -711,12 +711,10 @@ static void bladerf_input_cleanup(ModuleContext* context) {
         BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
         pthread_mutex_lock(&private_data->driver_mutex);
         if (private_data->rx_stream) {
-            log_info("Closing BladeRF device...");
             bladerf_deinit_stream(private_data->rx_stream);
             private_data->rx_stream = NULL;
         }
         if (private_data->dev) {
-            log_info("Closing BladeRF device...");
             bladerf_close(private_data->dev);
         }
         pthread_mutex_unlock(&private_data->driver_mutex);

@@ -206,9 +206,9 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "\n");
 
     if (app.pipeline_mode == PIPELINE_MODE_BUFFERED_INPUT) {
-        log_info("Starting live source capture...");
+        log_info("Starting %s live source capture...", config.input.type_name);
     } else {
-        log_info("Starting file processing...");
+        log_info("Starting %s file processing...", config.input.type_name);
     }
 
     app.stats.progress_callback = application_progress_callback;
@@ -230,7 +230,16 @@ cleanup:
 
     bool final_ok = !app.stats.error_occurred;
 
+    if (app.pipeline_mode == PIPELINE_MODE_BUFFERED_INPUT) {
+        log_info("Stopping %s live source capture...", config.input.type_name);
+    } else {
+        log_info("Finished %s file processing.", config.input.type_name);
+    }
+
+    log_info("Closing %s input module...", config.input.type_name);
     close_input_source(&config, &app);
+
+    log_info("Closing %s output module...", config.output.module_name);
     close_output_module(&config, &app);
 
     if (resources_initialized) {

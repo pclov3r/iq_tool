@@ -861,7 +861,6 @@ static void* sdrplay_input_start_stream(ModuleContext* context, QueueSamples que
     sdrplay_api_CallbackFnsT cbFns;
     cbFns.StreamBCbFn = NULL;
     cbFns.EventCbFn = sdrplay_input_event_callback;
-    log_info("Starting sdrplay stream...");
     cbFns.StreamACbFn = sdrplay_input_buffered_stream_callback;
 
     sdrplay_api_ErrT api_error = sdrplay_api_Init(private_data->sdr_device->dev, &cbFns, app);
@@ -949,7 +948,6 @@ static void sdrplay_input_cleanup(ModuleContext* context) {
         SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
         pthread_mutex_lock(&private_data->driver_mutex);
         if (private_data->sdr_device && private_data->device_selected) {
-            log_info("Closing SDRplay device...");
             sdrplay_api_ReleaseDevice(private_data->sdr_device);
 #ifndef _WIN32
             log_debug("Waiting for SDRplay daemon to release device...");

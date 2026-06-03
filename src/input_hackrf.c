@@ -266,7 +266,6 @@ static void* hackrf_input_start_stream(ModuleContext* context, QueueSamples queu
     HackrfContext* private_data = (HackrfContext*)app->module.input_private_data;
     int result;
     hackrf_sample_block_cb_fn callback_fn;
-    log_info("Starting hackrf stream...");
     callback_fn = hackrf_input_buffered_stream_callback;
 
     result = hackrf_start_rx(private_data->dev, callback_fn, app);
@@ -311,7 +310,6 @@ static void hackrf_input_cleanup(ModuleContext* context) {
         HackrfContext* private_data = (HackrfContext*)app->module.input_private_data;
         pthread_mutex_lock(&private_data->driver_mutex);
         if (private_data->dev) {
-            log_info("Closing HackRF device...");
             hackrf_close(private_data->dev);
             private_data->dev = NULL;
         }

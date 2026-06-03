@@ -434,7 +434,6 @@ static void* airspyhf_input_start_stream(ModuleContext* context, QueueSamples qu
     AirspyHFContext* private_data = (AirspyHFContext*)app->module.input_private_data;
     int result;
     airspyhf_sample_block_cb_fn callback_fn;
-    log_info("Starting airspyhf stream...");
     callback_fn = airspyhf_input_buffered_stream_callback;
 
     result = airspyhf_start(private_data->dev, callback_fn, app);
@@ -479,7 +478,6 @@ static void airspyhf_input_cleanup(ModuleContext* context) {
         AirspyHFContext* private_data = (AirspyHFContext*)app->module.input_private_data;
         pthread_mutex_lock(&private_data->driver_mutex);
         if (private_data->dev) {
-            log_info("Closing Airspy HF+ device...");
             airspyhf_close(private_data->dev);
             private_data->dev = NULL;
         }

@@ -599,7 +599,6 @@ static void* airspy_input_start_stream(ModuleContext* context, QueueSamples queu
     AirspyContext* private_data = (AirspyContext*)app->module.input_private_data;
     int result;
     airspy_sample_block_cb_fn callback_fn;
-    log_info("Starting airspy stream...");
     callback_fn = airspy_input_buffered_stream_callback;
 
     result = airspy_start_rx(private_data->dev, callback_fn, app);
@@ -644,7 +643,6 @@ static void airspy_input_cleanup(ModuleContext* context) {
         AirspyContext* private_data = (AirspyContext*)app->module.input_private_data;
         pthread_mutex_lock(&private_data->driver_mutex);
         if (private_data->dev) {
-            log_info("Closing Airspy device...");
             airspy_close(private_data->dev);
             private_data->dev = NULL;
         }

@@ -339,7 +339,6 @@ static void* rtlsdr_input_start_stream(ModuleContext* context, QueueSamples queu
 
     switch (app->pipeline_mode) {
         case PIPELINE_MODE_BUFFERED_INPUT:
-            log_info("Starting RTL-SDR stream");
             // NOTE: rtlsdr_read_async BLOCKS until the stream stops or is cancelled.
             result = rtlsdr_read_async(private_data->dev, rtlsdr_input_stream_callback, app, 0, 0);
 
@@ -373,7 +372,6 @@ static void rtlsdr_input_cleanup(ModuleContext* context) {
         RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
         pthread_mutex_lock(&private_data->driver_mutex);
         if (private_data->dev) {
-            log_info("Closing RTL-SDR device...");
             // Reset buffer to clear USB stalls before closing; prevents I2C errors
             rtlsdr_reset_buffer(private_data->dev);
             rtlsdr_close(private_data->dev);
