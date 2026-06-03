@@ -96,7 +96,7 @@ typedef struct InputModuleInterface {
      * @param context The application context.
      * @return NULL on normal exit.
      */
-    void* (*start_stream)(struct ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
+    void* (*push_samples_to_queue)(struct ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
 
     /**
      * @brief Reads a chunk of data synchronously from a file-based source.
@@ -107,7 +107,7 @@ typedef struct InputModuleInterface {
      * @brief Gracefully stops the data stream (e.g., cancels an async SDR read).
      * @param context The application context.
      */
-    void (*stop_stream)(struct ModuleContext* context);
+    void (*stop_sample_queue_push)(struct ModuleContext* context);
 
     /**
      * @brief Releases all app allocated by the input source.

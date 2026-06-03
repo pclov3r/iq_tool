@@ -216,8 +216,8 @@ const struct argparse_option* bladerf_input_get_cli_options(int* count) {
 
 // Forward declarations for static functions
 static bool bladerf_input_initialize(ModuleContext* context);
-static void* bladerf_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
-static void bladerf_input_stop_stream(ModuleContext* context);
+static void* bladerf_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
+static void bladerf_input_stop_sample_queue_push(ModuleContext* context);
 static void bladerf_input_cleanup(ModuleContext* context);
 static void bladerf_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static void* bladerf_rx_stream_callback(struct bladerf *dev, struct bladerf_stream *stream,
@@ -237,8 +237,8 @@ static bool bladerf_configure_high_speed_rate_and_rf(ModuleContext* context, bla
 
 static InputModuleInterface s_bladerf_input_api = {
     .initialize = bladerf_input_initialize,
-    .start_stream = bladerf_input_start_stream,
-    .stop_stream = bladerf_input_stop_stream,
+    .push_samples_to_queue = bladerf_input_push_samples_to_queue,
+    .stop_sample_queue_push = bladerf_input_stop_sample_queue_push,
     .cleanup = bladerf_input_cleanup,
     .get_summary_info = bladerf_input_get_summary_info,
     .validate_options = bladerf_input_validate_options,
@@ -591,7 +591,7 @@ static void* bladerf_rx_stream_callback(struct bladerf *dev, struct bladerf_stre
     return private_data->stream_buffers[0];
 }
 
-static void* bladerf_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+static void* bladerf_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     context->app->module.queue_samples = queue_samples;
     context->app->module.pipeline_context = pipeline_context;
     AppContext* app = context->app;
@@ -673,11 +673,11 @@ static void* bladerf_input_start_stream(ModuleContext* context, QueueSamples que
         handle_fatal_thread_error(error_buf, app);
     }
 
-    bladerf_input_stop_stream(context);
+    bladerf_input_stop_sample_queue_push(context);
     return NULL;
 }
 
-static void bladerf_input_stop_stream(ModuleContext* context) {
+static void bladerf_input_stop_sample_queue_push(ModuleContext* context) {
     AppContext* app = context->app;
     BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
     if (private_data && private_data->dev) {

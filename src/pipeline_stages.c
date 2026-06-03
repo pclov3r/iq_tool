@@ -61,7 +61,7 @@ void* pipeline_thread_source(void* arg) {
     AppContext* app = args->app;
     ModuleContext context = { .config = args->config, .app = app };
 
-    app->module.input_api->start_stream(&context, pipeline_queue_samples, app);
+    app->module.input_api->push_samples_to_queue(&context, pipeline_queue_samples, app);
 
     if (app->pipeline.source_input_buffer) {
         ring_buffer_signal_end_of_stream(app->pipeline.source_input_buffer);

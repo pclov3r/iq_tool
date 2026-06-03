@@ -66,8 +66,8 @@ const struct argparse_option* rtlsdr_input_get_cli_options(int* count) {
 }
 
 static bool rtlsdr_input_initialize(ModuleContext* context);
-static void* rtlsdr_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
-static void rtlsdr_input_stop_stream(ModuleContext* context);
+static void* rtlsdr_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
+static void rtlsdr_input_stop_sample_queue_push(ModuleContext* context);
 static void rtlsdr_input_cleanup(ModuleContext* context);
 static void rtlsdr_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool rtlsdr_input_validate_options(AppConfig* config);
@@ -121,8 +121,8 @@ static const char* get_tuner_name_from_enum(enum rtlsdr_tuner tuner_type) {
 
 static InputModuleInterface s_rtlsdr_input_api = {
     .initialize = rtlsdr_input_initialize,
-    .start_stream = rtlsdr_input_start_stream,
-    .stop_stream = rtlsdr_input_stop_stream,
+    .push_samples_to_queue = rtlsdr_input_push_samples_to_queue,
+    .stop_sample_queue_push = rtlsdr_input_stop_sample_queue_push,
     .cleanup = rtlsdr_input_cleanup,
     .get_summary_info = rtlsdr_input_get_summary_info,
     .validate_options = rtlsdr_input_validate_options,
@@ -330,7 +330,7 @@ cleanup:
     return success;
 }
 
-static void* rtlsdr_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+static void* rtlsdr_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     context->app->module.queue_samples = queue_samples;
     context->app->module.pipeline_context = pipeline_context;
     AppContext* app = context->app;
@@ -357,7 +357,7 @@ static void* rtlsdr_input_start_stream(ModuleContext* context, QueueSamples queu
     return NULL;
 }
 
-static void rtlsdr_input_stop_stream(ModuleContext* context) {
+static void rtlsdr_input_stop_sample_queue_push(ModuleContext* context) {
     AppContext* app = context->app;
     RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
     if (private_data && private_data->dev) {

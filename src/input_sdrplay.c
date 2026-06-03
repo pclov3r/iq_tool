@@ -256,8 +256,8 @@ const struct argparse_option* sdrplay_input_get_cli_options(int* count) {
 }
 
 static bool sdrplay_input_initialize(ModuleContext* context);
-static void* sdrplay_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
-static void sdrplay_input_stop_stream(ModuleContext* context);
+static void* sdrplay_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
+static void sdrplay_input_stop_sample_queue_push(ModuleContext* context);
 static void sdrplay_input_cleanup(ModuleContext* context);
 static void sdrplay_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool sdrplay_input_validate_options(AppConfig* config);
@@ -270,8 +270,8 @@ static void sdrplay_input_event_callback(sdrplay_api_EventT eventId, sdrplay_api
 
 static InputModuleInterface s_sdrplay_input_api = {
     .initialize = sdrplay_input_initialize,
-    .start_stream = sdrplay_input_start_stream,
-    .stop_stream = sdrplay_input_stop_stream,
+    .push_samples_to_queue = sdrplay_input_push_samples_to_queue,
+    .stop_sample_queue_push = sdrplay_input_stop_sample_queue_push,
     .cleanup = sdrplay_input_cleanup,
     .get_summary_info = sdrplay_input_get_summary_info,
     .validate_options = sdrplay_input_validate_options,
@@ -853,7 +853,7 @@ cleanup:
     return success;
 }
 
-static void* sdrplay_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+static void* sdrplay_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     context->app->module.queue_samples = queue_samples;
     context->app->module.pipeline_context = pipeline_context;
     AppContext* app = context->app;
@@ -918,13 +918,13 @@ static void* sdrplay_input_start_stream(ModuleContext* context, QueueSamples que
     }
 
     if (!is_shutdown_requested()) {
-        sdrplay_input_stop_stream(context);
+        sdrplay_input_stop_sample_queue_push(context);
     }
 
     return NULL;
 }
 
-static void sdrplay_input_stop_stream(ModuleContext* context) {
+static void sdrplay_input_stop_sample_queue_push(ModuleContext* context) {
     AppContext* app = context->app;
     SdrplayContext* private_data = (SdrplayContext*)app->module.input_private_data;
     if (private_data) {

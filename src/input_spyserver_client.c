@@ -222,8 +222,8 @@ void spyserver_client_set_default_config(struct AppConfig* config) {
 // --- Function Prototypes ---
 static void* spyserver_client_input_producer_thread(void* arg);
 static bool spyserver_client_input_initialize(ModuleContext* context);
-static void* spyserver_client_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
-static void spyserver_client_input_stop_stream(ModuleContext* context);
+static void* spyserver_client_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
+static void spyserver_client_input_stop_sample_queue_push(ModuleContext* context);
 static void spyserver_client_input_cleanup(ModuleContext* context);
 static void spyserver_client_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool spyserver_client_input_validate_options(AppConfig* config);
@@ -231,8 +231,8 @@ static bool spyserver_client_input_validate_options(AppConfig* config);
 // --- The InputModuleInterface V-Table ---
 static InputModuleInterface s_spyserver_client_input_api = {
     .initialize = spyserver_client_input_initialize,
-    .start_stream = spyserver_client_input_start_stream,
-    .stop_stream = spyserver_client_input_stop_stream,
+    .push_samples_to_queue = spyserver_client_input_push_samples_to_queue,
+    .stop_sample_queue_push = spyserver_client_input_stop_sample_queue_push,
     .cleanup = spyserver_client_input_cleanup,
     .get_summary_info = spyserver_client_input_get_summary_info,
     .validate_options = spyserver_client_input_validate_options,
@@ -696,7 +696,7 @@ end_loop:;
     return NULL;
 }
 
-static void* spyserver_client_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+static void* spyserver_client_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     context->app->module.queue_samples = queue_samples;
     context->app->module.pipeline_context = pipeline_context;
     AppContext* app = context->app;
@@ -800,7 +800,7 @@ static void* spyserver_client_input_start_stream(ModuleContext* context, QueueSa
     return NULL;
 }
 
-static void spyserver_client_input_stop_stream(ModuleContext* context) {
+static void spyserver_client_input_stop_sample_queue_push(ModuleContext* context) {
     AppContext* app = context->app;
     if (app->module.input_private_data) {
         SpyServerClientContext* client = (SpyServerClientContext*)app->module.input_private_data;

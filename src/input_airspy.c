@@ -110,8 +110,8 @@ const struct argparse_option* airspy_input_get_cli_options(int* count) {
 }
 
 static bool airspy_input_initialize(ModuleContext* context);
-static void* airspy_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
-static void airspy_input_stop_stream(ModuleContext* context);
+static void* airspy_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
+static void airspy_input_stop_sample_queue_push(ModuleContext* context);
 static void airspy_input_cleanup(ModuleContext* context);
 static void airspy_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool airspy_input_validate_options(AppConfig* config);
@@ -122,8 +122,8 @@ static int airspy_input_buffered_stream_callback(airspy_transfer* transfer);
 
 static InputModuleInterface s_airspy_input_api = {
     .initialize = airspy_input_initialize,
-    .start_stream = airspy_input_start_stream,
-    .stop_stream = airspy_input_stop_stream,
+    .push_samples_to_queue = airspy_input_push_samples_to_queue,
+    .stop_sample_queue_push = airspy_input_stop_sample_queue_push,
     .cleanup = airspy_input_cleanup,
     .get_summary_info = airspy_input_get_summary_info,
     .validate_options = airspy_input_validate_options,
@@ -592,7 +592,7 @@ cleanup:
     return success;
 }
 
-static void* airspy_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+static void* airspy_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     context->app->module.queue_samples = queue_samples;
     context->app->module.pipeline_context = pipeline_context;
     AppContext* app = context->app;
@@ -615,13 +615,13 @@ static void* airspy_input_start_stream(ModuleContext* context, QueueSamples queu
     }
 
     if (!is_shutdown_requested()) {
-        airspy_input_stop_stream(context);
+        airspy_input_stop_sample_queue_push(context);
     }
 
     return NULL;
 }
 
-static void airspy_input_stop_stream(ModuleContext* context) {
+static void airspy_input_stop_sample_queue_push(ModuleContext* context) {
     AppContext* app = context->app;
     AirspyContext* private_data = (AirspyContext*)app->module.input_private_data;
     if (private_data) {

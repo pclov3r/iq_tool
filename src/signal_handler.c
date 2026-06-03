@@ -42,7 +42,7 @@ static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
                 pthread_mutex_unlock(&g_console_mutex);
 
                 // 2. Trigger shutdown (High Priority)
-                // This will trigger the input module's stop_stream, which prints logs.
+                // This will trigger the input module's stop_sample_queue_push, which prints logs.
                 request_shutdown();
 
                 // 3. Log the event
@@ -77,7 +77,7 @@ void* signal_handler_thread(void *arg) {
             pthread_mutex_unlock(&g_console_mutex);
 
             // 2. Trigger shutdown (High Priority)
-            // This calls the input module's stop_stream(), which generates logs.
+            // This calls the input module's stop_sample_queue_push(), which generates logs.
             // Since we printed \n above, these logs will appear on a fresh line.
             request_shutdown();
 
@@ -132,9 +132,9 @@ void request_shutdown(void) {
 
         // Generic shutdown: If the active input module has a stop function, call it.
         // This handles blocking input drivers (like RTL-SDR) and background threads.
-        if (r->module.input_api && r->module.input_api->stop_stream) {
+        if (r->module.input_api && r->module.input_api->stop_sample_queue_push) {
             ModuleContext context = { .config = r->config, .app = r };
-            r->module.input_api->stop_stream(&context);
+            r->module.input_api->stop_sample_queue_push(&context);
         }
 
         // Signal all queues to wake up any waiting threads.

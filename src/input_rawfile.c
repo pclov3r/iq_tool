@@ -65,9 +65,9 @@ const struct argparse_option* rawfile_input_get_cli_options(int* count) {
 }
 
 static bool rawfile_input_initialize(ModuleContext* context);
-static void* rawfile_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
+static void* rawfile_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
 static size_t rawfile_input_read_chunk(ModuleContext* context, void* buffer, size_t bytes_to_read);
-static void rawfile_input_stop_stream(ModuleContext* context);
+static void rawfile_input_stop_sample_queue_push(ModuleContext* context);
 static void rawfile_input_cleanup(ModuleContext* context);
 static void rawfile_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool rawfile_input_validate_options(AppConfig* config);
@@ -75,9 +75,9 @@ static bool rawfile_input_pre_stream_iq_correction(ModuleContext* context);
 
 static InputModuleInterface s_rawfile_input_api = {
     .initialize = rawfile_input_initialize,
-    .start_stream = rawfile_input_start_stream,
+    .push_samples_to_queue = rawfile_input_push_samples_to_queue,
     .read_chunk = rawfile_input_read_chunk,
-    .stop_stream = rawfile_input_stop_stream,
+    .stop_sample_queue_push = rawfile_input_stop_sample_queue_push,
     .cleanup = rawfile_input_cleanup,
     .get_summary_info = rawfile_input_get_summary_info,
     .validate_options = rawfile_input_validate_options,
@@ -212,11 +212,11 @@ static size_t rawfile_input_read_chunk(ModuleContext* context, void* buffer, siz
     return bytes_read_total;
 }
 
-static void* rawfile_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+static void* rawfile_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     (void)context; (void)queue_samples; (void)pipeline_context;
     return NULL; // Not used for synchronous file readers
 }
-static void rawfile_input_stop_stream(ModuleContext* context) {
+static void rawfile_input_stop_sample_queue_push(ModuleContext* context) {
     (void)context;
 }
 

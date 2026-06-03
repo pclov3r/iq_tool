@@ -108,7 +108,7 @@ static bool stdin_input_initialize(ModuleContext* context) {
     return true;
 }
 
-static void* stdin_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+static void* stdin_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     AppContext* app = context->app;
     StdinContext* p = (StdinContext*)app->module.input_private_data;
 
@@ -152,7 +152,7 @@ static size_t stdin_input_read_chunk(ModuleContext* context, void* buffer, size_
     return total_read;
 }
 
-static void stdin_input_stop_stream(ModuleContext* context) {
+static void stdin_input_stop_sample_queue_push(ModuleContext* context) {
     (void)context;
 }
 
@@ -169,9 +169,9 @@ static void stdin_input_get_summary_info(const ModuleContext* context, InputSumm
 
 static InputModuleInterface s_stdin_input_api = {
     .initialize = stdin_input_initialize,
-    .start_stream = stdin_input_start_stream,
+    .push_samples_to_queue = stdin_input_push_samples_to_queue,
     .read_chunk = stdin_input_read_chunk,
-    .stop_stream = stdin_input_stop_stream,
+    .stop_sample_queue_push = stdin_input_stop_sample_queue_push,
     .cleanup = stdin_input_cleanup,
     .get_summary_info = stdin_input_get_summary_info,
     .validate_options = stdin_input_validate_options,

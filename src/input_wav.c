@@ -801,12 +801,12 @@ static size_t wav_input_read_chunk(ModuleContext* context, void* buffer, size_t 
     return bytes_read_total;
 }
 
-static void* wav_input_start_stream(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+static void* wav_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     (void)context; (void)queue_samples; (void)pipeline_context;
     return NULL; // Not used for synchronous file readers
 }
 
-static void wav_input_stop_stream(ModuleContext* context) {
+static void wav_input_stop_sample_queue_push(ModuleContext* context) {
     (void)context;
 }
 
@@ -954,9 +954,9 @@ static void wav_input_get_summary_info(const ModuleContext* context, InputSummar
 
 static InputModuleInterface s_wav_input_api = {
     .initialize = wav_input_initialize,
-    .start_stream = wav_input_start_stream,
+    .push_samples_to_queue = wav_input_push_samples_to_queue,
     .read_chunk = wav_input_read_chunk,
-    .stop_stream = wav_input_stop_stream,
+    .stop_sample_queue_push = wav_input_stop_sample_queue_push,
     .cleanup = wav_input_cleanup,
     .get_summary_info = wav_input_get_summary_info,
     .validate_options = NULL,
