@@ -79,7 +79,6 @@ typedef struct {
     pthread_mutex_t driver_mutex;
 } AirspyContext;
 
-
 void airspy_set_default_config(AppConfig* config) {
     config->sdr_general.sample_rate_hz = AIRSPY_DEFAULT_SAMPLE_RATE;
     s_airspy_config.gain_value = AIRSPY_DEFAULT_GAIN_VALUE;
@@ -109,31 +108,11 @@ const struct argparse_option* airspy_input_get_cli_options(int* count) {
     return airspy_input_cli_options;
 }
 
-static bool airspy_input_initialize(ModuleContext* context);
-static void* airspy_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
-static void airspy_input_stop_sample_queue_push(ModuleContext* context);
-static void airspy_input_cleanup(ModuleContext* context);
 static void airspy_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool airspy_input_validate_options(AppConfig* config);
 static bool airspy_input_validate_generic_options(const AppConfig* config);
 
 static int airspy_input_buffered_stream_callback(airspy_transfer* transfer);
-
-
-static InputModuleInterface s_airspy_input_api = {
-    .initialize = airspy_input_initialize,
-    .push_samples_to_queue = airspy_input_push_samples_to_queue,
-    .stop_sample_queue_push = airspy_input_stop_sample_queue_push,
-    .cleanup = airspy_input_cleanup,
-    .get_summary_info = airspy_input_get_summary_info,
-    .validate_options = airspy_input_validate_options,
-    .validate_generic_options = airspy_input_validate_generic_options,
-    .pre_stream_iq_correction = NULL
-};
-
-InputModuleInterface* input_airspy_get_module_api(void) {
-    return &s_airspy_input_api;
-}
 
 static bool airspy_input_validate_generic_options(const AppConfig* config) {
     if (!config->sdr_general.rf_freq_provided) {
@@ -303,7 +282,6 @@ static int airspy_input_buffered_stream_callback(airspy_transfer* transfer) {
 
     return 0;
 }
-
 
 static void airspy_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
     const AppConfig *config = context->config;
@@ -582,7 +560,6 @@ static bool airspy_input_initialize(ModuleContext* context) {
     app->module.source_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
     app->module.source_info.frames = -1;
 
-
     success = true;
 
 cleanup:
@@ -652,4 +629,20 @@ static void airspy_input_cleanup(ModuleContext* context) {
     }
     log_debug("Exiting Airspy library...");
     airspy_exit();
+}
+
+// --- The InputModuleInterface V-Table ---
+static InputModuleInterface s_airspy_input_api = {
+    .initialize = airspy_input_initialize,
+    .push_samples_to_queue = airspy_input_push_samples_to_queue,
+    .stop_sample_queue_push = airspy_input_stop_sample_queue_push,
+    .cleanup = airspy_input_cleanup,
+    .get_summary_info = airspy_input_get_summary_info,
+    .validate_options = airspy_input_validate_options,
+    .validate_generic_options = airspy_input_validate_generic_options,
+    .pre_stream_iq_correction = NULL
+};
+
+InputModuleInterface* input_airspy_get_module_api(void) {
+    return &s_airspy_input_api;
 }

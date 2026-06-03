@@ -47,7 +47,6 @@ typedef struct {
     pthread_mutex_t driver_mutex;
 } RtlSdrContext;
 
-
 void rtlsdr_set_default_config(AppConfig* config) {
     config->sdr_general.sample_rate_hz = RTLSDR_DEFAULT_SAMPLE_RATE;
 }
@@ -65,15 +64,9 @@ const struct argparse_option* rtlsdr_input_get_cli_options(int* count) {
     return rtlsdr_input_cli_options;
 }
 
-static bool rtlsdr_input_initialize(ModuleContext* context);
-static void* rtlsdr_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
-static void rtlsdr_input_stop_sample_queue_push(ModuleContext* context);
-static void rtlsdr_input_cleanup(ModuleContext* context);
 static void rtlsdr_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool rtlsdr_input_validate_options(AppConfig* config);
 static bool rtlsdr_input_validate_generic_options(const AppConfig* config);
-
-static void rtlsdr_input_stream_callback(unsigned char *buffer, uint32_t length, void *cb_context);
 
 static int rtlsdr_find_nearest_gain(rtlsdr_dev_t *dev,
                                     int requested_gain_tenths,
@@ -117,21 +110,6 @@ static const char* get_tuner_name_from_enum(enum rtlsdr_tuner tuner_type) {
         case RTLSDR_TUNER_UNKNOWN:
         default:                    return "Unknown Tuner";
     }
-}
-
-static InputModuleInterface s_rtlsdr_input_api = {
-    .initialize = rtlsdr_input_initialize,
-    .push_samples_to_queue = rtlsdr_input_push_samples_to_queue,
-    .stop_sample_queue_push = rtlsdr_input_stop_sample_queue_push,
-    .cleanup = rtlsdr_input_cleanup,
-    .get_summary_info = rtlsdr_input_get_summary_info,
-    .validate_options = rtlsdr_input_validate_options,
-    .validate_generic_options = rtlsdr_input_validate_generic_options,
-    .pre_stream_iq_correction = NULL
-};
-
-InputModuleInterface* input_rtlsdr_get_module_api(void) {
-    return &s_rtlsdr_input_api;
 }
 
 static bool rtlsdr_input_validate_generic_options(const AppConfig* config) {
@@ -315,7 +293,6 @@ static bool rtlsdr_input_initialize(ModuleContext* context) {
     app->module.input_bytes_per_iq_sample = get_bytes_per_iq_sample(app->module.input_format);
     app->module.source_info.frames = -1;
 
-
     // Force the pipeline into BUFFERED_INPUT mode.
     // This ensures we use the Async callback (rtlsdr_read_async) and the large RingBuffer.
     // This decouples the USB read timing from the output pipe backpressure, preventing
@@ -406,4 +383,20 @@ static void rtlsdr_input_get_summary_info(const ModuleContext* context, InputSum
     if (s_rtlsdr_config.ppm_provided) {
         add_summary_item(info, "PPM Correction", "%d", s_rtlsdr_config.ppm);
     }
+}
+
+// --- The InputModuleInterface V-Table ---
+static InputModuleInterface s_rtlsdr_input_api = {
+    .initialize = rtlsdr_input_initialize,
+    .push_samples_to_queue = rtlsdr_input_push_samples_to_queue,
+    .stop_sample_queue_push = rtlsdr_input_stop_sample_queue_push,
+    .cleanup = rtlsdr_input_cleanup,
+    .get_summary_info = rtlsdr_input_get_summary_info,
+    .validate_options = rtlsdr_input_validate_options,
+    .validate_generic_options = rtlsdr_input_validate_generic_options,
+    .pre_stream_iq_correction = NULL
+};
+
+InputModuleInterface* input_rtlsdr_get_module_api(void) {
+    return &s_rtlsdr_input_api;
 }

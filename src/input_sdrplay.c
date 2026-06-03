@@ -115,7 +115,6 @@ static wchar_t* get_sdrplay_dll_path(void) {
     return _wcsdup(api_path_buf);
 }
 
-
 #define LOAD_SDRPLAY_FUNC(func_name) \
     do { \
         FARPROC proc = GetProcAddress(sdrplay_api.dll_handle, "sdrplay_api_" #func_name); \
@@ -189,7 +188,6 @@ static void sdrplay_unload_api(void) {
 extern pthread_mutex_t g_console_mutex;
 #define LINE_CLEAR_SEQUENCE "\r \r"
 
-
 // --- Private Module Configuration ---
 static struct {
     int device_index;
@@ -223,7 +221,6 @@ typedef struct {
     pthread_mutex_t driver_mutex;
 } SdrplayContext;
 
-
 void sdrplay_set_default_config(AppConfig* config) {
     config->sdr_general.sample_rate_hz = SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
     s_sdrplay_config.bandwidth_hz = SDRPLAY_DEFAULT_BANDWIDTH_HZ;
@@ -255,33 +252,11 @@ const struct argparse_option* sdrplay_input_get_cli_options(int* count) {
     return sdrplay_input_cli_options;
 }
 
-static bool sdrplay_input_initialize(ModuleContext* context);
-static void* sdrplay_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
-static void sdrplay_input_stop_sample_queue_push(ModuleContext* context);
-static void sdrplay_input_cleanup(ModuleContext* context);
 static void sdrplay_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool sdrplay_input_validate_options(AppConfig* config);
 static bool sdrplay_input_validate_generic_options(const AppConfig* config);
 
 static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz);
-static void sdrplay_input_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext);
-static void sdrplay_input_event_callback(sdrplay_api_EventT eventId, sdrplay_api_TunerSelectT tuner, sdrplay_api_EventParamsT *params, void *cbContext);
-
-
-static InputModuleInterface s_sdrplay_input_api = {
-    .initialize = sdrplay_input_initialize,
-    .push_samples_to_queue = sdrplay_input_push_samples_to_queue,
-    .stop_sample_queue_push = sdrplay_input_stop_sample_queue_push,
-    .cleanup = sdrplay_input_cleanup,
-    .get_summary_info = sdrplay_input_get_summary_info,
-    .validate_options = sdrplay_input_validate_options,
-    .validate_generic_options = sdrplay_input_validate_generic_options,
-    .pre_stream_iq_correction = NULL
-};
-
-InputModuleInterface* input_sdrplay_get_module_api(void) {
-    return &s_sdrplay_input_api;
-}
 
 static bool sdrplay_input_validate_generic_options(const AppConfig* config) {
     if (!config->sdr_general.rf_freq_provided) {
@@ -409,7 +384,6 @@ static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz) {
     if (fabs(bw_hz - 8000000.0) < 1.0)  return sdrplay_api_BW_8_000;
     return sdrplay_api_BW_Undefined;
 }
-
 
 static void sdrplay_input_buffered_stream_callback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, unsigned int numSamples, unsigned int reset, void *cbContext) {
     (void)params;
@@ -834,7 +808,6 @@ static bool sdrplay_input_initialize(ModuleContext* context) {
     app->module.source_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
     app->module.source_info.frames = -1;
 
-
     success = true;
 
 cleanup:
@@ -968,4 +941,20 @@ static void sdrplay_input_cleanup(ModuleContext* context) {
 #if defined(_WIN32)
     sdrplay_unload_api();
 #endif
+}
+
+// --- The InputModuleInterface V-Table ---
+static InputModuleInterface s_sdrplay_input_api = {
+    .initialize = sdrplay_input_initialize,
+    .push_samples_to_queue = sdrplay_input_push_samples_to_queue,
+    .stop_sample_queue_push = sdrplay_input_stop_sample_queue_push,
+    .cleanup = sdrplay_input_cleanup,
+    .get_summary_info = sdrplay_input_get_summary_info,
+    .validate_options = sdrplay_input_validate_options,
+    .validate_generic_options = sdrplay_input_validate_generic_options,
+    .pre_stream_iq_correction = NULL
+};
+
+InputModuleInterface* input_sdrplay_get_module_api(void) {
+    return &s_sdrplay_input_api;
 }

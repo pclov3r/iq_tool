@@ -31,7 +31,6 @@
 
 extern pthread_mutex_t g_console_mutex;
 
-
 // --- Private Module Configuration ---
 static struct {
     uint32_t lna_gain;
@@ -48,7 +47,6 @@ typedef struct {
     hackrf_device* dev;
     pthread_mutex_t driver_mutex;
 } HackrfContext;
-
 
 void hackrf_set_default_config(AppConfig* config) {
     config->sdr_general.sample_rate_hz = HACKRF_DEFAULT_SAMPLE_RATE;
@@ -70,31 +68,11 @@ const struct argparse_option* hackrf_input_get_cli_options(int* count) {
     return hackrf_input_cli_options;
 }
 
-static bool hackrf_input_initialize(ModuleContext* context);
-static void* hackrf_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
-static void hackrf_input_stop_sample_queue_push(ModuleContext* context);
-static void hackrf_input_cleanup(ModuleContext* context);
 static void hackrf_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool hackrf_input_validate_options(AppConfig* config);
 static bool hackrf_input_validate_generic_options(const AppConfig* config);
 
 static int hackrf_input_buffered_stream_callback(hackrf_transfer* transfer);
-
-
-static InputModuleInterface s_hackrf_input_api = {
-    .initialize = hackrf_input_initialize,
-    .push_samples_to_queue = hackrf_input_push_samples_to_queue,
-    .stop_sample_queue_push = hackrf_input_stop_sample_queue_push,
-    .cleanup = hackrf_input_cleanup,
-    .get_summary_info = hackrf_input_get_summary_info,
-    .validate_options = hackrf_input_validate_options,
-    .validate_generic_options = hackrf_input_validate_generic_options,
-    .pre_stream_iq_correction = NULL
-};
-
-InputModuleInterface* input_hackrf_get_module_api(void) {
-    return &s_hackrf_input_api;
-}
 
 static bool hackrf_input_validate_generic_options(const AppConfig* config) {
     if (!config->sdr_general.rf_freq_provided) {
@@ -158,7 +136,6 @@ static int hackrf_input_buffered_stream_callback(hackrf_transfer* transfer) {
 
     return 0;
 }
-
 
 static void hackrf_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
     const AppConfig *config = context->config;
@@ -249,7 +226,6 @@ static bool hackrf_input_initialize(ModuleContext* context) {
     app->module.source_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
     app->module.source_info.frames = -1;
 
-
     success = true;
 
 cleanup:
@@ -319,4 +295,20 @@ static void hackrf_input_cleanup(ModuleContext* context) {
     }
     log_debug("Exiting HackRF library...");
     hackrf_exit();
+}
+
+// --- The InputModuleInterface V-Table ---
+static InputModuleInterface s_hackrf_input_api = {
+    .initialize = hackrf_input_initialize,
+    .push_samples_to_queue = hackrf_input_push_samples_to_queue,
+    .stop_sample_queue_push = hackrf_input_stop_sample_queue_push,
+    .cleanup = hackrf_input_cleanup,
+    .get_summary_info = hackrf_input_get_summary_info,
+    .validate_options = hackrf_input_validate_options,
+    .validate_generic_options = hackrf_input_validate_generic_options,
+    .pre_stream_iq_correction = NULL
+};
+
+InputModuleInterface* input_hackrf_get_module_api(void) {
+    return &s_hackrf_input_api;
 }

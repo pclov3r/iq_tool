@@ -221,28 +221,10 @@ void spyserver_client_set_default_config(struct AppConfig* config) {
 
 // --- Function Prototypes ---
 static void* spyserver_client_input_producer_thread(void* arg);
-static bool spyserver_client_input_initialize(ModuleContext* context);
-static void* spyserver_client_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
-static void spyserver_client_input_stop_sample_queue_push(ModuleContext* context);
-static void spyserver_client_input_cleanup(ModuleContext* context);
 static void spyserver_client_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool spyserver_client_input_validate_options(AppConfig* config);
 
 // --- The InputModuleInterface V-Table ---
-static InputModuleInterface s_spyserver_client_input_api = {
-    .initialize = spyserver_client_input_initialize,
-    .push_samples_to_queue = spyserver_client_input_push_samples_to_queue,
-    .stop_sample_queue_push = spyserver_client_input_stop_sample_queue_push,
-    .cleanup = spyserver_client_input_cleanup,
-    .get_summary_info = spyserver_client_input_get_summary_info,
-    .validate_options = spyserver_client_input_validate_options,
-    .validate_generic_options = NULL,
-    .pre_stream_iq_correction = NULL
-};
-
-InputModuleInterface* input_spyserver_client_get_module_api(void) {
-    return &s_spyserver_client_input_api;
-}
 
 // --- Helper Functions for Protocol and Logic ---
 
@@ -337,8 +319,6 @@ static bool spyserver_client_input_initialize(ModuleContext* context) {
         log_error("SpyServer client failed because the networking module could not be initialized.");
         return false;
     }
-
-
 
     client->net_context = networking_connect(s_spyserver_client_config.hostname, s_spyserver_client_config.port, &app->pipeline.setup_arena);
     if (!client->net_context) {
@@ -594,7 +574,6 @@ static bool spyserver_client_input_initialize(ModuleContext* context) {
     }
 
     log_info("Initialization successful.");
-
 
     return true;
 }
@@ -854,4 +833,20 @@ static void spyserver_client_input_get_summary_info(const ModuleContext* context
             add_summary_item(info, "Gain", "Automatic (AGC)");
         }
     }
+}
+
+// --- The InputModuleInterface V-Table ---
+static InputModuleInterface s_spyserver_client_input_api = {
+    .initialize = spyserver_client_input_initialize,
+    .push_samples_to_queue = spyserver_client_input_push_samples_to_queue,
+    .stop_sample_queue_push = spyserver_client_input_stop_sample_queue_push,
+    .cleanup = spyserver_client_input_cleanup,
+    .get_summary_info = spyserver_client_input_get_summary_info,
+    .validate_options = spyserver_client_input_validate_options,
+    .validate_generic_options = NULL,
+    .pre_stream_iq_correction = NULL
+};
+
+InputModuleInterface* input_spyserver_client_get_module_api(void) {
+    return &s_spyserver_client_input_api;
 }

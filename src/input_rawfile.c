@@ -29,7 +29,6 @@
 #define strcasecmp _stricmp
 #endif
 
-
 static struct {
     double sample_rate_hz;
     float raw_file_sample_rate_hz_arg;
@@ -64,30 +63,9 @@ const struct argparse_option* rawfile_input_get_cli_options(int* count) {
     return rawfile_input_cli_options;
 }
 
-static bool rawfile_input_initialize(ModuleContext* context);
-static void* rawfile_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context);
-static size_t rawfile_input_read_chunk(ModuleContext* context, void* buffer, size_t bytes_to_read);
-static void rawfile_input_stop_sample_queue_push(ModuleContext* context);
-static void rawfile_input_cleanup(ModuleContext* context);
 static void rawfile_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
 static bool rawfile_input_validate_options(AppConfig* config);
 static bool rawfile_input_pre_stream_iq_correction(ModuleContext* context);
-
-static InputModuleInterface s_rawfile_input_api = {
-    .initialize = rawfile_input_initialize,
-    .push_samples_to_queue = rawfile_input_push_samples_to_queue,
-    .read_chunk = rawfile_input_read_chunk,
-    .stop_sample_queue_push = rawfile_input_stop_sample_queue_push,
-    .cleanup = rawfile_input_cleanup,
-    .get_summary_info = rawfile_input_get_summary_info,
-    .validate_options = rawfile_input_validate_options,
-    .validate_generic_options = NULL,
-    .pre_stream_iq_correction = rawfile_input_pre_stream_iq_correction,
-};
-
-InputModuleInterface* input_rawfile_get_module_api(void) {
-    return &s_rawfile_input_api;
-}
 
 static bool rawfile_input_validate_options(AppConfig* config) {
     (void)config;
@@ -171,7 +149,6 @@ static bool rawfile_input_initialize(ModuleContext* context) {
     sf_command(private_data->infile, SFC_GET_CURRENT_SF_INFO, &sfinfo, sizeof(sfinfo));
     app->module.source_info.sample_rate = sfinfo.samplerate;
     app->module.source_info.frames = sfinfo.frames;
-
 
     return true;
 }
@@ -280,4 +257,21 @@ static bool rawfile_input_pre_stream_iq_correction(ModuleContext* context) {
         return false;
     }
     return result;
+}
+
+// --- The InputModuleInterface V-Table ---
+static InputModuleInterface s_rawfile_input_api = {
+    .initialize = rawfile_input_initialize,
+    .push_samples_to_queue = rawfile_input_push_samples_to_queue,
+    .read_chunk = rawfile_input_read_chunk,
+    .stop_sample_queue_push = rawfile_input_stop_sample_queue_push,
+    .cleanup = rawfile_input_cleanup,
+    .get_summary_info = rawfile_input_get_summary_info,
+    .validate_options = rawfile_input_validate_options,
+    .validate_generic_options = NULL,
+    .pre_stream_iq_correction = rawfile_input_pre_stream_iq_correction,
+};
+
+InputModuleInterface* input_rawfile_get_module_api(void) {
+    return &s_rawfile_input_api;
 }
