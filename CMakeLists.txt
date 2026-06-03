@@ -158,6 +158,7 @@ endif()
 include_directories(include)
 include_directories(external/log.c)
 include_directories(external/miniaudio)
+include_directories(external/argparse)
 include_directories(${SndFile_INCLUDE_DIRS})
 include_directories(${LiquidDSP_INCLUDE_DIRS})
 include_directories(${Expat_INCLUDE_DIRS})
@@ -196,7 +197,7 @@ set(NETWORK_SOURCES
 )
 
 set(OTHER_SOURCES
-    src/argparse.c
+    external/argparse/argparse.c
     src/audio_output_functions.c
     src/cli.c
     src/config.c
