@@ -73,5 +73,4 @@ void request_shutdown(void);
  */
 void handle_fatal_thread_error(const char* context_msg, AppContext* app);
 
-
 #endif // SIGNAL_HANDLER_H_

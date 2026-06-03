@@ -71,5 +71,4 @@ typedef enum {
     PIPELINE_MODE_SYNCHRONOUS_PULL
 } PipelineMode;
 
-
 #endif // COMMON_TYPES_H_

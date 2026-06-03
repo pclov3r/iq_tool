@@ -272,7 +272,6 @@ static bool init_input_source(AppConfig *config, AppContext* app) {
     app->module.input_api = (InputModuleInterface*)selected_input_module->api;
     app->pipeline_mode = selected_input_module->pipeline_mode;
 
-
     log_info("Initializing the '%s' input module...", config->input.type_name);
     return app->module.input_api->initialize(&context);
 }
@@ -311,7 +310,6 @@ static void close_output_module(AppConfig *config, AppContext* app) {
         app->module.output_api->cleanup(&context);
     }
 }
-
 
 // --- Static Helper Function Definitions ---
 
@@ -389,7 +387,6 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
 
     fprintf(stderr, " %-*s : %s\n", max_label_len, "I/Q Correction", config->dsp.iq_correction.enable ? "Enabled" : "Disabled");
     fprintf(stderr, " %-*s : %s\n", max_label_len, "DC Block", config->dsp.dc_block.enable ? "Enabled" : "Disabled");
-
 
     fprintf(stderr, "--- Output Details ---\n");
     if (app->module.output_api && app->module.output_api->get_summary_info) {

@@ -87,7 +87,7 @@ NetworkingContext* networking_connect(const char* hostname, int port, struct Mem
         log_fatal("networking_connect called with a NULL memory arena.");
         return NULL;
     }
- 
+
     // This function acts as the gatekeeper, ensuring the subsystem is ready.
     if (!networking_init()) {
         log_error("Cannot connect because networking subsystem failed to initialize.");
@@ -179,7 +179,7 @@ NetworkingContext* networking_connect(const char* hostname, int port, struct Mem
 
 void networking_disconnect(NetworkingContext* context) {
     if (!context) return;
-    
+
     // We explicitly log this so that if the application hangs here, the user knows it's a socket timeout/deadlock issue.
     log_info("Closing network connection...");
 #ifdef _WIN32

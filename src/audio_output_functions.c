@@ -195,7 +195,7 @@ void audio_output_drain(AudioOutputContext* context) {
     while (true) {
         size_t curr_size = ring_buffer_get_size(context->audio_ring_buffer);
         if (curr_size == 0) break; // Success
-        
+
         // Stall Detection
         if (curr_size == last_size) {
             stall_count++;

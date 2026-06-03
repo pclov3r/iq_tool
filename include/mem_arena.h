@@ -21,7 +21,6 @@ typedef struct MemoryArena {
     atomic_size_t offset;      ///< C11 Atomic offset for wait-free allocations.
 } MemoryArena;
 
-
 // --- Function Declarations ---
 
 /**

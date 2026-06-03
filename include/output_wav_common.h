@@ -29,7 +29,6 @@ typedef struct {
     long long total_bytes_written;
 } WavCommonContext;
 
-
 // --- Shared Function Declarations ---
 
 /**

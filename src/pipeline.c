@@ -55,7 +55,6 @@ static void _destroy_queues_and_buffers(AppContext* app);
 static bool _create_dsp_components(AppConfig* config, AppContext* app, float resample_ratio);
 static void _destroy_dsp_components(AppContext* app);
 
-
 /**
  * @brief Creates, runs, and waits for the entire processing pipeline to complete.
  *
@@ -463,10 +462,10 @@ static bool _init_queues_and_buffers(AppConfig* config, AppContext* app) {
     if (config->dsp.iq_correction.enable) {
         app->pipeline.iq_estimation_data_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
         if (!queue_init(app->pipeline.iq_estimation_data_queue, queue_capacity, arena)) return false;
-        
+
         app->pipeline.iq_estimation_free_queue = (Queue*)mem_arena_alloc(arena, sizeof(Queue), true);
         if (!queue_init(app->pipeline.iq_estimation_free_queue, queue_capacity, arena)) return false;
-        
+
         for (int i = 0; i < 16; i++) {
             void* buffer = mem_arena_alloc(arena, 4096 * sizeof(ComplexFloat), false); // 4096 is IQ_CORRECTION_FFT_SIZE
             queue_enqueue(app->pipeline.iq_estimation_free_queue, buffer);

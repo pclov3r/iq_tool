@@ -180,7 +180,6 @@ bool utility_check_file_exists(const char* full_path) {
     return false;
 }
 
-
 bool utility_prompt_for_overwrite(const char* path_for_messages) {
     fprintf(stderr, "\nOutput file %s exists.\nOverwrite? (y/n): ", path_for_messages);
     int response = getchar();
@@ -207,11 +206,11 @@ bool utility_verify_output_path(const AppConfig* config, const char* out_path_ut
         MultiByteToWideChar(CP_UTF8, 0, out_path_utf8, -1, wide_path, MAX_PATH);
         attrs = GetFileAttributesW(wide_path);
     }
-    
+
     if (attrs != INVALID_FILE_ATTRIBUTES) {
-        if (attrs & FILE_ATTRIBUTE_DIRECTORY) { 
-            log_error("Output path '%s' is a directory. Aborting.", out_path_utf8); 
-            return false; 
+        if (attrs & FILE_ATTRIBUTE_DIRECTORY) {
+            log_error("Output path '%s' is a directory. Aborting.", out_path_utf8);
+            return false;
         }
         // Windows doesn't have FIFOs or S_ISCHR in the same way, prompt for any existing file
         if (!utility_prompt_for_overwrite(out_path_utf8)) {
@@ -223,11 +222,11 @@ bool utility_verify_output_path(const AppConfig* config, const char* out_path_ut
     struct stat stat_buf;
     if (lstat(out_path_utf8, &stat_buf) == 0) {
         // Explicitly reject directories
-        if (S_ISDIR(stat_buf.st_mode)) { 
-            log_error("Output path '%s' is a directory. Aborting.", out_path_utf8); 
-            return false; 
+        if (S_ISDIR(stat_buf.st_mode)) {
+            log_error("Output path '%s' is a directory. Aborting.", out_path_utf8);
+            return false;
         }
-        
+
         // Only trigger the interactive overwrite prompt if it's a regular file.
         // This allows /dev/null (S_ISCHR) and FIFOs (S_ISFIFO) to stream seamlessly
         if (S_ISREG(stat_buf.st_mode)) {

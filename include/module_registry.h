@@ -40,7 +40,6 @@ typedef struct Module {
     float default_filter_attenuation_db;
 } Module;
 
-
 // --- Function Declarations ---
 
 /**

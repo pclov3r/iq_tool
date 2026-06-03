@@ -99,5 +99,4 @@ void* queue_try_dequeue(Queue* queue);
  */
 void queue_signal_shutdown(Queue* queue);
 
-
 #endif // QUEUE_H_

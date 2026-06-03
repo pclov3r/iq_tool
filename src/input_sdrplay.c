@@ -826,6 +826,8 @@ cleanup:
     return success;
 }
 
+static void sdrplay_input_stop_sample_queue_push(ModuleContext* context);
+
 static void* sdrplay_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     context->app->module.queue_samples = queue_samples;
     context->app->module.pipeline_context = pipeline_context;

@@ -103,7 +103,6 @@ static bool stdin_input_initialize(ModuleContext* context) {
     app->module.source_info.sample_rate = (int)s_stdin_config.sample_rate_hz;
     app->module.source_info.frames = -1;
 
-
     log_info("Reading raw I/Q data from standard input (stdin)...");
     return true;
 }

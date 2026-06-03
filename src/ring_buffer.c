@@ -106,7 +106,7 @@ RingBuffer* ring_buffer_create(size_t capacity, MemoryArena* arena) {
 
 void ring_buffer_destroy(RingBuffer* iob) {
     if (!iob) return;
-    
+
     pthread_mutex_destroy(&iob->sync_mutex);
     pthread_cond_destroy(&iob->space_free_cond);
 
@@ -353,7 +353,7 @@ void ring_buffer_clear(RingBuffer* iob) {
     if (!iob) return;
     atomic_store_explicit(&iob->read_pos, 0, memory_order_release);
     atomic_store_explicit(&iob->write_pos, 0, memory_order_release);
-    
+
     pthread_mutex_lock(&iob->sync_mutex);
     pthread_cond_broadcast(&iob->space_free_cond);
     pthread_mutex_unlock(&iob->sync_mutex);

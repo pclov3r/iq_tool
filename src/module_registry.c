@@ -364,7 +364,6 @@ void module_populate_cli_options(
 
                 memcpy(&dest_buffer[*total_opts_ptr], opts, count * sizeof(struct argparse_option));
 
-
                 // Allocate our warning context once
                 InactiveWarningContext* warning_context = (InactiveWarningContext*)mem_arena_alloc(arena, sizeof(InactiveWarningContext), true);
                 if (warning_context) {

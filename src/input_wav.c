@@ -716,7 +716,6 @@ static bool wav_input_initialize(ModuleContext* context) {
         app->dsp.nco_shift_hz = private_data->sdr_info.center_freq_hz - target_freq;
     }
 
-
     return true;
 }
 

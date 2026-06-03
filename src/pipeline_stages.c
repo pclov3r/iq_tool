@@ -40,10 +40,10 @@ static bool pipeline_queue_samples(void* context, const void* data, size_t num_s
     if (!packet_serializer_write_block(app->pipeline.source_input_buffer, num_samples, data, format)) {
         static double last_drop_log_time = 0.0;
         static size_t accumulated_drops = 0;
-        
+
         accumulated_drops += num_samples;
         double current_time = utility_get_time();
-        
+
         if (current_time - last_drop_log_time >= CONSOLE_UPDATE_INTERVAL_SEC) {
             log_warn("Pipeline input overrun! Dropped %zu samples.", accumulated_drops);
             accumulated_drops = 0;

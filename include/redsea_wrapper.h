@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-// Opaque handle to the C++ object. 
+// Opaque handle to the C++ object.
 // The C compiler knows this pointer exists but cannot see inside it.
 typedef struct RDSContext_T* RedseaHandle;
 
@@ -29,12 +29,12 @@ typedef struct {
     char radiotext[65];     // RadioText (e.g. "Song Title...") - 64 chars + null
     char program_type[17];  // PTY Category (e.g. "Sport") - 16 chars + null
     char pty_name[9];       // NEW: PTY Name (e.g. "Football") - 8 chars + null
-    
+
     // Flags
     bool is_music;          // True = Music, False = Speech
     bool tp;                // Traffic Program (Station carries traffic info)
     bool ta;                // Traffic Announcement (Traffic info is currently broadcasting)
-    
+
     // Decoder Identification (DI) Flags
     bool stereo;            // Station broadcasting in Stereo
     bool compressed;        // Audio is compressed
@@ -54,7 +54,7 @@ typedef struct {
 
 /**
  * @brief Initialize a new Redsea decoder instance.
- * 
+ *
  * @param sample_rate The sample rate of the MPX input buffer (e.g. 240000.0f)
  * @param is_rbds Set to true for North American RBDS (Callsigns, US PTYs). False for World RDS.
  * @param show_partial Set to true to display PS/RT text even if incomplete/noisy.
@@ -64,14 +64,14 @@ RedseaHandle redsea_init(float sample_rate, bool is_rbds, bool show_partial);
 
 /**
  * @brief Free the Redsea decoder instance.
- * 
+ *
  * @param context The handle to free. Safe to call with NULL.
  */
 void redsea_free(RedseaHandle context);
 
 /**
  * @brief Process a chunk of raw MPX audio and retrieve the latest state.
- * 
+ *
  * @param context The decoder handle.
  * @param mpx_data Pointer to the float array containing raw MPX samples.
  * @param num_samples Number of samples in the buffer.

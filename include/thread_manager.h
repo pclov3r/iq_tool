@@ -28,7 +28,6 @@ typedef struct {
     void*     thread_context; // A generic context pointer to pass to all threads.
 } ThreadManager;
 
-
 // --- Function Declarations ---
 
 /**

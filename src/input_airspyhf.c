@@ -145,7 +145,7 @@ static bool airspyhf_input_validate_options(AppConfig* config) {
     }
 
     // Warn if both AGC and manual attenuation are specified
-    if (s_airspyhf_config.agc_mode_provided && 
+    if (s_airspyhf_config.agc_mode_provided &&
         strcasecmp(s_airspyhf_config.agc_mode, "off") != 0 &&
         s_airspyhf_config.attenuation_provided) {
         log_warn("Both AGC and manual attenuation specified. Manual attenuation will be ignored when AGC is active.");
@@ -403,6 +403,8 @@ cleanup:
     }
     return success;
 }
+
+static void airspyhf_input_stop_sample_queue_push(ModuleContext* context);
 
 static void* airspyhf_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     context->app->module.queue_samples = queue_samples;

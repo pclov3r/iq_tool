@@ -44,7 +44,6 @@ struct SampleChunk;
  */
 #define PACKET_FLAG_STREAM_RESET (1 << 0)
 
-
 // --- Data Structures ---
 
 /**
@@ -80,7 +79,6 @@ typedef struct {
     SampleFormat current_packet_format;       ///< The sample format of the current packet.
 } SerializerState;
 
-
 // --- Serialization Functions (Writing to the Stream) ---
 
 /**
@@ -108,7 +106,6 @@ bool packet_serializer_write_block(struct RingBuffer* buffer, uint32_t num_sampl
  * @return true if written, false if buffer full.
  */
 bool packet_serializer_write_reset_event(struct RingBuffer* buffer);
-
 
 // --- Deserialization Function (Reading from the Stream) ---
 

@@ -54,5 +54,4 @@ void resampler_reset(Resampler* resampler);
  */
 void resampler_execute(Resampler* resampler, ComplexFloat* input, unsigned int num_input_frames, ComplexFloat* output, unsigned int* num_output_frames);
 
-
 #endif // RESAMPLER_H_

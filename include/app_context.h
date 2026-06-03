@@ -144,7 +144,6 @@ typedef struct AppConfig {
     int               num_presets;
 } AppConfig;
 
-
 // =========================================================
 // == PART 2: RUNTIME CONTEXTS (Dynamic State)
 // =========================================================
@@ -248,7 +247,6 @@ typedef struct DspContext {
 // --- 4. Runtime Context (Metrics & Telemetry) ---
 typedef void (*ProgressUpdateFn)(unsigned long long current_output_frames, long long total_output_frames, unsigned long long current_bytes_written, void* udata);
 
-
 typedef struct RuntimeState {
 
     _Atomic double last_source_heartbeat_time;
@@ -269,7 +267,7 @@ typedef struct RuntimeState {
 // == The Main Container (formerly AppResources)
 // =========================================================
 typedef struct AppContext {
-    const struct AppConfig* config; 
+    const struct AppConfig* config;
 
     PipelineInfrastructure pipeline;
     DspContext             dsp;

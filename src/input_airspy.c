@@ -274,7 +274,7 @@ static int airspy_input_buffered_stream_callback(airspy_transfer* transfer) {
             // Real (non-IQ) sample formats are not supported by our pipeline
             handle_fatal_thread_error("Airspy real-only sample format not supported. Pipeline requires I/Q samples.", app);
             return -1;
-            
+
         default:
             handle_fatal_thread_error("Airspy unknown sample type received.", app);
             return -1;
@@ -454,12 +454,12 @@ static bool airspy_input_initialize(ModuleContext* context) {
             log_warn("Failed to enable packing mode: %s (%d)", airspy_error_name(result), result);
         } else {
             // FORCE format to CS16 if packing enabled, even if user asked for CF32.
-            if (s_airspy_config.sample_format_provided && 
+            if (s_airspy_config.sample_format_provided &&
                 strcasecmp(s_airspy_config.sample_format, "cf32") == 0) {
                 log_warn("Airspy Packing enabled: Overriding sample format to CS16 (Packed mode does not support Float).");
             }
             app->module.input_format = CS16;
-            
+
             // When packing is enabled, we MUST force the sample type to INT16_IQ.
             // This tells the library to unpack the raw 12-bit data into 16-bit integers for us.
             private_data->sample_type = AIRSPY_SAMPLE_INT16_IQ;
@@ -568,6 +568,8 @@ cleanup:
     }
     return success;
 }
+
+static void airspy_input_stop_sample_queue_push(ModuleContext* context);
 
 static void* airspy_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     context->app->module.queue_samples = queue_samples;

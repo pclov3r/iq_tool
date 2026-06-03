@@ -34,7 +34,6 @@ struct AppContext;
 struct InputSummaryInfo;
 struct ModuleContext;
 
-
 // --- Data Structures ---
 
 /**
@@ -73,7 +72,6 @@ typedef struct ModuleContext {
     const struct AppConfig* config;
     struct AppContext*      app;
 } ModuleContext;
-
 
 // --- The Core Interface Definition ---
 
@@ -143,7 +141,6 @@ typedef struct InputModuleInterface {
      */
     bool (*validate_generic_options)(const struct AppConfig* config);
 
-
     // Optional function for file-based sources to perform initial I/Q correction.
     bool (*pre_stream_iq_correction)(struct ModuleContext* context);
 
@@ -183,6 +180,5 @@ typedef struct OutputModuleInterface {
     void (*get_summary_info)(const ModuleContext* context, OutputSummaryInfo* info);
     void (*on_keypress)(ModuleContext* context, int key);
 } OutputModuleInterface;
-
 
 #endif // MODULE_H_

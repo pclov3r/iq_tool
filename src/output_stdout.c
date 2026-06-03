@@ -43,8 +43,6 @@ static bool stdout_output_initialize(ModuleContext* context) {
     return true;
 }
 
-
-
 static size_t stdout_output_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write) {
     AppContext* app = context->app;
     StdoutContext* data = (StdoutContext*)app->module.output_private_data;

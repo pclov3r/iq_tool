@@ -70,7 +70,6 @@
 // Timeout (seconds). Force fallback to Envelope if unlocked for this long.
 #define AM_LOCK_TIMEOUT_SEC     3
 
-
 // --- Internal Structures ---
 
 typedef struct {
@@ -232,11 +231,8 @@ static bool am_output_initialize(ModuleContext* context) {
 
     if (!p->mono_buffer || !p->resamp_buffer || !p->interleaved_pcm) return false;
 
-    
-
     return true;
 }
-
 
 static void am_output_reset(ModuleContext* context) { (void)context; /* TODO: Reset PLL state */ }
 static void am_output_flush(ModuleContext* context) {
@@ -247,15 +243,13 @@ static size_t am_output_write_chunk(ModuleContext* context, const void* buffer, 
     AppContext* res = context->app;
     AmContext* p = (AmContext*)res->module.output_private_data;
 
-    
-
     const float pcm_scale = 32767.0f;
 
     static size_t stat_counter = 0;
     static double accum_mag_sq_sum = 0.0, accum_phase_err_sq_sum = 0.0, accum_carrier_freq_sum = 0.0;
     static double accum_carrier_strength_sum = 0.0, accum_inphase_sum = 0.0;
     static size_t accum_pll_count = 0;
-    
+
     static size_t stat_threshold = 0;
     static size_t pll_lock_samples = 0;
     static bool _first_run = true;
@@ -343,7 +337,6 @@ static size_t am_output_write_chunk(ModuleContext* context, const void* buffer, 
     audio_output_write(p->audio_out, p->interleaved_pcm, num_resampled * 2 * sizeof(int16_t), res->pipeline_mode);
     return input_bytes;
 }
-
 
 static void am_output_cleanup(ModuleContext* context) {
     AppContext* res = context->app;

@@ -52,6 +52,6 @@ void post_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
 
 void post_processor_reset(DspContext* dsp) {
     frequency_shift_reset_nco(dsp->post_resample_nco);
-    filter_reset(dsp); 
-    agc_reset(dsp);    
+    filter_reset(dsp);
+    agc_reset(dsp);
 }

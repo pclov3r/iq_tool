@@ -28,7 +28,6 @@
         app->dsp.filter.object = (struct liquid_filter_s*)prefix##_crcf_create(final_real_taps, master_taps_len, ##__VA_ARGS__); \
     } while (0)
 
-
 // --- Static Helper Functions ---
 
 /**

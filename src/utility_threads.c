@@ -22,7 +22,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-
 /**
  * @brief The I/Q optimization thread's main function.
  *

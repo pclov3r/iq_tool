@@ -12,7 +12,6 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-
 bool dc_block_create(AppConfig* config, AppContext* app) {
     if (!config->dsp.dc_block.enable) {
         app->dsp.dc_block.dc_block_filter = NULL; // Ensure no filter if disabled
@@ -61,7 +60,6 @@ bool dc_block_create(AppConfig* config, AppContext* app) {
 
     log_info("DC Block enabled");
     log_debug("DC Block: Initialized with normalized_alpha = %.6f", normalized_alpha);
-
 
     return true;
 }

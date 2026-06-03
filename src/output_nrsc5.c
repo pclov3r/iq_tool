@@ -476,7 +476,6 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
     }
 }
 
-
 // --- Helper: dBFS Calculation ---
 static double calculate_buffer_power(const void* buffer, unsigned int frames, Nrsc5Mode mode) {
     double accum_mag_sq_sum = 0.0;
@@ -561,8 +560,6 @@ static bool nrsc5_output_initialize(ModuleContext* context) {
     // Start Decoder Thread
     log_debug("NRSC5: Starting decoder thread...");
     nrsc5_start(nrsc5_decoder->nrsc5_inst);
-
-
 
         if (s_nrsc5_config.aas_dir_arg) {
         struct stat st;

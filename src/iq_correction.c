@@ -171,8 +171,6 @@ bool iq_correction_init(AppConfig* config, AppContext* app, MemoryArena* arena) 
         return true;
     }
 
-
-
     // Allocate internal state
     IqState* st = (IqState*)mem_arena_alloc(arena, sizeof(IqState), true);
     if (!st) return false;
@@ -315,7 +313,7 @@ void iq_correction_destroy(AppContext* app) {
     }
 }
 
-bool iq_correction_run_initial_calibration(ModuleContext* context, void* raw_buffer, size_t num_bytes, 
+bool iq_correction_run_initial_calibration(ModuleContext* context, void* raw_buffer, size_t num_bytes,
                                            size_t (*read_cb)(void* user_data, void* buffer, size_t bytes), void* user_data) {
     AppContext* app = context->app;
 
@@ -341,10 +339,10 @@ bool iq_correction_run_initial_calibration(ModuleContext* context, void* raw_buf
     for(int i=0; i<64; i++) {
         size_t bytes_read = read_cb(user_data, raw_buffer, num_bytes);
         if (bytes_read < num_bytes) break;
-        
+
         temp_chunk.frames_read = IQ_CORRECTION_FFT_SIZE;
         pre_processor_apply_chain(&app->dsp, &temp_chunk);
-        
+
         iq_correction_run_estimation(&app->dsp, temp_chunk.pre_resample_buffer);
         app->dsp.iq_correct.last_optimization_time = 0.0;
     }

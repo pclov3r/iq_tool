@@ -155,11 +155,8 @@ static bool nfm_output_initialize(ModuleContext* context) {
     p->resamp_buffer = mem_arena_alloc(&res->pipeline.setup_arena, out_samples * sizeof(float), false);
     p->pcm_out       = mem_arena_alloc(&res->pipeline.setup_arena, out_samples * 2 * sizeof(int16_t), false);
 
-
-
     return true;
 }
-
 
 static void nfm_output_reset(ModuleContext* context) { (void)context; }
 static void nfm_output_flush(ModuleContext* context) {
@@ -237,8 +234,8 @@ static size_t nfm_output_write_chunk(ModuleContext* context, const void* buffer,
             double mean_mag = accum_mag_sum / (double)stat_counter;
             float snr_db = 10.0f * log10f((float)((mean_mag*mean_mag) / fmax(1e-12, avg_power - (mean_mag*mean_mag))));
             log_info("dBFS: %5.1f | SNR: %4.1f dB | Squelch: OPEN", dbfs, snr_db);
-        } else { 
-            log_info("dBFS: %5.1f | Squelch: CLOSED", dbfs); 
+        } else {
+            log_info("dBFS: %5.1f | Squelch: CLOSED", dbfs);
         }
         stat_counter = 0; accum_mag_sum = 0.0; accum_mag_sq_sum = 0.0;
     }
@@ -261,7 +258,7 @@ static size_t nfm_output_write_chunk(ModuleContext* context, const void* buffer,
     msresamp_rrrf_execute(p->resampler, p->mono_buffer, n, p->resamp_buffer, &num_resampled);
     sample_convert_interleave_f32_to_s16(p->resamp_buffer, p->resamp_buffer, p->pcm_out, num_resampled);
     audio_output_write(p->audio_out, p->pcm_out, num_resampled * 2 * sizeof(int16_t), res->pipeline_mode);
-    
+
     return input_bytes;
 }
 

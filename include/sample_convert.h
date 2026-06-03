@@ -18,7 +18,6 @@
  * @return The size in bytes, or 0 for unknown formats.
  */
 
-
 /**
  * @brief Converts a block of samples from a source format to complex float (cf32).
  *
@@ -74,7 +73,6 @@ void sample_convert_interleave_s16(const int16_t* restrict i_plane, const int16_
  * @brief Interleaves 16-bit unsigned planar data into an interleaved buffer.
  */
 void sample_convert_interleave_u16(const uint16_t* restrict i_plane, const uint16_t* restrict q_plane, uint16_t* restrict interleaved_out, size_t num_samples);
-
 
 // --- Float to Integer Interleavers (Output: Float -> Integer) ---
 // These functions are used by DSP modules (e.g., WFM) to pack internal floating-point
