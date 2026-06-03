@@ -156,6 +156,8 @@ endif()
 # Sources
 #=======================================================================
 include_directories(include)
+include_directories(external/log.c)
+include_directories(external/miniaudio)
 include_directories(${SndFile_INCLUDE_DIRS})
 include_directories(${LiquidDSP_INCLUDE_DIRS})
 include_directories(${Expat_INCLUDE_DIRS})
@@ -201,10 +203,10 @@ set(OTHER_SOURCES
     src/input_rawfile.c
     src/input_stdin.c
     src/input_wav.c
-    src/log.c
+    external/log.c/log.c
     src/main.c
     src/mem_arena.c
-    src/miniaudio.c
+    external/miniaudio/miniaudio.c
     src/module_registry.c
     src/networking.c
     src/output_directpipe.c
