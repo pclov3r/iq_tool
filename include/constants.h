@@ -142,8 +142,8 @@
 #define FILTER_MINIMUM_TAPS 21
 
 // Hard limit for auto-calculated filters. Prevents the auto-designer from
-// generating massive FFT blocks that blow out the L2 cache and pipeline buffers.
-#define FILTER_MAXIMUM_AUTO_TAPS 8192
+// The absolute maximum number of taps allowed when the engine auto-calculates filter length based on transition width.
+#define FILTER_MAXIMUM_AUTO_TAPS 65536
 
 // Used by initialization.c to budget memory when taps aren't explicitly defined.
 #define FILTER_SAFETY_DEFAULT_TAPS FILTER_MAXIMUM_AUTO_TAPS

@@ -90,6 +90,14 @@ static bool _configure_filter_stage(AppConfig *config, AppContext* app) {
     return true;
 }
 
+static inline void _normalize_filter_dc_gain(float* taps, unsigned int length) {
+    float sum = 0.0f;
+    for (unsigned int k = 0; k < length; k++) sum += taps[k];
+    if (sum != 0.0f) {
+        for (unsigned int k = 0; k < length; k++) taps[k] /= sum;
+    }
+}
+
 static inline void _invert_filter_spectrum(float* taps, unsigned int length) {
     for (unsigned int k = 0; k < length; k++) {
         taps[k] = -taps[k];
@@ -135,154 +143,132 @@ static liquid_float_complex* convolve_complex_taps(
     return result;
 }
 
-bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
-    bool success = false;
-    liquid_float_complex* master_taps = NULL;
+static liquid_float_complex* _generate_base_lowpass_taps(
+    unsigned int taps_len, float half_bw_norm, float attenuation_db, MemoryArena* arena)
+{
+    float* real_taps = (float*)mem_arena_alloc(arena, taps_len * sizeof(float), false);
+    if (!real_taps) return NULL;
+    liquid_firdes_kaiser(taps_len, half_bw_norm, attenuation_db, 0.0f, real_taps);
+    _normalize_filter_dc_gain(real_taps, taps_len);
 
-    app->dsp.filter.object = NULL;
-    app->dsp.filter.type_actual = FILTER_IMPL_NONE;
-    app->dsp.filter.block_size = 0;
-
-    if (config->dsp.filter.count == 0) {
-        return true;
+    liquid_float_complex* complex_taps = (liquid_float_complex*)mem_arena_alloc(arena, taps_len * sizeof(liquid_float_complex), false);
+    if (!complex_taps) return NULL;
+    for (unsigned int k = 0; k < taps_len; k++) {
+        complex_taps[k] = real_taps[k] + 0.0f * I;
     }
+    return complex_taps;
+}
 
-    // First, determine the optimal stage for the filter (pre/post resample).
-    if (!_configure_filter_stage(config, app)) {
-        goto cleanup;
+static void _apply_complex_nco_shift(
+    liquid_float_complex* taps, unsigned int taps_len, float fc_norm)
+{
+    nco_crcf shifter = nco_crcf_create(LIQUID_NCO);
+    nco_crcf_set_frequency(shifter, 2.0f * M_PI * fc_norm);
+
+    // Critical DSP Fix: Set initial phase so the center tap has 0 phase offset.
+    float m_idx = (float)(taps_len - 1) / 2.0f;
+    nco_crcf_set_phase(shifter, -(2.0f * M_PI * fc_norm) * m_idx);
+
+    for (unsigned int k = 0; k < taps_len; k++) {
+        liquid_float_complex shift_val;
+        nco_crcf_cexpf(shifter, &shift_val);
+        taps[k] *= shift_val;
+        nco_crcf_step(shifter);
     }
+    nco_crcf_destroy(shifter);
+}
 
-    int master_taps_len = 1;
-    master_taps = (liquid_float_complex*)mem_arena_alloc(arena, sizeof(liquid_float_complex), false);
-    if (!master_taps) goto cleanup;
+static void _invert_to_highpass_or_notch(liquid_float_complex* taps, unsigned int taps_len)
+{
+    for (unsigned int k = 0; k < taps_len; k++) {
+        taps[k] = -taps[k];
+    }
+    taps[(taps_len - 1) / 2] += 1.0f + 0.0f * I;
+}
+
+static liquid_float_complex* _compound_filter_stages(
+    AppConfig* config, double sample_rate, int* master_len, bool* out_is_complex, bool* out_norm_peak, MemoryArena* arena)
+{
+    int m_len = 1;
+    liquid_float_complex* master_taps = (liquid_float_complex*)mem_arena_alloc(arena, sizeof(liquid_float_complex), false);
+    if (!master_taps) return NULL;
     master_taps[0] = 1.0f + 0.0f * I;
 
-    double sample_rate_for_design = config->dsp.filter.apply_post_resample
-                                      ? config->output_sample_rate.rate_hz
-                                      : (double)app->module.source_info.sample_rate;
-
-    bool is_final_filter_complex = false;
-    bool normalize_by_peak = false;
-
-    log_info("Designing filter coefficients (this may be slow for large filters)...");
+    *out_is_complex = false;
+    *out_norm_peak = false;
 
     for (int i = 0; i < config->dsp.filter.count; ++i) {
-        FilterRequest adjusted_req = config->dsp.filter.requests[i];
-        const FilterRequest* req = &adjusted_req;
+        FilterRequest* req = &config->dsp.filter.requests[i];
 
         if (req->type != FILTER_TYPE_LOWPASS) {
-            normalize_by_peak = true;
+            *out_norm_peak = true;
         }
 
         unsigned int current_taps_len;
-        float default_filter_attenuation_db = config->dsp.filter.args.attenuation;
+        float atten = config->dsp.filter.args.attenuation;
 
         if (config->dsp.filter.args.taps > 0) {
             current_taps_len = (unsigned int)config->dsp.filter.args.taps;
+            if (current_taps_len % 2 == 0) current_taps_len++;
         } else {
-            float transition_width_hz;
-            if (config->dsp.filter.args.transition_width > 0.0f) {
-                transition_width_hz = config->dsp.filter.args.transition_width;
-            } else {
-                float reference_freq = (req->type == FILTER_TYPE_LOWPASS || req->type == FILTER_TYPE_HIGHPASS) ? req->freq1_hz : req->freq2_hz;
-                transition_width_hz = fabsf(reference_freq) * DEFAULT_FILTER_TRANSITION_FACTOR;
+            float tw_hz = config->dsp.filter.args.transition_width;
+            if (tw_hz <= 0.0f) {
+                float ref_freq = (req->type == FILTER_TYPE_LOWPASS || req->type == FILTER_TYPE_HIGHPASS) ? req->freq1_hz : req->freq2_hz;
+                tw_hz = fabsf(ref_freq) * DEFAULT_FILTER_TRANSITION_FACTOR;
             }
-            if (transition_width_hz < 1.0f) transition_width_hz = 1.0f;
-            float normalized_tw = transition_width_hz / (float)sample_rate_for_design;
-            current_taps_len = estimate_req_filter_len(normalized_tw, default_filter_attenuation_db);
+            if (tw_hz < 1.0f) tw_hz = 1.0f;
+            current_taps_len = estimate_req_filter_len(tw_hz / (float)sample_rate, atten);
             if (current_taps_len % 2 == 0) current_taps_len++;
             if (current_taps_len < FILTER_MINIMUM_TAPS) current_taps_len = FILTER_MINIMUM_TAPS;
 
-            // --- Protect L2 Cache & Pipeline Buffers ---
             if (current_taps_len > FILTER_MAXIMUM_AUTO_TAPS) {
-                log_warn("Auto-calculated filter requires %u taps (transition too sharp).", current_taps_len);
-                log_warn("Clamping to %d taps to protect CPU cache and pipeline stability.", FILTER_MAXIMUM_AUTO_TAPS);
+                log_warn("Clamping filter taps to %d", FILTER_MAXIMUM_AUTO_TAPS);
                 current_taps_len = FILTER_MAXIMUM_AUTO_TAPS;
             }
         }
 
-        liquid_float_complex* current_taps = (liquid_float_complex*)mem_arena_alloc(arena, current_taps_len * sizeof(liquid_float_complex), false);
-        if (!current_taps) goto cleanup;
+        bool is_complex = ((req->type == FILTER_TYPE_PASSBAND || req->type == FILTER_TYPE_STOPBAND) && fabsf(req->freq1_hz) > 1e-9f);
+        if (is_complex) *out_is_complex = true;
 
-        bool is_current_stage_complex = (req->type == FILTER_TYPE_PASSBAND && fabsf(req->freq1_hz) > 1e-9f);
-        if (is_current_stage_complex) {
-            is_final_filter_complex = true;
-        }
-
-        if (is_current_stage_complex) {
-            float* real_taps = (float*)mem_arena_alloc(arena, current_taps_len * sizeof(float), false);
-            if (!real_taps) goto cleanup;
-            float half_bw_norm = (req->freq2_hz / 2.0f) / (float)sample_rate_for_design;
-            liquid_firdes_kaiser(current_taps_len, half_bw_norm, default_filter_attenuation_db, 0.0f, real_taps);
-            float fc_norm = req->freq1_hz / (float)sample_rate_for_design;
-            nco_crcf shifter = nco_crcf_create(LIQUID_NCO);
-            nco_crcf_set_frequency(shifter, 2.0f * M_PI * fc_norm);
-            for (unsigned int k = 0; k < current_taps_len; k++) {
-                nco_crcf_cexpf(shifter, &current_taps[k]);
-                current_taps[k] *= real_taps[k];
-                nco_crcf_step(shifter);
-            }
-            nco_crcf_destroy(shifter);
+        float bw_norm = 0.0f;
+        if (req->type == FILTER_TYPE_LOWPASS || req->type == FILTER_TYPE_HIGHPASS) {
+            bw_norm = req->freq1_hz / (float)sample_rate;
         } else {
-            float* real_taps = (float*)mem_arena_alloc(arena, current_taps_len * sizeof(float), false);
-            if (!real_taps) goto cleanup;
-            float fc, bw;
-            switch (req->type) {
-                case FILTER_TYPE_LOWPASS:
-                    fc = req->freq1_hz / (float)sample_rate_for_design;
-                    liquid_firdes_kaiser(current_taps_len, fc, default_filter_attenuation_db, 0.0f, real_taps);
-                    break;
-                case FILTER_TYPE_HIGHPASS:
-                    fc = req->freq1_hz / (float)sample_rate_for_design;
-                    liquid_firdes_kaiser(current_taps_len, fc, default_filter_attenuation_db, 0.0f, real_taps);
-                    _invert_filter_spectrum(real_taps, current_taps_len);
-                    break;
-                case FILTER_TYPE_PASSBAND:
-                    bw = req->freq2_hz / (float)sample_rate_for_design;
-                    liquid_firdes_kaiser(current_taps_len, bw / 2.0f, default_filter_attenuation_db, 0.0f, real_taps);
-                    break;
-                case FILTER_TYPE_STOPBAND:
-                    bw = req->freq2_hz / (float)sample_rate_for_design;
-                    liquid_firdes_kaiser(current_taps_len, bw / 2.0f, default_filter_attenuation_db, 0.0f, real_taps);
-                    _invert_filter_spectrum(real_taps, current_taps_len);
-                    break;
-                default: break;
-            }
-            for (unsigned int k = 0; k < current_taps_len; k++) {
-                current_taps[k] = real_taps[k] + 0.0f * I;
-            }
+            bw_norm = (req->freq2_hz / 2.0f) / (float)sample_rate;
         }
 
-        int new_master_len;
-        liquid_float_complex* new_master_taps = convolve_complex_taps(master_taps, master_taps_len, current_taps, current_taps_len, &new_master_len, arena);
+        liquid_float_complex* current_taps = _generate_base_lowpass_taps(current_taps_len, bw_norm, atten, arena);
+        if (!current_taps) return NULL;
 
-        if (!new_master_taps) goto cleanup;
-
-        master_taps = new_master_taps;
-        master_taps_len = new_master_len;
-    }
-
-    log_info("Final combined filter requires %d taps.", master_taps_len);
-
-    for (int i = 0; i < config->dsp.filter.count; ++i) {
-        const FilterRequest* req = &config->dsp.filter.requests[i];
-        if (req->type == FILTER_TYPE_PASSBAND && fabsf(req->freq1_hz) > 1e-9f) {
-            is_final_filter_complex = true;
-            break;
+        if (is_complex) {
+            _apply_complex_nco_shift(current_taps, current_taps_len, req->freq1_hz / (float)sample_rate);
         }
+
+        if (req->type == FILTER_TYPE_HIGHPASS || req->type == FILTER_TYPE_STOPBAND) {
+            _invert_to_highpass_or_notch(current_taps, current_taps_len);
+        }
+
+        int new_len;
+        liquid_float_complex* new_master = convolve_complex_taps(master_taps, m_len, current_taps, current_taps_len, &new_len, arena);
+        if (!new_master) return NULL;
+
+        master_taps = new_master;
+        m_len = new_len;
     }
 
-    if (is_final_filter_complex) {
-        log_info("Asymmetric filter detected.");
-    }
+    *master_len = m_len;
+    return master_taps;
+}
 
+static struct liquid_filter_s* _compile_filter_object(
+    AppConfig* config, AppContext* app, liquid_float_complex* master_taps, int master_taps_len, bool is_final_filter_complex, bool normalize_by_peak, MemoryArena* arena)
+{
     if (normalize_by_peak || is_final_filter_complex) {
         log_info("Normalizing filter gain (this may be slow for large filters)...");
         float max_mag = 0.0f;
         firfilt_cccf temp_filter = firfilt_cccf_create(master_taps, master_taps_len);
         if (temp_filter) {
             liquid_float_complex H;
-            // Dense sweep to capture the exact peak of any compounding Kaiser ripple
             for (int i = 0; i < FILTER_FREQ_RESPONSE_POINTS; i++) {
                 float freq = ((float)i / (float)FILTER_FREQ_RESPONSE_POINTS) - 0.5f;
                 firfilt_cccf_freqresponse(temp_filter, freq, &H);
@@ -292,16 +278,12 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
             firfilt_cccf_destroy(temp_filter);
         }
         if (max_mag > FILTER_GAIN_ZERO_THRESHOLD) {
-            log_debug("Normalizing filter taps by peak gain factor of %f.", max_mag);
             for (int i = 0; i < master_taps_len; i++) master_taps[i] /= max_mag;
         }
     } else {
         double gain_correction = 0.0;
-        for (int i = 0; i < master_taps_len; i++) {
-            gain_correction += crealf(master_taps[i]);
-        }
+        for (int i = 0; i < master_taps_len; i++) gain_correction += crealf(master_taps[i]);
         if (fabs(gain_correction) > FILTER_GAIN_ZERO_THRESHOLD) {
-            log_debug("Normalizing filter taps by DC gain factor of %f.", gain_correction);
             for (int i = 0; i < master_taps_len; i++) master_taps[i] /= (float)gain_correction;
         }
     }
@@ -310,112 +292,85 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
     if (config->dsp.filter.args.type_str != NULL) {
         final_choice = config->dsp.filter.type_req;
     } else {
-        if (is_final_filter_complex) {
-            log_info("Automatically choosing efficient FFT method by default.");
-            final_choice = FILTER_TYPE_FFT;
-        } else {
-            log_info("Symmetric filter detected. Using default low-latency FIR method.");
-            final_choice = FILTER_TYPE_FIR;
-        }
+        final_choice = is_final_filter_complex ? FILTER_TYPE_FFT : FILTER_TYPE_FIR;
+        log_info(is_final_filter_complex ? "Automatically choosing efficient FFT method by default." : "Symmetric filter detected. Using default low-latency FIR method.");
     }
 
     if (final_choice == FILTER_TYPE_FFT) {
         log_info("Preparing FFT-based filter object (this may take a moment)...");
-
         unsigned int block_size;
         if (config->dsp.filter.args.fft_size > 0) {
             block_size = (unsigned int)config->dsp.filter.args.fft_size / 2;
-            log_info("Using user-specified FFT size of %u (block size: %u).", config->dsp.filter.args.fft_size, block_size);
-            if (block_size < (unsigned int)master_taps_len - 1) {
-                log_error("The specified --filter-fft-size of %d is too small for a filter with %d taps.", config->dsp.filter.args.fft_size, master_taps_len);
-                log_error("A block size (_n) of at least %d is required, meaning an FFT size of at least %d.", master_taps_len - 1, (master_taps_len - 1) * 2);
-                goto cleanup;
-            }
+            if (block_size < (unsigned int)master_taps_len - 1) return NULL;
         } else {
             block_size = 1;
-            while (block_size < (unsigned int)master_taps_len - 1) {
-                block_size *= 2;
-            }
-            if (block_size < (unsigned int)master_taps_len * 2) {
-                 block_size *= 2;
-            }
-            log_info("Using automatically calculated block size of %u (FFT size: %u) for filter.", block_size, block_size * 2);
+            while (block_size < (unsigned int)master_taps_len - 1) block_size *= 2;
+            if (block_size < (unsigned int)master_taps_len * 2) block_size *= 2;
         }
         app->dsp.filter.block_size = block_size;
 
         if (is_final_filter_complex) {
-            app->dsp.filter.object = (struct liquid_filter_s*)fftfilt_cccf_create(master_taps, master_taps_len, app->dsp.filter.block_size);
             app->dsp.filter.type_actual = FILTER_IMPL_FFT_ASYMMETRIC;
+            app->dsp.filter.object = (struct liquid_filter_s*)fftfilt_cccf_create(master_taps, master_taps_len, block_size);
         } else {
-            PREPARE_AND_CREATE_CRCF_FILTER(fftfilt, app->dsp.filter.block_size);
+            float* real_taps = (float*)mem_arena_alloc(arena, master_taps_len * sizeof(float), false);
+            for(int i=0; i<master_taps_len; i++) real_taps[i] = crealf(master_taps[i]);
             app->dsp.filter.type_actual = FILTER_IMPL_FFT_SYMMETRIC;
+            app->dsp.filter.object = (struct liquid_filter_s*)fftfilt_crcf_create(real_taps, master_taps_len, block_size);
         }
 
-        // --- Allocate Dedicated Scratch Buffer ---
-        // It must hold the "Overlap" (approx master_taps_len) + the "Max Incoming Data Chunk".
-        // The incoming data comes from the pipeline, so we use pipeline_alloc_size_samples.
-        // We add a small safety pad (+64) just to be safe.
         size_t scratch_needed = app->pipeline.alloc_size_samples + app->dsp.filter.block_size + 64;
-
-        app->dsp.filter.fft_scratch_buffer = (ComplexFloat*)mem_arena_alloc(
-            arena,
-            scratch_needed * sizeof(ComplexFloat),
-            true // Zero initialize
-        );
-
-        if (!app->dsp.filter.fft_scratch_buffer) {
-            log_fatal("Failed to allocate FFT scratch buffer.");
-            goto cleanup;
-        }
-
+        app->dsp.filter.fft_scratch_buffer = (ComplexFloat*)mem_arena_alloc(arena, scratch_needed * sizeof(ComplexFloat), true);
+        if (!app->dsp.filter.fft_scratch_buffer) return NULL;
     } else {
         log_info("Preparing FIR (time-domain) filter object...");
         if (is_final_filter_complex) {
-            app->dsp.filter.object = (struct liquid_filter_s*)firfilt_cccf_create(master_taps, master_taps_len);
             app->dsp.filter.type_actual = FILTER_IMPL_FIR_ASYMMETRIC;
+            app->dsp.filter.object = (struct liquid_filter_s*)firfilt_cccf_create(master_taps, master_taps_len);
         } else {
-            PREPARE_AND_CREATE_CRCF_FILTER(firfilt);
+            float* real_taps = (float*)mem_arena_alloc(arena, master_taps_len * sizeof(float), false);
+            for(int i=0; i<master_taps_len; i++) real_taps[i] = crealf(master_taps[i]);
             app->dsp.filter.type_actual = FILTER_IMPL_FIR_SYMMETRIC;
+            app->dsp.filter.object = (struct liquid_filter_s*)firfilt_crcf_create(real_taps, master_taps_len);
         }
     }
+    return app->dsp.filter.object;
+}
 
-    if (!app->dsp.filter.object) {
+bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
+    app->dsp.filter.object = NULL;
+    app->dsp.filter.type_actual = FILTER_IMPL_NONE;
+    app->dsp.filter.block_size = 0;
+
+    if (config->dsp.filter.count == 0) return true;
+    if (!_configure_filter_stage(config, app)) return false;
+
+    double sample_rate = config->dsp.filter.apply_post_resample ? config->output_sample_rate.rate_hz : (double)app->module.source_info.sample_rate;
+
+    int master_len = 0;
+    bool is_complex = false, norm_peak = false;
+    log_info("Designing filter coefficients (this may be slow for large filters)...");
+
+    liquid_float_complex* master_taps = _compound_filter_stages(config, sample_rate, &master_len, &is_complex, &norm_peak, arena);
+    if (!master_taps) return false;
+
+    log_info("Final combined filter requires %d taps.", master_len);
+    if (is_complex) log_info("Asymmetric filter detected.");
+
+    if (!_compile_filter_object(config, app, master_taps, master_len, is_complex, norm_peak, arena)) {
         log_fatal("Failed to create final combined filter object.");
-        goto cleanup;
+        return false;
     }
 
-    // Now that the filter object is created, allocate its dependent app (e.g., remainder buffer)
-    if (app->dsp.filter.object &&
-       (app->dsp.filter.type_actual == FILTER_IMPL_FFT_SYMMETRIC ||
-        app->dsp.filter.type_actual == FILTER_IMPL_FFT_ASYMMETRIC))
-    {
-        if (config->dsp.filter.apply_post_resample) {
-            app->dsp.filter.post_fft_remainder_buffer = (ComplexFloat*)mem_arena_alloc(
-                arena,
-                app->dsp.filter.block_size * sizeof(ComplexFloat),
-                true
-            );
-            app->dsp.filter.post_fft_remainder_len = 0;
-            if (!app->dsp.filter.post_fft_remainder_buffer) {
-                goto cleanup;
-            }
-        } else {
-            app->dsp.filter.pre_fft_remainder_buffer = (ComplexFloat*)mem_arena_alloc(
-                arena,
-                app->dsp.filter.block_size * sizeof(ComplexFloat),
-                true
-            );
-            app->dsp.filter.pre_fft_remainder_len = 0;
-            if (!app->dsp.filter.pre_fft_remainder_buffer) {
-                goto cleanup;
-            }
-        }
+    if (config->dsp.filter.apply_post_resample) {
+        app->dsp.filter.post_fft_remainder_buffer = (ComplexFloat*)mem_arena_alloc(arena, app->dsp.filter.block_size * sizeof(ComplexFloat), true);
+        app->dsp.filter.post_fft_remainder_len = 0;
+    } else {
+        app->dsp.filter.pre_fft_remainder_buffer = (ComplexFloat*)mem_arena_alloc(arena, app->dsp.filter.block_size * sizeof(ComplexFloat), true);
+        app->dsp.filter.pre_fft_remainder_len = 0;
     }
 
-    success = true;
-
-cleanup:
-    return success;
+    return true;
 }
 
 void filter_destroy(AppContext* app) {
