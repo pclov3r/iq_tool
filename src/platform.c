@@ -1,3 +1,7 @@
+/**
+ * @file platform.c
+ */
+
 #include "platform.h"
 #include "constants.h"
 #include "log.h"

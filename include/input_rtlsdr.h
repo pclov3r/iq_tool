@@ -1,3 +1,7 @@
+/**
+ * @file input_rtlsdr.h
+ */
+
 #ifndef INPUT_RTLSDR_H_
 #define INPUT_RTLSDR_H_
 

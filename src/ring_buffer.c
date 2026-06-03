@@ -1,3 +1,7 @@
+/**
+ * @file ring_buffer.c
+ */
+
 #include "ring_buffer.h"
 #include "mem_arena.h"
 #include "platform.h"

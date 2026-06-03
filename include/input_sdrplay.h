@@ -1,3 +1,7 @@
+/**
+ * @file input_sdrplay.h
+ */
+
 #ifndef INPUT_SDRPLAY_H_
 #define INPUT_SDRPLAY_H_
 

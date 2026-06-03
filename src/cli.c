@@ -1,3 +1,7 @@
+/**
+ * @file cli.c
+ */
+
 #include "cli.h"
 #include "constants.h"
 #include "app_context.h"

@@ -1,3 +1,7 @@
+/**
+ * @file input_bladerf.c
+ */
+
 #include "input_bladerf.h"
 #include "module.h"
 #include "constants.h"

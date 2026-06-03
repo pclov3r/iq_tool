@@ -1,3 +1,7 @@
+/**
+ * @file queue.c
+ */
+
 #include "queue.h"
 #include "log.h"
 #include "mem_arena.h" // For mem_arena_alloc

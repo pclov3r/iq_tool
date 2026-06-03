@@ -1,3 +1,7 @@
+/**
+ * @file input_stdin.h
+ */
+
 #ifndef INPUT_STDIN_H_
 #define INPUT_STDIN_H_
 

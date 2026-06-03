@@ -1,3 +1,7 @@
+/**
+ * @file output_am.c
+ */
+
 #include "output_am.h"
 #include "constants.h"
 #include "audio_output_functions.h"

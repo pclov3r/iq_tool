@@ -1,3 +1,7 @@
+/**
+ * @file ring_buffer.h
+ */
+
 #ifndef RING_BUFFER_H_
 #define RING_BUFFER_H_
 

@@ -1,3 +1,7 @@
+/**
+ * @file output_stdout.c
+ */
+
 #include "output_stdout.h"
 #include "module.h"
 #include "app_context.h"

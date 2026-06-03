@@ -9,8 +9,8 @@
  * stages of the pipeline.
  */
 
-#ifndef FREQ_SHIFT_H_
-#define FREQ_SHIFT_H_
+#ifndef FREQUENCY_SHIFT_H_
+#define FREQUENCY_SHIFT_H_
 
 #include <stdbool.h>
 #include "app_context.h"

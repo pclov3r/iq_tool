@@ -1,5 +1,6 @@
-/*
- * Redsea C Wrapper Implementation
+/**
+ * @file redsea_wrapper.cpp
+ * @brief Redsea C Wrapper Implementation
  *
  * This file acts as a bridge between the C99 application and the C++17 Redsea library.
  * It manually instantiates Redsea classes and copies data into the C-compatible struct.

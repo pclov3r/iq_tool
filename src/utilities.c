@@ -1,3 +1,7 @@
+/**
+ * @file utilities.c
+ */
+
 #include "utilities.h"
 #include "log.h"
 #include "mem_arena.h"

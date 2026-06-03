@@ -1,3 +1,7 @@
+/**
+ * @file input_wav.c
+ */
+
 #include "input_wav.h"
 #include "constants.h"
 #include "log.h"

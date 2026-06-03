@@ -8,8 +8,8 @@
  * conversions.
  */
 
-#ifndef UTILS_H_
-#define UTILS_H_
+#ifndef UTILITIES_H_
+#define UTILITIES_H_
 
 #include <stdint.h>
 #include <stddef.h>

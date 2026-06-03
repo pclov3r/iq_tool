@@ -1,3 +1,7 @@
+/**
+ * @file pre_processor.c
+ */
+
 #include "pre_processor.h"
 #include "dc_block.h"
 #include "iq_correction.h"

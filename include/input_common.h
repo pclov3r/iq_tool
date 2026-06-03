@@ -1,3 +1,7 @@
+/**
+ * @file input_common.h
+ */
+
 // input_common.h
 
 #ifndef INPUT_COMMON_H_

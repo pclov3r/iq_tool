@@ -1,3 +1,7 @@
+/**
+ * @file output_rawfile.c
+ */
+
 #include "output_rawfile.h"
 #include "module.h"
 #include "app_context.h"

@@ -1,3 +1,7 @@
+/**
+ * @file input_rawfile.c
+ */
+
 #include "input_rawfile.h"
 #include "constants.h"
 #include "log.h"

@@ -1,3 +1,7 @@
+/**
+ * @file output_nfm.h
+ */
+
 #ifndef OUTPUT_NFM_H_
 #define OUTPUT_NFM_H_
 

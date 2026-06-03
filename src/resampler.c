@@ -1,3 +1,7 @@
+/**
+ * @file resampler.c
+ */
+
 #include "resampler.h"
 #include "constants.h"
 #include "log.h"

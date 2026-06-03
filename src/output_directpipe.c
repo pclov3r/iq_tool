@@ -1,3 +1,7 @@
+/**
+ * @file output_directpipe.c
+ */
+
 #include "output_directpipe.h"
 #include "module.h"
 #include "app_context.h"

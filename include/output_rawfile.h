@@ -2,8 +2,8 @@
  * @file output_rawfile.h
  * @brief Defines the public interface for the raw file output module.
  */
-#ifndef OUTPUT_RAW_FILE_H_
-#define OUTPUT_RAW_FILE_H_
+#ifndef OUTPUT_RAWFILE_H_
+#define OUTPUT_RAWFILE_H_
 
 #include "module.h"
 #include "argparse.h"

@@ -1,3 +1,7 @@
+/**
+ * @file input_bladerf.h
+ */
+
 #ifndef INPUT_BLADERF_H_
 #define INPUT_BLADERF_H_
 

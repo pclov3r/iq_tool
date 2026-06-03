@@ -1,3 +1,7 @@
+/**
+ * @file presets_loader.h
+ */
+
 #ifndef PRESETS_LOADER_H_
 #define PRESETS_LOADER_H_
 

@@ -1,3 +1,7 @@
+/**
+ * @file post_processor.c
+ */
+
 #include "post_processor.h"
 #include "filter.h"
 #include "frequency_shift.h"

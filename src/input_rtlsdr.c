@@ -1,3 +1,7 @@
+/**
+ * @file input_rtlsdr.c
+ */
+
 #include "input_rtlsdr.h"
 #include "module.h"
 #include "constants.h"

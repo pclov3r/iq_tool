@@ -1,3 +1,7 @@
+/**
+ * @file module_registry.c
+ */
+
 #include "module_registry.h"
 #include "app_context.h"
 #include "mem_arena.h"

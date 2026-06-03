@@ -1,3 +1,7 @@
+/**
+ * @file output_nfm.c
+ */
+
 #include "output_nfm.h"
 #include "constants.h"
 #include "audio_output_functions.h"

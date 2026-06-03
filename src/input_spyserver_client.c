@@ -573,8 +573,6 @@ static bool spyserver_client_input_initialize(ModuleContext* context) {
         return false;
     }
 
-
-
     return true;
 }
 

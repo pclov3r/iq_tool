@@ -1,3 +1,7 @@
+/**
+ * @file input_hackrf.h
+ */
+
 #ifndef INPUT_HACKRF_H_
 #define INPUT_HACKRF_H_
 

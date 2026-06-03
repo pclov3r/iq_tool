@@ -1,3 +1,7 @@
+/**
+ * @file input_rawfile.h
+ */
+
 // include/input_rawfile.h
 
 #ifndef INPUT_RAWFILE_H_

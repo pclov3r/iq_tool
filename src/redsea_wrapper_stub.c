@@ -1,3 +1,7 @@
+/**
+ * @file redsea_wrapper_stub.c
+ */
+
 /*
  * Redsea C Wrapper Stub
  *

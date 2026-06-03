@@ -1,3 +1,7 @@
+/**
+ * @file redsea_wrapper.h
+ */
+
 /*
  * Redsea C Wrapper Interface
  *
@@ -5,8 +9,8 @@
  * It is designed to be included by C99 projects.
  */
 
-#ifndef REDSEA_WRAPPER_H
-#define REDSEA_WRAPPER_H
+#ifndef REDSEA_WRAPPER_H_
+#define REDSEA_WRAPPER_H_
 
 #include <stdint.h>
 #include <stdbool.h>

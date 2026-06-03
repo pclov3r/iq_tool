@@ -1,3 +1,7 @@
+/**
+ * @file signal_handler.c
+ */
+
 #include "signal_handler.h"
 #include "log.h"
 #include "app_context.h"       // Provides AppContext

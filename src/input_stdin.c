@@ -1,3 +1,7 @@
+/**
+ * @file input_stdin.c
+ */
+
 #include "input_stdin.h"
 #include "constants.h"
 #include "log.h"

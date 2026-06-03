@@ -1,3 +1,7 @@
+/**
+ * @file output_wfm.h
+ */
+
 #ifndef OUTPUT_WFM_H_
 #define OUTPUT_WFM_H_
 

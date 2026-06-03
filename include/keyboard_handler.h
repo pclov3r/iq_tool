@@ -3,8 +3,8 @@
  * @brief Provides interactive, non-blocking keyboard input handling.
  */
 
-#ifndef KEYBOARD_HANDLER_H
-#define KEYBOARD_HANDLER_H
+#ifndef KEYBOARD_HANDLER_H_
+#define KEYBOARD_HANDLER_H_
 
 #include "app_context.h"
 

@@ -1,3 +1,7 @@
+/**
+ * @file sample_format_table.c
+ */
+
 #include "sample_format_table.h"
 #include "constants.h"
 #include <string.h>

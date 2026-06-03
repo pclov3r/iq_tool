@@ -1,3 +1,7 @@
+/**
+ * @file packet_serializer.c
+ */
+
 #include "packet_serializer.h"
 #include "constants.h"
 #include "log.h"

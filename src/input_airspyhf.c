@@ -1,3 +1,7 @@
+/**
+ * @file input_airspyhf.c
+ */
+
 #include "input_airspyhf.h"
 #include "module.h"
 #include "sample_convert.h"

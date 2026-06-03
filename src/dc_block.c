@@ -1,3 +1,7 @@
+/**
+ * @file dc_block.c
+ */
+
 #include "dc_block.h"
 #include "constants.h"
 #include "log.h"

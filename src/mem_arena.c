@@ -1,3 +1,7 @@
+/**
+ * @file mem_arena.c
+ */
+
 // memory_arena.c
 #include "mem_arena.h"
 #include "log.h"

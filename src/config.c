@@ -1,3 +1,7 @@
+/**
+ * @file config.c
+ */
+
 #include "config.h"
 #include "app_context.h"
 #include "constants.h"

@@ -1,3 +1,7 @@
+/**
+ * @file input_hackrf.c
+ */
+
 #include "input_hackrf.h"
 #include "module.h"
 #include "constants.h"

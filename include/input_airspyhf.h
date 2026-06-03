@@ -1,3 +1,7 @@
+/**
+ * @file input_airspyhf.h
+ */
+
 #ifndef INPUT_AIRSPYHF_H_
 #define INPUT_AIRSPYHF_H_
 

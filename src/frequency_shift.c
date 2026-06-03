@@ -1,3 +1,7 @@
+/**
+ * @file frequency_shift.c
+ */
+
 #include "frequency_shift.h"
 #include "constants.h"
 #include "app_context.h"

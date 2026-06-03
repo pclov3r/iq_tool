@@ -1,5 +1,9 @@
-#ifndef OUTPUT_AM_H
-#define OUTPUT_AM_H
+/**
+ * @file output_am.h
+ */
+
+#ifndef OUTPUT_AM_H_
+#define OUTPUT_AM_H_
 
 #include "module.h"
 #include "argparse.h" // Ensure argparse struct is visible

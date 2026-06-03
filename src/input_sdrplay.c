@@ -1,3 +1,7 @@
+/**
+ * @file input_sdrplay.c
+ */
+
 #include "input_sdrplay.h"
 #include "module.h"
 #include "constants.h"

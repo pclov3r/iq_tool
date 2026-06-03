@@ -1,3 +1,7 @@
+/**
+ * @file sample_convert.c
+ */
+
 /*
  * sample_convert.c: Functions for converting between various I/Q sample formats.
  *
