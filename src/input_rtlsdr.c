@@ -175,8 +175,6 @@ static bool rtlsdr_input_initialize(ModuleContext* context) {
     uint32_t device_index = s_rtlsdr_config.device_index;
     bool success = false; // Assume failure until the very end
 
-    log_info("Attempting to initialize RTL-SDR device...");
-
     RtlSdrContext* private_data = (RtlSdrContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RtlSdrContext), true);
     if (!private_data) {
         return false;
@@ -207,8 +205,6 @@ static bool rtlsdr_input_initialize(ModuleContext* context) {
         log_error("Device index %u is out of range. Found %u devices.", device_index, device_count);
         goto cleanup;
     }
-
-    log_info("Reading device information for index %d...", device_index);
     if (rtlsdr_get_device_usb_strings(device_index, private_data->manufact, private_data->product, private_data->serial) < 0) {
         log_fatal("Failed to read USB device strings for device %d.", device_index);
         goto cleanup;
@@ -273,7 +269,6 @@ static bool rtlsdr_input_initialize(ModuleContext* context) {
     }
 
     if (config->sdr_general.bias_t_enable) {
-        log_info("Attempting to enable Bias-T...");
         result = rtlsdr_set_bias_tee(private_data->dev, 1);
         if (result != 0) {
             log_warn("Failed to enable Bias-T. The device may not support this feature.");

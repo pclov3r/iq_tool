@@ -814,7 +814,6 @@ static void wav_input_cleanup(ModuleContext* context) {
     if (app->module.input_private_data) {
         WavInputContext* private_data = (WavInputContext*)app->module.input_private_data;
         if (private_data->infile) {
-            log_info("Closing WAV input file.");
             sf_close(private_data->infile);
             private_data->infile = NULL;
         }

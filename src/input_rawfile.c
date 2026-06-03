@@ -202,7 +202,6 @@ static void rawfile_input_cleanup(ModuleContext* context) {
     if (app->module.input_private_data) {
         RawfileInputContext* private_data = (RawfileInputContext*)app->module.input_private_data;
         if (private_data->infile) {
-            log_info("Closing RAW input file.");
             sf_close(private_data->infile);
             private_data->infile = NULL;
         }

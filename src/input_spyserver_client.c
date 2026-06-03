@@ -573,7 +573,7 @@ static bool spyserver_client_input_initialize(ModuleContext* context) {
         return false;
     }
 
-    log_info("Initialization successful.");
+
 
     return true;
 }

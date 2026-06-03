@@ -298,8 +298,6 @@ static bool bladerf_input_initialize(ModuleContext* context) {
     char device_identifier[32];
     bool success = false; // Assume failure until the very end.
 
-    log_info("Attempting to initialize BladeRF device...");
-
     BladerfContext* private_data = (BladerfContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(BladerfContext), true);
     if (!private_data) goto cleanup; // mem_arena_alloc logs the error
 
@@ -447,8 +445,6 @@ static bool bladerf_input_initialize(ModuleContext* context) {
     private_data->rx_stream = NULL;
     private_data->stream_buffers = NULL;
     atomic_init(&private_data->stream_error, false);
-
-    log_info("BladeRF initialized successfully.");
     success = true;
 
 cleanup:
