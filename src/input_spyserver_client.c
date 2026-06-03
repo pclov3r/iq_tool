@@ -338,7 +338,7 @@ static bool spyserver_client_input_initialize(ModuleContext* context) {
         return false;
     }
 
-    log_info("Connecting to SpyServer at %s:%d...", s_spyserver_client_config.hostname, s_spyserver_client_config.port);
+
 
     client->net_context = networking_connect(s_spyserver_client_config.hostname, s_spyserver_client_config.port, &app->pipeline.setup_arena);
     if (!client->net_context) {
@@ -346,7 +346,7 @@ static bool spyserver_client_input_initialize(ModuleContext* context) {
         return false;
     }
 
-    log_info("Connected. Performing handshake...");
+    log_info("Performing SpyServer protocol handshake...");
 
     char user_agent[128];
     snprintf(user_agent, sizeof(user_agent), "%s version %s", APP_NAME, GIT_HASH);
@@ -825,7 +825,6 @@ static void spyserver_client_input_cleanup(ModuleContext* context) {
         // rx_buffer is in arena, no free needed
         networking_cleanup();
     }
-    log_info("Closing SpyServer connection...");
 }
 
 static void spyserver_client_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {

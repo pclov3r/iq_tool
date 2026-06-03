@@ -99,6 +99,8 @@ NetworkingContext* networking_connect(const char* hostname, int port, struct Mem
     char port_str[6];
     snprintf(port_str, sizeof(port_str), "%d", port);
 
+    log_info("Opening network connection to %s:%d...", hostname, port);
+
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -163,24 +165,23 @@ NetworkingContext* networking_connect(const char* hostname, int port, struct Mem
         break; // Successfully connected
     }
 
-    freeaddrinfo(res);
-
-#ifdef _WIN32
-    if (context->socket_fd == INVALID_SOCKET) {
-#else
-    if (context->socket_fd < 0) {
-#endif
+    if (p == NULL) {
         log_error("Failed to connect to %s:%d", hostname, port);
-        // We don't free(context) because it's in the arena. The arena will be destroyed on app cleanup.
+        freeaddrinfo(res);
         networking_cleanup(); // Decrement ref count on failure.
         return NULL;
     }
 
+    freeaddrinfo(res);
+    log_info("Network connection established.");
     return context;
 }
 
 void networking_disconnect(NetworkingContext* context) {
     if (!context) return;
+    
+    // We explicitly log this so that if the application hangs here, the user knows it's a socket timeout/deadlock issue.
+    log_info("Closing network connection...");
 #ifdef _WIN32
     if (context->socket_fd != INVALID_SOCKET) {
         shutdown(context->socket_fd, SD_BOTH);
