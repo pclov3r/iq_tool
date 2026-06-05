@@ -54,7 +54,7 @@
 #include "signal_handler.h"
 #include "queue.h"
 #include "sample_convert.h"
-#include "redsea_wrapper.h"
+#include <libredsea.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -85,13 +85,12 @@
 #define WFM_DEEMPH_ORDER        1
 #define WFM_STEREO_SEPARATION   1.2f
 
-#ifdef WITH_REDSEA
 // --- RDS Configuration Enum ---
 typedef enum {
     RDS_STANDARD_RBDS, // US Standard (Default)
     RDS_STANDARD_RDS   // World Standard
 } RdsStandard;
-#endif
+
 
 // --- Logging Config ---
 
@@ -164,7 +163,7 @@ typedef struct {
     int16_t* mpx_s16_buffer;
 
     // RDS
-    RedseaHandle redsea;
+    LibRedseaHandle redsea;
     RdsState last_rds_state;
     size_t rds_display_counter;
     size_t rds_display_threshold;
@@ -177,24 +176,22 @@ static struct {
     bool force_stereo;
     bool force_mono;
     bool raw_mpx_stdout;
-#ifdef WITH_REDSEA
     bool rds_disable;
     RdsStandard rds_standard; // The final, resolved standard after parsing CLI flags
     bool use_world_rds;        // Temporary flag from CLI to select the non-default standard
-    bool rds_partial;
-#endif
+
+
 } s_wfm_config = {
     .deemph_us = 75.0f,
     .gain_val = 5.0f,
     .force_stereo = 0,
     .force_mono = 0,
     .raw_mpx_stdout = 0,
-#ifdef WITH_REDSEA
     .rds_disable = 0,
     .rds_standard = RDS_STANDARD_RBDS, // Default to US standard
     .use_world_rds = 0,
-    .rds_partial = 0
-#endif
+
+
 };
 
 // --- Helpers ---
@@ -252,12 +249,11 @@ static void deemphasis_destroy(DeEmphasis* de) {
 // --- Module Interface Implementation ---
 
 static bool wfm_output_validate_options(AppConfig* config) {
-#ifdef WITH_REDSEA
     // Resolve the user's choice from the CLI flag into our clean enum state.
     if (s_wfm_config.use_world_rds) {
         s_wfm_config.rds_standard = RDS_STANDARD_RDS;
     }
-#endif
+
     // 1. Force Pipeline Format to CF32
     // We need high-precision float I/Q for the FM demodulator.
     config->output.sample_format = CF32;
@@ -382,24 +378,22 @@ static bool wfm_output_initialize(ModuleContext* context) {
         if (!wfm_decoder->mpx_s16_buffer) return false;
     }
 
-#ifdef WITH_REDSEA
     // 6. Initialize RDS (Enabled unless disabled)
     if (!s_wfm_config.rds_disable) {
         // The `is_rbds` parameter for redsea is determined by our final enum state.
         bool is_rbds = (s_wfm_config.rds_standard == RDS_STANDARD_RBDS);
-        wfm_decoder->redsea = redsea_init(wfm_decoder->input_samplerate, is_rbds, s_wfm_config.rds_partial);
+        wfm_decoder->redsea = libredsea_init(wfm_decoder->input_samplerate, is_rbds);
         memset(&wfm_decoder->last_rds_state, 0, sizeof(RdsState));
 
         wfm_decoder->rds_display_counter = 0;
         wfm_decoder->rds_display_threshold = (size_t)(wfm_decoder->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC); // 1 second
 
-        log_info("WFM: RDS Decoder enabled (Standard: %s%s)",
-                 is_rbds ? "RBDS (US, Default)" : "RDS (World)",
-                 s_wfm_config.rds_partial ? ", Partial Text" : "");
+        log_info("WFM: RDS Decoder enabled (Standard: %s)",
+                 is_rbds ? "RBDS (US, Default)" : "RDS (World)");
     } else {
         wfm_decoder->redsea = NULL;
     }
-#endif
+
 
     return true;
 }
@@ -450,33 +444,266 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
         fwrite(wfm_decoder->mpx_s16_buffer, sizeof(int16_t), num_frames, stdout);
     }
 
-#ifdef WITH_REDSEA
     if (wfm_decoder->redsea) {
         RdsState current;
-        redsea_process_mpx(wfm_decoder->redsea, wfm_decoder->mpx_buffer, num_frames, &current);
+        libredsea_process_mpx(wfm_decoder->redsea, wfm_decoder->mpx_buffer, num_frames, &current);
         wfm_decoder->rds_display_counter += num_frames;
         if (wfm_decoder->rds_display_counter >= wfm_decoder->rds_display_threshold && current.valid) {
             wfm_decoder->rds_display_counter = 0;
             char clean_rt[65];
-            strncpy(clean_rt, current.radiotext, 64);
+            for (int i = 0; i < 64; i++) {
+                char c = current.radiotext[i];
+                if (c == 0x0D) {
+                    clean_rt[i] = '\0';
+                    break;
+                }
+                clean_rt[i] = c ? c : ' ';
+            }
             clean_rt[64] = '\0';
+
+            char clean_ps[9];
+            for (int i = 0; i < 8; i++) {
+                char c = current.ps_name[i];
+                if (c == 0x0D) {
+                    clean_ps[i] = '\0';
+                    break;
+                }
+                clean_ps[i] = c ? c : ' ';
+            }
+            clean_ps[8] = '\0';
+
+            char clean_ptyn[9];
+            for (int i = 0; i < 8; i++) {
+                char c = current.pty_name[i];
+                if (c == 0x0D) {
+                    clean_ptyn[i] = '\0';
+                    break;
+                }
+                clean_ptyn[i] = c ? c : ' ';
+            }
+            clean_ptyn[8] = '\0';
+
+            // Trim trailing spaces
             size_t rt_len = strlen(clean_rt);
             while (rt_len > 0 && clean_rt[rt_len - 1] == ' ') { clean_rt[rt_len - 1] = '\0'; rt_len--; }
+            size_t ps_len = strlen(clean_ps);
+            while (ps_len > 0 && clean_ps[ps_len - 1] == ' ') { clean_ps[ps_len - 1] = '\0'; ps_len--; }
+            size_t ptyn_len = strlen(clean_ptyn);
+            while (ptyn_len > 0 && clean_ptyn[ptyn_len - 1] == ' ') { clean_ptyn[ptyn_len - 1] = '\0'; ptyn_len--; }
+
+            // Trim leading spaces
+            char* rt_ptr = clean_rt;
+            while (*rt_ptr == ' ') rt_ptr++;
+            char* ps_ptr = clean_ps;
+            while (*ps_ptr == ' ') ps_ptr++;
+
+            char main_af_buf[128] = "";
+            if (current.alt_freq_count > 0) {
+                int offset = snprintf(main_af_buf, sizeof(main_af_buf), " | AF: ");
+                for (int f = 0; f < current.alt_freq_count && (size_t)offset < sizeof(main_af_buf) - 10; f++) {
+                    offset += snprintf(main_af_buf + offset, sizeof(main_af_buf) - offset, "%.1f%s",
+                                       current.alt_freqs[f] / 1000.0,
+                                       (f < current.alt_freq_count - 1) ? ", " : "");
+                }
+            }
+
+            char iso_buf[32] = "";
+            if (current.country_code[0] != '\0' && current.country_code[0] != '-') {
+                snprintf(iso_buf, sizeof(iso_buf), " | ECC: %s", current.country_code);
+            }
+
+            char ptyn_buf[32] = "";
+            if (ptyn_len > 0) {
+                snprintf(ptyn_buf, sizeof(ptyn_buf), " | PTYN: %s", clean_ptyn);
+            }
 
             if (s_wfm_config.rds_standard == RDS_STANDARD_RBDS && current.callsign[0] != '\0') {
-                 log_info("RBDS PI: %04X | CALL: %s | PS: %s | PTY: %s | PTYN: %s | RT: %s | TP: %d | TA: %d | MS: %d | ST: %d | CMP: %d | DYN: %d",
-                         current.pi_code, current.callsign, current.ps_name, current.program_type, current.pty_name, clean_rt, current.tp, current.ta, current.is_music, current.stereo, current.compressed, current.dynamic);
+                 log_info("RBDS PI: %04X | CALL: %s%s%s",
+                         current.pi_code, current.callsign, main_af_buf, iso_buf);
             } else {
-                 log_info("RDS PI: %04X | PS: %s | PTY: %s | PTYN: %s | RT: %s | TP: %d | TA: %d | MS: %d | ST: %d | CMP: %d | DYN: %d",
-                         current.pi_code, current.ps_name, current.program_type, current.pty_name, clean_rt, current.tp, current.ta, current.is_music, current.stereo, current.compressed, current.dynamic);
+                 log_info("RDS PI: %04X%s%s",
+                         current.pi_code, main_af_buf, iso_buf);
+            }
+
+            int has_tmc = 0;
+            for (int i = 0; i < 32; i++) {
+                if (current.oda_app_for_group[i] == 0xCD46 || current.oda_app_for_group[i] == 0xCD47) {
+                    has_tmc = 1;
+                    break;
+                }
+            }
+
+            log_info("%s FLAGS: TP: %d | TA: %d | MS: %d | ST: %d | CMP: %d | DYN: %d | TMC: %d",
+                    current.is_rbds ? "RBDS" : "RDS", current.tp, current.ta, current.is_music, current.stereo, current.compressed, current.dynamic, has_tmc);
+
+            log_info("%s PTY: %s%s", current.is_rbds ? "RBDS" : "RDS", current.program_type, ptyn_buf);
+
+            if (ps_ptr[0] != '\0') {
+                 log_info("%s PS: %s", current.is_rbds ? "RBDS" : "RDS", ps_ptr);
+            }
+
+            if (rt_ptr[0] != '\0') {
+                 log_info("%s RT: %s", current.is_rbds ? "RBDS" : "RDS", rt_ptr);
             }
             if (current.clock_time[0] != '\0' && strcmp(current.clock_time, wfm_decoder->last_rds_state.clock_time) != 0) {
-                log_info("RDS/RBDS CT: %s", current.clock_time);
+                log_info("%s CT: %s", current.is_rbds ? "RBDS" : "RDS", current.clock_time);
             }
+
+            for (int e = 0; e < current.tmc_event_count; e++) {
+                RdsTmcEvent* ev = &current.tmc_events[e];
+                
+                bool is_dup = false;
+                for (int i = 0; i < e; i++) {
+                    if (current.tmc_events[i].location_id == ev->location_id &&
+                        current.tmc_events[i].event_code == ev->event_code &&
+                        current.tmc_events[i].supplementary_code == ev->supplementary_code) {
+                        is_dup = true; break;
+                    }
+                }
+                for (int i = 0; i < wfm_decoder->last_rds_state.tmc_event_count; i++) {
+                    if (wfm_decoder->last_rds_state.tmc_events[i].location_id == ev->location_id &&
+                        wfm_decoder->last_rds_state.tmc_events[i].event_code == ev->event_code &&
+                        wfm_decoder->last_rds_state.tmc_events[i].supplementary_code == ev->supplementary_code) {
+                        is_dup = true; break;
+                    }
+                }
+                if (is_dup) continue;
+
+                if (ev->supplementary_code > 0) {
+                    log_info("%s TMC: Location: %u | Event: %u %s | Supplemental: %u %s | Extent: %d | Dir: %d | Div: %d | Dur: %d",
+                        current.is_rbds ? "RBDS" : "RDS",
+                        ev->location_id, ev->event_code, ev->event_description,
+                        ev->supplementary_code, get_tmc_supplementary_description(ev->supplementary_code),
+                        ev->extent, ev->direction, ev->diversion_advised, ev->duration);
+                } else {
+                    log_info("%s TMC: Location: %u | Event: %u %s | Extent: %d | Dir: %d | Div: %d | Dur: %d",
+                        current.is_rbds ? "RBDS" : "RDS",
+                        ev->location_id, ev->event_code, ev->event_description,
+                        ev->extent, ev->direction, ev->diversion_advised, ev->duration);
+                }
+            }
+
+            for (int e = 0; e < current.tdc_event_count; e++) {
+                RdsTdcEvent* ev = &current.tdc_events[e];
+                if (ev->data_len == 4) {
+                    log_info("%s TDC (5A): Channel=%u | Hex=%02X %02X %02X %02X",
+                             current.is_rbds ? "RBDS" : "RDS", ev->channel,
+                             ev->data[0], ev->data[1], ev->data[2], ev->data[3]);
+                } else {
+                    log_info("%s TDC (5B): Channel=%u | Hex=%02X %02X",
+                             current.is_rbds ? "RBDS" : "RDS", ev->channel,
+                             ev->data[0], ev->data[1]);
+                }
+            }
+
+            for (int e = 0; e < current.iha_event_count; e++) {
+                RdsIhaEvent* ev = &current.iha_events[e];
+                if (ev->data_len == 4) {
+                    log_info("%s IHA (6A): Addr=%u | Hex=%02X %02X %02X %02X",
+                             current.is_rbds ? "RBDS" : "RDS", ev->address,
+                             ev->data[0], ev->data[1], ev->data[2], ev->data[3]);
+                } else {
+                    log_info("%s IHA (6B): Addr=%u | Hex=%02X %02X",
+                             current.is_rbds ? "RBDS" : "RDS", ev->address,
+                             ev->data[0], ev->data[1]);
+                }
+            }
+
+            for (int e = 0; e < current.rt_plus_event_count; e++) {
+                RdsRTPlusEvent* ev = &current.rt_plus_events[e];
+                
+                size_t t_len = strlen(ev->title);
+                while (t_len > 0 && (ev->title[t_len - 1] == ' ' || ev->title[t_len - 1] == '\r')) { ev->title[t_len - 1] = '\0'; t_len--; }
+                size_t a_len = strlen(ev->artist);
+                while (a_len > 0 && (ev->artist[a_len - 1] == ' ' || ev->artist[a_len - 1] == '\r')) { ev->artist[a_len - 1] = '\0'; a_len--; }
+
+                bool is_dup = false;
+                for (int i = 0; i < e; i++) {
+                    if (strcmp(current.rt_plus_events[i].artist, ev->artist) == 0 &&
+                        strcmp(current.rt_plus_events[i].title, ev->title) == 0) {
+                        is_dup = true; break;
+                    }
+                }
+                for (int i = 0; i < wfm_decoder->last_rds_state.rt_plus_event_count; i++) {
+                    if (strcmp(wfm_decoder->last_rds_state.rt_plus_events[i].artist, ev->artist) == 0 &&
+                        strcmp(wfm_decoder->last_rds_state.rt_plus_events[i].title, ev->title) == 0) {
+                        is_dup = true; break;
+                    }
+                }
+                if (is_dup) continue;
+
+                if (ev->title[0] != '\0' && ev->artist[0] != '\0') {
+                    log_info("%s RT+: Artist=%s | Title=%s", current.is_rbds ? "RBDS" : "RDS", ev->artist, ev->title);
+                } else if (ev->artist[0] != '\0') {
+                    log_info("%s RT+: Artist=%s", current.is_rbds ? "RBDS" : "RDS", ev->artist);
+                } else if (ev->title[0] != '\0') {
+                    log_info("%s RT+: Title=%s", current.is_rbds ? "RBDS" : "RDS", ev->title);
+                }
+            }
+
+            libredsea_clear_events(wfm_decoder->redsea);
+
+            for (int i = 0; i < MAX_EON_NETWORKS; i++) {
+                if (current.eon.networks[i].is_valid && current.eon.networks[i].is_update) {
+                    bool changed = false;
+                    RdsEonNetwork* cur_net = &current.eon.networks[i];
+                    RdsEonNetwork* last_net = &wfm_decoder->last_rds_state.eon.networks[i];
+                    
+                    if (!last_net->is_valid) changed = true;
+                    else if (cur_net->pi != last_net->pi) changed = true;
+                    else if (strcmp(cur_net->ps, last_net->ps) != 0) changed = true;
+                    else if (cur_net->tp != last_net->tp) changed = true;
+                    else if (cur_net->ta != last_net->ta) changed = true;
+                    else if (cur_net->pty != last_net->pty) changed = true;
+                    else if (cur_net->mapped_freq_khz != last_net->mapped_freq_khz) changed = true;
+                    else if (cur_net->alt_freq_count != last_net->alt_freq_count) changed = true;
+                    else {
+                        for (int f = 0; f < cur_net->alt_freq_count; f++) {
+                            if (cur_net->alt_freqs[f] != last_net->alt_freqs[f]) {
+                                changed = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!changed) continue;
+                    char af_buf[128] = "";
+                    if (current.eon.networks[i].mapped_freq_khz > 0) {
+                        snprintf(af_buf, sizeof(af_buf), " | AF=%.1f", current.eon.networks[i].mapped_freq_khz / 1000.0);
+                    } else if (current.eon.networks[i].alt_freq_count > 0) {
+                        int offset = snprintf(af_buf, sizeof(af_buf), " | AF=");
+                        for (int f = 0; f < current.eon.networks[i].alt_freq_count && (size_t)offset < sizeof(af_buf) - 10; f++) {
+                            offset += snprintf(af_buf + offset, sizeof(af_buf) - offset, "%.1f%s",
+                                               current.eon.networks[i].alt_freqs[f] / 1000.0,
+                                               (f < current.eon.networks[i].alt_freq_count - 1) ? ", " : "");
+                        }
+                    }
+
+                    char eon_ps_buf[9];
+                    strncpy(eon_ps_buf, current.eon.networks[i].ps, 8);
+                    eon_ps_buf[8] = '\0';
+                    size_t eon_ps_len = strlen(eon_ps_buf);
+                    while (eon_ps_len > 0 && (eon_ps_buf[eon_ps_len - 1] == ' ' || eon_ps_buf[eon_ps_len - 1] == '\r')) {
+                        eon_ps_buf[eon_ps_len - 1] = '\0';
+                        eon_ps_len--;
+                    }
+
+                    log_info("%s EON: Network PI=0x%04X | PS: %s | TP=%d | TA=%d | PTY=%u%s",
+                             current.is_rbds ? "RBDS" : "RDS",
+                             current.eon.networks[i].pi, eon_ps_buf,
+                             current.eon.networks[i].tp,
+                             current.eon.networks[i].ta,
+                             current.eon.networks[i].pty,
+                             af_buf);
+
+                    current.eon.networks[i].is_update = false;
+                }
+            }
+
             wfm_decoder->last_rds_state = current;
         }
     }
-#endif
+
     for (unsigned int i = 0; i < num_frames; i++) {
         float insample = wfm_decoder->mpx_buffer[i] * WFM_MPX_SCALING_FACTOR;
         liquid_float_complex pilot_mix_down;
@@ -531,10 +758,21 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
         if (avg_stereo_pct > 1.0f) is_mono_station = false;
 
         if (is_mono_station || s_wfm_config.force_mono) {
-             log_info("dBFS: %5.1f | SNR: %4.1f dB | Stereo: Mono", dbfs, snr_db);
+            if (wfm_decoder->redsea) {
+                float bler = libredsea_get_bler(wfm_decoder->redsea);
+                log_info("dBFS: %5.1f | SNR: %.1f dB | Stereo: Mono | %s BER: %.1f%%", dbfs, snr_db, (s_wfm_config.rds_standard == RDS_STANDARD_RBDS) ? "RBDS" : "RDS", bler);
+            } else {
+                log_info("dBFS: %5.1f | SNR: %.1f dB | Stereo: Mono", dbfs, snr_db);
+            }
         } else {
-            log_info("dBFS: %5.1f | SNR: %4.1f dB | Stereo: %5.1f%% | Pilot Err: %4.1f%%", dbfs, snr_db, avg_stereo_pct, pilot_pct);
+            if (wfm_decoder->redsea) {
+                float bler = libredsea_get_bler(wfm_decoder->redsea);
+                log_info("dBFS: %5.1f | SNR: %.1f dB | Stereo: %.1f%% | Pilot Err: %.1f%% | %s BER: %.1f%%", dbfs, snr_db, avg_stereo_pct, pilot_pct, (s_wfm_config.rds_standard == RDS_STANDARD_RBDS) ? "RBDS" : "RDS", bler);
+            } else {
+                log_info("dBFS: %5.1f | SNR: %.1f dB | Stereo: %.1f%% | Pilot Err: %.1f%%", dbfs, snr_db, avg_stereo_pct, pilot_pct);
+            }
         }
+        fprintf(stderr, "\n");
         stat_counter = 0; accum_mag_sum = 0.0; accum_mag_sq_sum = 0.0; accum_pilot_mag_sum = 0.0;
         accum_stereo_pct_sum = 0.0; accum_pilot_err_sq_sum = 0.0; accum_pilot_count = 0;
     }
@@ -565,12 +803,11 @@ static void wfm_output_cleanup(ModuleContext* context) {
     if (wfm_decoder->resamp_out_l) msresamp_rrrf_destroy(wfm_decoder->resamp_out_l);
     if (wfm_decoder->resamp_out_r) msresamp_rrrf_destroy(wfm_decoder->resamp_out_r);
 
-#ifdef WITH_REDSEA
     if (wfm_decoder->redsea) {
-        redsea_free(wfm_decoder->redsea);
+        libredsea_free(wfm_decoder->redsea);
         wfm_decoder->redsea = NULL;
     }
-#endif
+
 }
 
 static void wfm_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
@@ -592,11 +829,10 @@ const struct argparse_option wfm_output_cli_options[] = {
     OPT_BOOLEAN(0, "wfm-force-stereo", &s_wfm_config.force_stereo, "Force stereo decoding regardless of signal quality.", NULL, 0, 0),
     OPT_BOOLEAN(0, "wfm-force-mono", &s_wfm_config.force_mono, "Force mono output.", NULL, 0, 0),
     OPT_BOOLEAN(0, "wfm-raw-mpx-stdout", &s_wfm_config.raw_mpx_stdout, "Pipe raw MPX data (S16 Mono) to stdout while playing audio.", NULL, 0, 0),
-#ifdef WITH_REDSEA
     OPT_BOOLEAN(0, "wfm-no-rds", &s_wfm_config.rds_disable, "Disable RDS decoding (Enabled by default).", NULL, 0, 0),
     OPT_BOOLEAN(0, "wfm-rds", &s_wfm_config.use_world_rds, "Use World RDS standard (Default is US RBDS).", NULL, 0, 0),
-    OPT_BOOLEAN(0, "wfm-rds-partial", &s_wfm_config.rds_partial, "Show partial/noisy RDS text (PS/RT).", NULL, 0, 0),
-#endif
+
+
 };
 
 const struct argparse_option* wfm_output_get_cli_options(int* count) {

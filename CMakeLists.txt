@@ -28,7 +28,6 @@ option(WITH_SDRPLAY "Enable SDRplay device support" OFF)
 option(WITH_HACKRF "Enable HackRF device support" OFF)
 option(WITH_BLADERF "Enable BladeRF device support" OFF)
 option(WITH_NRSC5 "Enable NRSC5 (HD Radio) output support" OFF)
-option(WITH_REDSEA "Enable Redsea RDS decoder (Requires C++17)" OFF)
 option(BUILD_DOCUMENTATION "Enable building Doxygen documentation" OFF)
 
 set(SNDFILE_INCLUDE_DIR "" CACHE PATH "Manual include path for libsndfile")
@@ -53,22 +52,12 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 
-# --- Conditional C++ Support ---
-if(WITH_REDSEA)
-    enable_language(CXX)
-    set(CMAKE_CXX_STANDARD 17)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
-    set(CMAKE_CXX_EXTENSIONS OFF)
-    # We apply the definition to the target later
-endif()
-# -------------------------------
-
 set(CPU_TARGET_ARCHITECTURE "native" CACHE STRING "Target CPU arch (-march=...).")
 
 add_compile_definitions(_GNU_SOURCE)
 add_compile_options(-fvisibility=hidden)
 
-# 1. Common Flags (Safe for both C and C++)
+# 1. Common Flags
 add_compile_options(
     -Wall
     -Wextra
@@ -76,13 +65,8 @@ add_compile_options(
     -Wvla
     -Wsign-compare
     -Wshadow
+    -Wmissing-prototypes
 )
-
-# 2. C-Only Flags (Applied ONLY to .c files)
-add_compile_options($<$<COMPILE_LANGUAGE:C>:-Wmissing-prototypes>)
-
-# 3. C++-Only Flags (Applied ONLY to .cpp/.cc files)
-add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-unknown-pragmas>)
 
 # Optimization Flags
 set(RELEASE_COMPILE_OPTIONS -O3 -ftree-vectorize -Wno-deprecated-declarations)
@@ -101,23 +85,6 @@ find_package(LiquidDSP REQUIRED)
 find_package(Expat REQUIRED)
 find_package(Threads REQUIRED)
 
-# --- Redsea Dependency ---
-if(WITH_REDSEA)
-    if(ICONV_INCLUDE_DIR AND ICONV_LIBRARY)
-        if(NOT TARGET Iconv::Iconv)
-            add_library(Iconv::Iconv UNKNOWN IMPORTED)
-            set_target_properties(Iconv::Iconv PROPERTIES
-                IMPORTED_LOCATION "${ICONV_LIBRARY}"
-                INTERFACE_INCLUDE_DIRECTORIES "${ICONV_INCLUDE_DIR}"
-            )
-        endif()
-        set(Iconv_FOUND TRUE)
-        set(Iconv_INCLUDE_DIRS ${ICONV_INCLUDE_DIR})
-    else()
-        find_package(Iconv REQUIRED)
-    endif()
-endif()
-# -------------------------
 
 # Hardware Dependency Logic
 if(WITH_RTLSDR OR WITH_AIRSPY OR WITH_AIRSPYHF OR WITH_HACKRF OR WITH_BLADERF)
@@ -159,19 +126,11 @@ include_directories(include)
 include_directories(external/log.c)
 include_directories(external/miniaudio)
 include_directories(external/argparse)
+include_directories(external/libredsea)
 include_directories(${SndFile_INCLUDE_DIRS})
 include_directories(${LiquidDSP_INCLUDE_DIRS})
 include_directories(${Expat_INCLUDE_DIRS})
 
-# --- Redsea Library Setup ---
-if(WITH_REDSEA)
-    include_directories(${CMAKE_SOURCE_DIR}/external/redsea)
-    include_directories(${Iconv_INCLUDE_DIRS})
-    file(GLOB_RECURSE REDSEA_LIB_SOURCES "${CMAKE_SOURCE_DIR}/external/redsea/src/*.cc")
-else()
-    set(REDSEA_LIB_SOURCES "")
-endif()
-# ----------------------------
 
 set(COMPILE_WITH_FFAST_MATH_SOURCES
     src/agc.c
@@ -190,6 +149,7 @@ set(COMPILE_WITH_FFAST_MATH_SOURCES
     src/resampler.c
     src/sample_convert.c
     src/utility_threads.c
+    external/libredsea/rds_demodulator.c
 )
 
 set(NETWORK_SOURCES
@@ -198,6 +158,10 @@ set(NETWORK_SOURCES
 
 set(OTHER_SOURCES
     external/argparse/argparse.c
+    external/libredsea/block_sync.c
+    external/libredsea/libredsea.c
+    external/libredsea/group_decoder.c
+    external/libredsea/tmc_events.c
     src/audio_output_functions.c
     src/cli.c
     src/config.c
@@ -228,14 +192,6 @@ set(OTHER_SOURCES
     src/utilities.c
     src/wait_event.c
 )
-
-# --- Add the correct Wrapper ---
-if(WITH_REDSEA)
-    list(APPEND OTHER_SOURCES src/redsea_wrapper.cpp)
-else()
-    list(APPEND OTHER_SOURCES src/redsea_wrapper_stub.c)
-endif()
-# -------------------------------
 
 if(WITH_RTLSDR)
     list(APPEND OTHER_SOURCES src/input_rtlsdr.c)
@@ -269,7 +225,7 @@ endif()
 #=======================================================================
 # Target Creation
 #=======================================================================
-add_executable(iq_tool ${COMPILE_WITH_FFAST_MATH_SOURCES} ${NETWORK_SOURCES} ${OTHER_SOURCES} ${REDSEA_LIB_SOURCES})
+add_executable(iq_tool ${COMPILE_WITH_FFAST_MATH_SOURCES} ${NETWORK_SOURCES} ${OTHER_SOURCES} )
 
 #=======================================================================
 # Target Properties
@@ -280,9 +236,6 @@ if(MINGW)
     target_compile_definitions(iq_tool PRIVATE __USE_MINGW_ANSI_STDIO=1)
 endif()
 
-if(WITH_REDSEA)
-    target_compile_definitions(iq_tool PRIVATE WITH_REDSEA)
-endif()
 
 if(WITH_RTLSDR)
     target_compile_definitions(iq_tool PRIVATE WITH_RTLSDR)
@@ -373,11 +326,6 @@ target_link_options(iq_tool PRIVATE
     $<$<CONFIG:DebugMSan>:-fsanitize=memory>
 )
 
-# Suppress LTO type mismatch warnings for Redsea C++/liquid-dsp interop
-if(WITH_REDSEA)
-    target_link_options(iq_tool PRIVATE -Wno-lto-type-mismatch)
-endif()
-
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set_source_files_properties(${COMPILE_WITH_FFAST_MATH_SOURCES} PROPERTIES COMPILE_OPTIONS "-ffast-math")
 endif()
@@ -398,10 +346,6 @@ if(WIN32)
     target_link_libraries(iq_tool PRIVATE shlwapi pathcch shell32 ws2_32 ole32)
 else()
     target_link_libraries(iq_tool PRIVATE m)
-endif()
-
-if(WITH_REDSEA)
-    target_link_libraries(iq_tool PRIVATE Iconv::Iconv)
 endif()
 
 if(WITH_RTLSDR)
@@ -475,12 +419,6 @@ message(STATUS "  libsndfile:          ${SndFile_LIBRARIES}")
 message(STATUS "  liquid-dsp:          ${LiquidDSP_LIBRARIES}")
 message(STATUS "  Expat:               ${Expat_LIBRARIES}")
 message(STATUS "  Threads:             Threads::Threads")
-
-if(WITH_REDSEA)
-    message(STATUS "  Redsea RDS:          ENABLED")
-else()
-    message(STATUS "  Redsea RDS:          DISABLED (use -DWITH_REDSEA=ON to enable)")
-endif()
 
 if(WITH_RTLSDR)
     message(STATUS "  RTL-SDR Support:     ENABLED (${RtlSdr_LIBRARIES})")

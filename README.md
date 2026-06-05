@@ -40,7 +40,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
     *   **Resampling** to a new sample rate.
     *   **Frequency Shifting:** Apply shifts before or after resampling.
     *   **Demodulation & Decoding:**
-        *   **Wideband FM (WFM):** Demodulates FM Broadcast signals to audio with optional Redsea RDS/RBDS decoding.
+        *   **Wideband FM (WFM):** Demodulates FM Broadcast signals to audio with integrated RDS/RBDS decoding.
         *   **Narrowband FM (NFM):** Demodulates voice signals with adjustable squelch and standard/narrow bandwidths
         *   **AM:** Demodulates AM signals using a Synchronous (PLL) detector, or standard Envelope detection.
         *   **NRSC5 (HD Radio):** Integrated support for demodulating and playing HD Radio streams (via `libnrsc5`).
@@ -64,8 +64,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
 *   **liquid-dsp**
 *   **libexpat**
 *   **pthreads:** This is a standard system component on Linux/macOS. On Windows, a compatible version is typically included with the MinGW-w64 toolchain.
-*   **(Optional) C++17 Compliant Compiler:** (G++, Clang). For enabling Redsea RDS decoding within the WFM module.
-*   **(Optional) libiconv:** For enabling Redsea RDS decoding within the WFM module.
+
 *   **(Optional) libfftw3:** For a performance boost with FFT-based filtering, install (`libfftw3-dev`) **before** building or installing `liquid-dsp`.
 *   **(Optional) RTL-SDR Library (librtlsdr):** For RTL-SDR support (e.g., `librtlsdr-dev`).
 *   **(Optional) BladeRF Library (libbladeRF):** For BladeRF support (e.g., `libbladerf-dev`). Windows installers found **[here](https://github.com/Nuand/bladeRF/releases)**.
@@ -102,11 +101,11 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
     mkdir build
     cd build
 
-    # Build without any optional SDR support besides Spyserver support and no RDS decoding support in the WFM module
+    # Build without any optional SDR support besides Spyserver support
     cmake ..
 
     # Or, build with everything enabled
-    cmake -DWITH_RTLSDR=ON -DWITH_SDRPLAY=ON -DWITH_HACKRF=ON -DWITH_AIRSPY=ON -DWITH_AIRSPYHF=ON -DWITH_BLADERF=ON -DWITH_NRSC5=ON -DWITH_REDSEA=ON ..
+    cmake -DWITH_RTLSDR=ON -DWITH_SDRPLAY=ON -DWITH_HACKRF=ON -DWITH_AIRSPY=ON -DWITH_AIRSPYHF=ON -DWITH_BLADERF=ON -DWITH_NRSC5=ON ..
 
     make or make -j N (Replace N with number of threads)
     make install 
@@ -297,7 +296,6 @@ WFM Output (wfm)
     --wfm-raw-mpx-stdout                      Pipe raw MPX data (S16 Mono) to stdout while playing audio.
     --wfm-no-rds                              Disable RDS decoding (Enabled by default).
     --wfm-rds                                 Use World RDS standard (Default is US RBDS).
-    --wfm-rds-partial                         Show partial/noisy RDS text (PS/RT).
 
 NFM Output (nfm)
     --nfm-gain=<flt>                          Audio gain (default: 1.0)
