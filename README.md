@@ -64,7 +64,6 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
 *   **liquid-dsp**
 *   **libexpat**
 *   **pthreads:** This is a standard system component on Linux/macOS. On Windows, a compatible version is typically included with the MinGW-w64 toolchain.
-
 *   **(Optional) libfftw3:** For a performance boost with FFT-based filtering, install (`libfftw3-dev`) **before** building or installing `liquid-dsp`.
 *   **(Optional) RTL-SDR Library (librtlsdr):** For RTL-SDR support (e.g., `librtlsdr-dev`).
 *   **(Optional) BladeRF Library (libbladeRF):** For BladeRF support (e.g., `libbladerf-dev`). Windows installers found **[here](https://github.com/Nuand/bladeRF/releases)**.
