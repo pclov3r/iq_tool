@@ -42,6 +42,10 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef _WIN32
+#define timegm _mkgmtime
+#endif
+
 void rds_group_extract(RdsGroup *group) {
     if (!group->blocks[RDS_BLOCK_1].is_received) {
         group->has_pi = false;

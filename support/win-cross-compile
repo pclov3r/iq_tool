@@ -162,7 +162,6 @@ prefix=${root}/build-win64-${build_suffix}
 cmake_opts=(
     -D CMAKE_SYSTEM_NAME=Windows
     -D CMAKE_C_COMPILER=${host}-gcc
-    -D CMAKE_CXX_COMPILER=${host}-g++
     -D SNDFILE_INCLUDE_DIR=${SNDFILE_INCLUDE_DIR}
     -D SNDFILE_LIBRARY=${SNDFILE_LIBRARY}
     -D LIQUID_INCLUDE_DIR=${LIQUID_INCLUDE_DIR}

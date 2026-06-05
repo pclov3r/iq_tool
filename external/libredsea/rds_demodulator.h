@@ -38,7 +38,7 @@
 #define RDS_DEMODULATOR_H
 
 #include <complex.h>
-#include <liquid/liquid.h>
+#include <liquid.h>
 #include <stdbool.h>
 #include <stdint.h>
 
