@@ -164,3 +164,8 @@ float libredsea_get_bler(LibRedseaHandle context) {
     // error_sum_total counts bad blocks over the last 50 blocks
     return (context->stream.error_sum_total / 50.0f) * 100.0f;
 }
+
+bool libredsea_get_sync(LibRedseaHandle context) {
+    if (!context) return false;
+    return context->stream.is_in_sync;
+}

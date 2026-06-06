@@ -253,6 +253,13 @@ void rds_get_country_string(uint16_t cc, uint16_t ecc, char *out_buf, size_t buf
 float libredsea_get_bler(LibRedseaHandle context);
 
 /**
+ * @brief Check whether the block synchronizer is currently locked.
+ * @param context Decoder handle
+ * @return true if in sync, false if not synced
+ */
+bool libredsea_get_sync(LibRedseaHandle context);
+
+/**
  * @brief Free the native C LibRedsea decoder.
  * @param context Decoder handle
  */
