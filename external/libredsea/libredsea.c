@@ -38,6 +38,7 @@
 #include "rds_demodulator.h"
 #include "block_sync.h"
 #include "group_types.h"
+#include "mem_arena.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -103,8 +104,8 @@ struct RDSContext_T {
 void rds_group_decode(RdsState *state, const RdsGroup *group);
 void rds_group_extract(RdsGroup *group);
 
-LibRedseaHandle libredsea_init(float sample_rate, bool is_rbds) {
-    struct RDSContext_T *ctx = (struct RDSContext_T *)malloc(sizeof(struct RDSContext_T));
+LibRedseaHandle libredsea_init(float sample_rate, bool is_rbds, void *arena) {
+    struct RDSContext_T *ctx = (struct RDSContext_T *)mem_arena_alloc((MemoryArena *)arena, sizeof(struct RDSContext_T), true);
     if (!ctx)
         return NULL;
 
@@ -122,8 +123,8 @@ LibRedseaHandle libredsea_init(float sample_rate, bool is_rbds) {
 void libredsea_free(LibRedseaHandle context) {
     if (!context)
         return;
+    // context struct is arena-owned; only free liquid-dsp internal objects.
     rds_subcarrier_free(&context->dsp);
-    free(context);
 }
 
 void libredsea_process_mpx(LibRedseaHandle context, const float *mpx_data, int num_samples, RdsState *out_state) {

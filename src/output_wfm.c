@@ -382,7 +382,7 @@ static bool wfm_output_initialize(ModuleContext* context) {
     if (!s_wfm_config.rds_disable) {
         // The `is_rbds` parameter for redsea is determined by our final enum state.
         bool is_rbds = (s_wfm_config.rds_standard == RDS_STANDARD_RBDS);
-        wfm_decoder->redsea = libredsea_init(wfm_decoder->input_samplerate, is_rbds);
+        wfm_decoder->redsea = libredsea_init(wfm_decoder->input_samplerate, is_rbds, &res->pipeline.setup_arena);
         memset(&wfm_decoder->last_rds_state, 0, sizeof(RdsState));
 
         wfm_decoder->rds_display_counter = 0;

@@ -219,9 +219,10 @@ typedef struct RDSContext_T *LibRedseaHandle;
  * @brief Initialize a new native C LibRedsea decoder.
  * @param sample_rate Sample rate of the MPX input buffer
  * @param is_rbds True for North American RBDS, False for World RDS
+ * @param arena Pointer to a MemoryArena to allocate from (must outlive the handle)
  * @return Opaque handle to decoder instance
  */
-LibRedseaHandle libredsea_init(float sample_rate, bool is_rbds);
+LibRedseaHandle libredsea_init(float sample_rate, bool is_rbds, void *arena);
 
 /**
  * @brief Process raw MPX audio and update the RDS state.
