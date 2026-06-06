@@ -399,6 +399,7 @@ static bool wfm_output_initialize(ModuleContext* context) {
 }
 
 static void wfm_output_reset(ModuleContext* context) { (void)context; /* TODO: Reset PLL state */ }
+
 static void wfm_output_flush(ModuleContext* context) {
     WfmContext* wfm_decoder = (WfmContext*)context->app->module.output_private_data;
     audio_output_clear(wfm_decoder->audio_out);
@@ -499,7 +500,7 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
 
             char main_af_buf[128] = "";
             if (current.alt_freq_count > 0) {
-                int offset = snprintf(main_af_buf, sizeof(main_af_buf), " | AF: ");
+                int offset = snprintf(main_af_buf, sizeof(main_af_buf), "AF: ");
                 for (int f = 0; f < current.alt_freq_count && (size_t)offset < sizeof(main_af_buf) - 10; f++) {
                     offset += snprintf(main_af_buf + offset, sizeof(main_af_buf) - offset, "%.1f%s",
                                        current.alt_freqs[f] / 1000.0,
@@ -518,11 +519,15 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
             }
 
             if (s_wfm_config.rds_standard == RDS_STANDARD_RBDS && current.callsign[0] != '\0') {
-                 log_info("RBDS PI: %04X | CALL: %s%s%s",
-                         current.pi_code, current.callsign, main_af_buf, iso_buf);
+                 log_info("RBDS PI: %04X | CALL: %s%s",
+                         current.pi_code, current.callsign, iso_buf);
             } else {
-                 log_info("RDS PI: %04X%s%s",
-                         current.pi_code, main_af_buf, iso_buf);
+                 log_info("RDS PI: %04X%s",
+                         current.pi_code, iso_buf);
+            }
+
+            if (main_af_buf[0] != '\0') {
+                log_info("%s %s", current.is_rbds ? "RBDS" : "RDS", main_af_buf);
             }
 
             int has_tmc = 0;
@@ -545,13 +550,46 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
             if (rt_ptr[0] != '\0') {
                  log_info("%s RT: %s", current.is_rbds ? "RBDS" : "RDS", rt_ptr);
             }
+
+            for (int e = 0; e < current.rt_plus_event_count; e++) {
+                RdsRTPlusEvent* ev = &current.rt_plus_events[e];
+
+                size_t t_len = strlen(ev->title);
+                while (t_len > 0 && (ev->title[t_len - 1] == ' ' || ev->title[t_len - 1] == '\r')) { ev->title[t_len - 1] = '\0'; t_len--; }
+                size_t a_len = strlen(ev->artist);
+                while (a_len > 0 && (ev->artist[a_len - 1] == ' ' || ev->artist[a_len - 1] == '\r')) { ev->artist[a_len - 1] = '\0'; a_len--; }
+
+                bool is_dup = false;
+                for (int i = 0; i < e; i++) {
+                    if (strcmp(current.rt_plus_events[i].artist, ev->artist) == 0 &&
+                        strcmp(current.rt_plus_events[i].title, ev->title) == 0) {
+                        is_dup = true; break;
+                    }
+                }
+                for (int i = 0; i < wfm_decoder->last_rds_state.rt_plus_event_count; i++) {
+                    if (strcmp(wfm_decoder->last_rds_state.rt_plus_events[i].artist, ev->artist) == 0 &&
+                        strcmp(wfm_decoder->last_rds_state.rt_plus_events[i].title, ev->title) == 0) {
+                        is_dup = true; break;
+                    }
+                }
+                if (is_dup) continue;
+
+                if (ev->title[0] != '\0' && ev->artist[0] != '\0') {
+                    log_info("%s RT+: Artist=%s | Title=%s", current.is_rbds ? "RBDS" : "RDS", ev->artist, ev->title);
+                } else if (ev->artist[0] != '\0') {
+                    log_info("%s RT+: Artist=%s", current.is_rbds ? "RBDS" : "RDS", ev->artist);
+                } else if (ev->title[0] != '\0') {
+                    log_info("%s RT+: Title=%s", current.is_rbds ? "RBDS" : "RDS", ev->title);
+                }
+            }
+
             if (current.clock_time[0] != '\0' && strcmp(current.clock_time, wfm_decoder->last_rds_state.clock_time) != 0) {
                 log_info("%s CT: %s", current.is_rbds ? "RBDS" : "RDS", current.clock_time);
             }
 
             for (int e = 0; e < current.tmc_event_count; e++) {
                 RdsTmcEvent* ev = &current.tmc_events[e];
-                
+
                 bool is_dup = false;
                 for (int i = 0; i < e; i++) {
                     if (current.tmc_events[i].location_id == ev->location_id &&
@@ -609,38 +647,6 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
                 }
             }
 
-            for (int e = 0; e < current.rt_plus_event_count; e++) {
-                RdsRTPlusEvent* ev = &current.rt_plus_events[e];
-                
-                size_t t_len = strlen(ev->title);
-                while (t_len > 0 && (ev->title[t_len - 1] == ' ' || ev->title[t_len - 1] == '\r')) { ev->title[t_len - 1] = '\0'; t_len--; }
-                size_t a_len = strlen(ev->artist);
-                while (a_len > 0 && (ev->artist[a_len - 1] == ' ' || ev->artist[a_len - 1] == '\r')) { ev->artist[a_len - 1] = '\0'; a_len--; }
-
-                bool is_dup = false;
-                for (int i = 0; i < e; i++) {
-                    if (strcmp(current.rt_plus_events[i].artist, ev->artist) == 0 &&
-                        strcmp(current.rt_plus_events[i].title, ev->title) == 0) {
-                        is_dup = true; break;
-                    }
-                }
-                for (int i = 0; i < wfm_decoder->last_rds_state.rt_plus_event_count; i++) {
-                    if (strcmp(wfm_decoder->last_rds_state.rt_plus_events[i].artist, ev->artist) == 0 &&
-                        strcmp(wfm_decoder->last_rds_state.rt_plus_events[i].title, ev->title) == 0) {
-                        is_dup = true; break;
-                    }
-                }
-                if (is_dup) continue;
-
-                if (ev->title[0] != '\0' && ev->artist[0] != '\0') {
-                    log_info("%s RT+: Artist=%s | Title=%s", current.is_rbds ? "RBDS" : "RDS", ev->artist, ev->title);
-                } else if (ev->artist[0] != '\0') {
-                    log_info("%s RT+: Artist=%s", current.is_rbds ? "RBDS" : "RDS", ev->artist);
-                } else if (ev->title[0] != '\0') {
-                    log_info("%s RT+: Title=%s", current.is_rbds ? "RBDS" : "RDS", ev->title);
-                }
-            }
-
             libredsea_clear_events(wfm_decoder->redsea);
 
             for (int i = 0; i < MAX_EON_NETWORKS; i++) {
@@ -648,7 +654,7 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
                     bool changed = false;
                     RdsEonNetwork* cur_net = &current.eon.networks[i];
                     RdsEonNetwork* last_net = &wfm_decoder->last_rds_state.eon.networks[i];
-                    
+
                     if (!last_net->is_valid) changed = true;
                     else if (cur_net->pi != last_net->pi) changed = true;
                     else if (strcmp(cur_net->ps, last_net->ps) != 0) changed = true;
@@ -665,7 +671,7 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
                             }
                         }
                     }
-                    
+
                     if (!changed) continue;
                     char af_buf[128] = "";
                     if (current.eon.networks[i].mapped_freq_khz > 0) {
