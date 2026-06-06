@@ -64,47 +64,26 @@ void rds_group_extract(RdsGroup *group) {
 }
 
 static void decode_0a(RdsState *state, const RdsGroup *group) {
-    if (!group->blocks[RDS_BLOCK_2].is_received || !group->blocks[RDS_BLOCK_4].is_received)
+    if (!group->blocks[RDS_BLOCK_2].is_received)
         return;
 
-    uint16_t b2 = group->blocks[RDS_BLOCK_2].data;
-    uint16_t b4 = group->blocks[RDS_BLOCK_4].data;
+    uint16_t b2  = group->blocks[RDS_BLOCK_2].data;
 
     // PS Segment (0-3)
-    int segment = b2 & 0x03;
-
-    // PS chars
-    char c1 = (b4 >> 8) & 0xFF;
-    char c2 = b4 & 0xFF;
-
-    // Proper line clearing per RDS specs: if segment 0 changes, the PS is new.
-    // Clear the rest to prevent ghost characters.
-    if (segment == 0 && (state->ps_name[0] != c1 || state->ps_name[1] != c2)) {
-        memset(state->ps_name, 0, sizeof(state->ps_name));
-    }
-
-    state->ps_name[segment * 2] = c1;
-    state->ps_name[segment * 2 + 1] = c2;
+    int segment  = b2 & 0x03;
 
     // DI flags
-    int di_bit = (b2 >> 2) & 0x01; // DI value is at bit 2, addressing is segment
+    int di_bit   = (b2 >> 2) & 0x01; // DI value is at bit 2, addressing is segment
+
     switch (segment) {
-    case 0:
-        state->stereo = di_bit;
-        break;
-    case 1:
-        state->binaural = di_bit;
-        break;
-    case 2:
-        state->compressed = di_bit;
-        break;
-    case 3:
-        state->dynamic = di_bit;
-        break;
+    case 0: state->dynamic    = di_bit; break; // d0: Dynamic PTY (SA=0)
+    case 1: state->compressed = di_bit; break; // d1: Compressed  (SA=1)
+    case 2: state->binaural   = di_bit; break; // d2: Art. Head   (SA=2)
+    case 3: state->stereo     = di_bit; break; // d3: Stereo      (SA=3)
     }
 
     // TA / Music
-    state->ta = (b2 >> 4) & 0x01;
+    state->ta       = (b2 >> 4) & 0x01;
     state->is_music = (b2 >> 3) & 0x01;
 
     // AF in Block 3 (if 0A)
@@ -128,6 +107,25 @@ static void decode_0a(RdsState *state, const RdsGroup *group) {
             state->alt_freqs[state->alt_freq_count++] = 87500 + 100 * af2;
         }
     }
+
+    // PS name in Block 4
+    if (!group->blocks[RDS_BLOCK_4].is_received)
+        return;
+
+    uint16_t b4 = group->blocks[RDS_BLOCK_4].data;
+
+    // PS chars
+    char c1 = (b4 >> 8) & 0xFF;
+    char c2 = b4 & 0xFF;
+
+    // Proper line clearing per RDS specs: if segment 0 changes, the PS is new.
+    // Clear the rest to prevent ghost characters.
+    if (segment == 0 && (state->ps_name[0] != c1 || state->ps_name[1] != c2)) {
+        memset(state->ps_name, 0, sizeof(state->ps_name));
+    }
+
+    state->ps_name[segment * 2]     = c1;
+    state->ps_name[segment * 2 + 1] = c2;
 }
 
 static void decode_rt_plus(RdsState *state, const RdsGroup *group) {
@@ -805,13 +803,13 @@ static void decode_15(RdsState *state, const RdsGroup *group) {
         bool is_di = (block_data & 0x04) != 0;
 
         if (segment_address == 0)
-            state->stereo = is_di;
+            state->dynamic    = is_di; // d0: Dynamic PTY
         else if (segment_address == 1)
-            state->binaural = is_di;
+            state->compressed = is_di; // d1: Compressed
         else if (segment_address == 2)
-            state->compressed = is_di;
+            state->binaural   = is_di; // d2: Art. Head
         else if (segment_address == 3)
-            state->dynamic = is_di;
+            state->stereo     = is_di; // d3: Stereo
 
         state->ta = (block_data & 0x10) != 0;
         state->is_music = (block_data & 0x08) != 0;
