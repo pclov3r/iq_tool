@@ -552,34 +552,34 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
             }
 
             for (int e = 0; e < current.rt_plus_event_count; e++) {
-                RdsRTPlusEvent* ev = &current.rt_plus_events[e];
+                RdsRTPlusEvent* event = &current.rt_plus_events[e];
 
-                size_t t_len = strlen(ev->title);
-                while (t_len > 0 && (ev->title[t_len - 1] == ' ' || ev->title[t_len - 1] == '\r')) { ev->title[t_len - 1] = '\0'; t_len--; }
-                size_t a_len = strlen(ev->artist);
-                while (a_len > 0 && (ev->artist[a_len - 1] == ' ' || ev->artist[a_len - 1] == '\r')) { ev->artist[a_len - 1] = '\0'; a_len--; }
+                size_t t_len = strlen(event->title);
+                while (t_len > 0 && (event->title[t_len - 1] == ' ' || event->title[t_len - 1] == '\r')) { event->title[t_len - 1] = '\0'; t_len--; }
+                size_t a_len = strlen(event->artist);
+                while (a_len > 0 && (event->artist[a_len - 1] == ' ' || event->artist[a_len - 1] == '\r')) { event->artist[a_len - 1] = '\0'; a_len--; }
 
                 bool is_dup = false;
                 for (int i = 0; i < e; i++) {
-                    if (strcmp(current.rt_plus_events[i].artist, ev->artist) == 0 &&
-                        strcmp(current.rt_plus_events[i].title, ev->title) == 0) {
+                    if (strcmp(current.rt_plus_events[i].artist, event->artist) == 0 &&
+                        strcmp(current.rt_plus_events[i].title, event->title) == 0) {
                         is_dup = true; break;
                     }
                 }
                 for (int i = 0; i < wfm_decoder->last_rds_state.rt_plus_event_count; i++) {
-                    if (strcmp(wfm_decoder->last_rds_state.rt_plus_events[i].artist, ev->artist) == 0 &&
-                        strcmp(wfm_decoder->last_rds_state.rt_plus_events[i].title, ev->title) == 0) {
+                    if (strcmp(wfm_decoder->last_rds_state.rt_plus_events[i].artist, event->artist) == 0 &&
+                        strcmp(wfm_decoder->last_rds_state.rt_plus_events[i].title, event->title) == 0) {
                         is_dup = true; break;
                     }
                 }
                 if (is_dup) continue;
 
-                if (ev->title[0] != '\0' && ev->artist[0] != '\0') {
-                    log_info("%s RT+: Artist=%s | Title=%s", current.is_rbds ? "RBDS" : "RDS", ev->artist, ev->title);
-                } else if (ev->artist[0] != '\0') {
-                    log_info("%s RT+: Artist=%s", current.is_rbds ? "RBDS" : "RDS", ev->artist);
-                } else if (ev->title[0] != '\0') {
-                    log_info("%s RT+: Title=%s", current.is_rbds ? "RBDS" : "RDS", ev->title);
+                if (event->title[0] != '\0' && event->artist[0] != '\0') {
+                    log_info("%s RT+: Artist=%s | Title=%s", current.is_rbds ? "RBDS" : "RDS", event->artist, event->title);
+                } else if (event->artist[0] != '\0') {
+                    log_info("%s RT+: Artist=%s", current.is_rbds ? "RBDS" : "RDS", event->artist);
+                } else if (event->title[0] != '\0') {
+                    log_info("%s RT+: Title=%s", current.is_rbds ? "RBDS" : "RDS", event->title);
                 }
             }
 
@@ -588,62 +588,62 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
             }
 
             for (int e = 0; e < current.tmc_event_count; e++) {
-                RdsTmcEvent* ev = &current.tmc_events[e];
+                RdsTmcEvent* event = &current.tmc_events[e];
 
                 bool is_dup = false;
                 for (int i = 0; i < e; i++) {
-                    if (current.tmc_events[i].location_id == ev->location_id &&
-                        current.tmc_events[i].event_code == ev->event_code &&
-                        current.tmc_events[i].supplementary_code == ev->supplementary_code) {
+                    if (current.tmc_events[i].location_id == event->location_id &&
+                        current.tmc_events[i].event_code == event->event_code &&
+                        current.tmc_events[i].supplementary_code == event->supplementary_code) {
                         is_dup = true; break;
                     }
                 }
                 for (int i = 0; i < wfm_decoder->last_rds_state.tmc_event_count; i++) {
-                    if (wfm_decoder->last_rds_state.tmc_events[i].location_id == ev->location_id &&
-                        wfm_decoder->last_rds_state.tmc_events[i].event_code == ev->event_code &&
-                        wfm_decoder->last_rds_state.tmc_events[i].supplementary_code == ev->supplementary_code) {
+                    if (wfm_decoder->last_rds_state.tmc_events[i].location_id == event->location_id &&
+                        wfm_decoder->last_rds_state.tmc_events[i].event_code == event->event_code &&
+                        wfm_decoder->last_rds_state.tmc_events[i].supplementary_code == event->supplementary_code) {
                         is_dup = true; break;
                     }
                 }
                 if (is_dup) continue;
 
-                if (ev->supplementary_code > 0) {
+                if (event->supplementary_code > 0) {
                     log_info("%s TMC: Location: %u | Event: %u %s | Supplemental: %u %s | Extent: %d | Dir: %d | Div: %d | Dur: %d",
                         current.is_rbds ? "RBDS" : "RDS",
-                        ev->location_id, ev->event_code, ev->event_description,
-                        ev->supplementary_code, get_tmc_supplementary_description(ev->supplementary_code),
-                        ev->extent, ev->direction, ev->diversion_advised, ev->duration);
+                        event->location_id, event->event_code, event->event_description,
+                        event->supplementary_code, get_tmc_supplementary_description(event->supplementary_code),
+                        event->extent, event->direction, event->diversion_advised, event->duration);
                 } else {
                     log_info("%s TMC: Location: %u | Event: %u %s | Extent: %d | Dir: %d | Div: %d | Dur: %d",
                         current.is_rbds ? "RBDS" : "RDS",
-                        ev->location_id, ev->event_code, ev->event_description,
-                        ev->extent, ev->direction, ev->diversion_advised, ev->duration);
+                        event->location_id, event->event_code, event->event_description,
+                        event->extent, event->direction, event->diversion_advised, event->duration);
                 }
             }
 
             for (int e = 0; e < current.tdc_event_count; e++) {
-                RdsTdcEvent* ev = &current.tdc_events[e];
-                if (ev->data_len == 4) {
+                RdsTdcEvent* event = &current.tdc_events[e];
+                if (event->data_len == 4) {
                     log_info("%s TDC (5A): Channel=%u | Hex=%02X %02X %02X %02X",
-                             current.is_rbds ? "RBDS" : "RDS", ev->channel,
-                             ev->data[0], ev->data[1], ev->data[2], ev->data[3]);
+                             current.is_rbds ? "RBDS" : "RDS", event->channel,
+                             event->data[0], event->data[1], event->data[2], event->data[3]);
                 } else {
                     log_info("%s TDC (5B): Channel=%u | Hex=%02X %02X",
-                             current.is_rbds ? "RBDS" : "RDS", ev->channel,
-                             ev->data[0], ev->data[1]);
+                             current.is_rbds ? "RBDS" : "RDS", event->channel,
+                             event->data[0], event->data[1]);
                 }
             }
 
             for (int e = 0; e < current.iha_event_count; e++) {
-                RdsIhaEvent* ev = &current.iha_events[e];
-                if (ev->data_len == 4) {
+                RdsIhaEvent* event = &current.iha_events[e];
+                if (event->data_len == 4) {
                     log_info("%s IHA (6A): Addr=%u | Hex=%02X %02X %02X %02X",
-                             current.is_rbds ? "RBDS" : "RDS", ev->address,
-                             ev->data[0], ev->data[1], ev->data[2], ev->data[3]);
+                             current.is_rbds ? "RBDS" : "RDS", event->address,
+                             event->data[0], event->data[1], event->data[2], event->data[3]);
                 } else {
                     log_info("%s IHA (6B): Addr=%u | Hex=%02X %02X",
-                             current.is_rbds ? "RBDS" : "RDS", ev->address,
-                             ev->data[0], ev->data[1]);
+                             current.is_rbds ? "RBDS" : "RDS", event->address,
+                             event->data[0], event->data[1]);
                 }
             }
 

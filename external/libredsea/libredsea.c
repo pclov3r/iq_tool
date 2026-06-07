@@ -69,21 +69,21 @@ static const CountryCodeEntry country_codes[] = {
     {0xF2, {"kw", "qa", "kh", "ws", "in", "mo", "vn", "ph", "jp", "sg", "mv", "id", "ae", "np", "vu"}},
     {0xF3, {"la", "th", "to", "--", "--", "--", "--", "--", "pg", "--", "ye", "--", "--", "fm", "mn"}}};
 
-void rds_get_country_string(uint16_t cc, uint16_t ecc, char *out_buf, size_t buf_size) {
-    if (out_buf == NULL || buf_size == 0)
+void rds_get_country_string(uint16_t cc, uint16_t ecc, char *out_buffer, size_t buffer_size) {
+    if (out_buffer == NULL || buffer_size == 0)
         return;
-    strncpy(out_buf, "--", buf_size);
+    strncpy(out_buffer, "--", buffer_size);
 
     for (size_t i = 0; i < sizeof(country_codes) / sizeof(CountryCodeEntry); i++) {
         if (country_codes[i].ecc == ecc) {
             if (cc > 0 && cc <= 15) {
-                strncpy(out_buf, country_codes[i].cc_strs[cc - 1], buf_size);
-                out_buf[buf_size - 1] = '\0';
+                strncpy(out_buffer, country_codes[i].cc_strs[cc - 1], buffer_size);
+                out_buffer[buffer_size - 1] = '\0';
 
                 // Convert to uppercase
-                for (int j = 0; out_buf[j] != '\0'; j++) {
-                    if (out_buf[j] >= 'a' && out_buf[j] <= 'z') {
-                        out_buf[j] -= 32;
+                for (int j = 0; out_buffer[j] != '\0'; j++) {
+                    if (out_buffer[j] >= 'a' && out_buffer[j] <= 'z') {
+                        out_buffer[j] -= 32;
                     }
                 }
 

@@ -319,23 +319,23 @@ static void decode_5(RdsState *state, const RdsGroup *group) {
     if (state->tdc_event_count >= RDS_MAX_EVENTS)
         return;
 
-    RdsTdcEvent *ev = &state->tdc_events[state->tdc_event_count];
-    ev->channel = group->blocks[RDS_BLOCK_2].data & 0x1F;
+    RdsTdcEvent *event = &state->tdc_events[state->tdc_event_count];
+    event->channel = group->blocks[RDS_BLOCK_2].data & 0x1F;
 
     if (!group->is_version_b) {
         if (!group->blocks[RDS_BLOCK_3].is_received || !group->blocks[RDS_BLOCK_4].is_received)
             return;
-        ev->data[0] = (group->blocks[RDS_BLOCK_3].data >> 8) & 0xFF;
-        ev->data[1] = group->blocks[RDS_BLOCK_3].data & 0xFF;
-        ev->data[2] = (group->blocks[RDS_BLOCK_4].data >> 8) & 0xFF;
-        ev->data[3] = group->blocks[RDS_BLOCK_4].data & 0xFF;
-        ev->data_len = 4;
+        event->data[0] = (group->blocks[RDS_BLOCK_3].data >> 8) & 0xFF;
+        event->data[1] = group->blocks[RDS_BLOCK_3].data & 0xFF;
+        event->data[2] = (group->blocks[RDS_BLOCK_4].data >> 8) & 0xFF;
+        event->data[3] = group->blocks[RDS_BLOCK_4].data & 0xFF;
+        event->data_len = 4;
     } else {
         if (!group->blocks[RDS_BLOCK_4].is_received)
             return;
-        ev->data[0] = (group->blocks[RDS_BLOCK_4].data >> 8) & 0xFF;
-        ev->data[1] = group->blocks[RDS_BLOCK_4].data & 0xFF;
-        ev->data_len = 2;
+        event->data[0] = (group->blocks[RDS_BLOCK_4].data >> 8) & 0xFF;
+        event->data[1] = group->blocks[RDS_BLOCK_4].data & 0xFF;
+        event->data_len = 2;
     }
     state->tdc_event_count++;
 }
@@ -347,23 +347,23 @@ static void decode_6(RdsState *state, const RdsGroup *group) {
     if (state->iha_event_count >= RDS_MAX_EVENTS)
         return;
 
-    RdsIhaEvent *ev = &state->iha_events[state->iha_event_count];
-    ev->address = group->blocks[RDS_BLOCK_2].data & 0x1F;
+    RdsIhaEvent *event = &state->iha_events[state->iha_event_count];
+    event->address = group->blocks[RDS_BLOCK_2].data & 0x1F;
 
     if (!group->is_version_b) {
         if (!group->blocks[RDS_BLOCK_3].is_received || !group->blocks[RDS_BLOCK_4].is_received)
             return;
-        ev->data[0] = (group->blocks[RDS_BLOCK_3].data >> 8) & 0xFF;
-        ev->data[1] = group->blocks[RDS_BLOCK_3].data & 0xFF;
-        ev->data[2] = (group->blocks[RDS_BLOCK_4].data >> 8) & 0xFF;
-        ev->data[3] = group->blocks[RDS_BLOCK_4].data & 0xFF;
-        ev->data_len = 4;
+        event->data[0] = (group->blocks[RDS_BLOCK_3].data >> 8) & 0xFF;
+        event->data[1] = group->blocks[RDS_BLOCK_3].data & 0xFF;
+        event->data[2] = (group->blocks[RDS_BLOCK_4].data >> 8) & 0xFF;
+        event->data[3] = group->blocks[RDS_BLOCK_4].data & 0xFF;
+        event->data_len = 4;
     } else {
         if (!group->blocks[RDS_BLOCK_4].is_received)
             return;
-        ev->data[0] = (group->blocks[RDS_BLOCK_4].data >> 8) & 0xFF;
-        ev->data[1] = group->blocks[RDS_BLOCK_4].data & 0xFF;
-        ev->data_len = 2;
+        event->data[0] = (group->blocks[RDS_BLOCK_4].data >> 8) & 0xFF;
+        event->data[1] = group->blocks[RDS_BLOCK_4].data & 0xFF;
+        event->data_len = 2;
     }
     state->iha_event_count++;
 }
@@ -467,19 +467,19 @@ static void decode_8a(RdsState *state, const RdsGroup *group) {
         if (is_single_group) {
             if (state->tmc_event_count >= RDS_MAX_EVENTS)
                 return;
-            RdsTmcEvent *ev = &state->tmc_events[state->tmc_event_count++];
+            RdsTmcEvent *event = &state->tmc_events[state->tmc_event_count++];
 
-            ev->location_id = b4;
-            ev->event_code = b3 & 0x07FF;
-            ev->extent = (b3 >> 11) & 0x07;
-            ev->direction = (b3 >> 14) & 0x01;
-            ev->diversion_advised = (b3 >> 15) & 0x01;
-            ev->duration = continuity_index;
-            ev->supplementary_code = 0;
+            event->location_id = b4;
+            event->event_code = b3 & 0x07FF;
+            event->extent = (b3 >> 11) & 0x07;
+            event->direction = (b3 >> 14) & 0x01;
+            event->diversion_advised = (b3 >> 15) & 0x01;
+            event->duration = continuity_index;
+            event->supplementary_code = 0;
 
-            const char *desc = get_tmc_event_description(ev->event_code);
-            strncpy(ev->event_description, desc, sizeof(ev->event_description) - 1);
-            ev->event_description[sizeof(ev->event_description) - 1] = '\0';
+            const char *description = get_tmc_event_description(event->event_code);
+            strncpy(event->event_description, description, sizeof(event->event_description) - 1);
+            event->event_description[sizeof(event->event_description) - 1] = '\0';
         } else {
             // Multi-group handling (redsea style buffering)
             if (state->tmc.continuity_index != continuity_index && continuity_index != 0) {
@@ -515,15 +515,15 @@ static void decode_8a(RdsState *state, const RdsGroup *group) {
                 if (state->tmc.multi_parts_received[0]) {
                     if (state->tmc_event_count >= RDS_MAX_EVENTS)
                         return;
-                    RdsTmcEvent *ev = &state->tmc_events[state->tmc_event_count++];
+                    RdsTmcEvent *event = &state->tmc_events[state->tmc_event_count++];
 
                     uint16_t first_b3 = state->tmc.multi_parts[0][0];
                     uint16_t first_b4 = state->tmc.multi_parts[0][1];
 
-                    ev->location_id = first_b4;
-                    ev->event_code = first_b3 & 0x07FF;
-                    ev->extent = (first_b3 >> 11) & 0x07;
-                    ev->direction = (first_b3 >> 14) & 0x01;
+                    event->location_id = first_b4;
+                    event->event_code = first_b3 & 0x07FF;
+                    event->extent = (first_b3 >> 11) & 0x07;
+                    event->direction = (first_b3 >> 14) & 0x01;
 
                     // Parse Freeform Fields for Duration and Diversion
                     uint8_t bits[128];
@@ -541,9 +541,9 @@ static void decode_8a(RdsState *state, const RdsGroup *group) {
                     }
 
                     int bit_pos = 0;
-                    ev->duration = 0;
-                    ev->diversion_advised = false;
-                    ev->supplementary_code = 0;
+                    event->duration = 0;
+                    event->diversion_advised = false;
+                    event->supplementary_code = 0;
 
                     int field_sizes[] = {3, 3, 5, 5, 5, 8, 8, 8, 8, 11, 16, 16, 16, 16, 0, 0};
 
@@ -565,18 +565,18 @@ static void decode_8a(RdsState *state, const RdsGroup *group) {
                             break; // End of freeform data
 
                         if (label == 0) { // Duration
-                            ev->duration = field_data;
+                            event->duration = field_data;
                         } else if (label == 1) { // Control Code
                             if (field_data == 5)
-                                ev->diversion_advised = true; // SetDiversion is 5
+                                event->diversion_advised = true; // SetDiversion is 5
                         } else if (label == 6) {              // Supplementary
-                            ev->supplementary_code = field_data;
+                            event->supplementary_code = field_data;
                         }
                     }
 
-                    const char *desc = get_tmc_event_description(ev->event_code);
-                    strncpy(ev->event_description, desc, sizeof(ev->event_description) - 1);
-                    ev->event_description[sizeof(ev->event_description) - 1] = '\0';
+                    const char *description = get_tmc_event_description(event->event_code);
+                    strncpy(event->event_description, description, sizeof(event->event_description) - 1);
+                    event->event_description[sizeof(event->event_description) - 1] = '\0';
                 }
 
                 // Clear buffer
@@ -669,17 +669,17 @@ static void decode_14(RdsState *state, const RdsGroup *group) {
     uint16_t on_pi = group->blocks[3].data;
 
     // Find or allocate network in state->eon.networks
-    int net_idx = -1;
+    int network_index = -1;
     for (int i = 0; i < MAX_EON_NETWORKS; i++) {
         if (state->eon.networks[i].is_valid && state->eon.networks[i].pi == on_pi) {
-            net_idx = i;
+            network_index = i;
             break;
         }
     }
-    if (net_idx == -1) {
+    if (network_index == -1) {
         for (int i = 0; i < MAX_EON_NETWORKS; i++) {
             if (!state->eon.networks[i].is_valid) {
-                net_idx = i;
+                network_index = i;
                 state->eon.networks[i].is_valid = true;
                 state->eon.networks[i].pi = on_pi;
                 memset(state->eon.networks[i].ps, ' ', 8);
@@ -695,21 +695,21 @@ static void decode_14(RdsState *state, const RdsGroup *group) {
         }
     }
 
-    if (net_idx == -1)
+    if (network_index == -1)
         return; // No space left
 
-    RdsEonNetwork *net = &state->eon.networks[net_idx];
+    RdsEonNetwork *network = &state->eon.networks[network_index];
 
     // ON_TP is in Block 2 bit 4
     if (group->blocks[1].is_received) {
-        net->tp = (group->blocks[1].data >> 4) & 0x01;
+        network->tp = (group->blocks[1].data >> 4) & 0x01;
     }
 
     if (group->is_version_b) {
         // 14B only has TA
         if (group->blocks[1].is_received) {
-            net->ta = (group->blocks[1].data >> 3) & 0x01;
-            net->is_update = true;
+            network->ta = (group->blocks[1].data >> 3) & 0x01;
+            network->is_update = true;
         }
         return;
     }
@@ -727,14 +727,14 @@ static void decode_14(RdsState *state, const RdsGroup *group) {
     case 3: {
         uint8_t c1 = (group->blocks[2].data >> 8) & 0xFF;
         uint8_t c2 = group->blocks[2].data & 0xFF;
-        net->ps[2 * variant] = (c1 >= 0x20 && c1 <= 0x7E) ? c1 : ' ';
-        net->ps[2 * variant + 1] = (c2 >= 0x20 && c2 <= 0x7E) ? c2 : ' ';
-        net->ps_received[variant] = true;
+        network->ps[2 * variant] = (c1 >= 0x20 && c1 <= 0x7E) ? c1 : ' ';
+        network->ps[2 * variant + 1] = (c2 >= 0x20 && c2 <= 0x7E) ? c2 : ' ';
+        network->ps_received[variant] = true;
 
-        if (net->ps_received[0] && net->ps_received[1] && net->ps_received[2] && net->ps_received[3]) {
-            if (!net->ps_complete) {
-                net->ps_complete = true;
-                net->is_update = true;
+        if (network->ps_received[0] && network->ps_received[1] && network->ps_received[2] && network->ps_received[3]) {
+            if (!network->ps_complete) {
+                network->ps_complete = true;
+                network->is_update = true;
             }
         }
         break;
@@ -744,23 +744,23 @@ static void decode_14(RdsState *state, const RdsGroup *group) {
         uint8_t af2 = group->blocks[2].data & 0xFF;
 
         if (af1 >= 225 && af1 <= 249) {
-            net->alt_freq_expected = af1 - 224;
-            net->alt_freq_count = 0;
-        } else if (af1 >= 1 && af1 <= 204 && net->alt_freq_expected > 0 &&
-                   net->alt_freq_count < net->alt_freq_expected) {
-            net->alt_freqs[net->alt_freq_count++] = 87500 + 100 * af1;
+            network->alt_freq_expected = af1 - 224;
+            network->alt_freq_count = 0;
+        } else if (af1 >= 1 && af1 <= 204 && network->alt_freq_expected > 0 &&
+                   network->alt_freq_count < network->alt_freq_expected) {
+            network->alt_freqs[network->alt_freq_count++] = 87500 + 100 * af1;
         }
 
         if (af2 >= 225 && af2 <= 249) {
-            net->alt_freq_expected = af2 - 224;
-            net->alt_freq_count = 0;
-        } else if (af2 >= 1 && af2 <= 204 && net->alt_freq_expected > 0 &&
-                   net->alt_freq_count < net->alt_freq_expected) {
-            net->alt_freqs[net->alt_freq_count++] = 87500 + 100 * af2;
+            network->alt_freq_expected = af2 - 224;
+            network->alt_freq_count = 0;
+        } else if (af2 >= 1 && af2 <= 204 && network->alt_freq_expected > 0 &&
+                   network->alt_freq_count < network->alt_freq_expected) {
+            network->alt_freqs[network->alt_freq_count++] = 87500 + 100 * af2;
         }
 
-        if (net->alt_freq_expected > 0 && net->alt_freq_count == net->alt_freq_expected) {
-            net->is_update = true;
+        if (network->alt_freq_expected > 0 && network->alt_freq_count == network->alt_freq_expected) {
+            network->is_update = true;
         }
         break;
     }
@@ -771,15 +771,15 @@ static void decode_14(RdsState *state, const RdsGroup *group) {
     case 9: {
         uint8_t mapped_freq = group->blocks[2].data & 0xFF;
         if (mapped_freq >= 1 && mapped_freq <= 204) {
-            net->mapped_freq_khz = 87500 + 100 * mapped_freq;
-            net->is_update = true;
+            network->mapped_freq_khz = 87500 + 100 * mapped_freq;
+            network->is_update = true;
         }
         break;
     }
     case 13: {
-        net->pty = (group->blocks[2].data >> 11) & 0x1F;
-        net->ta = group->blocks[2].data & 0x01;
-        net->is_update = true;
+        network->pty = (group->blocks[2].data >> 11) & 0x1F;
+        network->ta = group->blocks[2].data & 0x01;
+        network->is_update = true;
         break;
     }
     }

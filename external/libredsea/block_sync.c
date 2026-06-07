@@ -130,20 +130,20 @@ static bool sync_pulse_could_follow(const RdsSyncPulse *a, const RdsSyncPulse *b
             rds_get_block_number_for_offset(a->offset));
 }
 
-static void sync_pulse_buffer_push(RdsSyncPulseBuffer *buf, RdsOffset offset, uint32_t bitcount) {
+static void sync_pulse_buffer_push(RdsSyncPulseBuffer *buffer, RdsOffset offset, uint32_t bitcount) {
     for (int i = 0; i < 3; i++) {
-        buf->pulses[i] = buf->pulses[i + 1];
+        buffer->pulses[i] = buffer->pulses[i + 1];
     }
-    buf->pulses[3].offset = offset;
-    buf->pulses[3].bit_position = bitcount;
+    buffer->pulses[3].offset = offset;
+    buffer->pulses[3].bit_position = bitcount;
 }
 
-static bool sync_pulse_buffer_is_sequence_found(const RdsSyncPulseBuffer *buf) {
-    const RdsSyncPulse *third = &buf->pulses[3];
+static bool sync_pulse_buffer_is_sequence_found(const RdsSyncPulseBuffer *buffer) {
+    const RdsSyncPulse *third = &buffer->pulses[3];
     for (int i = 0; i < 2; i++) {
         for (int j = i + 1; j < 3; j++) {
-            if (sync_pulse_could_follow(third, &buf->pulses[j]) &&
-                sync_pulse_could_follow(&buf->pulses[j], &buf->pulses[i])) {
+            if (sync_pulse_could_follow(third, &buffer->pulses[j]) &&
+                sync_pulse_could_follow(&buffer->pulses[j], &buffer->pulses[i])) {
                 return true;
             }
         }
