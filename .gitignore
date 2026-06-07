@@ -1,3 +1,10 @@
+# Hidden directories (IDE configs, tool caches, etc.)
+.*/
+
+# Build directories
+build/
+build-*/
+
 # Prerequisites
 *.d
 
