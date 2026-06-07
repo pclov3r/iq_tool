@@ -268,8 +268,31 @@ static bool rtlsdr_input_initialize(ModuleContext* context) {
         rtlsdr_set_tuner_gain_mode(private_data->dev, 0);
     }
 
+    int resolved_ppm = 0;
+    bool ppm_from_serial = false;
+
     if (s_rtlsdr_config.ppm_provided) {
-        rtlsdr_set_freq_correction(private_data->dev, s_rtlsdr_config.ppm);
+        resolved_ppm = s_rtlsdr_config.ppm;
+        log_info("RTL-SDR: Using manually provided PPM correction: %d", resolved_ppm);
+    } else {
+        int temp_ppm = 0;
+        // Parse "PPMxxxx" or "ppmxxxx" format from the serial string
+        if (sscanf(private_data->serial, "%*3[PpMm]%d", &temp_ppm) == 1) {
+            resolved_ppm = temp_ppm;
+            ppm_from_serial = true;
+            log_info("RTL-SDR: Auto-detected PPM correction from serial: %d", resolved_ppm);
+        }
+    }
+
+    if (resolved_ppm != 0) {
+        result = rtlsdr_set_freq_correction(private_data->dev, resolved_ppm);
+        if (result < 0) {
+            if (ppm_from_serial) {
+                log_warn("RTL-SDR: Failed to set automatic PPM correction from serial (%d): %s", resolved_ppm, strerror(-result));
+            } else {
+                log_warn("RTL-SDR: Failed to set manual PPM correction (%d): %s", resolved_ppm, strerror(-result));
+            }
+        }
     }
 
     if (config->sdr_general.bias_t_enable) {
