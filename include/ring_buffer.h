@@ -46,7 +46,7 @@ size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes);
  *
  * @return The total number of bytes successfully written, or 0 if dropped.
  */
-size_t ring_buffer_write_packet(RingBuffer* iob, const void* header, size_t h_len, const void* payload, size_t p_len);
+size_t ring_buffer_write_packet(RingBuffer* iob, const void* header, size_t h_length, const void* payload, size_t p_length);
 
 /**
  * @brief Reads data from the I/O buffer. (Consumer-side Function)

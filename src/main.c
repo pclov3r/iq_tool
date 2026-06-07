@@ -324,12 +324,12 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
     const ModuleContext context = { .config = config, .app = (AppContext*)app };
     app->module.input_api->get_summary_info(&context, &summary_info);
 
-    int max_label_len = 0;
+    int max_label_length = 0;
     if (summary_info.count > 0) {
         for (int i = 0; i < summary_info.count; i++) {
             int length = (int)strlen(summary_info.items[i].label);
-            if (length > max_label_len) {
-                max_label_len = length;
+            if (length > max_label_length) {
+                max_label_length = length;
             }
         }
     }
@@ -338,7 +338,7 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
         const char* offset_labels[] = { "Actual Frequency", "Frequency Offset", "Tuned Frequency", "RF Frequency" };
         for (int i = 0; i < 4; i++) {
             int length = (int)strlen(offset_labels[i]);
-            if (length > max_label_len) max_label_len = length;
+            if (length > max_label_length) max_label_length = length;
         }
     }
 
@@ -348,31 +348,31 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
     };
     for (size_t i = 0; i < sizeof(base_output_labels) / sizeof(base_output_labels[0]); i++) {
         int length = (int)strlen(base_output_labels[i]);
-        if (length > max_label_len) {
-            max_label_len = length;
+        if (length > max_label_length) {
+            max_label_length = length;
         }
     }
 
     fprintf(stderr, "\n--- Input Details ---\n");
     if (summary_info.count > 0) {
         for (int i = 0; i < summary_info.count; i++) {
-            fprintf(stderr, " %-*s : %s\n", max_label_len, summary_info.items[i].label, summary_info.items[i].value);
+            fprintf(stderr, " %-*s : %s\n", max_label_length, summary_info.items[i].label, summary_info.items[i].value);
         }
     }
 
     if (config->sdr_general.rf_freq_provided) {
         if (fabs(config->sdr_general.frequency_offset_hz) > 1e-9) {
             double user_target_hz = config->sdr_general.rf_freq_hz - config->sdr_general.frequency_offset_hz;
-            fprintf(stderr, " %-*s : %.15g Hz\n", max_label_len, "Actual Frequency", user_target_hz);
-            fprintf(stderr, " %-*s : %+.0f Hz\n", max_label_len, "Frequency Offset", config->sdr_general.frequency_offset_hz);
-            fprintf(stderr, " %-*s : %.15g Hz\n", max_label_len, "Tuned Frequency", config->sdr_general.rf_freq_hz);
+            fprintf(stderr, " %-*s : %.15g Hz\n", max_label_length, "Actual Frequency", user_target_hz);
+            fprintf(stderr, " %-*s : %+.0f Hz\n", max_label_length, "Frequency Offset", config->sdr_general.frequency_offset_hz);
+            fprintf(stderr, " %-*s : %.15g Hz\n", max_label_length, "Tuned Frequency", config->sdr_general.rf_freq_hz);
         } else {
-            fprintf(stderr, " %-*s : %.15g Hz\n", max_label_len, "RF Frequency", config->sdr_general.rf_freq_hz);
+            fprintf(stderr, " %-*s : %.15g Hz\n", max_label_length, "RF Frequency", config->sdr_general.rf_freq_hz);
         }
     }
 
-    fprintf(stderr, " %-*s : %s\n", max_label_len, "I/Q Correction", config->dsp.iq_correction.enable ? "Enabled" : "Disabled");
-    fprintf(stderr, " %-*s : %s\n", max_label_len, "DC Block", config->dsp.dc_block.enable ? "Enabled" : "Disabled");
+    fprintf(stderr, " %-*s : %s\n", max_label_length, "I/Q Correction", config->dsp.iq_correction.enable ? "Enabled" : "Disabled");
+    fprintf(stderr, " %-*s : %s\n", max_label_length, "DC Block", config->dsp.dc_block.enable ? "Enabled" : "Disabled");
 
     fprintf(stderr, "--- Output Details ---\n");
     if (app->module.output_api && app->module.output_api->get_summary_info) {
@@ -380,29 +380,29 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
         memset(&output_summary, 0, sizeof(output_summary));
         app->module.output_api->get_summary_info(&context, &output_summary);
         for (int i = 0; i < output_summary.count; i++) {
-            fprintf(stderr, " %-*s : %s\n", max_label_len, output_summary.items[i].label, output_summary.items[i].value);
+            fprintf(stderr, " %-*s : %s\n", max_label_length, output_summary.items[i].label, output_summary.items[i].value);
         }
     }
 
     const char* sample_type_str = get_format_info_by_enum(config->output.sample_format) ? get_format_info_by_enum(config->output.sample_format)->description_str : "Unknown";
-    fprintf(stderr, " %-*s : %s\n", max_label_len, "Sample Type", sample_type_str);
+    fprintf(stderr, " %-*s : %s\n", max_label_length, "Sample Type", sample_type_str);
 
-    fprintf(stderr, " %-*s : %.15g Hz\n", max_label_len, "Output Sample Rate", config->output_sample_rate.rate_hz);
+    fprintf(stderr, " %-*s : %.15g Hz\n", max_label_length, "Output Sample Rate", config->output_sample_rate.rate_hz);
 
-    fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Input Gain", config->dsp.input_gain);
+    fprintf(stderr, " %-*s : %.5f\n", max_label_length, "Input Gain", config->dsp.input_gain);
 
     if (config->dsp.output_gain != 1.0f) {
-        fprintf(stderr, " %-*s : %.5f\n", max_label_len, "Output Gain", config->dsp.output_gain);
+        fprintf(stderr, " %-*s : %.5f\n", max_label_length, "Output Gain", config->dsp.output_gain);
     }
 
     if (fabs(app->dsp.nco_shift_hz) > 1e-9) {
         char shift_buf[64];
         snprintf(shift_buf, sizeof(shift_buf), "%+.2f Hz%s", app->dsp.nco_shift_hz, config->dsp.shift_after_resample ? " (Post-Resample)" : "");
-        fprintf(stderr, " %-*s : %s\n", max_label_len, "Frequency Shift", shift_buf);
+        fprintf(stderr, " %-*s : %s\n", max_label_length, "Frequency Shift", shift_buf);
     }
 
     if (config->dsp.filter.count == 0) {
-        fprintf(stderr, " %-*s : %s\n", max_label_len, "Filter", "Disabled");
+        fprintf(stderr, " %-*s : %s\n", max_label_length, "Filter", "Disabled");
     } else {
         const char* filter_label;
         switch (app->dsp.filter.type_actual) {
@@ -436,18 +436,18 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
             strncat(filter_buf, current_filter_desc, sizeof(filter_buf) - strlen(filter_buf) - 1);
         }
         strncat(filter_buf, stage, sizeof(filter_buf) - strlen(filter_buf) - 1);
-        fprintf(stderr, " %-*s : %s\n", max_label_len, filter_label, filter_buf);
+        fprintf(stderr, " %-*s : %s\n", max_label_length, filter_label, filter_buf);
     }
 
     if (config->dsp.agc.enable) {
         char agc_buf[128];
         snprintf(agc_buf, sizeof(agc_buf), "Enabled (Target: %.2f)", config->dsp.agc.target_level);
-        fprintf(stderr, " %-*s : %s\n", max_label_len, "Output AGC", agc_buf);
+        fprintf(stderr, " %-*s : %s\n", max_label_length, "Output AGC", agc_buf);
     } else {
-        fprintf(stderr, " %-*s : %s\n", max_label_len, "Output AGC", "Disabled");
+        fprintf(stderr, " %-*s : %s\n", max_label_length, "Output AGC", "Disabled");
     }
 
-    fprintf(stderr, " %-*s : %s\n", max_label_len, "Resampling", app->dsp.bypass_resampler ? "Disabled" : "Enabled");
+    fprintf(stderr, " %-*s : %s\n", max_label_length, "Resampling", app->dsp.bypass_resampler ? "Disabled" : "Enabled");
 
     if (config->output.path_arg != NULL) {
         const char* out_path;
@@ -456,9 +456,9 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
 #else
         out_path = config->output.effective_path;
 #endif
-        fprintf(stderr, " %-*s : %s\n", max_label_len, "Output File", out_path);
+        fprintf(stderr, " %-*s : %s\n", max_label_length, "Output File", out_path);
     } else if (config->output.payload == PAYLOAD_AUDIO) {
-        fprintf(stderr, " %-*s : %s\n", max_label_len, "Output Target", "Audio Device");
+        fprintf(stderr, " %-*s : %s\n", max_label_length, "Output Target", "Audio Device");
     }
 }
 

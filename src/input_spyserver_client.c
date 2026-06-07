@@ -331,8 +331,8 @@ static bool spyserver_client_input_initialize(ModuleContext* context) {
     char user_agent[128];
     snprintf(user_agent, sizeof(user_agent), "%s version %s", APP_NAME, GIT_HASH);
 
-    size_t user_agent_len = strlen(user_agent);
-    size_t payload_size = sizeof(uint32_t) + user_agent_len;
+    size_t user_agent_length = strlen(user_agent);
+    size_t payload_size = sizeof(uint32_t) + user_agent_length;
 
     unsigned char* payload_buffer = (unsigned char*)mem_arena_alloc(&app->pipeline.setup_arena, payload_size, false);
     if (!payload_buffer) {
@@ -343,7 +343,7 @@ static bool spyserver_client_input_initialize(ModuleContext* context) {
 
     uint32_t protocol_version = SPYSERVER_PROTOCOL_VERSION;
     memcpy(payload_buffer, &protocol_version, sizeof(uint32_t));
-    memcpy(payload_buffer + sizeof(uint32_t), user_agent, user_agent_len);
+    memcpy(payload_buffer + sizeof(uint32_t), user_agent, user_agent_length);
 
     SpyServerCommandHeader hello_header;
     hello_header.CommandType = SPYSERVER_CMD_HELLO;

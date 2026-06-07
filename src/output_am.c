@@ -202,12 +202,12 @@ static bool am_output_initialize(ModuleContext* context) {
     p->resamp_out = msresamp_rrrf_create(p->output_resample_ratio, context->config->dsp.filter.args.attenuation);
 
     // D. Audio Lowpass Filter
-    unsigned int h_len = 63;
+    unsigned int h_length = 63;
     float h[63];
     float fc = s_am_config.audio_cutoff / (float)AUDIO_SAMPLE_RATE;
     if (fc > 0.49f) fc = 0.49f;
-    liquid_firdes_kaiser(h_len, fc, context->config->dsp.filter.args.attenuation, 0.0f, h);
-    p->audio_lpf = firfilt_rrrf_create(h, h_len);
+    liquid_firdes_kaiser(h_length, fc, context->config->dsp.filter.args.attenuation, 0.0f, h);
+    p->audio_lpf = firfilt_rrrf_create(h, h_length);
 
     // E. AGC
     p->agc = agc_rrrf_create();

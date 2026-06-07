@@ -153,15 +153,15 @@ static void decode_rt_plus(RdsState *state, const RdsGroup *group) {
 
         int tag1_type = ((b2 & 0x07) << 3) | ((b3 >> 13) & 0x07);
         int tag1_start = (b3 >> 7) & 0x3F;
-        int tag1_len = ((b3 >> 1) & 0x3F) + 1;
+        int tag1_length = ((b3 >> 1) & 0x3F) + 1;
 
         bool updated = false;
 
         if (tag1_type == 1 || tag1_type == 4) { // 1=Title, 4=Artist
             char *target = (tag1_type == 1) ? state->rt_plus.title : state->rt_plus.artist;
-            if (tag1_start + tag1_len <= 64) {
-                strncpy(target, state->radiotext + tag1_start, tag1_len);
-                target[tag1_len] = '\0';
+            if (tag1_start + tag1_length <= 64) {
+                strncpy(target, state->radiotext + tag1_start, tag1_length);
+                target[tag1_length] = '\0';
                 updated = true;
             }
         }
@@ -170,13 +170,13 @@ static void decode_rt_plus(RdsState *state, const RdsGroup *group) {
             uint16_t b4 = group->blocks[RDS_BLOCK_4].data;
             int tag2_type = ((b3 & 0x01) << 5) | ((b4 >> 11) & 0x1F);
             int tag2_start = (b4 >> 5) & 0x3F;
-            int tag2_len = (b4 & 0x1F) + 1;
+            int tag2_length = (b4 & 0x1F) + 1;
 
             if (tag2_type == 1 || tag2_type == 4) {
                 char *target = (tag2_type == 1) ? state->rt_plus.title : state->rt_plus.artist;
-                if (tag2_start + tag2_len <= 64) {
-                    strncpy(target, state->radiotext + tag2_start, tag2_len);
-                    target[tag2_len] = '\0';
+                if (tag2_start + tag2_length <= 64) {
+                    strncpy(target, state->radiotext + tag2_start, tag2_length);
+                    target[tag2_length] = '\0';
                     updated = true;
                 }
             }
@@ -329,13 +329,13 @@ static void decode_5(RdsState *state, const RdsGroup *group) {
         event->data[1] = group->blocks[RDS_BLOCK_3].data & 0xFF;
         event->data[2] = (group->blocks[RDS_BLOCK_4].data >> 8) & 0xFF;
         event->data[3] = group->blocks[RDS_BLOCK_4].data & 0xFF;
-        event->data_len = 4;
+        event->data_length = 4;
     } else {
         if (!group->blocks[RDS_BLOCK_4].is_received)
             return;
         event->data[0] = (group->blocks[RDS_BLOCK_4].data >> 8) & 0xFF;
         event->data[1] = group->blocks[RDS_BLOCK_4].data & 0xFF;
-        event->data_len = 2;
+        event->data_length = 2;
     }
     state->tdc_event_count++;
 }
@@ -357,13 +357,13 @@ static void decode_6(RdsState *state, const RdsGroup *group) {
         event->data[1] = group->blocks[RDS_BLOCK_3].data & 0xFF;
         event->data[2] = (group->blocks[RDS_BLOCK_4].data >> 8) & 0xFF;
         event->data[3] = group->blocks[RDS_BLOCK_4].data & 0xFF;
-        event->data_len = 4;
+        event->data_length = 4;
     } else {
         if (!group->blocks[RDS_BLOCK_4].is_received)
             return;
         event->data[0] = (group->blocks[RDS_BLOCK_4].data >> 8) & 0xFF;
         event->data[1] = group->blocks[RDS_BLOCK_4].data & 0xFF;
-        event->data_len = 2;
+        event->data_length = 2;
     }
     state->iha_event_count++;
 }
@@ -587,9 +587,9 @@ static void decode_8a(RdsState *state, const RdsGroup *group) {
     }
 }
 
-static void get_rbds_callsign(uint16_t pi, char *out_callsign, size_t out_len) {
+static void get_rbds_callsign(uint16_t pi, char *out_callsign, size_t out_length) {
     out_callsign[0] = '\0';
-    if (out_len == 0)
+    if (out_length == 0)
         return;
 
     // Exceptions for zero nybbles
@@ -621,8 +621,8 @@ static void get_rbds_callsign(uint16_t pi, char *out_callsign, size_t out_len) {
         int n = sizeof(three_letter_codes) / sizeof(three_letter_codes[0]);
         for (int i = 0; i < n; i++) {
             if (three_letter_codes[i].pi == pi) {
-                strncpy(out_callsign, three_letter_codes[i].callsign, out_len - 1);
-                out_callsign[out_len - 1] = '\0';
+                strncpy(out_callsign, three_letter_codes[i].callsign, out_length - 1);
+                out_callsign[out_length - 1] = '\0';
                 return;
             }
         }
@@ -648,8 +648,8 @@ static void get_rbds_callsign(uint16_t pi, char *out_callsign, size_t out_len) {
         int n = sizeof(linked_station_codes) / sizeof(linked_station_codes[0]);
         for (int i = 0; i < n; i++) {
             if (linked_station_codes[i].pi == masked_pi) {
-                strncpy(out_callsign, linked_station_codes[i].callsign, out_len - 1);
-                out_callsign[out_len - 1] = '\0';
+                strncpy(out_callsign, linked_station_codes[i].callsign, out_length - 1);
+                out_callsign[out_length - 1] = '\0';
                 return;
             }
         }

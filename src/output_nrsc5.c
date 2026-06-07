@@ -198,13 +198,13 @@ static void update_ber_stats(Nrsc5Context* context, float cber) {
 /**
  * @brief Surgically sanitizes filenames from the air using a strict whitelist pattern.
  */
-static void sanitize_aas_filename(const char* raw, char* out, size_t max_len) {
+static void sanitize_aas_filename(const char* raw, char* out, size_t max_length) {
     size_t j = 0;
-    if (!raw || max_len == 0) {
-        if (max_len > 0) out[0] = '\0';
+    if (!raw || max_length == 0) {
+        if (max_length > 0) out[0] = '\0';
         return;
     }
-    for (size_t i = 0; i < 255 && raw[i] != '\0' && j < (max_len - 1); i++) {
+    for (size_t i = 0; i < 255 && raw[i] != '\0' && j < (max_length - 1); i++) {
         unsigned char c = (unsigned char)raw[i];
         // Whitelist: Alphanumeric, dots, dashes, underscores only.
         if (isalnum(c) || c == '.' || c == '-' || c == '_') {

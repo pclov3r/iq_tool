@@ -252,10 +252,10 @@ static bool resolve_file_paths(AppConfig *config, MemoryArena* arena) {
             log_error("Output directory does not exist or path is invalid: %s (%s)", dir, strerror(errno));
             return false;
         }
-        size_t final_len = strlen(resolved_dir_path) + 1 + strlen(base) + 1;
-        config->output.effective_path = mem_arena_alloc(arena, final_len, false);
+        size_t final_length = strlen(resolved_dir_path) + 1 + strlen(base) + 1;
+        config->output.effective_path = mem_arena_alloc(arena, final_length, false);
         if (!config->output.effective_path) return false;
-        snprintf(config->output.effective_path, final_len, "%s/%s", resolved_dir_path, base);
+        snprintf(config->output.effective_path, final_length, "%s/%s", resolved_dir_path, base);
     }
 #endif
     return true;

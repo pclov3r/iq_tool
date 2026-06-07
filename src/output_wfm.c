@@ -333,19 +333,19 @@ static bool wfm_output_initialize(ModuleContext* context) {
     nco_crcf_set_frequency(wfm_decoder->nco_stereo_subcarrier, 2.0f * angular_freq(WFM_PILOT_HZ, mpx_rate));
 
     // Filters
-    int pilot_fir_half_len = (int)(mpx_rate * 1e-6f * WFM_PILOT_FIR_USEC);
-    int pilot_fir_len = pilot_fir_half_len * 2 + 1;
-    wfm_decoder->fir_pilot = firfilt_crcf_create_kaiser(pilot_fir_len, WFM_PILOT_FIR_HALFBAND / mpx_rate, context->config->dsp.filter.args.attenuation, 0.0f);
+    int pilot_fir_half_length = (int)(mpx_rate * 1e-6f * WFM_PILOT_FIR_USEC);
+    int pilot_fir_length = pilot_fir_half_length * 2 + 1;
+    wfm_decoder->fir_pilot = firfilt_crcf_create_kaiser(pilot_fir_length, WFM_PILOT_FIR_HALFBAND / mpx_rate, context->config->dsp.filter.args.attenuation, 0.0f);
     firfilt_crcf_set_scale(wfm_decoder->fir_pilot, 2.0f * (WFM_PILOT_FIR_HALFBAND / mpx_rate));
 
-    int audio_fir_len = (int)(WFM_AUDIO_FIR_LEN_USEC * 1e-6f * mpx_rate);
-    if (audio_fir_len % 2 == 0) audio_fir_len++;
+    int audio_fir_length = (int)(WFM_AUDIO_FIR_LEN_USEC * 1e-6f * mpx_rate);
+    if (audio_fir_length % 2 == 0) audio_fir_length++;
     float audio_fc = WFM_AUDIO_FIR_CUTOFF / mpx_rate;
 
-    wfm_decoder->fir_sum = firfilt_rrrf_create_kaiser(audio_fir_len, audio_fc, context->config->dsp.filter.args.attenuation, 0.0f);
+    wfm_decoder->fir_sum = firfilt_rrrf_create_kaiser(audio_fir_length, audio_fc, context->config->dsp.filter.args.attenuation, 0.0f);
     firfilt_rrrf_set_scale(wfm_decoder->fir_sum, 2.0f * audio_fc);
 
-    wfm_decoder->fir_diff = firfilt_rrrf_create_kaiser(audio_fir_len, audio_fc, context->config->dsp.filter.args.attenuation, 0.0f);
+    wfm_decoder->fir_diff = firfilt_rrrf_create_kaiser(audio_fir_length, audio_fc, context->config->dsp.filter.args.attenuation, 0.0f);
     firfilt_rrrf_set_scale(wfm_decoder->fir_diff, 2.0f * audio_fc);
 
     deemphasis_init(&wfm_decoder->deemphasis, s_wfm_config.deemph_us, mpx_rate);
@@ -485,12 +485,12 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
             clean_ptyn[8] = '\0';
 
             // Trim trailing spaces
-            size_t rt_len = strlen(clean_rt);
-            while (rt_len > 0 && clean_rt[rt_len - 1] == ' ') { clean_rt[rt_len - 1] = '\0'; rt_len--; }
-            size_t ps_len = strlen(clean_ps);
-            while (ps_len > 0 && clean_ps[ps_len - 1] == ' ') { clean_ps[ps_len - 1] = '\0'; ps_len--; }
-            size_t ptyn_len = strlen(clean_ptyn);
-            while (ptyn_len > 0 && clean_ptyn[ptyn_len - 1] == ' ') { clean_ptyn[ptyn_len - 1] = '\0'; ptyn_len--; }
+            size_t rt_length = strlen(clean_rt);
+            while (rt_length > 0 && clean_rt[rt_length - 1] == ' ') { clean_rt[rt_length - 1] = '\0'; rt_length--; }
+            size_t ps_length = strlen(clean_ps);
+            while (ps_length > 0 && clean_ps[ps_length - 1] == ' ') { clean_ps[ps_length - 1] = '\0'; ps_length--; }
+            size_t ptyn_length = strlen(clean_ptyn);
+            while (ptyn_length > 0 && clean_ptyn[ptyn_length - 1] == ' ') { clean_ptyn[ptyn_length - 1] = '\0'; ptyn_length--; }
 
             // Trim leading spaces
             char* rt_ptr = clean_rt;
@@ -514,7 +514,7 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
             }
 
             char ptyn_buf[32] = "";
-            if (ptyn_len > 0) {
+            if (ptyn_length > 0) {
                 snprintf(ptyn_buf, sizeof(ptyn_buf), " | PTYN: %s", clean_ptyn);
             }
 
@@ -554,10 +554,10 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
             for (int e = 0; e < current.rt_plus_event_count; e++) {
                 RdsRTPlusEvent* event = &current.rt_plus_events[e];
 
-                size_t t_len = strlen(event->title);
-                while (t_len > 0 && (event->title[t_len - 1] == ' ' || event->title[t_len - 1] == '\r')) { event->title[t_len - 1] = '\0'; t_len--; }
-                size_t a_len = strlen(event->artist);
-                while (a_len > 0 && (event->artist[a_len - 1] == ' ' || event->artist[a_len - 1] == '\r')) { event->artist[a_len - 1] = '\0'; a_len--; }
+                size_t t_length = strlen(event->title);
+                while (t_length > 0 && (event->title[t_length - 1] == ' ' || event->title[t_length - 1] == '\r')) { event->title[t_length - 1] = '\0'; t_length--; }
+                size_t a_length = strlen(event->artist);
+                while (a_length > 0 && (event->artist[a_length - 1] == ' ' || event->artist[a_length - 1] == '\r')) { event->artist[a_length - 1] = '\0'; a_length--; }
 
                 bool is_dup = false;
                 for (int i = 0; i < e; i++) {
@@ -623,7 +623,7 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
 
             for (int e = 0; e < current.tdc_event_count; e++) {
                 RdsTdcEvent* event = &current.tdc_events[e];
-                if (event->data_len == 4) {
+                if (event->data_length == 4) {
                     log_info("%s TDC (5A): Channel=%u | Hex=%02X %02X %02X %02X",
                              current.is_rbds ? "RBDS" : "RDS", event->channel,
                              event->data[0], event->data[1], event->data[2], event->data[3]);
@@ -636,7 +636,7 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
 
             for (int e = 0; e < current.iha_event_count; e++) {
                 RdsIhaEvent* event = &current.iha_events[e];
-                if (event->data_len == 4) {
+                if (event->data_length == 4) {
                     log_info("%s IHA (6A): Addr=%u | Hex=%02X %02X %02X %02X",
                              current.is_rbds ? "RBDS" : "RDS", event->address,
                              event->data[0], event->data[1], event->data[2], event->data[3]);
@@ -688,10 +688,10 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
                     char eon_ps_buf[9];
                     strncpy(eon_ps_buf, current.eon.networks[i].ps, 8);
                     eon_ps_buf[8] = '\0';
-                    size_t eon_ps_len = strlen(eon_ps_buf);
-                    while (eon_ps_len > 0 && (eon_ps_buf[eon_ps_len - 1] == ' ' || eon_ps_buf[eon_ps_len - 1] == '\r')) {
-                        eon_ps_buf[eon_ps_len - 1] = '\0';
-                        eon_ps_len--;
+                    size_t eon_ps_length = strlen(eon_ps_buf);
+                    while (eon_ps_length > 0 && (eon_ps_buf[eon_ps_length - 1] == ' ' || eon_ps_buf[eon_ps_length - 1] == '\r')) {
+                        eon_ps_buf[eon_ps_length - 1] = '\0';
+                        eon_ps_length--;
                     }
 
                     log_info("%s EON: Network PI=0x%04X | PS: %s | TP=%d | TA=%d | PTY=%u%s",

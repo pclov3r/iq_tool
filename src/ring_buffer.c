@@ -163,10 +163,10 @@ size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes) {
 }
 
 // PRODUCER: High Priority, Lock-Free, Scatter-Gather
-size_t ring_buffer_write_packet(RingBuffer* iob, const void* header, size_t h_len, const void* payload, size_t p_len) {
+size_t ring_buffer_write_packet(RingBuffer* iob, const void* header, size_t h_length, const void* payload, size_t p_length) {
     if (!iob || !header) return 0;
 
-    size_t total_bytes = h_len + p_len;
+    size_t total_bytes = h_length + p_length;
     size_t w = atomic_load_explicit(&iob->write_pos, memory_order_relaxed);
     size_t r = atomic_load_explicit(&iob->read_pos, memory_order_acquire);
     size_t cap = iob->capacity;
@@ -179,25 +179,25 @@ size_t ring_buffer_write_packet(RingBuffer* iob, const void* header, size_t h_le
     }
 
     // 1. Write Header
-    size_t h_chunk1 = (w + h_len > cap) ? (cap - w) : h_len;
+    size_t h_chunk1 = (w + h_length > cap) ? (cap - w) : h_length;
     memcpy(iob->buffer + w, header, h_chunk1);
 
-    size_t h_chunk2 = h_len - h_chunk1;
+    size_t h_chunk2 = h_length - h_chunk1;
     if (h_chunk2 > 0) {
         memcpy(iob->buffer, (const unsigned char*)header + h_chunk1, h_chunk2);
     }
-    w = (w + h_len) % cap;
+    w = (w + h_length) % cap;
 
     // 2. Write Payload (if exists)
-    if (payload && p_len > 0) {
-        size_t p_chunk1 = (w + p_len > cap) ? (cap - w) : p_len;
+    if (payload && p_length > 0) {
+        size_t p_chunk1 = (w + p_length > cap) ? (cap - w) : p_length;
         memcpy(iob->buffer + w, payload, p_chunk1);
 
-        size_t p_chunk2 = p_len - p_chunk1;
+        size_t p_chunk2 = p_length - p_chunk1;
         if (p_chunk2 > 0) {
             memcpy(iob->buffer, (const unsigned char*)payload + p_chunk1, p_chunk2);
         }
-        w = (w + p_len) % cap;
+        w = (w + p_length) % cap;
     }
 
     // 3. Update write_pos and signal ONCE

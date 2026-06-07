@@ -361,14 +361,14 @@ bool iq_correction_run_initial_calibration(ModuleContext* context, void* raw_buf
 
 static void init_window(float * restrict w, int length)
 {
-    const int len_m1 = length - 1;
+    const int length_m1 = length - 1;
     for (int i = 0; i < length; i++)
     {
         w[i] = (float)(
             +0.35875f
-            - 0.48829f * cos(2.0 * M_PI * i / len_m1)
-            + 0.14128f * cos(4.0 * M_PI * i / len_m1)
-            - 0.01168f * cos(6.0 * M_PI * i / len_m1)
+            - 0.48829f * cos(2.0 * M_PI * i / length_m1)
+            + 0.14128f * cos(4.0 * M_PI * i / length_m1)
+            - 0.01168f * cos(6.0 * M_PI * i / length_m1)
             );
     }
 }

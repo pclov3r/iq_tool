@@ -120,7 +120,7 @@ bool wav_common_initialize(ModuleContext* context, int sf_format_flag) {
         tm_info ? tm_info->tm_min : 0);
 
     char xml_buf[2048];
-    int xml_len = snprintf(xml_buf, sizeof(xml_buf),
+    int xml_length = snprintf(xml_buf, sizeof(xml_buf),
         "<?xml version=\"1.0\"?>"
         "<SDR-XML-Root Description=\"Saved recording data\" Created=\"%s\">"
         "<Definition CurrentTimeUTC=\"%s\" "
@@ -151,16 +151,16 @@ bool wav_common_initialize(ModuleContext* context, int sf_format_flag) {
         bits, bps, config->sdr_general.rf_freq_hz, config->output_sample_rate.rate_hz, (long long)now
     );
 
-    if (xml_len > 0 && xml_len < (int)sizeof(xml_buf)) {
-        size_t utf16_size = (size_t)(xml_len + 1) * 2;
+    if (xml_length > 0 && xml_length < (int)sizeof(xml_buf)) {
+        size_t utf16_size = (size_t)(xml_length + 1) * 2;
         uint8_t* utf16_buf = (uint8_t*)mem_arena_alloc(&app->pipeline.setup_arena, utf16_size, true);
         if (utf16_buf) {
-            for (int i = 0; i < xml_len; i++) {
+            for (int i = 0; i < xml_length; i++) {
                 utf16_buf[i * 2] = (uint8_t)xml_buf[i];
                 utf16_buf[i * 2 + 1] = 0x00;
             }
-            utf16_buf[xml_len * 2] = 0x00;
-            utf16_buf[xml_len * 2 + 1] = 0x00;
+            utf16_buf[xml_length * 2] = 0x00;
+            utf16_buf[xml_length * 2 + 1] = 0x00;
 
             SF_CHUNK_INFO chunk;
             memset(&chunk, 0, sizeof(chunk));

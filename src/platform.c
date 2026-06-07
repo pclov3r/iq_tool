@@ -130,20 +130,20 @@ bool get_absolute_path_windows(const char* path_arg_mbcs,
     wchar_t path_arg_w[MAX_PATH_BUFFER];
     wchar_t path_to_canonicalize_w[MAX_PATH_BUFFER];
 
-    int required_len_w = MultiByteToWideChar(CP_ACP, 0, path_arg_mbcs, -1, NULL, 0);
-    if (required_len_w <= 0 || (size_t)required_len_w > MAX_PATH_BUFFER) {
+    int required_length_w = MultiByteToWideChar(CP_ACP, 0, path_arg_mbcs, -1, NULL, 0);
+    if (required_length_w <= 0 || (size_t)required_length_w > MAX_PATH_BUFFER) {
         print_win_error("MultiByteToWideChar (get size)", GetLastError());
         return false;
     }
-    if (MultiByteToWideChar(CP_ACP, 0, path_arg_mbcs, -1, path_arg_w, required_len_w) == 0) {
+    if (MultiByteToWideChar(CP_ACP, 0, path_arg_mbcs, -1, path_arg_w, required_length_w) == 0) {
         print_win_error("MultiByteToWideChar (convert)", GetLastError());
         return false;
     }
 
     if (PathIsRelativeW(path_arg_w)) {
         wchar_t cwd_w[MAX_PATH_BUFFER];
-        DWORD cwd_len = GetCurrentDirectoryW(MAX_PATH_BUFFER, cwd_w);
-        if (cwd_len == 0 || cwd_len >= MAX_PATH_BUFFER) {
+        DWORD cwd_length = GetCurrentDirectoryW(MAX_PATH_BUFFER, cwd_w);
+        if (cwd_length == 0 || cwd_length >= MAX_PATH_BUFFER) {
             print_win_error("GetCurrentDirectoryW", GetLastError());
             return false;
         }
@@ -157,22 +157,22 @@ bool get_absolute_path_windows(const char* path_arg_mbcs,
         path_to_canonicalize_w[MAX_PATH_BUFFER - 1] = L'\0';
     }
 
-    required_len_w = GetFullPathNameW(path_to_canonicalize_w, 0, NULL, NULL);
-    if (required_len_w == 0 || (size_t)required_len_w > out_path_w_size) {
+    required_length_w = GetFullPathNameW(path_to_canonicalize_w, 0, NULL, NULL);
+    if (required_length_w == 0 || (size_t)required_length_w > out_path_w_size) {
         print_win_error("GetFullPathNameW (get size)", GetLastError());
         return false;
     }
-    if (GetFullPathNameW(path_to_canonicalize_w, required_len_w, out_path_w, NULL) == 0) {
+    if (GetFullPathNameW(path_to_canonicalize_w, required_length_w, out_path_w, NULL) == 0) {
         print_win_error("GetFullPathNameW (get path)", GetLastError());
         return false;
     }
 
-    int required_len_utf8 = WideCharToMultiByte(CP_UTF8, 0, out_path_w, -1, NULL, 0, NULL, NULL);
-    if (required_len_utf8 <= 0 || (size_t)required_len_utf8 > out_path_utf8_size) {
+    int required_length_utf8 = WideCharToMultiByte(CP_UTF8, 0, out_path_w, -1, NULL, 0, NULL, NULL);
+    if (required_length_utf8 <= 0 || (size_t)required_length_utf8 > out_path_utf8_size) {
         print_win_error("WideCharToMultiByte (get size)", GetLastError());
         return false;
     }
-    if (WideCharToMultiByte(CP_UTF8, 0, out_path_w, -1, out_path_utf8, required_len_utf8, NULL, NULL) == 0) {
+    if (WideCharToMultiByte(CP_UTF8, 0, out_path_w, -1, out_path_utf8, required_length_utf8, NULL, NULL) == 0) {
         print_win_error("WideCharToMultiByte (convert)", GetLastError());
         return false;
     }

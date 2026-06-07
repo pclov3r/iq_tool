@@ -122,14 +122,14 @@ typedef struct {
 typedef struct {
     uint8_t channel;
     uint8_t data[4];
-    int data_len;
+    int data_length;
 } RdsTdcEvent;
 
 // In-House Applications (Group 6A/6B)
 typedef struct {
     uint8_t address;
     uint8_t data[4];
-    int data_len;
+    int data_length;
 } RdsIhaEvent;
 
 // RadioText Plus Event

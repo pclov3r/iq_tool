@@ -213,9 +213,9 @@ typedef struct FilterContext {
     int              type_actual;
     unsigned int     block_size;
     ComplexFloat* pre_fft_remainder_buffer;
-    unsigned int     pre_fft_remainder_len;
+    unsigned int     pre_fft_remainder_length;
     ComplexFloat* post_fft_remainder_buffer;
-    unsigned int     post_fft_remainder_len;
+    unsigned int     post_fft_remainder_length;
     ComplexFloat* fft_scratch_buffer;
 } FilterContext;
 

@@ -233,10 +233,10 @@ static bool parse_sdr_metadata_from_filename(const char* base_filename, SdrMetad
             }
             if (underscore_ptr && underscore_ptr + 1 < hz_ptr) {
                 char freq_str[32];
-                size_t num_len = hz_ptr - (underscore_ptr + 1);
-                if (num_len < sizeof(freq_str) && num_len > 0) {
-                    strncpy(freq_str, underscore_ptr + 1, num_len);
-                    freq_str[num_len] = '\0';
+                size_t num_length = hz_ptr - (underscore_ptr + 1);
+                if (num_length < sizeof(freq_str) && num_length > 0) {
+                    strncpy(freq_str, underscore_ptr + 1, num_length);
+                    freq_str[num_length] = '\0';
                     char *endptr;
                     double freq_hz = strtod(freq_str, &endptr);
                     if (*endptr == '\0' && isfinite(freq_hz) && freq_hz > 0) {

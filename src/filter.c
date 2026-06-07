@@ -20,12 +20,12 @@
 // --- Create a real-coefficient (_crcf) filter from the complex master taps ---
 #define PREPARE_AND_CREATE_CRCF_FILTER(prefix, ...) \
     do { \
-        float* final_real_taps = (float*)mem_arena_alloc(arena, master_taps_len * sizeof(float), false); \
+        float* final_real_taps = (float*)mem_arena_alloc(arena, master_taps_length * sizeof(float), false); \
         if (!final_real_taps) goto cleanup; \
-        for (int i = 0; i < master_taps_len; i++) { \
+        for (int i = 0; i < master_taps_length; i++) { \
             final_real_taps[i] = crealf(master_taps[i]); \
         } \
-        app->dsp.filter.object = (struct liquid_filter_s*)prefix##_crcf_create(final_real_taps, master_taps_len, ##__VA_ARGS__); \
+        app->dsp.filter.object = (struct liquid_filter_s*)prefix##_crcf_create(final_real_taps, master_taps_length, ##__VA_ARGS__); \
     } while (0)
 
 // --- Static Helper Functions ---
@@ -113,28 +113,28 @@ _execute_fft_filter_pass(
     unsigned int frames_in,
     ComplexFloat* output_buffer,
     ComplexFloat* remainder_buffer,
-    unsigned int* remainder_len_ptr,
+    unsigned int* remainder_length_ptr,
     unsigned int block_size,
     ComplexFloat* scratch_buffer,
     bool is_last_chunk
 );
 
 static liquid_float_complex* convolve_complex_taps(
-    const liquid_float_complex* h1, int len1,
-    const liquid_float_complex* h2, int len2,
-    int* out_len, MemoryArena* arena)
+    const liquid_float_complex* h1, int length1,
+    const liquid_float_complex* h2, int length2,
+    int* out_length, MemoryArena* arena)
 {
-    *out_len = len1 + len2 - 1;
-    liquid_float_complex* result = (liquid_float_complex*)mem_arena_alloc(arena, *out_len * sizeof(liquid_float_complex), false);
+    *out_length = length1 + length2 - 1;
+    liquid_float_complex* result = (liquid_float_complex*)mem_arena_alloc(arena, *out_length * sizeof(liquid_float_complex), false);
     if (!result) {
         return NULL;
     }
 
-    memset(result, 0, *out_len * sizeof(liquid_float_complex));
+    memset(result, 0, *out_length * sizeof(liquid_float_complex));
 
-       for (int i = 0; i < *out_len; i++) {
-        int j_start = (i >= len1) ? (i - len1 + 1) : 0;
-        int j_end   = (i < len2 - 1) ? i : (len2 - 1);
+       for (int i = 0; i < *out_length; i++) {
+        int j_start = (i >= length1) ? (i - length1 + 1) : 0;
+        int j_end   = (i < length2 - 1) ? i : (length2 - 1);
 
         for (int j = j_start; j <= j_end; j++) {
             result[i] += h1[i - j] * h2[j];
@@ -144,32 +144,32 @@ static liquid_float_complex* convolve_complex_taps(
 }
 
 static liquid_float_complex* _generate_base_lowpass_taps(
-    unsigned int taps_len, float half_bw_norm, float attenuation_db, MemoryArena* arena)
+    unsigned int taps_length, float half_bw_norm, float attenuation_db, MemoryArena* arena)
 {
-    float* real_taps = (float*)mem_arena_alloc(arena, taps_len * sizeof(float), false);
+    float* real_taps = (float*)mem_arena_alloc(arena, taps_length * sizeof(float), false);
     if (!real_taps) return NULL;
-    liquid_firdes_kaiser(taps_len, half_bw_norm, attenuation_db, 0.0f, real_taps);
-    _normalize_filter_dc_gain(real_taps, taps_len);
+    liquid_firdes_kaiser(taps_length, half_bw_norm, attenuation_db, 0.0f, real_taps);
+    _normalize_filter_dc_gain(real_taps, taps_length);
 
-    liquid_float_complex* complex_taps = (liquid_float_complex*)mem_arena_alloc(arena, taps_len * sizeof(liquid_float_complex), false);
+    liquid_float_complex* complex_taps = (liquid_float_complex*)mem_arena_alloc(arena, taps_length * sizeof(liquid_float_complex), false);
     if (!complex_taps) return NULL;
-    for (unsigned int k = 0; k < taps_len; k++) {
+    for (unsigned int k = 0; k < taps_length; k++) {
         complex_taps[k] = real_taps[k] + 0.0f * I;
     }
     return complex_taps;
 }
 
 static void _apply_complex_nco_shift(
-    liquid_float_complex* taps, unsigned int taps_len, float fc_norm)
+    liquid_float_complex* taps, unsigned int taps_length, float fc_norm)
 {
     nco_crcf shifter = nco_crcf_create(LIQUID_NCO);
     nco_crcf_set_frequency(shifter, 2.0f * M_PI * fc_norm);
 
     // Critical DSP Fix: Set initial phase so the center tap has 0 phase offset.
-    float m_idx = (float)(taps_len - 1) / 2.0f;
+    float m_idx = (float)(taps_length - 1) / 2.0f;
     nco_crcf_set_phase(shifter, -(2.0f * M_PI * fc_norm) * m_idx);
 
-    for (unsigned int k = 0; k < taps_len; k++) {
+    for (unsigned int k = 0; k < taps_length; k++) {
         liquid_float_complex shift_val;
         nco_crcf_cexpf(shifter, &shift_val);
         taps[k] *= shift_val;
@@ -178,18 +178,18 @@ static void _apply_complex_nco_shift(
     nco_crcf_destroy(shifter);
 }
 
-static void _invert_to_highpass_or_notch(liquid_float_complex* taps, unsigned int taps_len)
+static void _invert_to_highpass_or_notch(liquid_float_complex* taps, unsigned int taps_length)
 {
-    for (unsigned int k = 0; k < taps_len; k++) {
+    for (unsigned int k = 0; k < taps_length; k++) {
         taps[k] = -taps[k];
     }
-    taps[(taps_len - 1) / 2] += 1.0f + 0.0f * I;
+    taps[(taps_length - 1) / 2] += 1.0f + 0.0f * I;
 }
 
 static liquid_float_complex* _compound_filter_stages(
-    AppConfig* config, double sample_rate, int* master_len, bool* out_is_complex, bool* out_norm_peak, MemoryArena* arena)
+    AppConfig* config, double sample_rate, int* master_length, bool* out_is_complex, bool* out_norm_peak, MemoryArena* arena)
 {
-    int m_len = 1;
+    int m_length = 1;
     liquid_float_complex* master_taps = (liquid_float_complex*)mem_arena_alloc(arena, sizeof(liquid_float_complex), false);
     if (!master_taps) return NULL;
     master_taps[0] = 1.0f + 0.0f * I;
@@ -204,12 +204,12 @@ static liquid_float_complex* _compound_filter_stages(
             *out_norm_peak = true;
         }
 
-        unsigned int current_taps_len;
+        unsigned int current_taps_length;
         float atten = config->dsp.filter.args.attenuation;
 
         if (config->dsp.filter.args.taps > 0) {
-            current_taps_len = (unsigned int)config->dsp.filter.args.taps;
-            if (current_taps_len % 2 == 0) current_taps_len++;
+            current_taps_length = (unsigned int)config->dsp.filter.args.taps;
+            if (current_taps_length % 2 == 0) current_taps_length++;
         } else {
             float tw_hz = config->dsp.filter.args.transition_width;
             if (tw_hz <= 0.0f) {
@@ -217,13 +217,13 @@ static liquid_float_complex* _compound_filter_stages(
                 tw_hz = fabsf(ref_freq) * DEFAULT_FILTER_TRANSITION_FACTOR;
             }
             if (tw_hz < 1.0f) tw_hz = 1.0f;
-            current_taps_len = estimate_req_filter_len(tw_hz / (float)sample_rate, atten);
-            if (current_taps_len % 2 == 0) current_taps_len++;
-            if (current_taps_len < FILTER_MINIMUM_TAPS) current_taps_len = FILTER_MINIMUM_TAPS;
+            current_taps_length = estimate_req_filter_len(tw_hz / (float)sample_rate, atten);
+            if (current_taps_length % 2 == 0) current_taps_length++;
+            if (current_taps_length < FILTER_MINIMUM_TAPS) current_taps_length = FILTER_MINIMUM_TAPS;
 
-            if (current_taps_len > FILTER_MAXIMUM_AUTO_TAPS) {
+            if (current_taps_length > FILTER_MAXIMUM_AUTO_TAPS) {
                 log_warn("Clamping filter taps to %d", FILTER_MAXIMUM_AUTO_TAPS);
-                current_taps_len = FILTER_MAXIMUM_AUTO_TAPS;
+                current_taps_length = FILTER_MAXIMUM_AUTO_TAPS;
             }
         }
 
@@ -237,36 +237,36 @@ static liquid_float_complex* _compound_filter_stages(
             bw_norm = (req->freq2_hz / 2.0f) / (float)sample_rate;
         }
 
-        liquid_float_complex* current_taps = _generate_base_lowpass_taps(current_taps_len, bw_norm, atten, arena);
+        liquid_float_complex* current_taps = _generate_base_lowpass_taps(current_taps_length, bw_norm, atten, arena);
         if (!current_taps) return NULL;
 
         if (is_complex) {
-            _apply_complex_nco_shift(current_taps, current_taps_len, req->freq1_hz / (float)sample_rate);
+            _apply_complex_nco_shift(current_taps, current_taps_length, req->freq1_hz / (float)sample_rate);
         }
 
         if (req->type == FILTER_TYPE_HIGHPASS || req->type == FILTER_TYPE_STOPBAND) {
-            _invert_to_highpass_or_notch(current_taps, current_taps_len);
+            _invert_to_highpass_or_notch(current_taps, current_taps_length);
         }
 
-        int new_len;
-        liquid_float_complex* new_master = convolve_complex_taps(master_taps, m_len, current_taps, current_taps_len, &new_len, arena);
+        int new_length;
+        liquid_float_complex* new_master = convolve_complex_taps(master_taps, m_length, current_taps, current_taps_length, &new_length, arena);
         if (!new_master) return NULL;
 
         master_taps = new_master;
-        m_len = new_len;
+        m_length = new_length;
     }
 
-    *master_len = m_len;
+    *master_length = m_length;
     return master_taps;
 }
 
 static struct liquid_filter_s* _compile_filter_object(
-    AppConfig* config, AppContext* app, liquid_float_complex* master_taps, int master_taps_len, bool is_final_filter_complex, bool normalize_by_peak, MemoryArena* arena)
+    AppConfig* config, AppContext* app, liquid_float_complex* master_taps, int master_taps_length, bool is_final_filter_complex, bool normalize_by_peak, MemoryArena* arena)
 {
     if (normalize_by_peak || is_final_filter_complex) {
         log_info("Normalizing filter gain (this may be slow for large filters)...");
         float max_mag = 0.0f;
-        firfilt_cccf temp_filter = firfilt_cccf_create(master_taps, master_taps_len);
+        firfilt_cccf temp_filter = firfilt_cccf_create(master_taps, master_taps_length);
         if (temp_filter) {
             liquid_float_complex H;
             for (int i = 0; i < FILTER_FREQ_RESPONSE_POINTS; i++) {
@@ -278,13 +278,13 @@ static struct liquid_filter_s* _compile_filter_object(
             firfilt_cccf_destroy(temp_filter);
         }
         if (max_mag > FILTER_GAIN_ZERO_THRESHOLD) {
-            for (int i = 0; i < master_taps_len; i++) master_taps[i] /= max_mag;
+            for (int i = 0; i < master_taps_length; i++) master_taps[i] /= max_mag;
         }
     } else {
         double gain_correction = 0.0;
-        for (int i = 0; i < master_taps_len; i++) gain_correction += crealf(master_taps[i]);
+        for (int i = 0; i < master_taps_length; i++) gain_correction += crealf(master_taps[i]);
         if (fabs(gain_correction) > FILTER_GAIN_ZERO_THRESHOLD) {
-            for (int i = 0; i < master_taps_len; i++) master_taps[i] /= (float)gain_correction;
+            for (int i = 0; i < master_taps_length; i++) master_taps[i] /= (float)gain_correction;
         }
     }
 
@@ -301,22 +301,22 @@ static struct liquid_filter_s* _compile_filter_object(
         unsigned int block_size;
         if (config->dsp.filter.args.fft_size > 0) {
             block_size = (unsigned int)config->dsp.filter.args.fft_size / 2;
-            if (block_size < (unsigned int)master_taps_len - 1) return NULL;
+            if (block_size < (unsigned int)master_taps_length - 1) return NULL;
         } else {
             block_size = 1;
-            while (block_size < (unsigned int)master_taps_len - 1) block_size *= 2;
-            if (block_size < (unsigned int)master_taps_len * 2) block_size *= 2;
+            while (block_size < (unsigned int)master_taps_length - 1) block_size *= 2;
+            if (block_size < (unsigned int)master_taps_length * 2) block_size *= 2;
         }
         app->dsp.filter.block_size = block_size;
 
         if (is_final_filter_complex) {
             app->dsp.filter.type_actual = FILTER_IMPL_FFT_ASYMMETRIC;
-            app->dsp.filter.object = (struct liquid_filter_s*)fftfilt_cccf_create(master_taps, master_taps_len, block_size);
+            app->dsp.filter.object = (struct liquid_filter_s*)fftfilt_cccf_create(master_taps, master_taps_length, block_size);
         } else {
-            float* real_taps = (float*)mem_arena_alloc(arena, master_taps_len * sizeof(float), false);
-            for(int i=0; i<master_taps_len; i++) real_taps[i] = crealf(master_taps[i]);
+            float* real_taps = (float*)mem_arena_alloc(arena, master_taps_length * sizeof(float), false);
+            for(int i=0; i<master_taps_length; i++) real_taps[i] = crealf(master_taps[i]);
             app->dsp.filter.type_actual = FILTER_IMPL_FFT_SYMMETRIC;
-            app->dsp.filter.object = (struct liquid_filter_s*)fftfilt_crcf_create(real_taps, master_taps_len, block_size);
+            app->dsp.filter.object = (struct liquid_filter_s*)fftfilt_crcf_create(real_taps, master_taps_length, block_size);
         }
 
         size_t scratch_needed = app->pipeline.alloc_size_samples + app->dsp.filter.block_size + 64;
@@ -326,12 +326,12 @@ static struct liquid_filter_s* _compile_filter_object(
         log_info("Preparing FIR (time-domain) filter object...");
         if (is_final_filter_complex) {
             app->dsp.filter.type_actual = FILTER_IMPL_FIR_ASYMMETRIC;
-            app->dsp.filter.object = (struct liquid_filter_s*)firfilt_cccf_create(master_taps, master_taps_len);
+            app->dsp.filter.object = (struct liquid_filter_s*)firfilt_cccf_create(master_taps, master_taps_length);
         } else {
-            float* real_taps = (float*)mem_arena_alloc(arena, master_taps_len * sizeof(float), false);
-            for(int i=0; i<master_taps_len; i++) real_taps[i] = crealf(master_taps[i]);
+            float* real_taps = (float*)mem_arena_alloc(arena, master_taps_length * sizeof(float), false);
+            for(int i=0; i<master_taps_length; i++) real_taps[i] = crealf(master_taps[i]);
             app->dsp.filter.type_actual = FILTER_IMPL_FIR_SYMMETRIC;
-            app->dsp.filter.object = (struct liquid_filter_s*)firfilt_crcf_create(real_taps, master_taps_len);
+            app->dsp.filter.object = (struct liquid_filter_s*)firfilt_crcf_create(real_taps, master_taps_length);
         }
     }
     return app->dsp.filter.object;
@@ -347,27 +347,27 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
 
     double sample_rate = config->dsp.filter.apply_post_resample ? config->output_sample_rate.rate_hz : (double)app->module.source_info.sample_rate;
 
-    int master_len = 0;
+    int master_length = 0;
     bool is_complex = false, norm_peak = false;
     log_info("Designing filter coefficients (this may be slow for large filters)...");
 
-    liquid_float_complex* master_taps = _compound_filter_stages(config, sample_rate, &master_len, &is_complex, &norm_peak, arena);
+    liquid_float_complex* master_taps = _compound_filter_stages(config, sample_rate, &master_length, &is_complex, &norm_peak, arena);
     if (!master_taps) return false;
 
-    log_info("Final combined filter requires %d taps.", master_len);
+    log_info("Final combined filter requires %d taps.", master_length);
     if (is_complex) log_info("Asymmetric filter detected.");
 
-    if (!_compile_filter_object(config, app, master_taps, master_len, is_complex, norm_peak, arena)) {
+    if (!_compile_filter_object(config, app, master_taps, master_length, is_complex, norm_peak, arena)) {
         log_fatal("Failed to create final combined filter object.");
         return false;
     }
 
     if (config->dsp.filter.apply_post_resample) {
         app->dsp.filter.post_fft_remainder_buffer = (ComplexFloat*)mem_arena_alloc(arena, app->dsp.filter.block_size * sizeof(ComplexFloat), true);
-        app->dsp.filter.post_fft_remainder_len = 0;
+        app->dsp.filter.post_fft_remainder_length = 0;
     } else {
         app->dsp.filter.pre_fft_remainder_buffer = (ComplexFloat*)mem_arena_alloc(arena, app->dsp.filter.block_size * sizeof(ComplexFloat), true);
-        app->dsp.filter.pre_fft_remainder_len = 0;
+        app->dsp.filter.pre_fft_remainder_length = 0;
     }
 
     return true;
@@ -447,7 +447,7 @@ unsigned int filter_apply(DspContext* dsp, SampleChunk* item, bool is_post_resam
         case FILTER_IMPL_FFT_ASYMMETRIC:
         {
             ComplexFloat* remainder_buffer = is_post_resample ? dsp->filter.post_fft_remainder_buffer : dsp->filter.pre_fft_remainder_buffer;
-            unsigned int* remainder_len_ptr = is_post_resample ? &dsp->filter.post_fft_remainder_len : &dsp->filter.pre_fft_remainder_len;
+            unsigned int* remainder_length_ptr = is_post_resample ? &dsp->filter.post_fft_remainder_length : &dsp->filter.pre_fft_remainder_length;
 
             unsigned int output_frames = _execute_fft_filter_pass(
                 dsp->filter.object,
@@ -456,7 +456,7 @@ unsigned int filter_apply(DspContext* dsp, SampleChunk* item, bool is_post_resam
                 frames_in,
                 target_buffer,
                 remainder_buffer,
-                remainder_len_ptr,
+                remainder_length_ptr,
                 dsp->filter.block_size,
                 dsp->filter.fft_scratch_buffer,
                 item->is_last_chunk
@@ -479,16 +479,16 @@ _execute_fft_filter_pass(
     unsigned int frames_in,
     ComplexFloat* output_buffer,
     ComplexFloat* remainder_buffer,
-    unsigned int* remainder_len_ptr,
+    unsigned int* remainder_length_ptr,
     unsigned int block_size,
     ComplexFloat* scratch_buffer,
     bool is_last_chunk
 ) {
-    unsigned int old_remainder_len = *remainder_len_ptr;
-    unsigned int total_frames_to_process = old_remainder_len + frames_in;
+    unsigned int old_remainder_length = *remainder_length_ptr;
+    unsigned int total_frames_to_process = old_remainder_length + frames_in;
 
-    memcpy(scratch_buffer, remainder_buffer, old_remainder_len * sizeof(ComplexFloat));
-    memcpy(scratch_buffer + old_remainder_len, input_buffer, frames_in * sizeof(ComplexFloat));
+    memcpy(scratch_buffer, remainder_buffer, old_remainder_length * sizeof(ComplexFloat));
+    memcpy(scratch_buffer + old_remainder_length, input_buffer, frames_in * sizeof(ComplexFloat));
 
     unsigned int processed_frames = 0;
     unsigned int total_output_frames = 0;
@@ -504,11 +504,11 @@ _execute_fft_filter_pass(
 
     // EOF LOGIC: Flush the remaining tail of the file
     if (is_last_chunk && (total_frames_to_process - processed_frames > 0)) {
-        unsigned int final_tail_len = total_frames_to_process - processed_frames;
+        unsigned int final_tail_length = total_frames_to_process - processed_frames;
 
         // Zero-pad the remaining samples up to block_size
-        memset(scratch_buffer + processed_frames + final_tail_len, 0,
-               (block_size - final_tail_len) * sizeof(ComplexFloat));
+        memset(scratch_buffer + processed_frames + final_tail_length, 0,
+               (block_size - final_tail_length) * sizeof(ComplexFloat));
 
         // Force one final FFT execution
         if (filter_type == FILTER_IMPL_FFT_SYMMETRIC) {
@@ -517,15 +517,15 @@ _execute_fft_filter_pass(
             fftfilt_cccf_execute((fftfilt_cccf)filter_object, (liquid_float_complex*)(scratch_buffer + processed_frames), (liquid_float_complex*)(output_buffer + total_output_frames));
         }
 
-        processed_frames += final_tail_len; // Only advance by the actual data length
-        total_output_frames += final_tail_len; // Only output the actual data length
+        processed_frames += final_tail_length; // Only advance by the actual data length
+        total_output_frames += final_tail_length; // Only output the actual data length
     }
 
-    unsigned int new_remainder_len = total_frames_to_process - processed_frames;
-    if (new_remainder_len > 0) {
-        memmove(remainder_buffer, scratch_buffer + processed_frames, new_remainder_len * sizeof(ComplexFloat));
+    unsigned int new_remainder_length = total_frames_to_process - processed_frames;
+    if (new_remainder_length > 0) {
+        memmove(remainder_buffer, scratch_buffer + processed_frames, new_remainder_length * sizeof(ComplexFloat));
     }
-    *remainder_len_ptr = new_remainder_len;
+    *remainder_length_ptr = new_remainder_length;
 
     return total_output_frames;
 }
