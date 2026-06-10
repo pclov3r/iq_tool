@@ -753,9 +753,10 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
         double mean_mag = accum_mag_sum / (double)stat_counter;
         float snr_db = 10.0f * log10f((float)((mean_mag*mean_mag) / fmax(1e-10, avg_power - (mean_mag*mean_mag))));
         float avg_pilot_mse = (accum_pilot_count > 0) ? (float)(accum_pilot_err_sq_sum / (double)accum_pilot_count) : 0.0f;
-        float pilot_pct = sqrtf(avg_pilot_mse) * 100.0f;
+        float raw_pilot_err = sqrtf(avg_pilot_mse) * 100.0f;
+        float pilot_pct = fminf(raw_pilot_err, 100.0f);
         double avg_pilot = accum_pilot_mag_sum / (double)stat_counter;
-        bool is_mono_station = (avg_pilot < 0.001) || (pilot_pct > 100.0f);
+        bool is_mono_station = (avg_pilot < 0.001) || (raw_pilot_err > 100.0f);
         float avg_stereo_pct = (float)(accum_stereo_pct_sum / (double)stat_counter);
         if (avg_stereo_pct > 1.0f) is_mono_station = false;
 
