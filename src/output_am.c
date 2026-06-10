@@ -50,7 +50,6 @@
 // --- Constants ---
 #define AUDIO_SAMPLE_RATE       48000
 #define AUDIO_CHANNELS          2
-#define AUDIO_BUFFER_SIZE       (1536 * 1024)
 #define MAX_AUDIO_CUTOFF_HZ     20000.0f
 
 // --- Constraints ---
@@ -157,7 +156,7 @@ static bool am_output_initialize(ModuleContext* context) {
     if (!am_context) return false;
     res->module.output_private_data = am_context;
 
-    am_context->audio_out = audio_output_create(&res->pipeline.setup_arena, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_BUFFER_SIZE, context->config->audio.writer_path, context->config->audio.writer_rf64, context->config->audio.mute);
+    am_context->audio_out = audio_output_create(&res->pipeline.setup_arena, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS, res->module.source_info.demod_audio_buffer_size, context->config->audio.writer_path, context->config->audio.writer_rf64, context->config->audio.mute);
     if (!am_context->audio_out) return false;
 
     // 1. Base DSP Configuration

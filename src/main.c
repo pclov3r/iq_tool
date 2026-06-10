@@ -261,6 +261,8 @@ static bool init_input_source(AppConfig *config, AppContext* app) {
     app->module.input_api = (InputModuleInterface*)selected_input_module->api;
     app->pipeline_mode = selected_input_module->pipeline_mode;
 
+    app->module.source_info.demod_audio_buffer_size = selected_input_module->default_demod_audio_buffer_size;
+
     log_info("Initializing the '%s' input module...", config->input.type_name);
     return app->module.input_api->initialize(&context);
 }

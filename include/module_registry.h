@@ -38,6 +38,7 @@ typedef struct Module {
     bool module_defines_format;
     OutputPayload payload;
     float default_filter_attenuation_db;
+    size_t default_demod_audio_buffer_size; ///< Downstream demodulator audio buffer size dictated by this input source.
 } Module;
 
 // --- Function Declarations ---

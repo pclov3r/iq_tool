@@ -84,6 +84,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .get_cli_options = wav_input_get_cli_options,
             .requires_input_path = true,
             .requires_output_path = false,
+            .default_demod_audio_buffer_size = 128 * 1024,
         },
         {
             .name = "rawfile",
@@ -95,6 +96,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .get_cli_options = rawfile_input_get_cli_options,
             .requires_input_path = true,
             .requires_output_path = false,
+            .default_demod_audio_buffer_size = 128 * 1024,
         },
         {
             .name = "stdin",
@@ -106,6 +108,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .get_cli_options = stdin_input_get_cli_options,
             .requires_input_path = false,
             .requires_output_path = false,
+            .default_demod_audio_buffer_size = 128 * 1024,
         },
     #if defined(WITH_RTLSDR)
         {
@@ -118,6 +121,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .get_cli_options = rtlsdr_input_get_cli_options,
             .requires_input_path = false,
             .requires_output_path = false,
+            .default_demod_audio_buffer_size = 128 * 1024,
         },
     #endif
     #if defined(WITH_SDRPLAY)
@@ -131,6 +135,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .get_cli_options = sdrplay_input_get_cli_options,
             .requires_input_path = false,
             .requires_output_path = false,
+            .default_demod_audio_buffer_size = 128 * 1024,
         },
     #endif
     #if defined(WITH_HACKRF)
@@ -144,6 +149,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .get_cli_options = hackrf_input_get_cli_options,
             .requires_input_path = false,
             .requires_output_path = false,
+            .default_demod_audio_buffer_size = 128 * 1024,
         },
     #endif
     #if defined(WITH_AIRSPY)
@@ -157,6 +163,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .get_cli_options = airspy_input_get_cli_options,
             .requires_input_path = false,
             .requires_output_path = false,
+            .default_demod_audio_buffer_size = 128 * 1024,
         },
     #endif
     #if defined(WITH_AIRSPYHF)
@@ -170,6 +177,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .get_cli_options = airspyhf_input_get_cli_options,
             .requires_input_path = false,
             .requires_output_path = false,
+            .default_demod_audio_buffer_size = 128 * 1024,
         },
     #endif
     #if defined(WITH_BLADERF)
@@ -183,6 +191,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .get_cli_options = bladerf_input_get_cli_options,
             .requires_input_path = false,
             .requires_output_path = false,
+            .default_demod_audio_buffer_size = 128 * 1024,
         },
     #endif
         {
@@ -195,6 +204,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .get_cli_options = spyserver_client_input_get_cli_options,
             .requires_input_path = false,
             .requires_output_path = false,
+            .default_demod_audio_buffer_size = 1536 * 1024, // 1.5MB network safety net to absorb catchup bursts
         },
         // --- OUTPUT MODULES ---
         {

@@ -29,7 +29,6 @@
 // --- Constants ---
 #define NFM_AUDIO_RATE          48000
 #define NFM_AUDIO_CHANNELS      2 // Output is Stereo (Mono duplicated)
-#define NFM_AUDIO_BUFFER_SIZE   (1536 * 1024)
 
 // Rate Constraints
 #define NFM_MIN_INPUT_RATE      16000.0
@@ -120,7 +119,7 @@ static bool nfm_output_initialize(ModuleContext* context) {
     NfmContext* p = (NfmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(NfmContext), true);
     res->module.output_private_data = p;
 
-    p->audio_out = audio_output_create(&res->pipeline.setup_arena, NFM_AUDIO_RATE, NFM_AUDIO_CHANNELS, NFM_AUDIO_BUFFER_SIZE, context->config->audio.writer_path, context->config->audio.writer_rf64, context->config->audio.mute);
+    p->audio_out = audio_output_create(&res->pipeline.setup_arena, NFM_AUDIO_RATE, NFM_AUDIO_CHANNELS, res->module.source_info.demod_audio_buffer_size, context->config->audio.writer_path, context->config->audio.writer_rf64, context->config->audio.mute);
     if (!p->audio_out) return false;
 
     // 3. DSP Setup

@@ -104,7 +104,6 @@ typedef enum {
 // --- Audio Config ---
 #define AUDIO_SAMPLE_RATE       48000
 #define AUDIO_CHANNELS          2
-#define AUDIO_BUFFER_SIZE       (1536 * 1024)
 
 // --- MPX Rate Constraints ---
 #define WFM_MIN_MPX_RATE        192000.0
@@ -300,7 +299,7 @@ static bool wfm_output_initialize(ModuleContext* context) {
     if (!wfm_decoder) return false;
     res->module.output_private_data = wfm_decoder;
 
-    wfm_decoder->audio_out = audio_output_create(&res->pipeline.setup_arena, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_BUFFER_SIZE, context->config->audio.writer_path, context->config->audio.writer_rf64, context->config->audio.mute);
+    wfm_decoder->audio_out = audio_output_create(&res->pipeline.setup_arena, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS, res->module.source_info.demod_audio_buffer_size, context->config->audio.writer_path, context->config->audio.writer_rf64, context->config->audio.mute);
     if (!wfm_decoder->audio_out) return false;
 
     // 3. DSP Configuration
