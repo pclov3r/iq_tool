@@ -165,6 +165,7 @@ static void harris_agc_execute(HarrisAgc    *h,
 
 bool agc_create(AppConfig *config, AppContext *app)
 {
+    (void)config;
     if (!app->dsp.pipeline_agc.enable) {
         app->dsp.agc.harris_object = NULL;
         return true;
