@@ -69,18 +69,32 @@ static void _destroy_dsp_components(AppContext* app);
 static bool calculate_and_validate_resample_ratio(AppConfig *config, AppContext* app, float *out_ratio) {
     if (!config || !app || !out_ratio) return false;
 
-    // --- Step 1: Handle Smart Default (Missing Rate) ---
-    // If the user didn't specify a rate (0), use the hardware/file input rate.
-    if (config->output_sample_rate.rate_hz <= 0.0) {
-        config->output_sample_rate.rate_hz = (double)app->module.source_info.sample_rate;
-        log_info("No output rate specified. Defaulting to native input rate: %.15g Hz", config->output_sample_rate.rate_hz);
+    // --- Step 1: Determine Target Rate ---
+    double target_rate_hz = 0.0;
+    if (config->output.payload == PAYLOAD_AUDIO) {
+        target_rate_hz = config->baseband_sample_rate.rate_hz;
+    } else {
+        target_rate_hz = config->output_sample_rate.rate_hz;
     }
 
-    // --- Step 2: Calculate Ratio ---
-    double input_rate_d = (double)app->module.source_info.sample_rate;
-    float r = (float)(config->output_sample_rate.rate_hz / input_rate_d);
+    // --- Step 2: Handle Smart Default (Missing Rate) ---
+    // If the user didn't specify a rate (0), use the hardware/file input rate.
+    if (target_rate_hz <= 0.0) {
+        target_rate_hz = (double)app->module.source_info.sample_rate;
+        log_info("No explicit pipeline output rate specified. Defaulting to native input rate: %.15g Hz", target_rate_hz);
+    }
 
-    // --- Step 3: Check for Passthrough Conditions ---
+    // Set the unified pipeline sample rate, format, gain, and agc
+    app->dsp.pipeline_sample_rate_hz = target_rate_hz;
+    app->dsp.pipeline_sample_format = (config->output.payload == PAYLOAD_AUDIO) ? config->baseband_sample_format.format : config->output.sample_format;
+    app->dsp.pipeline_gain = (config->output.payload == PAYLOAD_AUDIO) ? config->dsp.baseband_gain : config->dsp.output_gain;
+    app->dsp.pipeline_agc = (config->output.payload == PAYLOAD_AUDIO) ? config->dsp.baseband_agc : config->dsp.output_agc;
+
+    // --- Step 3: Calculate Ratio ---
+    double input_rate_d = (double)app->module.source_info.sample_rate;
+    float r = (float)(app->dsp.pipeline_sample_rate_hz / input_rate_d);
+
+    // --- Step 4: Check for Passthrough Conditions ---
     if (config->dsp.raw_passthrough) {
         log_info("Raw Passthrough mode enabled: Bypassing all DSP blocks.");
         app->dsp.bypass_resampler = true;
@@ -93,7 +107,7 @@ static bool calculate_and_validate_resample_ratio(AppConfig *config, AppContext*
     else {
         app->dsp.bypass_resampler = false;
         log_info("Resampling enabled: %.15g Hz -> %.15g Hz (Ratio: %.15g)",
-                 input_rate_d, config->output_sample_rate.rate_hz, r);
+                 input_rate_d, app->dsp.pipeline_sample_rate_hz, r);
     }
 
     // --- Step 4: Validate Ratio ---
@@ -241,7 +255,7 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext* app, floa
     // --- Monolithic Tray Allocation (Contiguous Metadata + Data) ---
     size_t raw_stride     = ALIGN_UP(app->pipeline.alloc_size_samples * app->module.input_bytes_per_iq_sample, MEM_ARENA_ALIGNMENT);
     size_t complex_stride = ALIGN_UP(app->pipeline.alloc_size_samples * sizeof(ComplexFloat), MEM_ARENA_ALIGNMENT);
-    app->module.output_bytes_per_iq_sample = get_bytes_per_iq_sample(config->output.sample_format);
+    app->module.output_bytes_per_iq_sample = get_bytes_per_iq_sample(app->dsp.pipeline_sample_format);
     size_t final_stride   = ALIGN_UP(app->pipeline.alloc_size_samples * app->module.output_bytes_per_iq_sample, MEM_ARENA_ALIGNMENT);
 
     size_t struct_stride   = ALIGN_UP(sizeof(SampleChunk), MEM_ARENA_ALIGNMENT);

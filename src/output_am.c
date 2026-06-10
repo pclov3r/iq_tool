@@ -134,14 +134,14 @@ static struct {
 // --- Module Interface Implementation ---
 
 static bool am_output_validate_options(AppConfig* config) {
-    config->output.sample_format = CF32;
+    config->baseband_sample_format.format = CF32;
 
-    if (config->output_sample_rate.rate_hz == 0.0) {
-        config->output_sample_rate.rate_hz = AM_DEFAULT_INPUT_RATE;
-        config->output_sample_rate.provided = true;
+    if (config->baseband_sample_rate.rate_hz == 0.0) {
+        config->baseband_sample_rate.rate_hz = AM_DEFAULT_INPUT_RATE;
+        config->baseband_sample_rate.provided = true;
         log_debug("AM: No rate specified. Requesting %.15g Hz.", AM_DEFAULT_INPUT_RATE);
     } else {
-        double rate = config->output_sample_rate.rate_hz;
+        double rate = config->baseband_sample_rate.rate_hz;
         if (rate < AM_MIN_INPUT_RATE) {
             log_error("AM: Input rate %.15g Hz is too low for audio (Min: %.15g).", rate, AM_MIN_INPUT_RATE);
             return false;
@@ -165,7 +165,7 @@ static bool am_output_initialize(ModuleContext* context) {
     if (!p->audio_out) return false;
 
     // 3. DSP Configuration
-    float input_rate = (float)context->config->output_sample_rate.rate_hz;
+    float input_rate = (float)context->config->baseband_sample_rate.rate_hz;
     if (input_rate < 1.0f) input_rate = 48000.0f;
 
     p->input_samplerate = input_rate;
@@ -178,7 +178,7 @@ static bool am_output_initialize(ModuleContext* context) {
         s_am_config.audio_cutoff = MAX_AUDIO_CUTOFF_HZ;
     }
 
-    log_info("AM: Input Rate %.15g Hz | Audio Cutoff: %.15g Hz | Mode: %s",
+    log_info("AM: Baseband %.15g Hz | Audio Cutoff: %.15g Hz | Mode: %s",
              input_rate, s_am_config.audio_cutoff,
              p->sync_mode ? "Synchronous (PLL)" : "Envelope (Magnitude)");
 

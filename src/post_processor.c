@@ -36,8 +36,8 @@ void post_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
         agc_apply(dsp, buffer, item->frames_to_write);
 
         // Step 3.5: Manual Output Gain (if configured)
-        if (config->dsp.output_gain != 1.0f) {
-            float g = config->dsp.output_gain;
+        if (dsp->pipeline_gain != 1.0f) {
+            float g = dsp->pipeline_gain;
             for (unsigned int i = 0; i < item->frames_to_write; i++) {
                 buffer[i] *= g;
             }
@@ -47,7 +47,7 @@ void post_processor_apply_chain(DspContext* dsp, SampleChunk* item) {
         if (!sample_convert_cf32_to_block(buffer,
                                    item->final_output_data,
                                    item->frames_to_write,
-                                   config->output.sample_format)) {
+                                   dsp->pipeline_sample_format)) {
             log_fatal("Post-Processor: Failed to convert samples.");
             item->frames_to_write = 0;
         }

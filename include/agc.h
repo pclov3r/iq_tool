@@ -54,22 +54,4 @@ void agc_reset(DspContext* dsp);
  */
 void agc_destroy(AppContext* app);
 
-/**
- * @brief Populates the CLI options specific to the AGC module.
- *
- * @param buffer The buffer to append options to.
- * @param config The application configuration struct to bind options to.
- * @return The number of options added.
- */
-int agc_populate_cli_options(struct argparse_option* buffer, struct AppConfig* config);
-
-/**
- * @brief Converts an AGC profile enum to a human-readable string.
- */
-/**
- * @brief Validates all AGC-related user options after parsing.
- * @return true if the configuration is valid, false otherwise.
- */
-bool agc_validate_options(AppConfig *config);
-
 #endif // AGC_H_

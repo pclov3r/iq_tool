@@ -60,7 +60,7 @@ bool wav_common_initialize(ModuleContext* context, int sf_format_flag) {
     // Prepare the libsndfile info struct.
     SF_INFO sfinfo;
     memset(&sfinfo, 0, sizeof(SF_INFO));
-    sfinfo.samplerate = (int)config->output_sample_rate.rate_hz;
+    sfinfo.samplerate = (int)app->dsp.pipeline_sample_rate_hz;
     sfinfo.channels = 2;
     sfinfo.format = sf_format_flag; // Use the specific format flag passed by the wrapper.
 
@@ -94,7 +94,7 @@ bool wav_common_initialize(ModuleContext* context, int sf_format_flag) {
         strftime(date_only, sizeof(date_only), "%d-%b-%Y", tm_info);
     }
 
-    size_t bps = (size_t)config->output_sample_rate.rate_hz * app->module.output_bytes_per_iq_sample * 2;
+    size_t bps = (size_t)app->dsp.pipeline_sample_rate_hz * app->module.output_bytes_per_iq_sample * 2;
     int bits = (int)app->module.output_bytes_per_iq_sample * 8;
     const char* radio_model = config->input.type_name ? config->input.type_name : "iq_tool";
 
@@ -112,7 +112,7 @@ bool wav_common_initialize(ModuleContext* context, int sf_format_flag) {
     char true_title[256];
     snprintf(true_title, sizeof(true_title), "%.3f MHz, BW %.0f kHz, %04d-%02d-%02d %02d:%02d",
         config->sdr_general.rf_freq_hz / 1000000.0,
-        config->output_sample_rate.rate_hz / 1000.0,
+        app->dsp.pipeline_sample_rate_hz / 1000.0,
         tm_info ? tm_info->tm_year + 1900 : 0,
         tm_info ? tm_info->tm_mon + 1 : 0,
         tm_info ? tm_info->tm_mday : 0,
@@ -148,7 +148,7 @@ bool wav_common_initialize(ModuleContext* context, int sf_format_flag) {
         "UTCSeconds=\"%lld\"/>"
         "</SDR-XML-Root>",
         time_created, time_utc, sdr_console_xml_filename, sdr_console_xml_filename, radio_model, GIT_HASH, time_utc,
-        bits, bps, config->sdr_general.rf_freq_hz, config->output_sample_rate.rate_hz, (long long)now
+        bits, bps, config->sdr_general.rf_freq_hz, app->dsp.pipeline_sample_rate_hz, (long long)now
     );
 
     if (xml_length > 0 && xml_length < (int)sizeof(xml_buf)) {

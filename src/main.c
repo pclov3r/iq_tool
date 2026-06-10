@@ -272,7 +272,7 @@ static bool init_output_module(AppConfig *config, AppContext* app) {
     }
     app->module.output_api = (OutputModuleInterface*)selected_output_module->api;
 
-    if (config->dsp.raw_passthrough && app->module.input_format != config->output.sample_format) {
+    if (config->dsp.raw_passthrough && app->module.input_format != app->dsp.pipeline_sample_format) {
         log_error("Option --raw-passthrough requires input and output formats to be identical.");
         return false;
     }
@@ -305,6 +305,7 @@ static void initialize_resource_struct(AppConfig *config, AppContext* app) {
     // Set global DSP defaults
     config->dsp.input_gain = 1.0f;
     config->dsp.output_gain = 1.0f;
+    config->dsp.baseband_gain = 1.0f;
 
     config->dsp.iq_correction.enable = false;
     config->dsp.dc_block.enable = false;
@@ -343,7 +344,7 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
     }
 
     const char* base_output_labels[] = {
-        "Output Type", "Sample Type", "Output Sample Rate", "Input Gain", "Output Gain", "Frequency Shift",
+        "Output Type", "Sample Type", "Output Sample Rate", "Baseband Sample Rate", "Input Gain", "Output Gain", "Frequency Shift",
         "Resampling", "Output Target", "FIR Filter", "FFT Filter", "Output AGC"
     };
     for (size_t i = 0; i < sizeof(base_output_labels) / sizeof(base_output_labels[0]); i++) {
@@ -384,10 +385,14 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
         }
     }
 
-    const char* sample_type_str = get_format_info_by_enum(config->output.sample_format) ? get_format_info_by_enum(config->output.sample_format)->description_str : "Unknown";
+    const char* sample_type_str = get_format_info_by_enum(app->dsp.pipeline_sample_format) ? get_format_info_by_enum(app->dsp.pipeline_sample_format)->description_str : "Unknown";
     fprintf(stderr, " %-*s : %s\n", max_label_length, "Sample Type", sample_type_str);
 
-    fprintf(stderr, " %-*s : %.15g Hz\n", max_label_length, "Output Sample Rate", config->output_sample_rate.rate_hz);
+    if (config->output.payload == PAYLOAD_AUDIO) {
+        fprintf(stderr, " %-*s : %.15g Hz\n", max_label_length, "Baseband Sample Rate", config->baseband_sample_rate.rate_hz);
+    } else {
+        fprintf(stderr, " %-*s : %.15g Hz\n", max_label_length, "Output Sample Rate", config->output_sample_rate.rate_hz);
+    }
 
     fprintf(stderr, " %-*s : %.5f\n", max_label_length, "Input Gain", config->dsp.input_gain);
 
@@ -439,12 +444,18 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
         fprintf(stderr, " %-*s : %s\n", max_label_length, filter_label, filter_buf);
     }
 
-    if (config->dsp.agc.enable) {
+    if (app->dsp.pipeline_agc.enable) {
         char agc_buf[128];
-        snprintf(agc_buf, sizeof(agc_buf), "Enabled (Target: %.2f)", config->dsp.agc.target_level);
-        fprintf(stderr, " %-*s : %s\n", max_label_length, "Output AGC", agc_buf);
+        snprintf(agc_buf, sizeof(agc_buf), "Enabled (Target: %.2f)", app->dsp.pipeline_agc.target_level);
+        fprintf(stderr, " %-*s : %s\n", max_label_length, "Pipeline AGC", agc_buf);
     } else {
-        fprintf(stderr, " %-*s : %s\n", max_label_length, "Output AGC", "Disabled");
+        fprintf(stderr, " %-*s : %s\n", max_label_length, "Pipeline AGC", "Disabled");
+    }
+
+    if (app->dsp.pipeline_gain != 1.0f) {
+        char gain_buf[128];
+        snprintf(gain_buf, sizeof(gain_buf), "%.2fx", app->dsp.pipeline_gain);
+        fprintf(stderr, " %-*s : %s\n", max_label_length, "Pipeline Gain", gain_buf);
     }
 
     fprintf(stderr, " %-*s : %s\n", max_label_length, "Resampling", app->dsp.bypass_resampler ? "Disabled" : "Enabled");

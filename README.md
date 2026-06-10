@@ -147,28 +147,35 @@ Required Input & Output
     -i, --input=<str>                         Specifies the input module.
     -o, --output=<str>                        Specifies the output module and optional file path
 
-Output Options
-    --output-sample-format=<str>              Sample format for output data {cs8|cu8|cs16|...}
-
 Audio Output Options
     --audio-writer=<str>                      Save demodulated audio to a WAV file.
     --audio-writer-rf64                       Use RF64 format for the audio writer (supports >4GB files).
     --mute-audio                              Disable speaker playback
 
-Processing Options
-    --output-sample-rate=<flt>                Output sample rate in Hz.
+Input Processing Options
     --input-gain-multiplier=<flt>             Apply a linear gain multiplier to INPUT samples (before processing).
-    --output-gain-multiplier=<flt>            Apply a linear gain multiplier to OUTPUT samples (after processing).
+    --iq-correction                           (Optional) Enable automatic I/Q imbalance correction.
+    --dc-block                                (Optional) Enable DC offset removal (high-pass filter).
+
+Baseband Processing Options
+    --baseband-sample-rate=<flt>              Baseband sample rate feeding into a demodulator in Hz.
+    --baseband-sample-format=<str>            Baseband sample format feeding into a demodulator {cf32|cs16|...}.
+    --baseband-gain-multiplier=<flt>          Apply a linear gain multiplier to baseband samples before demodulation.
+    --baseband-agc                            Enable automatic gain control on the baseband signal before demodulation.
+    --baseband-agc-target=<flt>               AGC target magnitude (0.0 - 1.0). (Default: 0.12)
+
+I/Q Output Options
+    --output-sample-rate=<flt>                Output sample rate in Hz.
+    --output-sample-format=<str>              Sample format for output data {cs8|cu8|cs16|...}.
+    --output-gain-multiplier=<flt>            Apply a linear gain multiplier to OUTPUT samples before saving.
+    --output-agc                              Enable automatic gain control on the output signal before saving.
+    --output-agc-target=<flt>                 AGC target magnitude (0.0 - 1.0). (Default: 0.12)
+
+General Pipeline Options
     --freq-shift=<flt>                        Apply a direct frequency shift in Hz (e.g., -100e3)
     --shift-after-resample                    Apply frequency shift AFTER resampling (default is before)
     --raw-passthrough                         Bypass all processing. Copies raw input bytes directly to output.
-    --iq-correction                           (Optional) Enable automatic I/Q imbalance correction.
-    --dc-block                                (Optional) Enable DC offset removal (high-pass filter).
     --preset=<str>                            Use a preset for a common target.
-
-Output Automatic Gain Control
-    --output-agc                              Enable automatic gain control on the output.
-    --agc-target=<flt>                        AGC target magnitude (0.0 - 1.0). (Default: 0.12)
 
 Filtering Options (Chain up to 5 by combining options or adding suffixes -2, -3, etc. e.g., --lowpass --stopband --lowpass-2 --pass-range --pass-range-2)
     --lowpass=<flt>                           Isolate signal at DC. Keeps freqs from -<hz> to +<hz>.

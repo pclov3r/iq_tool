@@ -96,16 +96,16 @@ static struct {
 // --- Module Interface ---
 
 static bool nfm_output_validate_options(AppConfig* config) {
-    config->output.sample_format = CF32;
+    config->baseband_sample_format.format = CF32;
 
     // 1. Default to NFM_DEFAULT_INPUT_RATE (48k) if not specified
-    if (config->output_sample_rate.rate_hz == 0.0) {
-        config->output_sample_rate.rate_hz = NFM_DEFAULT_INPUT_RATE;
-        config->output_sample_rate.provided = true;
+    if (config->baseband_sample_rate.rate_hz == 0.0) {
+        config->baseband_sample_rate.rate_hz = NFM_DEFAULT_INPUT_RATE;
+        config->baseband_sample_rate.provided = true;
     }
 
     // 2. Enforce Bounds
-    double rate = config->output_sample_rate.rate_hz;
+    double rate = config->baseband_sample_rate.rate_hz;
     if (rate < NFM_MIN_INPUT_RATE || rate > NFM_MAX_INPUT_RATE) {
         log_error("NFM: Invalid input rate %.15g Hz.", rate);
         log_error("Valid range is %.15g Hz to %.15g Hz.", NFM_MIN_INPUT_RATE, NFM_MAX_INPUT_RATE);
@@ -124,7 +124,7 @@ static bool nfm_output_initialize(ModuleContext* context) {
     if (!p->audio_out) return false;
 
     // 3. DSP Setup
-    p->input_samplerate = (float)context->config->output_sample_rate.rate_hz;
+    p->input_samplerate = (float)context->config->baseband_sample_rate.rate_hz;
     p->output_ratio = (float)NFM_AUDIO_RATE / p->input_samplerate;
 
     // A. Determine Deviation (Modulation Index)
@@ -146,7 +146,8 @@ static bool nfm_output_initialize(ModuleContext* context) {
     p->squelch_hang_counter = 0;
     p->squelch_hang_max = (int)(p->input_samplerate * (SQ_HANG_TIME_MS / 1000.0f));
 
-    log_info("NFM: Mode: %s | Squelch: %.15g dB | Discriminator Filter: %s",
+    log_info("NFM: Baseband %.15g Hz | Mode: %s | Squelch: %.15g dB | Discriminator Filter: %s",
+             p->input_samplerate,
              s_nfm_config.is_narrow ? "Narrow (2.5k)" : "Standard (5k)",
              s_nfm_config.squelch_snr,
              s_nfm_config.disable_discriminator_filter ? "Disabled" : "Enabled");

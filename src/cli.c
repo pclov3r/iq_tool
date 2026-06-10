@@ -85,23 +85,35 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_STRING('i', "input", &config->input.type_name, "Specifies the input module.", NULL, 0, 0),
         OPT_STRING('o', "output", &config->output.module_name, "Specifies the output module and optional file path", NULL, 0, 0),
 
-        OPT_GROUP("Output Options"),
-        OPT_STRING(0, "output-sample-format", &config->output.sample_format_str, "Sample format for output data {cs8|cu8|cs16|...}", NULL, 0, 0),
-
         OPT_GROUP("Audio Output Options"),
         OPT_STRING(0, "audio-writer", &config->audio.writer_path, "Save demodulated audio to a WAV file.", NULL, 0, 0),
         OPT_BOOLEAN(0, "audio-writer-rf64", &config->audio.writer_rf64, "Use RF64 format for the audio writer (supports >4GB files).", NULL, 0, 0),
         OPT_BOOLEAN(0, "mute-audio", &config->audio.mute, "Disable speaker playback", NULL, 0, 0),
 
-        OPT_GROUP("Processing Options"),
-        OPT_DOUBLE(0, "output-sample-rate", &config->output_sample_rate.user_arg, "Output sample rate in Hz.", NULL, 0, 0),
+        OPT_GROUP("Input Processing Options"),
         OPT_FLOAT(0, "input-gain-multiplier", &config->dsp.input_gain, "Apply a linear gain multiplier to INPUT samples (before processing).", NULL, 0, 0),
-        OPT_FLOAT(0, "output-gain-multiplier", &config->dsp.output_gain, "Apply a linear gain multiplier to OUTPUT samples (after processing).", NULL, 0, 0),
+        OPT_BOOLEAN(0, "iq-correction", &config->dsp.iq_correction.enable, "(Optional) Enable automatic I/Q imbalance correction.", NULL, 0, 0),
+        OPT_BOOLEAN(0, "dc-block", &config->dsp.dc_block.enable, "(Optional) Enable DC offset removal (high-pass filter).", NULL, 0, 0),
+
+        OPT_GROUP("Baseband Processing Options"),
+        OPT_DOUBLE(0, "baseband-sample-rate", &config->baseband_sample_rate.user_arg, "Baseband sample rate feeding into a demodulator in Hz.", NULL, 0, 0),
+        OPT_STRING(0, "baseband-sample-format", &config->baseband_sample_format.format_str, "Baseband sample format feeding into a demodulator {cf32|cs16|...}.", NULL, 0, 0),
+        OPT_FLOAT(0, "baseband-gain-multiplier", &config->dsp.baseband_gain, "Apply a linear gain multiplier to baseband samples before demodulation.", NULL, 0, 0),
+        OPT_BOOLEAN(0, "baseband-agc", &config->dsp.baseband_agc.enable, "Enable automatic gain control on the baseband signal before demodulation.", NULL, 0, 0),
+        OPT_FLOAT(0, "baseband-agc-target", &config->dsp.baseband_agc.target_level_arg, "AGC target magnitude (0.0 - 1.0). (Default: 0.12)", NULL, 0, 0),
+
+
+        OPT_GROUP("I/Q Output Options"),
+        OPT_DOUBLE(0, "output-sample-rate", &config->output_sample_rate.user_arg, "Output sample rate in Hz.", NULL, 0, 0),
+        OPT_STRING(0, "output-sample-format", &config->output.sample_format_str, "Sample format for output data {cs8|cu8|cs16|...}.", NULL, 0, 0),
+        OPT_FLOAT(0, "output-gain-multiplier", &config->dsp.output_gain, "Apply a linear gain multiplier to OUTPUT samples before saving.", NULL, 0, 0),
+        OPT_BOOLEAN(0, "output-agc", &config->dsp.output_agc.enable, "Enable automatic gain control on the output signal before saving.", NULL, 0, 0),
+        OPT_FLOAT(0, "output-agc-target", &config->dsp.output_agc.target_level_arg, "AGC target magnitude (0.0 - 1.0). (Default: 0.12)", NULL, 0, 0),
+
+        OPT_GROUP("General Pipeline Options"),
         OPT_DOUBLE(0, "freq-shift", &config->dsp.frequency_shift_hz, "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0, 0),
         OPT_BOOLEAN(0, "shift-after-resample", &config->dsp.shift_after_resample, "Apply frequency shift AFTER resampling (default is before)", NULL, 0, 0),
         OPT_BOOLEAN(0, "raw-passthrough", &config->dsp.raw_passthrough, "Bypass all processing. Copies raw input bytes directly to output.", NULL, 0, 0),
-        OPT_BOOLEAN(0, "iq-correction", &config->dsp.iq_correction.enable, "(Optional) Enable automatic I/Q imbalance correction.", NULL, 0, 0),
-        OPT_BOOLEAN(0, "dc-block", &config->dsp.dc_block.enable, "(Optional) Enable DC offset removal (high-pass filter).", NULL, 0, 0),
         OPT_STRING(0, "preset", &config->preset_name, "Use a preset for a common target.", NULL, 0, 0),
     };
 
@@ -130,7 +142,6 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         } while (0)
 
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], generic_options, sizeof(generic_options) / sizeof(generic_options[0]));
-    total_opts += agc_populate_cli_options(&options_buffer[total_opts], config);
     total_opts += filter_populate_cli_options(&options_buffer[total_opts], config);
     APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], sdr_general_options, sizeof(sdr_general_options) / sizeof(sdr_general_options[0]));
     module_populate_cli_options(options_buffer, &total_opts, max_options, active_input_type, active_output_type, arena);
@@ -196,14 +207,25 @@ static void apply_preset_if_requested(AppConfig* config, MemoryArena* arena) {
     for (int i = 0; i < config->num_presets; i++) {
         if (strcasecmp(config->preset_name, config->presets[i].name) == 0) {
             const PresetDefinition* p = &config->presets[i];
-            config->output_sample_rate.rate_hz = p->rate_hz;
+            if (p->rate_hz_provided) {
+                config->output_sample_rate.rate_hz = p->rate_hz;
+                config->output_sample_rate.provided = true;
+            }
+            if (p->baseband_sample_rate_provided) {
+                config->baseband_sample_rate.rate_hz = p->baseband_sample_rate_hz;
+                config->baseband_sample_rate.provided = true;
+            }
             if (!config->output.sample_format_str) config->output.sample_format_str = p->output_sample_format;
+            if (!config->baseband_sample_format.format_str) config->baseband_sample_format.format_str = p->baseband_sample_format;
             if (p->input_gain_provided && config->dsp.input_gain == 1.0f) config->dsp.input_gain = p->input_gain;
             if (p->output_gain_provided && config->dsp.output_gain == 1.0f) config->dsp.output_gain = p->output_gain;
+            if (p->baseband_gain_provided && config->dsp.baseband_gain == 1.0f) config->dsp.baseband_gain = p->baseband_gain;
             if (p->dc_block_provided && !config->dsp.dc_block.enable) config->dsp.dc_block.enable = p->dc_block_enable;
             if (p->iq_correction_provided && !config->dsp.iq_correction.enable) config->dsp.iq_correction.enable = p->iq_correction_enable;
-            if (p->agc_enable_provided && !config->dsp.agc.enable) config->dsp.agc.enable = p->agc_enable;
-            if (p->agc_target_provided && config->dsp.agc.target_level_arg == 0.0f) config->dsp.agc.target_level_arg = p->agc_target;
+            if (p->output_agc_enable_provided && !config->dsp.output_agc.enable) config->dsp.output_agc.enable = p->output_agc_enable;
+            if (p->output_agc_target_provided && config->dsp.output_agc.target_level_arg == 0.0f) config->dsp.output_agc.target_level_arg = p->output_agc_target;
+            if (p->baseband_agc_enable_provided && !config->dsp.baseband_agc.enable) config->dsp.baseband_agc.enable = p->baseband_agc_enable;
+            if (p->baseband_agc_target_provided && config->dsp.baseband_agc.target_level_arg == 0.0f) config->dsp.baseband_agc.target_level_arg = p->baseband_agc_target;
             if (p->lowpass_cutoff_hz_provided && config->dsp.filter.args.lowpass[0] == 0.0f) config->dsp.filter.args.lowpass[0] = p->lowpass_cutoff_hz;
             if (p->highpass_cutoff_hz_provided && config->dsp.filter.args.highpass[0] == 0.0f) config->dsp.filter.args.highpass[0] = p->highpass_cutoff_hz;
             if (p->pass_range_str_provided && !config->dsp.filter.args.pass_range[0]) config->dsp.filter.args.pass_range[0] = p->pass_range_str;
@@ -311,6 +333,10 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
     if (config->output_sample_rate.user_arg > 0.0f) {
         config->output_sample_rate.rate_hz = (double)config->output_sample_rate.user_arg;
         config->output_sample_rate.provided = true;
+    }
+    if (config->baseband_sample_rate.user_arg > 0.0f) {
+        config->baseband_sample_rate.rate_hz = (double)config->baseband_sample_rate.user_arg;
+        config->baseband_sample_rate.provided = true;
     }
     if (config->sdr_general.rf_freq_hz_arg > 0.0f) {
         config->sdr_general.rf_freq_hz = config->sdr_general.rf_freq_hz_arg;

@@ -84,6 +84,20 @@ typedef struct AppConfig {
         bool   provided;
     } output_sample_rate;
 
+    // --- Baseband Sample Rate (for Demodulators) ---
+    struct {
+        double rate_hz;
+        double user_arg;
+        bool   provided;
+    } baseband_sample_rate;
+
+    // --- Baseband Sample Format (for Demodulators) ---
+    struct {
+        char* format_str;
+        SampleFormat format;
+        bool provided;
+    } baseband_sample_format;
+
     // --- Audio Configuration ---
     struct {
         char* writer_path;
@@ -97,13 +111,16 @@ typedef struct AppConfig {
         bool  input_gain_provided;
         float output_gain;
         bool  output_gain_provided;
+        float baseband_gain;
+        bool  baseband_gain_provided;
         double frequency_shift_hz;
         bool   shift_after_resample;
         bool   raw_passthrough;
 
         IqCorrectionConfig iq_correction;
         DcBlockConfig      dc_block;
-        OutputAgcConfig    agc;
+        OutputAgcConfig    output_agc;
+        OutputAgcConfig    baseband_agc;
 
         struct {
             FilterRequest requests[MAX_FILTER_CHAIN];
@@ -241,6 +258,10 @@ typedef struct DspContext {
 
     float  resample_ratio;
     double nco_shift_hz;
+    double pipeline_sample_rate_hz;
+    SampleFormat pipeline_sample_format;
+    float  pipeline_gain;
+    OutputAgcConfig pipeline_agc;
     bool   bypass_resampler;
 } DspContext;
 

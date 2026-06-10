@@ -61,7 +61,7 @@ bool frequency_shift_create(AppConfig *config, AppContext* app) {
 
     // --- Create Post-Resample NCO ---
     if (config->dsp.shift_after_resample) {
-        double rate_for_nco = config->output_sample_rate.rate_hz;
+        double rate_for_nco = app->dsp.pipeline_sample_rate_hz;
          if (fabs(app->dsp.nco_shift_hz) > (SHIFT_FACTOR_LIMIT * rate_for_nco)) {
             log_error("Requested frequency shift %.15g Hz exceeds sanity limit for the post-resample rate of %.15g Hz.", app->dsp.nco_shift_hz, rate_for_nco);
             return false;

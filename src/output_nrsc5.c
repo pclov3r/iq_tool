@@ -29,6 +29,7 @@
 #include "ring_buffer.h"
 #include "utilities.h"
 #include "signal_handler.h"
+#include "sample_format_table.h"
 #include "nrsc5.h"
 #include "queue.h"
 #include "constants.h"
@@ -593,7 +594,7 @@ static size_t nrsc5_output_write_chunk(ModuleContext* context, const void* buffe
     static size_t stat_rate_threshold = 0;
 
     if (stat_rate_threshold == 0) {
-        stat_rate_threshold = (size_t)(context->config->output_sample_rate.rate_hz * CONSOLE_UPDATE_INTERVAL_SEC);
+        stat_rate_threshold = (size_t)(context->config->baseband_sample_rate.rate_hz * CONSOLE_UPDATE_INTERVAL_SEC);
         if (stat_rate_threshold == 0) stat_rate_threshold = (size_t)(744187 * CONSOLE_UPDATE_INTERVAL_SEC);
     }
 
@@ -676,20 +677,22 @@ static bool nrsc5_output_validate_options(AppConfig* config) {
             break;
     }
 
-    // Override User Settings
-    if (config->output_sample_rate.rate_hz != required_rate) {
-        if (config->output_sample_rate.provided) {
-            log_warn("NRSC5: Ignoring user output rate %.15g Hz. Forcing required rate %.15g Hz.",
-                     config->output_sample_rate.rate_hz, required_rate);
+    // Check User Settings
+    if (config->baseband_sample_rate.rate_hz != required_rate) {
+        if (config->baseband_sample_rate.provided) {
+            log_error("NRSC5: Invalid baseband rate %.15g Hz. The selected mode requires exactly %.15g Hz.",
+                     config->baseband_sample_rate.rate_hz, required_rate);
+            return false;
         }
-        config->output_sample_rate.rate_hz = required_rate;
+        config->baseband_sample_rate.rate_hz = required_rate;
     }
 
-    if (config->output.sample_format != required_format) {
-        if (config->output.type_provided) {
-             log_warn("NRSC5: Ignoring user format. Forcing required format for selected mode.");
-        }
-        config->output.sample_format = required_format;
+    if (config->baseband_sample_format.format != required_format) {
+        log_warn("NRSC5 mode '%s' requires '%s' baseband sample format. Automatically configuring.",
+                 s_nrsc5_config.mode_str,
+                 get_format_info_by_enum(required_format)->name_str);
+        config->baseband_sample_format.format = required_format;
+        config->baseband_sample_format.format_str = (char*)get_format_info_by_enum(required_format)->name_str;
     }
 
     // 3. Validate Program ID

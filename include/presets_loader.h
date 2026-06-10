@@ -34,7 +34,11 @@ typedef struct PresetDefinition {
     char*  name;
     char*  description;
     double rate_hz;
+    bool   rate_hz_provided;
+    double baseband_sample_rate_hz;
+    bool   baseband_sample_rate_provided;
     char*  output_sample_format;
+    char*  baseband_sample_format;
 
     // DSP parameters
     float input_gain;
@@ -43,17 +47,23 @@ typedef struct PresetDefinition {
     float output_gain;
     bool  output_gain_provided;
 
+    float baseband_gain;
+    bool  baseband_gain_provided;
+
     bool  dc_block_enable;
     bool  dc_block_provided;
     bool  iq_correction_enable;
     bool  iq_correction_provided;
 
-    bool  agc_enable;
-    bool  agc_enable_provided;
+    bool  output_agc_enable;
+    bool  output_agc_enable_provided;
+    float output_agc_target;
+    bool  output_agc_target_provided;
 
-    // --- AGC Parameters ---
-    float agc_target;
-    bool  agc_target_provided;
+    bool  baseband_agc_enable;
+    bool  baseband_agc_enable_provided;
+    float baseband_agc_target;
+    bool  baseband_agc_target_provided;
 
     // Filter Fields
     float lowpass_cutoff_hz;

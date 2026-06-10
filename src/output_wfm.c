@@ -256,18 +256,16 @@ static bool wfm_output_validate_options(AppConfig* config) {
 
     // 1. Force Pipeline Format to CF32
     // We need high-precision float I/Q for the FM demodulator.
-    config->output.sample_format = CF32;
+    config->baseband_sample_format.format = CF32;
 
     // 2. Validate/Enforce MPX Rate
-    if (config->output_sample_rate.rate_hz == 0.0) {
-        // Case A: User did not specify --output-rate.
-        // Force the default MPX rate.
-        config->output_sample_rate.rate_hz = WFM_DEFAULT_MPX_RATE;
-        config->output_sample_rate.provided = true; // Mark as provided so setup.c respects it
-        log_info("WFM: No output rate specified. Defaulting to MPX rate %.15g Hz.", WFM_DEFAULT_MPX_RATE);
+    if (config->baseband_sample_rate.rate_hz == 0.0) {
+        // If the user didn't request a specific rate, ask the pipeline to give us our default.
+        config->baseband_sample_rate.rate_hz = WFM_DEFAULT_MPX_RATE;
+        config->baseband_sample_rate.provided = true; // Mark as provided so setup.c respects it
     } else {
         // Case B: User specified a rate. Validate range.
-        double rate = config->output_sample_rate.rate_hz;
+        double rate = config->baseband_sample_rate.rate_hz;
         if (rate < WFM_MIN_MPX_RATE || rate > WFM_MAX_MPX_RATE) {
             log_error("WFM: Invalid MPX rate %.15g Hz.", rate);
             log_error("Valid range is %.15g Hz to %.15g Hz.", WFM_MIN_MPX_RATE, WFM_MAX_MPX_RATE);
@@ -306,11 +304,10 @@ static bool wfm_output_initialize(ModuleContext* context) {
     if (!wfm_decoder->audio_out) return false;
 
     // 3. DSP Configuration
-    float mpx_rate = (float)context->config->output_sample_rate.rate_hz;
+    float mpx_rate = (float)context->config->baseband_sample_rate.rate_hz;
     wfm_decoder->input_samplerate = mpx_rate;
     wfm_decoder->gain = s_wfm_config.gain_val;
-
-    log_info("WFM: Configuring DSP for MPX Rate: %.15g Hz -> Audio: %d Hz (De-emphasis: %.15g us)",
+    log_info("WFM: Baseband %.15g Hz | Audio %d Hz | De-emphasis %.15g us",
              mpx_rate, AUDIO_SAMPLE_RATE, s_wfm_config.deemph_us);
 
     // 4. Create Liquid Objects

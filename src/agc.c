@@ -165,7 +165,7 @@ static void harris_agc_execute(HarrisAgc    *h,
 
 bool agc_create(AppConfig *config, AppContext *app)
 {
-    if (!config->dsp.agc.enable) {
+    if (!app->dsp.pipeline_agc.enable) {
         app->dsp.agc.harris_object = NULL;
         return true;
     }
@@ -189,8 +189,8 @@ bool agc_create(AppConfig *config, AppContext *app)
     h->gain_linear  = 1.0f;
     h->samples_seen = 0;
 
-    if (config->dsp.agc.target_level_arg > 0.0f) {
-        h->target_db = 20.0f * log10f(config->dsp.agc.target_level_arg);
+    if (app->dsp.pipeline_agc.target_level_arg > 0.0f) {
+        h->target_db = 20.0f * log10f(app->dsp.pipeline_agc.target_level_arg);
     }
 
     app->dsp.agc.harris_object = (struct harris_agc_s *)h;
@@ -208,7 +208,7 @@ bool agc_create(AppConfig *config, AppContext *app)
 
 void agc_apply(DspContext *dsp, ComplexFloat *samples, unsigned int num_samples)
 {
-    if (!dsp->config->dsp.agc.enable || num_samples == 0) return;
+    if (!dsp->pipeline_agc.enable || num_samples == 0) return;
 
     HarrisAgc *h = (HarrisAgc *)dsp->agc.harris_object;
     if (!h) return;
@@ -231,7 +231,7 @@ void agc_apply(DspContext *dsp, ComplexFloat *samples, unsigned int num_samples)
     /* Periodic status. */
     uint64_t prev = dsp->agc.samples_seen;
     dsp->agc.samples_seen += num_samples;
-    uint64_t period = (uint64_t)(dsp->config->output_sample_rate.rate_hz * AGC_LOG_INTERVAL_SEC);
+    uint64_t period = (uint64_t)(dsp->pipeline_sample_rate_hz * AGC_LOG_INTERVAL_SEC);
 
     if (period > 0 && (prev / period) != (dsp->agc.samples_seen / period)) {
         bool in_deadband = (fabsf(h->gain_db - gain_db_before) < 1e-6f);
@@ -259,47 +259,4 @@ void agc_reset(DspContext *dsp)
 void agc_destroy(AppContext *app)
 {
     app->dsp.agc.harris_object = NULL;
-}
-
-int agc_populate_cli_options(struct argparse_option *buffer, struct AppConfig *config)
-{
-    struct argparse_option options[] = {
-        OPT_GROUP("Output Automatic Gain Control"),
-        OPT_BOOLEAN(0, "output-agc", &config->dsp.agc.enable,
-                    "Enable automatic gain control on the output.", NULL, 0, 0),
-        OPT_FLOAT(0, "agc-target", &config->dsp.agc.target_level_arg,
-                    "AGC target magnitude (0.0 - 1.0). (Default: 0.12)", NULL, 0, 0),
-    };
-
-    size_t count = sizeof(options) / sizeof(options[0]);
-    memcpy(buffer, options, sizeof(options));
-    return (int)count;
-}
-
-bool agc_validate_options(AppConfig *config) {
-    if (config->dsp.agc.enable) {
-        if (config->dsp.agc.target_level_arg != 0.0f) {
-            if (config->dsp.agc.target_level_arg <= 0.0f || config->dsp.agc.target_level_arg > 1.0f) {
-                log_error("Invalid AGC target level %.2f. Must be between 0.0 and 1.0.", config->dsp.agc.target_level_arg);
-                return false;
-            }
-            config->dsp.agc.target_level = config->dsp.agc.target_level_arg;
-        }
-
-        if (config->dsp.raw_passthrough) {
-            log_error("Option --output-agc cannot be used with --raw-passthrough.");
-            return false;
-        }
-
-        if (config->dsp.output_gain != 1.0f) {
-            log_error("Conflicting options: --output-agc and --output-gain-multiplier cannot be used together.");
-            return false;
-        }
-
-        if (config->dsp.input_gain_provided && config->dsp.input_gain != 1.0f) {
-            log_warn("Both --input-gain-multiplier and --output-agc are set.");
-            log_warn("Manual gain is applied at input, but AGC will override the final volume at output.");
-        }
-    }
-    return true;
 }

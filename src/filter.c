@@ -47,7 +47,7 @@ static bool _configure_filter_stage(AppConfig *config, AppContext* app) {
     }
 
     double input_rate = (double)app->module.source_info.sample_rate;
-    double output_sample_rate = config->output_sample_rate.rate_hz;
+    double output_sample_rate = app->dsp.pipeline_sample_rate_hz;
 
     // This optimization is only relevant if we are downsampling.
     if (output_sample_rate < input_rate) {
@@ -345,7 +345,7 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
     if (config->dsp.filter.count == 0) return true;
     if (!_configure_filter_stage(config, app)) return false;
 
-    double sample_rate = config->dsp.filter.apply_post_resample ? config->output_sample_rate.rate_hz : (double)app->module.source_info.sample_rate;
+    double sample_rate = config->dsp.filter.apply_post_resample ? app->dsp.pipeline_sample_rate_hz : (double)app->module.source_info.sample_rate;
 
     int master_length = 0;
     bool is_complex = false, norm_peak = false;
