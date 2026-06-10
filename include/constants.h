@@ -358,7 +358,6 @@
 
 #define MIN_ACCEPTABLE_RATIO      0.001f
 #define MAX_ACCEPTABLE_RATIO      1000.0f
-#define SHIFT_FACTOR_LIMIT        5.0
 #define MAX_FILTER_CHAIN          5
 #define MAX_PRESETS               128
 #define MAX_LINE_LENGTH           1024

@@ -312,7 +312,7 @@ NFM Output (nfm)
 
 AM Output (am)
     --am-gain=<flt>                           Set audio output gain (linear).
-    --am-cutoff=<flt>                         Set audio lowpass filter cutoff in Hz (default: 10000).
+    --am-cutoff=<flt>                         Set audio lowpass filter cutoff in Hz (default: 5000).
     --am-envelope                             Disable Synchronous AM (PLL) and use Magnitude Envelope Detection.
 
 Available Presets
