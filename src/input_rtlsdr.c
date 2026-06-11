@@ -336,21 +336,14 @@ static void* rtlsdr_input_push_samples_to_queue(ModuleContext* context, QueueSam
     RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
     int result;
 
-    switch (app->pipeline_mode) {
-        case PIPELINE_MODE_ASYNCHRONOUS_PUSH:
-            // NOTE: rtlsdr_read_async BLOCKS until the stream stops or is cancelled.
-            result = rtlsdr_read_async(private_data->dev, rtlsdr_input_stream_callback, app, 0, 0);
+    // NOTE: rtlsdr_read_async BLOCKS until the stream stops or is cancelled.
+    result = rtlsdr_read_async(private_data->dev, rtlsdr_input_stream_callback, app, 0, 0);
 
-            if (result < 0) {
-                char error_buf[256];
-                snprintf(error_buf, sizeof(error_buf), "rtlsdr_read_async() failed: %s", strerror(-result));
-                handle_fatal_thread_error(error_buf, app);
-                return NULL;
-            }
-            break;
-
-        case PIPELINE_MODE_SYNCHRONOUS_PULL:
-            break;
+    if (result < 0) {
+        char error_buf[256];
+        snprintf(error_buf, sizeof(error_buf), "rtlsdr_read_async() failed: %s", strerror(-result));
+        handle_fatal_thread_error(error_buf, app);
+        return NULL;
     }
 
     return NULL;
