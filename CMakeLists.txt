@@ -2,7 +2,24 @@
 # Project setup
 #=======================================================================
 cmake_minimum_required(VERSION 3.10)
+
+# Automatic Compiler Switching for Clang-only Features
+# If the user requests MSan (MemorySanitizer), we must use Clang.
+if(CMAKE_BUILD_TYPE MATCHES "DebugMSan")
+    find_program(CLANG_EXECUTABLE clang)
+    if(NOT CLANG_EXECUTABLE)
+        message(FATAL_ERROR "Build type 'DebugMSan' requires the 'clang' compiler, but it was not found on your system. Please install clang or choose a different build type.")
+    endif()
+    # Attempt to force CMake to use clang (works on fresh build directories)
+    set(CMAKE_C_COMPILER "${CLANG_EXECUTABLE}")
+endif()
+
 project(iq_tool C)
+
+# Verify the compiler actually switched (if it was cached as GCC previously)
+if(CMAKE_BUILD_TYPE MATCHES "DebugMSan" AND NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "Build type 'DebugMSan' strictly requires Clang. Your current compiler is ${CMAKE_C_COMPILER_ID}. Please clear your build directory (rm -rf build/*) and run cmake again, or explicitly pass -DCMAKE_C_COMPILER=clang.")
+endif()
 
 # Add our local 'cmake' folder to the search path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
