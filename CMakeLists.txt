@@ -3,9 +3,27 @@
 #=======================================================================
 cmake_minimum_required(VERSION 3.10)
 
+# Canonicalize the CMAKE_BUILD_TYPE string so case-insensitivity is standard
+if(CMAKE_BUILD_TYPE)
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" UPPER_BUILD_TYPE)
+    if(UPPER_BUILD_TYPE STREQUAL "DEBUG")
+        set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the build type" FORCE)
+    elseif(UPPER_BUILD_TYPE STREQUAL "RELEASE")
+        set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the build type" FORCE)
+    elseif(UPPER_BUILD_TYPE STREQUAL "DEBUGTSAN")
+        set(CMAKE_BUILD_TYPE "DebugTSan" CACHE STRING "Choose the build type" FORCE)
+    elseif(UPPER_BUILD_TYPE STREQUAL "DEBUGMSAN")
+        set(CMAKE_BUILD_TYPE "DebugMSan" CACHE STRING "Choose the build type" FORCE)
+    elseif(UPPER_BUILD_TYPE STREQUAL "RELWITHDEBINFO")
+        set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose the build type" FORCE)
+    elseif(UPPER_BUILD_TYPE STREQUAL "MINSIZEREL")
+        set(CMAKE_BUILD_TYPE "MinSizeRel" CACHE STRING "Choose the build type" FORCE)
+    endif()
+endif()
+
 # Automatic Compiler Switching for Clang-only Features
 # If the user requests MSan (MemorySanitizer), we must use Clang.
-if(CMAKE_BUILD_TYPE MATCHES "DebugMSan")
+if(CMAKE_BUILD_TYPE STREQUAL "DebugMSan")
     find_program(CLANG_EXECUTABLE clang)
     if(NOT CLANG_EXECUTABLE)
         message(FATAL_ERROR "Build type 'DebugMSan' requires the 'clang' compiler, but it was not found on your system. Please install clang or choose a different build type.")
@@ -17,7 +35,7 @@ endif()
 project(iq_tool C)
 
 # Verify the compiler actually switched (if it was cached as GCC previously)
-if(CMAKE_BUILD_TYPE MATCHES "DebugMSan" AND NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+if(CMAKE_BUILD_TYPE STREQUAL "DebugMSan" AND NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
     message(FATAL_ERROR "Build type 'DebugMSan' strictly requires Clang. Your current compiler is ${CMAKE_C_COMPILER_ID}. Please clear your build directory (rm -rf build/*) and run cmake again, or explicitly pass -DCMAKE_C_COMPILER=clang.")
 endif()
 
