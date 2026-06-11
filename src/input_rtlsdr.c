@@ -337,7 +337,7 @@ static void* rtlsdr_input_push_samples_to_queue(ModuleContext* context, QueueSam
     int result;
 
     switch (app->pipeline_mode) {
-        case PIPELINE_MODE_BUFFERED_INPUT:
+        case PIPELINE_MODE_ASYNCHRONOUS_PUSH:
             // NOTE: rtlsdr_read_async BLOCKS until the stream stops or is cancelled.
             result = rtlsdr_read_async(private_data->dev, rtlsdr_input_stream_callback, app, 0, 0);
 

@@ -191,7 +191,7 @@ int main(int argc, char *argv[]) {
     print_configuration_summary(&config, &app);
     fprintf(stderr, "\n");
 
-    if (app.pipeline_mode == PIPELINE_MODE_BUFFERED_INPUT) {
+    if (app.pipeline_mode == PIPELINE_MODE_ASYNCHRONOUS_PUSH) {
         log_info("Starting %s live source capture...", config.input.type_name);
     } else {
         log_info("Starting %s file processing...", config.input.type_name);
@@ -217,7 +217,7 @@ cleanup:
     bool final_ok = !app.stats.error_occurred;
 
     if (app.module.input_api) {
-        if (app.pipeline_mode == PIPELINE_MODE_BUFFERED_INPUT) {
+        if (app.pipeline_mode == PIPELINE_MODE_ASYNCHRONOUS_PUSH) {
             log_info("Stopping %s live source capture...", config.input.type_name);
         } else {
             log_info("Finished %s file processing.", config.input.type_name);

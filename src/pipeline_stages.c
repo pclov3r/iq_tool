@@ -79,7 +79,7 @@ void* pipeline_thread_reader(void* arg) {
     AppConfig* config = args->config;
 
     switch (app->pipeline_mode) {
-        case PIPELINE_MODE_BUFFERED_INPUT: {
+        case PIPELINE_MODE_ASYNCHRONOUS_PUSH: {
             log_debug("Reader thread starting.");
 
             // --- STATEFUL SIPPING LOGIC ---

@@ -116,7 +116,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = RTLSDR_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_rtlsdr_get_module_api(),
-            .pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT,
+            .pipeline_mode = PIPELINE_MODE_ASYNCHRONOUS_PUSH,
             .set_default_config = rtlsdr_set_default_config,
             .get_cli_options = rtlsdr_input_get_cli_options,
             .requires_input_path = false,
@@ -130,7 +130,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = SDRPLAY_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_sdrplay_get_module_api(),
-            .pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT,
+            .pipeline_mode = PIPELINE_MODE_ASYNCHRONOUS_PUSH,
             .set_default_config = sdrplay_set_default_config,
             .get_cli_options = sdrplay_input_get_cli_options,
             .requires_input_path = false,
@@ -144,7 +144,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = HACKRF_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_hackrf_get_module_api(),
-            .pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT,
+            .pipeline_mode = PIPELINE_MODE_ASYNCHRONOUS_PUSH,
             .set_default_config = hackrf_set_default_config,
             .get_cli_options = hackrf_input_get_cli_options,
             .requires_input_path = false,
@@ -158,7 +158,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = AIRSPY_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_airspy_get_module_api(),
-            .pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT,
+            .pipeline_mode = PIPELINE_MODE_ASYNCHRONOUS_PUSH,
             .set_default_config = airspy_set_default_config,
             .get_cli_options = airspy_input_get_cli_options,
             .requires_input_path = false,
@@ -172,7 +172,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = AIRSPYHF_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_airspyhf_get_module_api(),
-            .pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT,
+            .pipeline_mode = PIPELINE_MODE_ASYNCHRONOUS_PUSH,
             .set_default_config = airspyhf_set_default_config,
             .get_cli_options = airspyhf_input_get_cli_options,
             .requires_input_path = false,
@@ -186,7 +186,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = BLADERF_DEFAULT_FILTER_ATTENUATION_DB,
             .api = input_bladerf_get_module_api(),
-            .pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT,
+            .pipeline_mode = PIPELINE_MODE_ASYNCHRONOUS_PUSH,
             .set_default_config = bladerf_set_default_config,
             .get_cli_options = bladerf_input_get_cli_options,
             .requires_input_path = false,
@@ -199,7 +199,7 @@ static void initialize_modules_list(MemoryArena* arena) {
             .type = MODULE_TYPE_INPUT,
             .default_filter_attenuation_db = 0.0f,
             .api = input_spyserver_client_get_module_api(),
-            .pipeline_mode = PIPELINE_MODE_BUFFERED_INPUT,
+            .pipeline_mode = PIPELINE_MODE_ASYNCHRONOUS_PUSH,
             .set_default_config = spyserver_client_set_default_config,
             .get_cli_options = spyserver_client_input_get_cli_options,
             .requires_input_path = false,
@@ -352,7 +352,7 @@ const Module* module_get_all(int* count, MemoryArena* arena) {
 
 bool module_is_live_source(const char* name, MemoryArena* arena) {
     const Module* mod = _find_module_by_name_and_type(name, MODULE_TYPE_INPUT, arena);
-    return (mod != NULL && mod->pipeline_mode == PIPELINE_MODE_BUFFERED_INPUT);
+    return (mod != NULL && mod->pipeline_mode == PIPELINE_MODE_ASYNCHRONOUS_PUSH);
 }
 
 void module_populate_cli_options(

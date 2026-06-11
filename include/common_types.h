@@ -67,7 +67,7 @@ typedef enum {
 } FilterTypeRequest;
 
 typedef enum {
-    PIPELINE_MODE_BUFFERED_INPUT,
+    PIPELINE_MODE_ASYNCHRONOUS_PUSH,
     PIPELINE_MODE_SYNCHRONOUS_PULL
 } PipelineMode;
 
