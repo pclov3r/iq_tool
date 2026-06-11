@@ -400,10 +400,13 @@ bool pipeline_run(PipelineContext* context) {
     success = !atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed);
 
     // --- Step 7: Clean up all pipeline-specific app ---
-    _destroy_queues_and_buffers(app);
-    _destroy_dsp_components(app);
-
     return success;
+}
+
+void pipeline_teardown(PipelineContext* context) {
+    if (!context || !context->app) return;
+    _destroy_queues_and_buffers(context->app);
+    _destroy_dsp_components(context->app);
 }
 
 // --- Private Helper Function Implementations ---

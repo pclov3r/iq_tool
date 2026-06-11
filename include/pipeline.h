@@ -34,5 +34,6 @@ struct PipelineContext;
 bool pipeline_setup_buffers(struct PipelineContext* context);
 
 bool pipeline_run(struct PipelineContext* context);
+void pipeline_teardown(struct PipelineContext* context);
 
 #endif // PIPELINE_H_

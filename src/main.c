@@ -234,6 +234,9 @@ cleanup:
     if (resources_initialized) {
         print_final_summary(&config, &app, final_ok);
     }
+    
+    // Always tear down pipeline buffers and components if they were allocated
+    pipeline_teardown(&pipeline_context);
 
     pthread_mutex_unlock(&g_console_mutex);
 
