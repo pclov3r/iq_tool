@@ -208,8 +208,8 @@ int main(int argc, char *argv[]) {
         log_fatal("Pipeline execution failed.");
     }
 
-    bool processing_ok = !app.stats.error_occurred;
-    exit_status = (processing_ok || is_shutdown_requested()) ? EXIT_SUCCESS : EXIT_FAILURE;
+    bool processing_ok = !atomic_load_explicit(&app.stats.error_occurred, memory_order_relaxed);
+    exit_status = processing_ok ? EXIT_SUCCESS : EXIT_FAILURE;
 
 cleanup:
     pthread_mutex_lock(&g_console_mutex);

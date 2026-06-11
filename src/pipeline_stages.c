@@ -221,6 +221,12 @@ void* pipeline_thread_writer(void* arg) {
             size_t bytes_to_write = item->frames_to_write * app->module.output_bytes_per_iq_sample;
             size_t written = out_api->write_chunk(&context, item->final_output_data, bytes_to_write);
 
+            if (written < bytes_to_write) {
+                log_error("Fatal I/O Error: Output module failed to write the complete chunk (Disk full? Broken Pipe?). Initiating shutdown.");
+                atomic_store_explicit(&app->stats.error_occurred, true, memory_order_relaxed);
+                request_shutdown();
+            }
+
             // Stats & Progress Reporting (Only for file outputs)
             if (args->config->output.path_arg != NULL && app->stats.progress_callback && written > 0) {
                 atomic_fetch_add_explicit(&app->stats.total_output_frames, item->frames_to_write, memory_order_relaxed);
