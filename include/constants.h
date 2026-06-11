@@ -35,7 +35,7 @@
  * boundary suitable for high-performance SIMD (SSE/AVX) instructions, which
  * are heavily used by DSP libraries like liquid-dsp.
  */
-#define MEM_ARENA_ALIGNMENT 32
+#define MEM_ARENA_ALIGNMENT 128
 
 /**
  * @def MEM_ARENA_SIZE_BYTES
