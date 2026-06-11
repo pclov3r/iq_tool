@@ -25,6 +25,7 @@
  * This function takes a pointer to a pre-allocated Queue struct and initializes it.
  * It allocates the internal buffer for storing items from the provided memory arena.
  *
+
  * @param queue Pointer to the Queue struct to initialize.
  * @param capacity The maximum number of items the queue can hold.
  * @param arena Pointer to the memory arena from which to allocate the internal buffer.

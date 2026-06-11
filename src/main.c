@@ -235,10 +235,10 @@ cleanup:
         print_final_summary(&config, &app, final_ok);
     }
     
-    // Always tear down pipeline buffers and components if they were allocated
-    pipeline_teardown(&pipeline_context);
-
     pthread_mutex_unlock(&g_console_mutex);
+
+    // Always tear down pipeline buffers and components before freeing their memory arena
+    pipeline_teardown(&pipeline_context);
 
     if (arena_initialized) {
         mem_arena_destroy(&app.pipeline.setup_arena);

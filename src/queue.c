@@ -50,13 +50,15 @@ bool queue_init(Queue* queue, size_t capacity, MemoryArena* arena) {
         return false;
     }
 
+    queue->is_initialized = true;
     return true;
 }
 
 void queue_destroy(Queue* queue) {
-    if (!queue) {
+    if (!queue || !queue->is_initialized) {
         return;
     }
+    queue->is_initialized = false;
     pthread_mutex_destroy(&queue->mutex);
     pthread_cond_destroy(&queue->not_empty_cond);
     pthread_cond_destroy(&queue->not_full_cond);

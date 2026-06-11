@@ -73,6 +73,7 @@ typedef struct Queue {
     pthread_cond_t  not_empty_cond;     ///< Condition variable to signal when an item is added.
     pthread_cond_t  not_full_cond;      ///< Condition variable to signal when an item is removed.
     bool            shutting_down;      ///< Flag to unblock waiting threads during shutdown.
+    bool            is_initialized;     ///< Flag to track if mutexes are safely initialized.
 } Queue;
 
 #endif // PIPELINE_TYPES_H_
