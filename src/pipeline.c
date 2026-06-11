@@ -517,4 +517,9 @@ static void _destroy_queues_and_buffers(AppContext* app) {
     if(app->pipeline.post_processor_output_queue) queue_destroy(app->pipeline.post_processor_output_queue);
     if(app->pipeline.iq_estimation_data_queue) queue_destroy(app->pipeline.iq_estimation_data_queue);
     if(app->pipeline.iq_estimation_free_queue) queue_destroy(app->pipeline.iq_estimation_free_queue);
+    
+    if (app->pipeline.chunk_data_pool) {
+        free(app->pipeline.chunk_data_pool);
+        app->pipeline.chunk_data_pool = NULL;
+    }
 }
