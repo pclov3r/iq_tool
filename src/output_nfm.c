@@ -12,6 +12,7 @@
 #include "utilities.h"
 #include "signal_handler.h"
 #include "sample_convert.h"
+#include "interleave_functions.h"
 #include "queue.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -260,7 +261,7 @@ static size_t nfm_output_write_chunk(ModuleContext* context, const void* buffer,
     // 6. Resample to 48kHz audio and output
     unsigned int num_resampled;
     msresamp_rrrf_execute(p->resampler, p->mono_buffer, n, p->resamp_buffer, &num_resampled);
-    sample_convert_interleave_f32_to_s16(p->resamp_buffer, p->resamp_buffer, p->pcm_out, num_resampled);
+    interleave_f32_to_s16(p->resamp_buffer, p->resamp_buffer, p->pcm_out, num_resampled);
     audio_output_write(p->audio_out, p->pcm_out, num_resampled * 2 * sizeof(int16_t), res->pipeline_mode);
 
     return input_bytes;

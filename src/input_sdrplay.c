@@ -12,6 +12,7 @@
 #include "utilities.h"
 #include "sample_format_table.h"
 #include "sample_convert.h"
+#include "interleave_functions.h"
 #include "input_common.h"
 #include "mem_arena.h"
 #include "queue.h"
@@ -414,7 +415,7 @@ static void sdrplay_input_buffered_stream_callback(short *xi, short *xq, sdrplay
         int16_t* interleaved_data = private_data->interleave_buffer;
 
         // 2. Interleave using helper
-        sample_convert_interleave_s16(xi, xq, interleaved_data, numSamples);
+        interleave_s16(xi, xq, interleaved_data, numSamples);
 
         // 3. Write single Interleaved block to RingBuffer
         if (!app->module.queue_samples(app->module.pipeline_context, interleaved_data, numSamples, CS16)) {

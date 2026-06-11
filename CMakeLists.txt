@@ -148,6 +148,7 @@ set(COMPILE_WITH_FFAST_MATH_SOURCES
     src/pre_processor.c
     src/resampler.c
     src/sample_convert.c
+    src/interleave_functions.c
     src/utility_threads.c
     external/libredsea/rds_demodulator.c
 )

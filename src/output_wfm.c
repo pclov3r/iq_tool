@@ -54,6 +54,7 @@
 #include "signal_handler.h"
 #include "queue.h"
 #include "sample_convert.h"
+#include "interleave_functions.h"
 #include <libredsea.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -793,7 +794,7 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
     unsigned int num_resampled;
     msresamp_rrrf_execute(wfm_decoder->resamp_out_l, wfm_decoder->audio_out_l, num_frames, wfm_decoder->audio_out_l, &num_resampled);
     msresamp_rrrf_execute(wfm_decoder->resamp_out_r, wfm_decoder->audio_out_r, num_frames, wfm_decoder->audio_out_r, &num_resampled);
-    sample_convert_interleave_f32_to_s16(wfm_decoder->audio_out_l, wfm_decoder->audio_out_r, wfm_decoder->interleaved_pcm, num_resampled);
+    interleave_f32_to_s16(wfm_decoder->audio_out_l, wfm_decoder->audio_out_r, wfm_decoder->interleaved_pcm, num_resampled);
     audio_output_write(wfm_decoder->audio_out, wfm_decoder->interleaved_pcm, num_resampled * 2 * sizeof(int16_t), res->pipeline_mode);
     return input_bytes;
 }
