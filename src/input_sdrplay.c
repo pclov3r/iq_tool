@@ -11,7 +11,7 @@
 #include "frequency_shift.h"
 #include "utilities.h"
 #include "sample_format_table.h"
-#include "sample_convert.h"
+#include "sample_conversion_functions.h"
 #include "interleave_functions.h"
 #include "input_common.h"
 #include "mem_arena.h"

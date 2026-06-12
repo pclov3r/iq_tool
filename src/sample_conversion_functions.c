@@ -1,9 +1,9 @@
 /**
- * @file sample_convert.c
+ * @file sample_conversion_functions.c
  */
 
 /*
- * sample_convert.c: Functions for converting between various I/Q sample formats.
+ * sample_conversion_functions.c: Functions for converting between various I/Q sample formats.
  *
  * This file is part of iq_tool.
  *
@@ -28,7 +28,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "sample_convert.h"
+#include "sample_conversion_functions.h"
 #include "common_types.h" // Provides SampleFormat, ComplexFloat
 #include "log.h"
 #include <string.h>

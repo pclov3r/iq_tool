@@ -10,7 +10,7 @@
 #include "app_context.h"
 #include "utilities.h"
 #include "sample_format_table.h"
-#include "sample_convert.h"
+#include "sample_conversion_functions.h"
 #include "input_common.h"
 #include "mem_arena.h"
 #include "argparse.h"

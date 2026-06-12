@@ -1,10 +1,10 @@
 /**
- * @file sample_convert.h
+ * @file sample_conversion_functions.h
  * @brief Defines the interface for converting between I/Q sample formats.
  */
 
-#ifndef SAMPLE_CONVERT_H_
-#define SAMPLE_CONVERT_H_
+#ifndef SAMPLE_CONVERSION_FUNCTIONS_H_
+#define SAMPLE_CONVERSION_FUNCTIONS_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -49,4 +49,4 @@ bool sample_convert_block_to_cf32(const void* restrict input_buffer, ComplexFloa
  */
 bool sample_convert_cf32_to_block(const ComplexFloat* restrict input_buffer, void* restrict output_buffer, size_t num_frames, SampleFormat output_format);
 
-#endif // SAMPLE_CONVERT_H_
+#endif // SAMPLE_CONVERSION_FUNCTIONS_H_

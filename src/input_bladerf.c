@@ -11,7 +11,7 @@
 #include "mem_arena.h"
 #include "utilities.h"
 #include "sample_format_table.h"
-#include "sample_convert.h"
+#include "sample_conversion_functions.h"
 #include "platform.h"
 #include "input_common.h"
 #include "queue.h"

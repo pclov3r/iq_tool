@@ -10,7 +10,7 @@
 #include "sample_format_table.h"
 #include "app_context.h"
 #include "platform.h"
-#include "sample_convert.h"
+#include "sample_conversion_functions.h"
 #include "input_common.h"
 #include "mem_arena.h"
 #include "queue.h"
@@ -661,7 +661,7 @@ static bool wav_input_initialize(ModuleContext* context) {
     }
 
     if (sfinfo.channels != 1 && sfinfo.channels != 2) {
-        log_error("Error: Input file must have 1 (Real) or 2 (Complex I/Q) channels, but found %d.", sfinfo.channels);
+        log_error("Error: Input file must have 1 (Mono) or 2 (I/Q) channels, but found %d.", sfinfo.channels);
         sf_close(private_data->infile);
         private_data->infile = NULL;
         return false;

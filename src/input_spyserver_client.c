@@ -42,7 +42,7 @@
 #include "signal_handler.h"
 #include "queue.h"
 #include "argparse.h"
-#include "sample_convert.h"
+#include "sample_conversion_functions.h"
 #include "mem_arena.h"
 #include "ring_buffer.h"
 #include "utilities.h"

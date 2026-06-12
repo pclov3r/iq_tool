@@ -8,7 +8,7 @@
 #include "app_context.h"
 #include "pipeline_types.h"
 #include "ring_buffer.h"
-#include "sample_convert.h"
+#include "sample_conversion_functions.h"
 #include "sample_format_table.h"
 #include <string.h>
 #include <stdlib.h>

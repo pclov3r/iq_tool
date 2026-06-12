@@ -59,7 +59,7 @@
 #include "mem_arena.h"
 #include "utilities.h"
 #include "pre_processor.h" // Needed for initial calibration chain
-#include "sample_convert.h"
+#include "sample_conversion_functions.h"
 #include <stdatomic.h> // Needed for byte size calculations
 #include <stdlib.h>
 #include <string.h>
