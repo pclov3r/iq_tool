@@ -30,8 +30,10 @@
 
 bool wav_common_validate_options(AppConfig* config) {
     // This logic is identical for both WAV and RF64.
-    if (config->output.sample_format != CS16 && config->output.sample_format != CU8) {
-        log_error("Invalid sample format '%s' for WAV/RF64 container. Only 'cs16' and 'cu8' are supported.", config->output.sample_format_str);
+    if (config->output.sample_format != CS16 && config->output.sample_format != CU8 &&
+        config->output.sample_format != CS8 && config->output.sample_format != CS24 &&
+        config->output.sample_format != CS32 && config->output.sample_format != CF32) {
+        log_error("Invalid sample format '%s' for WAV/RF64 container. Only 'cs8', 'cu8', 'cs16', 'cs24', 'cs32', and 'cf32' are supported.", config->output.sample_format_str);
         return false;
     }
     return true;
@@ -67,6 +69,10 @@ bool wav_common_initialize(ModuleContext* context, int sf_format_flag) {
     switch (config->output.sample_format) {
         case CS16: sfinfo.format |= SF_FORMAT_PCM_16; break;
         case CU8:  sfinfo.format |= SF_FORMAT_PCM_U8; break;
+        case CS8:  sfinfo.format |= SF_FORMAT_PCM_S8; break;
+        case CS24: sfinfo.format |= SF_FORMAT_PCM_24; break;
+        case CS32: sfinfo.format |= SF_FORMAT_PCM_32; break;
+        case CF32: sfinfo.format |= SF_FORMAT_FLOAT;  break;
         default: return false; // Should be caught by validation.
     }
 

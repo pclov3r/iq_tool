@@ -670,6 +670,10 @@ static bool wav_input_initialize(ModuleContext* context) {
     switch (sf_subtype) {
         case SF_FORMAT_PCM_16: app->module.input_format = CS16; break;
         case SF_FORMAT_PCM_U8: app->module.input_format = CU8; break;
+        case SF_FORMAT_PCM_S8: app->module.input_format = CS8; break;
+        case SF_FORMAT_PCM_24: app->module.input_format = CS24; break;
+        case SF_FORMAT_PCM_32: app->module.input_format = CS32; break;
+        case SF_FORMAT_FLOAT:  app->module.input_format = CF32; break;
         default:
             log_error("Error: Input WAV file uses an unsupported PCM subtype (0x%04X).", sf_subtype);
             sf_close(private_data->infile);
