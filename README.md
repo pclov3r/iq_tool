@@ -123,8 +123,7 @@ Pre-compiled binaries for Windows are available on the project's **[releases pag
 
 1.  **Download and Extract:** Download the `.zip` archive. You must extract **all files** (the `.exe` and all `.dll` files) into the same folder for the program to work.
 2.  **Choose the Correct Build:** Pay close attention to the AVX vs. AVX2 builds available.
-    *   **⚠️ Important:** Attempting to run an AVX2-optimized build on a CPU that does not support the AVX2 instruction set **will cause the program to crash.** 
-    *   **Try using a AVX build if the AVX2 build crashes but you should attempt to use a AVX2 build first for better performance.**
+    *   **Note:** Always attempt to use the AVX2 build first for maximum performance. If your processor does not support it, the program will notify you to download the standard AVX version instead.
 
 #### Building from Source
 
