@@ -14,13 +14,15 @@
 
 // --- The Master Table ---
 static const SampleFormatInfo MASTER_FORMAT_TABLE[] = {
-    [S8]      = { S8,      "s8",      "s8 (Signed 8-bit Real)",         2, DEFAULT_FILTER_ATTENUATION_8BIT_DB  },
-    [U8]      = { U8,      "u8",      "u8 (Unsigned 8-bit Real)",       2, DEFAULT_FILTER_ATTENUATION_8BIT_DB  },
-    [S16]     = { S16,     "s16",     "s16 (Signed 16-bit Real)",       4, DEFAULT_FILTER_ATTENUATION_16BIT_DB },
-    [U16]     = { U16,     "u16",     "u16 (Unsigned 16-bit Real)",     4, DEFAULT_FILTER_ATTENUATION_16BIT_DB },
-    [S32]     = { S32,     "s32",     "s32 (Signed 32-bit Real)",       8, DEFAULT_FILTER_ATTENUATION_32BIT_DB },
-    [U32]     = { U32,     "u32",     "u32 (Unsigned 32-bit Real)",     8, DEFAULT_FILTER_ATTENUATION_32BIT_DB },
-    [F32]     = { F32,     "f32",     "f32 (32-bit Float Real)",        8, DEFAULT_FILTER_ATTENUATION_32BIT_DB },
+    [S8]      = { S8,      "s8",      "s8 (Signed 8-bit Real)",         1, DEFAULT_FILTER_ATTENUATION_8BIT_DB  },
+    [U8]      = { U8,      "u8",      "u8 (Unsigned 8-bit Real)",       1, DEFAULT_FILTER_ATTENUATION_8BIT_DB  },
+    [S16]     = { S16,     "s16",     "s16 (Signed 16-bit Real)",       2, DEFAULT_FILTER_ATTENUATION_16BIT_DB },
+    [U16]     = { U16,     "u16",     "u16 (Unsigned 16-bit Real)",     2, DEFAULT_FILTER_ATTENUATION_16BIT_DB },
+    [S24]     = { S24,     "s24",     "s24 (Signed 24-bit Real)",       3, DEFAULT_FILTER_ATTENUATION_24BIT_DB },
+    [U24]     = { U24,     "u24",     "u24 (Unsigned 24-bit Real)",     3, DEFAULT_FILTER_ATTENUATION_24BIT_DB },
+    [S32]     = { S32,     "s32",     "s32 (Signed 32-bit Real)",       4, DEFAULT_FILTER_ATTENUATION_32BIT_DB },
+    [U32]     = { U32,     "u32",     "u32 (Unsigned 32-bit Real)",     4, DEFAULT_FILTER_ATTENUATION_32BIT_DB },
+    [F32]     = { F32,     "f32",     "f32 (32-bit Float Real)",        4, DEFAULT_FILTER_ATTENUATION_32BIT_DB },
     [CU8]     = { CU8,     "cu8",     "cu8 (Unsigned 8-bit Complex)",   2, DEFAULT_FILTER_ATTENUATION_8BIT_DB  },
     [CS8]     = { CS8,     "cs8",     "cs8 (Signed 8-bit Complex)",     2, DEFAULT_FILTER_ATTENUATION_8BIT_DB  },
     [CU16]    = { CU16,    "cu16",    "cu16 (Unsigned 16-bit Complex)", 4, DEFAULT_FILTER_ATTENUATION_16BIT_DB },

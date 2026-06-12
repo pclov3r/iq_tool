@@ -100,6 +100,27 @@
         } \
     } while (0)
 
+#define BLOCK_TO_CF32_SIGNED_REAL(TYPE, NORMALIZER) \
+    do { \
+        const TYPE* in = (const TYPE*)input_buffer; \
+        const float normalizer_val = (NORMALIZER); \
+        for (size_t i = 0; i < num_frames; ++i) { \
+            float i_norm = (float)in[i] * normalizer_val; \
+            output_buffer[i] = (i_norm * gain) + 0.0f * I; \
+        } \
+    } while (0)
+
+#define BLOCK_TO_CF32_UNSIGNED_REAL(TYPE, OFFSET, NORMALIZER) \
+    do { \
+        const TYPE* in = (const TYPE*)input_buffer; \
+        const float offset_val = (OFFSET); \
+        const float normalizer_val = (NORMALIZER); \
+        for (size_t i = 0; i < num_frames; ++i) { \
+            float i_norm = ((float)in[i] - offset_val) * normalizer_val; \
+            output_buffer[i] = (i_norm * gain) + 0.0f * I; \
+        } \
+    } while (0)
+
 /**
  * @brief Converts a block of samples from a source format to complex float (cf32).
  */
@@ -112,6 +133,12 @@ bool sample_convert_block_to_cf32(const void* restrict input_buffer, ComplexFloa
     // It allows the compiler to select the correct, simple inner loop at the
     // start, enabling effective auto-vectorization.
     switch (input_format) {
+        case S8:
+            BLOCK_TO_CF32_SIGNED_REAL(int8_t, 1.0f / 128.0f);
+            break;
+        case U8:
+            BLOCK_TO_CF32_UNSIGNED_REAL(uint8_t, 127.5f, 1.0f / 128.0f);
+            break;
         case CS8:
             // Normalize by 128.0 to map [-128, 127] to [-1.0, ~0.992]
             BLOCK_TO_CF32_SIGNED(int8_t, 1.0f / 128.0f);
@@ -119,6 +146,12 @@ bool sample_convert_block_to_cf32(const void* restrict input_buffer, ComplexFloa
         case CU8:
             // Offset by 127.5 (midpoint of [0,255]) to center the range on zero.
             BLOCK_TO_CF32_UNSIGNED(uint8_t, 127.5f, 1.0f / 128.0f);
+            break;
+        case S16:
+            BLOCK_TO_CF32_SIGNED_REAL(int16_t, 1.0f / 32768.0f);
+            break;
+        case U16:
+            BLOCK_TO_CF32_UNSIGNED_REAL(uint16_t, 32767.5f, 1.0f / 32768.0f);
             break;
         case CS16:
             BLOCK_TO_CF32_SIGNED(int16_t, 1.0f / 32768.0f);
@@ -180,9 +213,71 @@ bool sample_convert_block_to_cf32(const void* restrict input_buffer, ComplexFloa
             #undef CS24_IN_STEP
             break;
         }
+        case S24: {
+            const uint8_t* restrict in_ptr = (const uint8_t*)input_buffer;
+            float* restrict out_raw = (float*)output_buffer;
+            const float norm_factor = (1.0f / 8388608.0f) * gain;
+            size_t i = 0;
+
+            #define S24_IN_STEP(out_idx, byte_offset) \
+                do { \
+                    int32_t val; \
+                    memcpy(&val, in_ptr + (byte_offset), 4); \
+                    val = (int32_t)((uint32_t)val << 8) >> 8; \
+                    out_raw[(i * 2) + (out_idx)] = (float)val * norm_factor; \
+                    out_raw[(i * 2) + (out_idx) + 1] = 0.0f; \
+                } while (0)
+
+            for (; i + 4 < num_frames; i += 4) {
+                S24_IN_STEP(0, 0); // Sample 0 I
+                S24_IN_STEP(2, 3); // Sample 1 I
+                S24_IN_STEP(4, 6); // Sample 2 I
+                S24_IN_STEP(6, 9); // Sample 3 I
+                in_ptr += 12;
+            }
+
+            for (; i < num_frames; ++i) {
+                int32_t i_val = (int32_t)in_ptr[0] |
+                                ((int32_t)in_ptr[1] << 8) |
+                                ((int32_t)in_ptr[2] << 16);
+                i_val = (i_val << 8) >> 8;
+                out_raw[i * 2]     = (float)i_val * norm_factor;
+                out_raw[i * 2 + 1] = 0.0f;
+                in_ptr += 3;
+            }
+
+            #undef S24_IN_STEP
+            break;
+        }
         case CU16:
             BLOCK_TO_CF32_UNSIGNED(uint16_t, 32767.5f, 1.0f / 32768.0f);
             break;
+        case S32: {
+            const int32_t* in = (const int32_t*)input_buffer;
+            const double normalizer = 1.0 / 2147483648.0;
+            for (size_t i = 0; i < num_frames; ++i) {
+                double i_norm = (double)in[i] * normalizer;
+                output_buffer[i] = (float)(i_norm * gain) + 0.0f * I;
+            }
+            break;
+        }
+        case U32: {
+            const uint32_t* in = (const uint32_t*)input_buffer;
+            const double offset = 2147483647.5; // (UINT_MAX + 1) / 2.0
+            const double normalizer = 1.0 / 2147483648.0;
+            for (size_t i = 0; i < num_frames; ++i) {
+                double i_norm = ((double)in[i] - offset) * normalizer;
+                output_buffer[i] = (float)(i_norm * gain) + 0.0f * I;
+            }
+            break;
+        }
+        case F32: {
+            const float* in = (const float*)input_buffer;
+            for (size_t i = 0; i < num_frames; ++i) {
+                output_buffer[i] = (in[i] * gain) + 0.0f * I;
+            }
+            break;
+        }
         case CS32: {
             // This case is handled separately to maintain double precision during normalization.
             const int32_t* in = (const int32_t*)input_buffer;

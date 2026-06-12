@@ -35,7 +35,7 @@ typedef enum {
 
 typedef enum {
     FORMAT_UNKNOWN,
-    U8, S8, U16, S16, U32, S32, F32,
+    U8, S8, U16, S16, U24, S24, U32, S32, F32,
     CU8, CS8, CU16, CS16, CS24, CU32, CS32, CF32, SC16Q11
 } SampleFormat;
 
