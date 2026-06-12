@@ -53,7 +53,6 @@
 #include "utilities.h"
 #include "signal_handler.h"
 #include "queue.h"
-#include "sample_conversion_functions.h"
 #include "interleave_functions.h"
 #include <libredsea.h>
 #include <stdio.h>

@@ -8,7 +8,6 @@
 #define INPUT_WAV_H_
 
 #include "module.h"
-#include "argparse.h"
 
 /**
  * @brief Returns a pointer to the InputModuleInterface struct that implements

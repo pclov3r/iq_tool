@@ -6,7 +6,6 @@
 #define RING_BUFFER_H_
 
 #include <stddef.h>
-#include <stdbool.h>
 
 // --- Opaque Structure Definition ---
 typedef struct RingBuffer RingBuffer;

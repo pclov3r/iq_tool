@@ -7,7 +7,6 @@
 #define SAMPLE_CONVERSION_FUNCTIONS_H_
 
 #include <stddef.h>
-#include <stdint.h>
 #include "common_types.h"
 
 // --- Function Declarations ---

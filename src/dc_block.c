@@ -7,9 +7,7 @@
 #include "log.h"
 #include "app_context.h"
 #include <stdlib.h>
-#include <string.h>
 #include <math.h>
-#include <errno.h>
 #include <liquid.h>
 
 #ifndef M_PI

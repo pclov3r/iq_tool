@@ -6,7 +6,6 @@
 #include "thread_manager.h"
 #include "log.h"
 #include <string.h>
-#include <errno.h>
 
 /**
  * @brief Initializes the thread manager.

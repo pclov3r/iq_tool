@@ -6,7 +6,6 @@
 #define INPUT_RTLSDR_H_
 
 #include "module.h"
-#include "argparse.h"
 
 // --- Forward Declaration ---
 struct AppConfig;

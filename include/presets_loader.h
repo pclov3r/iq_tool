@@ -7,7 +7,6 @@
 
 #include <stddef.h>
 #include <stdbool.h>
-#include "common_types.h"
 
 // --- Forward Declarations ---
 struct AppConfig;

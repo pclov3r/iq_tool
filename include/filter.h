@@ -17,7 +17,6 @@
 #include "app_context.h"
 #include "mem_arena.h"
 #include "pipeline_types.h" // For SampleChunk
-#include "argparse.h"       // For struct argparse_option
 
 // --- Function Declarations ---
 

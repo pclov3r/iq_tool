@@ -11,7 +11,6 @@
 
 #include <stdbool.h>
 #include "app_context.h" // Provides AppConfig, AppContext, and ComplexFloat
-#include "argparse.h"    // Provides struct argparse_option
 
 // --- Function Declarations ---
 

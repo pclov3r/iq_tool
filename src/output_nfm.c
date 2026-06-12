@@ -11,7 +11,6 @@
 #include "ring_buffer.h"
 #include "utilities.h"
 #include "signal_handler.h"
-#include "sample_conversion_functions.h"
 #include "interleave_functions.h"
 #include "queue.h"
 #include <stdio.h>

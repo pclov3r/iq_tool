@@ -7,7 +7,6 @@
 #define OUTPUT_NRSC5_H_
 
 #include "module.h"
-#include "argparse.h"
 
 /**
  * @brief Returns a pointer to the OutputModuleInterface struct that implements

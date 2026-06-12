@@ -28,7 +28,6 @@
 #include "resampler.h"
 #include "filter.h"
 #include "agc.h" // Added for Output AGC
-#include "sample_conversion_functions.h"
 #include "sample_format_table.h"
 #include "queue.h"
 #include "ring_buffer.h"

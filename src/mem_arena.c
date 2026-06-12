@@ -9,7 +9,6 @@
 #include "platform.h"
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 #include <assert.h>
 
 // Ensure arena alignment is a power of 2 for our bitwise alignment math

@@ -7,7 +7,6 @@
 
 #include <stddef.h>
 #include <stdbool.h>
-#include <pthread.h>
 #include <stdatomic.h>
 
 // --- Struct Definition ---

@@ -8,7 +8,6 @@
 #include "frequency_shift.h"
 #include "sample_conversion_functions.h"
 #include "filter.h"
-#include "signal_handler.h"
 #include "log.h"
 
 void pre_processor_apply_chain(DspContext* dsp, SampleChunk* item) {

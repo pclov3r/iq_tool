@@ -11,12 +11,10 @@
 #ifndef UTILITIES_H_
 #define UTILITIES_H_
 
-#include <stdint.h>
 #include <stddef.h>
 #include "app_context.h"
 #include "module.h"
 #include "mem_arena.h"
-#include "ring_buffer.h"
 
 // --- Function Declarations ---
 

@@ -59,13 +59,11 @@
 #include "mem_arena.h"
 #include "utilities.h"
 #include "pre_processor.h" // Needed for initial calibration chain
-#include "sample_conversion_functions.h"
 #include <stdatomic.h> // Needed for byte size calculations
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <complex.h>
-#include <pthread.h>
 #include <liquid.h>
 
 #ifndef M_PI

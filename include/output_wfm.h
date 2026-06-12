@@ -6,7 +6,6 @@
 #define OUTPUT_WFM_H_
 
 #include "module.h"
-#include "argparse.h"
 
 /**
  * @brief Returns a pointer to the OutputModuleInterface for the WFM Stereo Receiver.

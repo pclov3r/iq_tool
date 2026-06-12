@@ -4,7 +4,6 @@
 
 #include "input_airspy.h"
 #include "module.h"
-#include "sample_conversion_functions.h"
 #include "constants.h"
 #include "app_context.h"
 #include "signal_handler.h"

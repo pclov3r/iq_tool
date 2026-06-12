@@ -50,11 +50,8 @@
 #include "agc.h"
 #include "constants.h"
 #include "log.h"
-#include "utilities.h"
-#include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
-#include <string.h>
 
 /* =========================================================================
  * Harris/LMS AGC — internal state block

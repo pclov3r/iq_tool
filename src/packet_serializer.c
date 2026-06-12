@@ -3,15 +3,11 @@
  */
 
 #include "packet_serializer.h"
-#include "constants.h"
 #include "log.h"
-#include "app_context.h"
 #include "pipeline_types.h"
 #include "ring_buffer.h"
-#include "sample_conversion_functions.h"
 #include "sample_format_table.h"
 #include <string.h>
-#include <stdlib.h>
 
 // --- INTERNAL HELPER ---
 static bool _has_space_for(RingBuffer* buffer, size_t bytes_needed) {

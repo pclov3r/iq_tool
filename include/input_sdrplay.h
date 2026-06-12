@@ -6,7 +6,6 @@
 #define INPUT_SDRPLAY_H_
 
 #include "module.h"
-#include "argparse.h"
 #include <stdint.h> // For uint8_t in get_sdrplay_device_name
 
 // --- Forward Declaration ---

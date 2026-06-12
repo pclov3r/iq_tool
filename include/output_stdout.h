@@ -6,7 +6,6 @@
 #define OUTPUT_STDOUT_H_
 
 #include "module.h"
-#include "argparse.h"
 
 /**
  * @brief Returns a pointer to the OutputModuleInterface struct that implements

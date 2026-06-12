@@ -7,7 +7,6 @@
 #include "frequency_shift.h"
 #include "agc.h"
 #include "sample_conversion_functions.h"
-#include "signal_handler.h"
 #include "log.h"
 
 void post_processor_apply_chain(DspContext* dsp, SampleChunk* item) {

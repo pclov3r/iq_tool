@@ -11,7 +11,6 @@
 #ifndef QUEUE_H_
 #define QUEUE_H_
 
-#include <pthread.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include "pipeline_types.h" // Provides the full definition for the Queue struct

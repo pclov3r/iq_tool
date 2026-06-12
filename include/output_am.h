@@ -6,7 +6,6 @@
 #define OUTPUT_AM_H_
 
 #include "module.h"
-#include "argparse.h" // Ensure argparse struct is visible
 
 // API Getter
 OutputModuleInterface* output_am_get_module_api(void);

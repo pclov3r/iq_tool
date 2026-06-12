@@ -12,7 +12,6 @@
 #define MODULE_REGISTRY_H_
 
 #include "module.h" // Provides the core InputModuleInterface interface definition
-#include "argparse.h"     // Provides the argparse_option struct for CLI options
 #include "common_types.h"
 
 // --- Forward Declarations ---

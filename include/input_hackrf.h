@@ -6,7 +6,6 @@
 #define INPUT_HACKRF_H_
 
 #include "module.h"
-#include "argparse.h"
 
 // --- Forward Declaration ---
 struct AppConfig;

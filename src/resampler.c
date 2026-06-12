@@ -3,7 +3,6 @@
  */
 
 #include "resampler.h"
-#include "constants.h"
 #include "log.h"
 #include "app_context.h"
 #include <stdlib.h> // For exit()

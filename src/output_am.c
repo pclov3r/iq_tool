@@ -29,7 +29,6 @@
 #include "signal_handler.h"
 #include "utilities.h"
 #include "queue.h"
-#include "sample_conversion_functions.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

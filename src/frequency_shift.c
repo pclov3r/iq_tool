@@ -3,14 +3,10 @@
  */
 
 #include "frequency_shift.h"
-#include "constants.h"
 #include "app_context.h"
-#include "utilities.h"
 #include "log.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <math.h>
-#include <ctype.h>
 #include <liquid.h>
 
 #ifndef M_PI

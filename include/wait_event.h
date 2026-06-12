@@ -6,7 +6,6 @@
 #ifndef WAIT_EVENT_H_
 #define WAIT_EVENT_H_
 
-#include <stdbool.h>
 
 // Forward declaration
 struct MemoryArena;

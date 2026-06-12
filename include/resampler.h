@@ -10,8 +10,6 @@
 #ifndef RESAMPLER_H_
 #define RESAMPLER_H_
 
-#include <stdbool.h>
-#include <stddef.h> // Added for size_t
 #include "common_types.h"
 
 // --- Forward Declarations ---
