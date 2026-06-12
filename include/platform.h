@@ -51,6 +51,14 @@ typedef enum {
  */
 void platform_set_thread_priority(ThreadPriority priority, const char* thread_name);
 
+/**
+ * @brief Safely checks if the host CPU meets the binary's compiler-enforced requirements.
+ *
+ * If the binary was compiled for AVX or AVX2, this validates that both the hardware
+ * and OS support the required instruction sets at runtime to prevent Illegal Instruction crashes.
+ */
+void platform_check_cpu_features(void);
+
 // --- Platform Specific Helpers ---
 
 #ifdef _WIN32

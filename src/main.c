@@ -107,6 +107,9 @@ int main(int argc, char *argv[]) {
     log_set_lock(console_lock_function, &g_console_mutex);
     log_set_level(LOG_INFO);
 
+    // Verify CPU hardware requirements immediately before starting
+    platform_check_cpu_features();
+
     initialize_resource_struct(&config, &app);
     reset_shutdown_flag();
     setup_signal_handlers(&app);

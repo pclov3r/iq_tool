@@ -202,3 +202,71 @@ bool platform_get_executable_dir(char* buffer, size_t buffer_size) {
 }
 
 #endif
+
+// --- CPU Feature Diagnostics ---
+void platform_check_cpu_features(void) {
+#if defined(__GNUC__) || defined(__clang__)
+
+    // Intel/AMD x86_64 Diagnostics
+#if defined(__x86_64__) || defined(__i386__)
+    __builtin_cpu_init();
+
+    // 1. If this is an AVX2 build, directly check if the hardware supports it
+    #if defined(__AVX2__)
+        if (!__builtin_cpu_supports("avx2")) {
+            #ifdef _WIN32
+                log_fatal("Error: This binary uses AVX2 instructions, but your processor only supports AVX. Please download the AVX release build.");
+            #else
+                log_fatal("Error: This binary uses AVX2 instructions, but your processor only supports AVX. Please recompile the software using the default Release build option without passing any custom CPU optimization flags.");
+            #endif
+            exit(EXIT_FAILURE);
+        }
+        
+    // 2. If this is a standard AVX build, directly check hardware and warn if they could upgrade
+    #elif defined(__AVX__)
+        if (!__builtin_cpu_supports("avx")) {
+            #ifdef _WIN32
+                log_fatal("Error: This build of the application uses AVX instructions, which your processor does not support. Please rebuild the software yourself without AVX optimizations to run on this machine.");
+            #else
+                log_fatal("Error: This build of the application uses AVX instructions, which your processor does not support. Please recompile the software using the default Release build option without passing any custom CPU optimization flags.");
+            #endif
+            exit(EXIT_FAILURE);
+        }
+        if (__builtin_cpu_supports("avx2")) {
+            #ifdef _WIN32
+                log_warn("Notice: Your processor supports AVX2 instructions, but you are using the AVX build. Download the AVX2 release build for better performance.");
+            #else
+                log_warn("Notice: Your processor supports AVX2 instructions, but this binary is only using AVX instructions. Consider recompiling the software using the default Release build option without passing any custom CPU optimization flags for better performance.");
+            #endif
+        }
+
+    // 3. If someone compiled a BASELINE build (No AVX at all)
+    #else
+        if (__builtin_cpu_supports("avx2")) {
+            #ifdef _WIN32
+                log_warn("Notice: Your processor supports AVX2 instructions, but this binary is not using any AVX optimizations. Download the AVX2 release build for better performance.");
+            #else
+                log_warn("Notice: Your processor supports AVX2 instructions, but this binary is not using any AVX optimizations. Consider recompiling the software using the default Release build option without passing any custom CPU optimization flags for better performance.");
+            #endif
+        } else if (__builtin_cpu_supports("avx")) {
+            #ifdef _WIN32
+                log_warn("Notice: Your processor supports AVX instructions, but this binary is not using any AVX optimizations. Download the AVX release build for better performance.");
+            #else
+                log_warn("Notice: Your processor supports AVX instructions, but this binary is not using any AVX optimizations. Consider recompiling the software using the default Release build option without passing any custom CPU optimization flags for better performance.");
+            #endif
+        }
+    #endif
+
+    // ARM Architecture Diagnostics (NEON)
+#elif defined(__aarch64__)
+    #ifndef __ARM_NEON
+        #ifdef _WIN32
+            log_warn("Notice: Your processor supports NEON instructions, but this binary is not using any NEON optimizations. Download the native ARM NEON release build for better performance.");
+        #else
+            log_warn("Notice: Your processor supports NEON instructions, but this binary is not using any NEON optimizations. Consider recompiling the software using the default Release build option without passing any custom CPU optimization flags for better performance.");
+        #endif
+    #endif
+#endif
+
+#endif
+}
