@@ -1,10 +1,10 @@
 # iq_tool
 
-A multi-threaded command-line tool for resampling, filtering, shifting, and correcting I/Q data streams.
+A multi-threaded command-line tool for resampling, filtering, shifting, correcting, and demodulating I/Q data streams.
 
 I originally built this tool for a very specific need: processing I/Q files with NRSC-5 (HD Radio) captures for use with the awesome [NRSC5](https://github.com/theori-io/nrsc5) decoder. This means it's particularly good at handling the frequency shifts and metadata found in WAV files from SDR software, but it has grown into a more general-purpose utility. 
 
-The goal of this tool is to provide an easy, fast, and lightweight command-line utility for converting I/Q data from files or SDRs to a specific sample rate and format, and then either piping it to other programs or writing it to a file.
+The goal of this tool is to provide an easy, fast, and lightweight command-line utility for converting I/Q data from files or SDRs to a specific sample rate and format, and then either piping it to other programs or writing it to a file. While it features several built-in demodulation modules (like FM, AM, and HD Radio) for quick listening and decoding, it is fundamentally an I/Q processor rather than a full replacement for a desktop GUI SDR application.
 
 ---
 
