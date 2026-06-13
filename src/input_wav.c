@@ -582,7 +582,13 @@ static bool _probe_split_sequence(WavInputContext* wav_input, const AppConfig* c
         // Open briefly to sum up the frames
         SF_INFO temp_sfinfo;
         memset(&temp_sfinfo, 0, sizeof(SF_INFO));
+#ifdef _WIN32
+        wchar_t w_path[MAX_PATH_BUFFER];
+        MultiByteToWideChar(CP_UTF8, 0, wav_input->file_list[i], -1, w_path, MAX_PATH_BUFFER);
+        SNDFILE* temp_file = sf_wchar_open(w_path, SFM_READ, &temp_sfinfo);
+#else
         SNDFILE* temp_file = sf_open(wav_input->file_list[i], SFM_READ, &temp_sfinfo);
+#endif
         if (temp_file) {
             cumulative_frames += temp_sfinfo.frames;
             sf_close(temp_file);
@@ -649,13 +655,13 @@ static bool wav_input_validate_options(AppContext* app) {
     }
 
     // Open file
+    log_info("Opening WAV input file: %s", private_data->file_list[0]);
+    memset(&private_data->sfinfo, 0, sizeof(SF_INFO));
 #ifdef _WIN32
-    log_info("Opening WAV input file: %s", private_data->file_list[0]);
-    memset(&private_data->sfinfo, 0, sizeof(SF_INFO));
-    private_data->infile = sf_wchar_open(config->input.effective_path_w, SFM_READ, &private_data->sfinfo);
+    wchar_t w_path[MAX_PATH_BUFFER];
+    MultiByteToWideChar(CP_UTF8, 0, private_data->file_list[0], -1, w_path, MAX_PATH_BUFFER);
+    private_data->infile = sf_wchar_open(w_path, SFM_READ, &private_data->sfinfo);
 #else
-    log_info("Opening WAV input file: %s", private_data->file_list[0]);
-    memset(&private_data->sfinfo, 0, sizeof(SF_INFO));
     private_data->infile = sf_open(private_data->file_list[0], SFM_READ, &private_data->sfinfo);
 #endif
 
@@ -783,7 +789,13 @@ static size_t wav_input_read_chunk(ModuleContext* context, void* buffer, size_t 
 
                 SF_INFO new_sfinfo;
                 memset(&new_sfinfo, 0, sizeof(SF_INFO));
+#ifdef _WIN32
+                wchar_t w_path[MAX_PATH_BUFFER];
+                MultiByteToWideChar(CP_UTF8, 0, wav_input->file_list[wav_input->current_file_index], -1, w_path, MAX_PATH_BUFFER);
+                wav_input->infile = sf_wchar_open(w_path, SFM_READ, &new_sfinfo);
+#else
                 wav_input->infile = sf_open(wav_input->file_list[wav_input->current_file_index], SFM_READ, &new_sfinfo);
+#endif
 
                 if (!wav_input->infile) {
                     log_fatal("Failed to open next split file: %s", wav_input->file_list[wav_input->current_file_index]);
@@ -810,7 +822,13 @@ static size_t wav_input_read_chunk(ModuleContext* context, void* buffer, size_t 
 
                 SF_INFO new_sfinfo;
                 memset(&new_sfinfo, 0, sizeof(SF_INFO));
+#ifdef _WIN32
+                wchar_t w_path[MAX_PATH_BUFFER];
+                MultiByteToWideChar(CP_UTF8, 0, wav_input->file_list[0], -1, w_path, MAX_PATH_BUFFER);
+                wav_input->infile = sf_wchar_open(w_path, SFM_READ, &new_sfinfo);
+#else
                 wav_input->infile = sf_open(wav_input->file_list[0], SFM_READ, &new_sfinfo);
+#endif
 
                 if (!wav_input->infile) {
                     log_fatal("Failed to reopen first WAV file during loop.");

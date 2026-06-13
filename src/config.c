@@ -171,7 +171,7 @@ bool validate_option_combinations(AppConfig *config) {
         }
     }
 
-    if (config->audio.writer_path != NULL || config->audio.mute) {
+    if (config->audio.path_arg != NULL || config->audio.mute) {
         if (config->output.payload != PAYLOAD_AUDIO) {
             log_error("Options --audio-writer and --mute-audio can only be used with audio demodulation modules.");
             return false;

@@ -100,7 +100,13 @@ typedef struct AppConfig {
 
     // --- Audio Configuration ---
     struct {
-        char* writer_path;
+        char* path_arg; // Raw command line argument
+#ifdef _WIN32
+        char    effective_path_utf8[MAX_PATH_BUFFER];
+        wchar_t effective_path_w[MAX_PATH_BUFFER];
+#else
+        char*   effective_path;
+#endif
         bool  writer_rf64;
         bool  mute;
     } audio;

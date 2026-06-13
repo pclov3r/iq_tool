@@ -86,7 +86,7 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
         OPT_STRING('o', "output", &config->output.module_name, "Specifies the output module and optional file path", NULL, 0, 0),
 
         OPT_GROUP("Audio Output Options"),
-        OPT_STRING(0, "audio-writer", &config->audio.writer_path, "Save demodulated audio to a WAV file.", NULL, 0, 0),
+        OPT_STRING(0, "audio-writer", &config->audio.path_arg, "Save demodulated audio to a WAV file.", NULL, 0, 0),
         OPT_BOOLEAN(0, "audio-writer-rf64", &config->audio.writer_rf64, "Use RF64 format for the audio writer (supports >4GB files).", NULL, 0, 0),
         OPT_BOOLEAN(0, "mute-audio", &config->audio.mute, "Disable speaker playback", NULL, 0, 0),
 
@@ -250,6 +250,9 @@ static bool resolve_file_paths(AppConfig *config, MemoryArena* arena) {
     if (config->output.path_arg) {
         if (!get_absolute_path_windows(config->output.path_arg, config->output.effective_path_w, MAX_PATH_BUFFER, config->output.effective_path_utf8, MAX_PATH_BUFFER)) return false;
     }
+    if (config->audio.path_arg) {
+        if (!get_absolute_path_windows(config->audio.path_arg, config->audio.effective_path_w, MAX_PATH_BUFFER, config->audio.effective_path_utf8, MAX_PATH_BUFFER)) return false;
+    }
 #else
     if (config->input.path_arg) {
         char resolved_input_path[PATH_MAX];
@@ -278,6 +281,24 @@ static bool resolve_file_paths(AppConfig *config, MemoryArena* arena) {
         config->output.effective_path = mem_arena_alloc(arena, final_length, false);
         if (!config->output.effective_path) return false;
         snprintf(config->output.effective_path, final_length, "%s/%s", resolved_dir_path, base);
+    }
+    if (config->audio.path_arg) {
+        char* path_copy_for_dirname = mem_arena_alloc(arena, strlen(config->audio.path_arg) + 1, false);
+        char* path_copy_for_basename = mem_arena_alloc(arena, strlen(config->audio.path_arg) + 1, false);
+        if (!path_copy_for_dirname || !path_copy_for_basename) return false;
+        strcpy(path_copy_for_dirname, config->audio.path_arg);
+        strcpy(path_copy_for_basename, config->audio.path_arg);
+        char* dir = dirname(path_copy_for_dirname);
+        char* base = basename(path_copy_for_basename);
+        char resolved_dir_path[PATH_MAX];
+        if (realpath(dir, resolved_dir_path) == NULL) {
+            log_error("Audio writer directory does not exist or path is invalid: %s (%s)", dir, strerror(errno));
+            return false;
+        }
+        size_t final_length = strlen(resolved_dir_path) + 1 + strlen(base) + 1;
+        config->audio.effective_path = mem_arena_alloc(arena, final_length, false);
+        if (!config->audio.effective_path) return false;
+        snprintf(config->audio.effective_path, final_length, "%s/%s", resolved_dir_path, base);
     }
 #endif
     return true;
@@ -355,9 +376,15 @@ static bool validate_and_process_args(AppContext *app, int non_opt_argc, const c
     if (!resolve_file_paths(config, arena)) return false;
 
     // --- Validate Audio Writer Early ---
-    if (config->audio.writer_path) {
-        if (!utility_verify_output_path(config, config->audio.writer_path)) return false;
+#ifdef _WIN32
+    if (config->audio.effective_path_utf8[0] != '\0') {
+        if (!utility_verify_output_path(config, config->audio.effective_path_utf8)) return false;
     }
+#else
+    if (config->audio.effective_path) {
+        if (!utility_verify_output_path(config, config->audio.effective_path)) return false;
+    }
+#endif
 
     // --- Final Validation Cascade ---
     if (!validate_output_type_and_sample_format(config)) return false;

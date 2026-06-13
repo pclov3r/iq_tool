@@ -176,7 +176,13 @@ bool utility_check_nyquist_warning(double freq_to_check_hz, double sample_rate_h
 }
 
 bool utility_check_file_exists(const char* full_path) {
+#ifdef _WIN32
+    wchar_t w_path[MAX_PATH];
+    MultiByteToWideChar(CP_UTF8, 0, full_path, -1, w_path, MAX_PATH);
+    FILE* fp = _wfopen(w_path, L"r");
+#else
     FILE* fp = fopen(full_path, "r");
+#endif
     if (fp) {
         fclose(fp);
         return true;

@@ -59,12 +59,20 @@ AudioOutputContext* audio_output_create(AppContext* app, int sample_rate, int ch
     context->channels = channels;
 
     context->wav_writer = NULL;
-    if (config->audio.writer_path) {
-        int format_flag = config->audio.writer_rf64 ? SF_FORMAT_RF64 : SF_FORMAT_WAV;
-        SF_INFO sfinfo = { .samplerate = sample_rate, .channels = channels, .format = format_flag | SF_FORMAT_PCM_16 };
-        context->wav_writer = sf_open(config->audio.writer_path, SFM_WRITE, &sfinfo);
+    int format_flag = config->audio.writer_rf64 ? SF_FORMAT_RF64 : SF_FORMAT_WAV;
+    SF_INFO sfinfo = { .samplerate = sample_rate, .channels = channels, .format = format_flag | SF_FORMAT_PCM_16 };
+
+#ifdef _WIN32
+    if (config->audio.effective_path_utf8[0] != '\0') {
+        context->wav_writer = sf_wchar_open(config->audio.effective_path_w, SFM_WRITE, &sfinfo);
         if (!context->wav_writer) log_error("AudioOutput: Failed to open audio writer file.");
     }
+#else
+    if (config->audio.effective_path) {
+        context->wav_writer = sf_open(config->audio.effective_path, SFM_WRITE, &sfinfo);
+        if (!context->wav_writer) log_error("AudioOutput: Failed to open audio writer file.");
+    }
+#endif
 
     if (config->audio.mute) {
         log_info("AudioOutput: Playback muted. Pipeline will run at maximum speed.");

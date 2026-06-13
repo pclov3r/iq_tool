@@ -241,7 +241,13 @@ static void dump_aas_file(Nrsc5Context* context, const nrsc5_event_t *evt) {
     snprintf(context->filepath_buffer, MAX_PATH_BUFFER, "%s" PATH_SEPARATOR "%u_%s",
              s_nrsc5_config.aas_dir_arg, number, safe_name);
 
+#ifdef _WIN32
+    wchar_t w_path[MAX_PATH_BUFFER];
+    MultiByteToWideChar(CP_UTF8, 0, context->filepath_buffer, -1, w_path, MAX_PATH_BUFFER);
+    FILE *fp = _wfopen(w_path, L"wb");
+#else
     FILE *fp = fopen(context->filepath_buffer, "wb");
+#endif
     if (fp) {
         size_t written = fwrite(data, 1, size, fp);
         fclose(fp);
