@@ -39,7 +39,7 @@ bool wav_common_validate_options(AppContext* app) {
     }
 
     #ifdef _WIN32
-    if (!config->output.effective_path_utf8 || config->output.effective_path_utf8[0] == '\0') return false;
+    if (config->output.effective_path_utf8[0] == '\0') return false;
     const char* out_path = config->output.effective_path_utf8;
     #else
     if (!config->output.effective_path || config->output.effective_path[0] == '\0') return false;

@@ -92,7 +92,11 @@ static bool rawfile_input_validate_options(AppContext* app) {
     s_rawfile_config.format_provided = true;
 
     // Fail early logic
+#ifdef _WIN32
+    if (!config || config->input.effective_path_utf8[0] == '\0') {
+#else
     if (!config || !config->input.effective_path || config->input.effective_path[0] == '\0') {
+#endif
         log_error("RAW file input requires an input file path.");
         return false;
     }
