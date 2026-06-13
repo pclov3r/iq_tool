@@ -23,32 +23,24 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 # Automatically tracks updates for v4
+        uses: actions/checkout@v4
 
       - name: Run Codacy Analysis CLI
-        uses: codacy/codacy-analysis-cli-action@v4 # Tracks latest patches for Codacy v4
+        uses: codacy/codacy-analysis-cli-action@master
         with:
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
-          verbose: true
-          output: results.sarif
           format: sarif
+          output: results.sarif
           gh-code-scanning-compat: true
           max-allowed-issues: 2147483647
-          # Keeps defaults explicitly defined to prevent internal script crashes
           upload: false
-          fail-if-incomplete: false
-          allow-network: false
-          force-file-permissions: false
 
-      - name: Merge SARIF runs
+      - name: Combine all SARIF runs by tool name
+        shell: bash
         run: |
-          npm install -g @microsoft/sarif-multitool
-          sarif-multitool merge results.sarif \
-            --merge-runs \
-            --output-file results.merged.sarif
+          jq '.runs |= (group_by(.tool.driver.name) | map(.[0] + {results: map(.results) | add})) | del(.runs[].results[].partialFingerprints?)' results.sarif > results-combined.sarif
 
       - name: Upload Codacy SARIF results file
-        uses: github/codeql-action/upload-sarif@v4 # Tracks latest patches for CodeQL v4
+        uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: results.merged.sarif
-          category: codacy-security-scan
+          sarif_file: results-combined.sarif
