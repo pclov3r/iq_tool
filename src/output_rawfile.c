@@ -32,13 +32,8 @@ typedef struct {
 
 // --- Helper Functions ---
 
-static bool rawfile_output_initialize(ModuleContext* context) {
-    const AppConfig* config = context->config;
-    AppContext* app = context->app;
-
-    RawfileOutputContext* data = (RawfileOutputContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RawfileOutputContext), true);
-    if (!data) return false;
-    app->module.output_private_data = data;
+static bool rawfile_output_validate_options(AppContext* app) {
+    AppConfig* config = (AppConfig*)app->config;
 
     #ifdef _WIN32
     if (config->output.effective_path_utf8[0] == '\0') {
@@ -59,6 +54,10 @@ static bool rawfile_output_initialize(ModuleContext* context) {
         return false;
     }
 
+    RawfileOutputContext* data = (RawfileOutputContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RawfileOutputContext), true);
+    if (!data) return false;
+    app->module.output_private_data = data;
+
     #ifdef _WIN32
     data->handle = _wfopen(config->output.effective_path_w, L"wb");
     #else
@@ -70,7 +69,13 @@ static bool rawfile_output_initialize(ModuleContext* context) {
         return false;
     }
 
-    app->module.output_private_data = data;
+    return true;
+}
+
+static bool rawfile_output_initialize(ModuleContext* context) {
+    AppContext* app = context->app;
+    RawfileOutputContext* data = (RawfileOutputContext*)app->module.output_private_data;
+    if (!data || !data->handle) return false;
     return true;
 }
 
@@ -115,7 +120,7 @@ const struct argparse_option* rawfile_output_get_cli_options(int* count) {
 
 // --- The V-Table ---
 static OutputModuleInterface s_rawfile_output_api = {
-    .validate_options = NULL,
+    .validate_options = rawfile_output_validate_options,
     .get_cli_options = rawfile_output_get_cli_options,
     .initialize = rawfile_output_initialize,
     .reset = NULL,

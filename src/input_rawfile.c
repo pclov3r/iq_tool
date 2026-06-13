@@ -51,6 +51,7 @@ static struct {
 // This is the private data structure for the Raw File input module.
 typedef struct {
     SNDFILE *infile;
+    SF_INFO sfinfo;
     bool repeat_enabled; // Loop state
 } RawfileInputContext;
 
@@ -72,7 +73,6 @@ static bool rawfile_input_pre_stream_iq_correction(ModuleContext* context);
 
 static bool rawfile_input_validate_options(AppContext* app) {
     AppConfig* config = app ? (AppConfig*)app->config : NULL;
-    (void)config;
     if (s_rawfile_config.raw_file_sample_rate_hz_arg > 0.0f) {
         s_rawfile_config.sample_rate_hz = (double)s_rawfile_config.raw_file_sample_rate_hz_arg;
         s_rawfile_config.sample_rate_provided = true;
@@ -90,29 +90,20 @@ static bool rawfile_input_validate_options(AppContext* app) {
     }
 
     s_rawfile_config.format_provided = true;
-    return true;
-}
 
-static bool rawfile_input_initialize(ModuleContext* context) {
-    const AppConfig *config = context->config;
-    AppContext* app = context->app;
+    // Fail early logic
+    if (!config || !config->input.effective_path || config->input.effective_path[0] == '\0') {
+        log_error("RAW file input requires an input file path.");
+        return false;
+    }
 
     RawfileInputContext* private_data = (RawfileInputContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(RawfileInputContext), true);
-    if (!private_data) {
-        return false;
-    }
+    if (!private_data) return false;
     app->module.input_private_data = private_data;
-    private_data->repeat_enabled = s_rawfile_config.repeat_enabled;
 
-    app->module.input_format = get_format_info_by_name(s_rawfile_config.format_str) ? get_format_info_by_name(s_rawfile_config.format_str)->format_enum : FORMAT_UNKNOWN;
-    if (app->module.input_format == FORMAT_UNKNOWN) {
+    SampleFormat format_enum = get_format_info_by_name(s_rawfile_config.format_str) ? get_format_info_by_name(s_rawfile_config.format_str)->format_enum : FORMAT_UNKNOWN;
+    if (format_enum == FORMAT_UNKNOWN) {
         log_error("Invalid RAW input format '%s'. See --help for valid formats.", s_rawfile_config.format_str);
-        return false;
-    }
-
-    app->module.input_bytes_per_iq_sample = get_bytes_per_iq_sample(app->module.input_format);
-    if (app->module.input_bytes_per_iq_sample == 0) {
-        log_fatal("Internal error: could not determine sample size for format '%s'.", s_rawfile_config.format_str);
         return false;
     }
 
@@ -121,7 +112,7 @@ static bool rawfile_input_initialize(ModuleContext* context) {
     sfinfo.samplerate = (int)s_rawfile_config.sample_rate_hz;
     sfinfo.channels = 2;
     int format_code = SF_FORMAT_RAW;
-    switch (app->module.input_format) {
+    switch (format_enum) {
         case SC16Q11:
         case CS16: format_code |= SF_FORMAT_PCM_16; break;
         case CU16: format_code |= SF_FORMAT_PCM_16; break;
@@ -132,16 +123,14 @@ static bool rawfile_input_initialize(ModuleContext* context) {
         case CU32: format_code |= SF_FORMAT_PCM_32; break;
         case CF32: format_code |= SF_FORMAT_FLOAT;  break;
         default:
-            log_fatal("Internal error: unhandled format enum in rawfile_input_initialize.");
+            log_fatal("Internal error: unhandled format enum in rawfile_input_validate_options.");
             return false;
     }
     sfinfo.format = format_code;
 
 #ifdef _WIN32
-    log_info("Opening RAW input file: %s", config->input.effective_path_utf8);
     private_data->infile = sf_wchar_open(config->input.effective_path_w, SFM_READ, &sfinfo);
 #else
-    log_info("Opening RAW input file: %s", config->input.effective_path);
     private_data->infile = sf_open(config->input.effective_path, SFM_READ, &sfinfo);
 #endif
 
@@ -150,9 +139,38 @@ static bool rawfile_input_initialize(ModuleContext* context) {
         return false;
     }
 
-    sf_command(private_data->infile, SFC_GET_CURRENT_SF_INFO, &sfinfo, sizeof(sfinfo));
-    app->module.source_info.sample_rate = sfinfo.samplerate;
-    app->module.source_info.frames = sfinfo.frames;
+    // Save info for Phase 2
+    private_data->sfinfo = sfinfo;
+
+    return true;
+}
+
+static bool rawfile_input_initialize(ModuleContext* context) {
+    const AppConfig *config = context->config;
+    AppContext* app = context->app;
+
+    RawfileInputContext* private_data = (RawfileInputContext*)app->module.input_private_data;
+    if (!private_data || !private_data->infile) return false;
+
+    private_data->repeat_enabled = s_rawfile_config.repeat_enabled;
+
+    app->module.input_format = get_format_info_by_name(s_rawfile_config.format_str) ? get_format_info_by_name(s_rawfile_config.format_str)->format_enum : FORMAT_UNKNOWN;
+
+    app->module.input_bytes_per_iq_sample = get_bytes_per_iq_sample(app->module.input_format);
+    if (app->module.input_bytes_per_iq_sample == 0) {
+        log_fatal("Internal error: could not determine sample size for format '%s'.", s_rawfile_config.format_str);
+        return false;
+    }
+
+    sf_command(private_data->infile, SFC_GET_CURRENT_SF_INFO, &private_data->sfinfo, sizeof(private_data->sfinfo));
+    app->module.source_info.sample_rate = private_data->sfinfo.samplerate;
+    app->module.source_info.frames = private_data->sfinfo.frames;
+
+#ifdef _WIN32
+    log_info("Opening RAW input file: %s", config->input.effective_path_utf8);
+#else
+    log_info("Opening RAW input file: %s", config->input.effective_path);
+#endif
 
     return true;
 }

@@ -37,6 +37,31 @@ bool wav_common_validate_options(AppContext* app) {
         log_error("Invalid sample format '%s' for WAV/RF64 container. Only 'cs8', 'cu8', 'cs16', 'cs24', 'cs32', and 'cf32' are supported.", config->output.sample_format_str);
         return false;
     }
+
+    #ifdef _WIN32
+    if (!config->output.effective_path_utf8 || config->output.effective_path_utf8[0] == '\0') return false;
+    const char* out_path = config->output.effective_path_utf8;
+    #else
+    if (!config->output.effective_path || config->output.effective_path[0] == '\0') return false;
+    const char* out_path = config->output.effective_path;
+    #endif
+
+    if (!utility_verify_output_path(config, out_path)) return false;
+
+    // Fail early if we don't have permission to write to this file
+    // We can't write the final libsndfile header until Phase 2, but we CAN probe permissions now!
+    #ifdef _WIN32
+    FILE* dummy = _wfopen(config->output.effective_path_w, L"wb");
+    #else
+    FILE* dummy = fopen(out_path, "wb");
+    #endif
+
+    if (!dummy) {
+        log_error("Error opening output file %s: %s", out_path, strerror(errno));
+        return false;
+    }
+    fclose(dummy);
+
     return true;
 }
 
