@@ -507,7 +507,7 @@ static bool nrsc5_output_initialize(ModuleContext* context) {
     nrsc5_get_version(&ver_str);
     log_info("NRSC5: Library version %s", SAFE_STR(ver_str));
 
-    nrsc5_decoder->audio_out = audio_output_create(&app->pipeline.setup_arena, NRSC5_AUDIO_SAMPLE_RATE, NRSC5_AUDIO_CHANNELS, app->module.source_info.demod_audio_buffer_size, context->config->audio.writer_path, context->config->audio.writer_rf64, context->config->audio.mute);
+    nrsc5_decoder->audio_out = audio_output_create(app, NRSC5_AUDIO_SAMPLE_RATE, NRSC5_AUDIO_CHANNELS, app->module.source_info.demod_audio_buffer_size);
     if (!nrsc5_decoder->audio_out) return false;
     log_info("NRSC5: Audio device initialized (%d Hz, %d Channels).", NRSC5_AUDIO_SAMPLE_RATE, NRSC5_AUDIO_CHANNELS);
 

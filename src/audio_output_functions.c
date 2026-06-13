@@ -50,25 +50,23 @@ static void miniaudio_data_callback(ma_device* pDevice, void* pOutput, const voi
 
 // --- Public API ---
 
-AudioOutputContext* audio_output_create(struct MemoryArena* arena, int sample_rate, int channels, size_t buffer_size_bytes, const char* writer_path, bool is_rf64, bool mute_audio) {
-    AudioOutputContext* context = (AudioOutputContext*)mem_arena_alloc(arena, sizeof(AudioOutputContext), true);
+AudioOutputContext* audio_output_create(AppContext* app, int sample_rate, int channels, size_t buffer_size_bytes) {
+    AppConfig* config = (AppConfig*)app->config;
+    AudioOutputContext* context = (AudioOutputContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(AudioOutputContext), true);
     if (!context) return NULL;
 
     context->buffer_size = buffer_size_bytes;
     context->channels = channels;
 
     context->wav_writer = NULL;
-    if (writer_path) {
-        if (!utility_verify_output_path(NULL, writer_path)) {
-            return NULL;
-        }
-        int format_flag = is_rf64 ? SF_FORMAT_RF64 : SF_FORMAT_WAV;
+    if (config->audio.writer_path) {
+        int format_flag = config->audio.writer_rf64 ? SF_FORMAT_RF64 : SF_FORMAT_WAV;
         SF_INFO sfinfo = { .samplerate = sample_rate, .channels = channels, .format = format_flag | SF_FORMAT_PCM_16 };
-        context->wav_writer = sf_open(writer_path, SFM_WRITE, &sfinfo);
+        context->wav_writer = sf_open(config->audio.writer_path, SFM_WRITE, &sfinfo);
         if (!context->wav_writer) log_error("AudioOutput: Failed to open audio writer file.");
     }
 
-    if (mute_audio) {
+    if (config->audio.mute) {
         log_info("AudioOutput: Playback muted. Pipeline will run at maximum speed.");
         context->audio_device_initialized = false;
         context->audio_ring_buffer = NULL;
@@ -76,7 +74,7 @@ AudioOutputContext* audio_output_create(struct MemoryArena* arena, int sample_ra
     }
 
     // 1. Setup Audio Ring Buffer
-    context->audio_ring_buffer = ring_buffer_create(buffer_size_bytes, arena);
+    context->audio_ring_buffer = ring_buffer_create(buffer_size_bytes, &app->pipeline.setup_arena);
     if (!context->audio_ring_buffer) {
         log_fatal("AudioOutput: Failed to create ring buffer.");
         return NULL;

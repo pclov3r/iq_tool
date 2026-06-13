@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include "app_context.h"
 #include "common_types.h" // For PipelineMode
 
 // Forward declaration of the memory arena
@@ -27,7 +28,7 @@ typedef struct AudioOutputContext AudioOutputContext;
  * @param buffer_size_bytes The size of the internal ring buffer.
  * @return A pointer to the AudioOutputContext handle, or NULL on failure.
  */
-AudioOutputContext* audio_output_create(struct MemoryArena* arena, int sample_rate, int channels, size_t buffer_size_bytes, const char* writer_path, bool is_rf64, bool mute_audio);
+AudioOutputContext* audio_output_create(AppContext* app, int sample_rate, int channels, size_t buffer_size_bytes);
 
 /**
  * @brief Writes PCM data to the audio output.

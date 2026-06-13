@@ -354,6 +354,11 @@ static bool validate_and_process_args(AppContext *app, int non_opt_argc, const c
 
     if (!resolve_file_paths(config, arena)) return false;
 
+    // --- Validate Audio Writer Early ---
+    if (config->audio.writer_path) {
+        if (!utility_verify_output_path(config, config->audio.writer_path)) return false;
+    }
+
     // --- Final Validation Cascade ---
     if (!validate_output_type_and_sample_format(config)) return false;
     if (selected_module_api->validate_options && !selected_module_api->validate_options(app)) return false;
