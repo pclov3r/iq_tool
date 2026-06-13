@@ -644,7 +644,27 @@ static void nrsc5_output_cleanup(ModuleContext* context) {
 static bool nrsc5_output_validate_options(AppConfig* config) {
     // 1. Resolve Mode
     if (!s_nrsc5_config.mode_str) {
-        s_nrsc5_config.mode_str = "cs16-fm";
+        double active_freq = 0.0;
+
+        // The Fallback Shield
+        if (config->iq_file_metadata.rf_freq_provided) {
+            active_freq = config->iq_file_metadata.rf_freq_hz;
+        } else {
+            active_freq = config->sdr_general.rf_freq_hz;
+        }
+
+        // The Smart Context Check
+        if (active_freq >= 87500000.0 && active_freq <= 108000000.0) {
+            // FM Broadcast Band (87.5 MHz to 108 MHz)
+            s_nrsc5_config.mode_str = "cs16-fm";
+        } else if (active_freq >= 530000.0 && active_freq <= 1710000.0) {
+            // AM Broadcast Band (530 kHz to 1710 kHz)
+            s_nrsc5_config.mode_str = "cs16-am";
+        } else {
+            // Unrecognized frequency (or 0.0 Hz). Default to the most common mode.
+            s_nrsc5_config.mode_str = "cs16-fm";
+        }
+
         log_info("NRSC5: No mode specified, defaulting to '%s'.", s_nrsc5_config.mode_str);
     }
 
