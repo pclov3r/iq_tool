@@ -492,7 +492,7 @@ _execute_fft_filter_pass(
 
     unsigned int processed_frames = 0;
     unsigned int total_output_frames = 0;
-    while (total_frames_to_process - processed_frames >= block_size) {
+    while (total_frames_to_process >= processed_frames + block_size) {
         if (filter_type == FILTER_IMPL_FFT_SYMMETRIC) {
             fftfilt_crcf_execute((fftfilt_crcf)filter_object, (liquid_float_complex*)(scratch_buffer + processed_frames), (liquid_float_complex*)(output_buffer + total_output_frames));
         } else {
@@ -503,7 +503,7 @@ _execute_fft_filter_pass(
     }
 
     // EOF LOGIC: Flush the remaining tail of the file
-    if (is_last_chunk && (total_frames_to_process - processed_frames > 0)) {
+    if (is_last_chunk && (total_frames_to_process > processed_frames)) {
         unsigned int final_tail_length = total_frames_to_process - processed_frames;
 
         // Zero-pad the remaining samples up to block_size
