@@ -532,14 +532,7 @@ static bool nrsc5_output_initialize(ModuleContext* context) {
         return false;
     }
 
-    const char* mode_desc = "Unknown";
-    switch (s_nrsc5_config.active_mode) {
-        case NRSC5_MODE_CS16_FM: mode_desc = "cs16-fm (FM HD)"; break;
-        case NRSC5_MODE_CS16_AM: mode_desc = "cs16-am (AM HD)"; break;
-        case NRSC5_MODE_CU8_FM:  mode_desc = "cu8-fm (FM HD)"; break;
-        case NRSC5_MODE_CU8_AM:  mode_desc = "cu8-am (AM HD)"; break;
-    }
-    log_info("NRSC5: Using mode: %s", mode_desc);
+    log_info("NRSC5: Using mode: %s", s_nrsc5_config.mode_str);
 
     // Set Callback
     nrsc5_decoder->active_program = (unsigned int)s_nrsc5_config.program_id;
@@ -657,11 +650,15 @@ static bool nrsc5_output_validate_options(AppContext* app) {
         log_info("NRSC5: No mode specified, defaulting to '%s'.", s_nrsc5_config.mode_str);
     }
 
-    if (strcasecmp(s_nrsc5_config.mode_str, "cs16-fm") == 0) s_nrsc5_config.active_mode = NRSC5_MODE_CS16_FM;
-    else if (strcasecmp(s_nrsc5_config.mode_str, "cs16-am") == 0) s_nrsc5_config.active_mode = NRSC5_MODE_CS16_AM;
-    else if (strcasecmp(s_nrsc5_config.mode_str, "cu8-fm") == 0) s_nrsc5_config.active_mode = NRSC5_MODE_CU8_FM;
-    else if (strcasecmp(s_nrsc5_config.mode_str, "cu8-am") == 0) s_nrsc5_config.active_mode = NRSC5_MODE_CU8_AM;
-    else {
+    if (strcasecmp(s_nrsc5_config.mode_str, "cs16-fm") == 0) {
+        s_nrsc5_config.active_mode = NRSC5_MODE_CS16_FM;
+    } else if (strcasecmp(s_nrsc5_config.mode_str, "cs16-am") == 0) {
+        s_nrsc5_config.active_mode = NRSC5_MODE_CS16_AM;
+    } else if (strcasecmp(s_nrsc5_config.mode_str, "cu8-fm") == 0) {
+        s_nrsc5_config.active_mode = NRSC5_MODE_CU8_FM;
+    } else if (strcasecmp(s_nrsc5_config.mode_str, "cu8-am") == 0) {
+        s_nrsc5_config.active_mode = NRSC5_MODE_CU8_AM;
+    } else {
         log_error("NRSC5: Invalid mode '%s'. Valid modes: cs16-fm, cs16-am, cu8-fm, cu8-am.", s_nrsc5_config.mode_str);
         return false;
     }
@@ -728,14 +725,7 @@ static void nrsc5_output_get_summary_info(const ModuleContext* context, OutputSu
     (void)context;
     add_summary_item(info, "Output Type", "NRSC5 (HD Radio Player)");
 
-    const char* mode_desc = "Unknown";
-    switch (s_nrsc5_config.active_mode) {
-        case NRSC5_MODE_CS16_FM: mode_desc = "cs16-fm (FM HD)"; break;
-        case NRSC5_MODE_CS16_AM: mode_desc = "cs16-am (AM HD)"; break;
-        case NRSC5_MODE_CU8_FM:  mode_desc = "cu8-fm (FM HD)"; break;
-        case NRSC5_MODE_CU8_AM:  mode_desc = "cu8-am (AM HD)"; break;
-    }
-    add_summary_item(info, "Mode", "%s", mode_desc);
+    add_summary_item(info, "Mode", "%s", s_nrsc5_config.mode_str);
     add_summary_item(info, "Program", "%d (HD%d)", s_nrsc5_config.program_id, s_nrsc5_config.program_id + 1);
 }
 
