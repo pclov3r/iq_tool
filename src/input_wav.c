@@ -114,8 +114,8 @@ typedef struct {
 // Private data structure for the WAV input module
 typedef struct {
     SNDFILE *infile;
-    SdrMetadata sdr_info;
-    bool sdr_info_present;
+    SdrMetadata sdr_metadata;
+    bool sdr_metadata_present;
 
     // --- New Split-File State ---
     bool split_enabled;
@@ -699,14 +699,21 @@ static bool wav_input_initialize(ModuleContext* context) {
         app->module.source_info.frames = sfinfo.frames;
     }
 
-    init_sdr_metadata(&private_data->sdr_info);
-    private_data->sdr_info_present = parse_sdr_metadata_chunks(private_data->infile, &sfinfo, &private_data->sdr_info, &app->pipeline.setup_arena);
+    init_sdr_metadata(&private_data->sdr_metadata);
+    private_data->sdr_metadata_present = parse_sdr_metadata_chunks(private_data->infile, &sfinfo, &private_data->sdr_metadata, &app->pipeline.setup_arena);
 
     char basename_buffer[MAX_PATH_BUFFER];
     const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer), &app->pipeline.setup_arena);
     if (base_filename) {
-        bool filename_parsed = parse_sdr_metadata_from_filename(base_filename, &private_data->sdr_info);
-        private_data->sdr_info_present = private_data->sdr_info_present || filename_parsed;
+        bool filename_parsed = parse_sdr_metadata_from_filename(base_filename, &private_data->sdr_metadata);
+        private_data->sdr_metadata_present = private_data->sdr_metadata_present || filename_parsed;
+    }
+
+    // Push metadata to global AppConfig so output modules can use it
+    if (private_data->sdr_metadata.center_freq_hz_present) {
+        AppConfig* rw_config = (AppConfig*)context->config;
+        rw_config->iq_file_metadata.rf_freq_hz = private_data->sdr_metadata.center_freq_hz;
+        rw_config->iq_file_metadata.rf_freq_provided = true;
     }
 
     if (s_wav_config.center_target_hz_arg != 0.0f) {
@@ -716,14 +723,14 @@ static bool wav_input_initialize(ModuleContext* context) {
             return false;
         }
 
-        if (!private_data->sdr_info.center_freq_hz_present) {
+        if (!private_data->sdr_metadata.center_freq_hz_present) {
             log_error("Option --wav-center-target-freq was used, but the input WAV file does not contain the required center frequency metadata.");
             sf_close(private_data->infile);
             return false;
         }
 
         double target_freq = (double)s_wav_config.center_target_hz_arg;
-        app->dsp.nco_shift_hz = private_data->sdr_info.center_freq_hz - target_freq;
+        app->dsp.nco_shift_hz = private_data->sdr_metadata.center_freq_hz - target_freq;
     }
 
     return true;
@@ -932,36 +939,36 @@ static void wav_input_get_summary_info(const ModuleContext* context, InputSummar
     add_summary_item(info, "Input Format", "%s", format_str);
     add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
 
-    if (private_data->sdr_info_present) {
-        if (private_data->sdr_info.timestamp_unix_present) {
+    if (private_data->sdr_metadata_present) {
+        if (private_data->sdr_metadata.timestamp_unix_present) {
             char time_buf[64];
             struct tm time_info;
             #ifdef _WIN32
-                if (gmtime_s(&time_info, &private_data->sdr_info.timestamp_unix) == 0) {
+                if (gmtime_s(&time_info, &private_data->sdr_metadata.timestamp_unix) == 0) {
                     strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC", &time_info);
                     add_summary_item(info, "Timestamp", "%s", time_buf);
                 }
             #else
-                if (gmtime_r(&private_data->sdr_info.timestamp_unix, &time_info)) {
+                if (gmtime_r(&private_data->sdr_metadata.timestamp_unix, &time_info)) {
                     strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC", &time_info);
                     add_summary_item(info, "Timestamp", "%s", time_buf);
                 }
             #endif
-        } else if (private_data->sdr_info.timestamp_str_present) {
-            add_summary_item(info, "Timestamp", "%s", private_data->sdr_info.timestamp_str);
+        } else if (private_data->sdr_metadata.timestamp_str_present) {
+            add_summary_item(info, "Timestamp", "%s", private_data->sdr_metadata.timestamp_str);
         }
-        if (private_data->sdr_info.center_freq_hz_present) {
-            add_summary_item(info, "Center Frequency", "%.15g Hz", private_data->sdr_info.center_freq_hz);
+        if (private_data->sdr_metadata.center_freq_hz_present) {
+            add_summary_item(info, "Center Frequency", "%.15g Hz", private_data->sdr_metadata.center_freq_hz);
         }
-        if (private_data->sdr_info.software_name_present) {
+        if (private_data->sdr_metadata.software_name_present) {
             char sw_buf[128];
             snprintf(sw_buf, sizeof(sw_buf), "%s %s",
-                     private_data->sdr_info.software_name,
-                     private_data->sdr_info.software_version_present ? private_data->sdr_info.software_version : "");
+                     private_data->sdr_metadata.software_name,
+                     private_data->sdr_metadata.software_version_present ? private_data->sdr_metadata.software_version : "");
             add_summary_item(info, "SDR Software", "%s", sw_buf);
         }
-        if (private_data->sdr_info.radio_model_present) {
-            add_summary_item(info, "Radio Model", "%s", private_data->sdr_info.radio_model);
+        if (private_data->sdr_metadata.radio_model_present) {
+            add_summary_item(info, "Radio Model", "%s", private_data->sdr_metadata.radio_model);
         }
     }
 }

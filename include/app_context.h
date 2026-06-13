@@ -141,6 +141,12 @@ typedef struct AppConfig {
         } filter;
     } dsp;
 
+    // --- I/Q File Metadata (WAV/RAW/etc) ---
+    struct {
+        double rf_freq_hz;
+        bool   rf_freq_provided;
+    } iq_file_metadata;
+
     // --- SDR General ---
     struct {
         double rf_freq_hz;
