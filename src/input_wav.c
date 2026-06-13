@@ -612,6 +612,55 @@ const struct argparse_option* wav_input_get_cli_options(int* count) {
     return wav_cli_options;
 }
 
+// This is an ugly hack. It may remain for a while.
+// This is a "double-read" of the WAV metadata to bypass an architectural circular dependency.
+// Output modules (like NRSC5) need the frequency during Phase 1 (Validation) to set pipeline sample rates.
+// But the WAV module normally needs the Phase 2 pipeline memory arenas to parse the file safely.
+// We briefly spin up a temporary arena here to "probe" the file early so modules like NRSC5 don't run blind.
+static bool wav_input_validate_options(AppConfig* config) {
+    if (!config) return true;
+
+#ifdef _WIN32
+    const char* input_path = config->input.effective_path_utf8;
+#else
+    const char* input_path = config->input.effective_path;
+#endif
+
+    if (!input_path || input_path[0] == '\0') return true;
+
+    SF_INFO sfinfo;
+    memset(&sfinfo, 0, sizeof(sfinfo));
+    SNDFILE *infile = sf_open(input_path, SFM_READ, &sfinfo);
+    if (!infile) return true; // Let initialization handle the actual missing file error
+
+    // Create a temporary arena just for the probe
+    MemoryArena temp_arena;
+    mem_arena_init(&temp_arena, 1024 * 64);
+
+    SdrMetadata temp_metadata;
+    init_sdr_metadata(&temp_metadata);
+
+    // Call the exact existing metadata logic!
+    parse_sdr_metadata_chunks(infile, &sfinfo, &temp_metadata, &temp_arena);
+
+    if (!temp_metadata.center_freq_hz_present) {
+        char basename_buffer[MAX_PATH_BUFFER];
+        const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer), &temp_arena);
+        if (base_filename) {
+            parse_sdr_metadata_from_filename(base_filename, &temp_metadata);
+        }
+    }
+
+    if (temp_metadata.center_freq_hz_present) {
+        config->iq_file_metadata.rf_freq_hz = temp_metadata.center_freq_hz;
+        config->iq_file_metadata.rf_freq_provided = true;
+    }
+
+    mem_arena_destroy(&temp_arena);
+    sf_close(infile);
+    return true;
+}
+
 static bool wav_input_initialize(ModuleContext* context) {
     const AppConfig *config = context->config;
     AppContext* app = context->app;
@@ -980,7 +1029,7 @@ static InputModuleInterface s_wav_input_api = {
     .stop_sample_queue_push = wav_input_stop_sample_queue_push,
     .cleanup = wav_input_cleanup,
     .get_summary_info = wav_input_get_summary_info,
-    .validate_options = NULL,
+    .validate_options = wav_input_validate_options,
     .validate_generic_options = NULL,
     .pre_stream_iq_correction = wav_input_pre_stream_iq_correction,
 };
