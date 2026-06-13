@@ -644,16 +644,17 @@ static void nrsc5_output_cleanup(ModuleContext* context) {
 static bool nrsc5_output_validate_options(AppConfig* config) {
     // 1. Resolve Mode
     if (!s_nrsc5_config.mode_str) {
-        s_nrsc5_config.active_mode = NRSC5_MODE_CS16_FM; // Default
-    } else {
-        if (strcasecmp(s_nrsc5_config.mode_str, "cs16-fm") == 0) s_nrsc5_config.active_mode = NRSC5_MODE_CS16_FM;
-        else if (strcasecmp(s_nrsc5_config.mode_str, "cs16-am") == 0) s_nrsc5_config.active_mode = NRSC5_MODE_CS16_AM;
-        else if (strcasecmp(s_nrsc5_config.mode_str, "cu8-fm") == 0) s_nrsc5_config.active_mode = NRSC5_MODE_CU8_FM;
-        else if (strcasecmp(s_nrsc5_config.mode_str, "cu8-am") == 0) s_nrsc5_config.active_mode = NRSC5_MODE_CU8_AM;
-        else {
-            log_error("Invalid NRSC5 mode '%s'. Valid modes: cs16-fm, cs16-am, cu8-fm, cu8-am.", s_nrsc5_config.mode_str);
-            return false;
-        }
+        s_nrsc5_config.mode_str = "cs16-fm";
+        log_info("NRSC5: No mode specified, defaulting to '%s'.", s_nrsc5_config.mode_str);
+    }
+
+    if (strcasecmp(s_nrsc5_config.mode_str, "cs16-fm") == 0) s_nrsc5_config.active_mode = NRSC5_MODE_CS16_FM;
+    else if (strcasecmp(s_nrsc5_config.mode_str, "cs16-am") == 0) s_nrsc5_config.active_mode = NRSC5_MODE_CS16_AM;
+    else if (strcasecmp(s_nrsc5_config.mode_str, "cu8-fm") == 0) s_nrsc5_config.active_mode = NRSC5_MODE_CU8_FM;
+    else if (strcasecmp(s_nrsc5_config.mode_str, "cu8-am") == 0) s_nrsc5_config.active_mode = NRSC5_MODE_CU8_AM;
+    else {
+        log_error("NRSC5: Invalid mode '%s'. Valid modes: cs16-fm, cs16-am, cu8-fm, cu8-am.", s_nrsc5_config.mode_str);
+        return false;
     }
 
     // 2. Enforce Format and Rate based on Mode
@@ -687,7 +688,13 @@ static bool nrsc5_output_validate_options(AppConfig* config) {
     }
 
     if (config->baseband_sample_format.format != required_format) {
-        log_warn("NRSC5 mode '%s' requires '%s' baseband sample format. Automatically configuring.",
+        if (config->baseband_sample_format.provided) {
+            log_error("NRSC5: Invalid baseband format '%s'. The selected mode requires the '%s' sample format.",
+                     get_format_info_by_enum(config->baseband_sample_format.format)->name_str,
+                     get_format_info_by_enum(required_format)->name_str);
+            return false;
+        }
+        log_info("NRSC5: Mode '%s' requires '%s' baseband sample format. Automatically configuring.",
                  s_nrsc5_config.mode_str,
                  get_format_info_by_enum(required_format)->name_str);
         config->baseband_sample_format.format = required_format;
@@ -696,12 +703,12 @@ static bool nrsc5_output_validate_options(AppConfig* config) {
 
     // 3. Validate Program ID
     if (s_nrsc5_config.program_id == -1) {
-        log_error("Missing required option: --nrsc5-program <0-7>.");
+        log_error("NRSC5: Missing required option: --nrsc5-program <0-7>.");
         return false;
     }
 
     if (s_nrsc5_config.program_id < 0 || s_nrsc5_config.program_id > 7) {
-        log_error("Invalid NRSC5 program ID %d. Must be 0-7.", s_nrsc5_config.program_id);
+        log_error("NRSC5: Invalid program ID %d. Must be 0-7.", s_nrsc5_config.program_id);
         return false;
     }
 
