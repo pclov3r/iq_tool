@@ -247,7 +247,8 @@ static void deemphasis_destroy(DeEmphasis* de) {
 
 // --- Module Interface Implementation ---
 
-static bool wfm_output_validate_options(AppConfig* config) {
+static bool wfm_output_validate_options(AppContext* app) {
+    AppConfig* config = app ? (AppConfig*)app->config : NULL;
     // Resolve the user's choice from the CLI flag into our clean enum state.
     if (s_wfm_config.use_world_rds) {
         s_wfm_config.rds_standard = RDS_STANDARD_RDS;

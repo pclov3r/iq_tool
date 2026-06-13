@@ -18,6 +18,7 @@
 // and improves compile times.
 struct AppConfig;
 struct MemoryArena;
+struct AppContext;
 
 // --- Function Declarations ---
 
@@ -30,7 +31,7 @@ struct MemoryArena;
  * @param arena Pointer to the memory arena for setup-time allocations.
  * @return true on successful parsing, false on a syntax error or an invalid value format.
  */
-bool cli_parse(int argc, char *argv[], struct AppConfig *config, struct MemoryArena* arena);
+bool cli_parse(int argc, char *argv[], struct AppContext *app);
 
 /**
  * @brief Prints detailed usage instructions for the application to stderr.

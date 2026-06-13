@@ -112,7 +112,7 @@ const struct argparse_option* airspy_input_get_cli_options(int* count) {
 }
 
 static void airspy_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
-static bool airspy_input_validate_options(AppConfig* config);
+static bool airspy_input_validate_options(AppContext* app);
 static bool airspy_input_validate_generic_options(const AppConfig* config);
 
 static int airspy_input_buffered_stream_callback(airspy_transfer* transfer);
@@ -125,7 +125,8 @@ static bool airspy_input_validate_generic_options(const AppConfig* config) {
     return true;
 }
 
-static bool airspy_input_validate_options(AppConfig* config) {
+static bool airspy_input_validate_options(AppContext* app) {
+    AppConfig* config = app ? (AppConfig*)app->config : NULL;
     // Gain Mode Validation
     if (s_airspy_config.gain_mode) {
         s_airspy_config.gain_mode_provided = true;

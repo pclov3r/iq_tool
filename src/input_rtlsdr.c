@@ -68,7 +68,7 @@ const struct argparse_option* rtlsdr_input_get_cli_options(int* count) {
 }
 
 static void rtlsdr_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
-static bool rtlsdr_input_validate_options(AppConfig* config);
+static bool rtlsdr_input_validate_options(AppContext* app);
 static bool rtlsdr_input_validate_generic_options(const AppConfig* config);
 
 static int rtlsdr_find_nearest_gain(rtlsdr_dev_t *dev,
@@ -123,7 +123,8 @@ static bool rtlsdr_input_validate_generic_options(const AppConfig* config) {
     return true;
 }
 
-static bool rtlsdr_input_validate_options(AppConfig* config) {
+static bool rtlsdr_input_validate_options(AppContext* app) {
+    AppConfig* config = app ? (AppConfig*)app->config : NULL;
     if (s_rtlsdr_config.rtlsdr_gain_db_arg != 0.0f) {
         s_rtlsdr_config.gain = (int)(s_rtlsdr_config.rtlsdr_gain_db_arg * 10.0f);
         s_rtlsdr_config.gain_provided = true;

@@ -641,7 +641,8 @@ static void nrsc5_output_cleanup(ModuleContext* context) {
     }
 }
 
-static bool nrsc5_output_validate_options(AppConfig* config) {
+static bool nrsc5_output_validate_options(AppContext* app) {
+    AppConfig* config = app ? (AppConfig*)app->config : NULL;
     // 1. Resolve Mode
     if (!s_nrsc5_config.mode_str) {
         double active_freq = 0.0;

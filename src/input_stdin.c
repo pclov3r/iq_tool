@@ -51,7 +51,8 @@ const struct argparse_option* stdin_input_get_cli_options(int* count) {
 
 // --- Module Implementation ---
 
-static bool stdin_input_validate_options(AppConfig* config) {
+static bool stdin_input_validate_options(AppContext* app) {
+    AppConfig* config = app ? (AppConfig*)app->config : NULL;
     (void)config;
     if (s_stdin_config.stdin_input_sample_rate_hz_arg > 0.0f) {
         s_stdin_config.sample_rate_hz = (double)s_stdin_config.stdin_input_sample_rate_hz_arg;

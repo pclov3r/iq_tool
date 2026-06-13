@@ -72,7 +72,7 @@ const struct argparse_option* hackrf_input_get_cli_options(int* count) {
 }
 
 static void hackrf_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
-static bool hackrf_input_validate_options(AppConfig* config);
+static bool hackrf_input_validate_options(AppContext* app);
 static bool hackrf_input_validate_generic_options(const AppConfig* config);
 
 static int hackrf_input_buffered_stream_callback(hackrf_transfer* transfer);
@@ -85,7 +85,8 @@ static bool hackrf_input_validate_generic_options(const AppConfig* config) {
     return true;
 }
 
-static bool hackrf_input_validate_options(AppConfig* config) {
+static bool hackrf_input_validate_options(AppContext* app) {
+    AppConfig* config = app ? (AppConfig*)app->config : NULL;
     if (s_hackrf_config.hackrf_lna_gain_arg != HACKRF_DEFAULT_LNA_GAIN) {
         int lna_gain = s_hackrf_config.hackrf_lna_gain_arg;
         if (lna_gain < 0) lna_gain = 0;

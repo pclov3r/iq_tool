@@ -28,7 +28,8 @@
 
 // --- Shared Implementation ---
 
-bool wav_common_validate_options(AppConfig* config) {
+bool wav_common_validate_options(AppContext* app) {
+    AppConfig* config = app ? (AppConfig*)app->config : NULL;
     // This logic is identical for both WAV and RF64.
     if (config->output.sample_format != CS16 && config->output.sample_format != CU8 &&
         config->output.sample_format != CS8 && config->output.sample_format != CS24 &&

@@ -67,10 +67,11 @@ const struct argparse_option* rawfile_input_get_cli_options(int* count) {
 }
 
 static void rawfile_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
-static bool rawfile_input_validate_options(AppConfig* config);
+static bool rawfile_input_validate_options(AppContext* app);
 static bool rawfile_input_pre_stream_iq_correction(ModuleContext* context);
 
-static bool rawfile_input_validate_options(AppConfig* config) {
+static bool rawfile_input_validate_options(AppContext* app) {
+    AppConfig* config = app ? (AppConfig*)app->config : NULL;
     (void)config;
     if (s_rawfile_config.raw_file_sample_rate_hz_arg > 0.0f) {
         s_rawfile_config.sample_rate_hz = (double)s_rawfile_config.raw_file_sample_rate_hz_arg;

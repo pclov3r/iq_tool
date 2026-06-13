@@ -221,7 +221,7 @@ void spyserver_client_set_default_config(struct AppConfig* config) {
 // --- Function Prototypes ---
 static void* spyserver_client_input_producer_thread(void* arg);
 static void spyserver_client_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
-static bool spyserver_client_input_validate_options(AppConfig* config);
+static bool spyserver_client_input_validate_options(AppContext* app);
 
 // --- The InputModuleInterface V-Table ---
 
@@ -272,7 +272,8 @@ static bool send_setting(SpyServerClientContext* client, uint32_t setting, uint3
 }
 
 // --- Validation Function ---
-static bool spyserver_client_input_validate_options(AppConfig* config) {
+static bool spyserver_client_input_validate_options(AppContext* app) {
+    AppConfig* config = app ? (AppConfig*)app->config : NULL;
     (void)config;
     if (s_spyserver_client_config.hostname == NULL) {
         log_error("Missing required argument: --spyserver-client-host <address>");

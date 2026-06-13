@@ -149,7 +149,7 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    if (!cli_parse(argc, argv, &config, &app.pipeline.setup_arena)) {
+    if (!cli_parse(argc, argv, &app)) {
         goto cleanup;
     }
 
@@ -312,6 +312,7 @@ static void close_output_module(AppConfig *config, AppContext* app) {
 
 static void initialize_resource_struct(AppConfig *config, AppContext* app) {
     memset(app, 0, sizeof(AppContext));
+    app->config = config;
 
     // Set global DSP defaults
     config->dsp.input_gain = 1.0f;

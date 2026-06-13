@@ -114,6 +114,7 @@ typedef struct {
 // Private data structure for the WAV input module
 typedef struct {
     SNDFILE *infile;
+    SF_INFO sfinfo;
     SdrMetadata sdr_metadata;
     bool sdr_metadata_present;
 
@@ -612,12 +613,8 @@ const struct argparse_option* wav_input_get_cli_options(int* count) {
     return wav_cli_options;
 }
 
-// This is an ugly hack. It may remain for a while.
-// This is a "double-read" of the WAV metadata to bypass an architectural circular dependency.
-// Output modules (like NRSC5) need the frequency during Phase 1 (Validation) to set pipeline sample rates.
-// But the WAV module normally needs the Phase 2 pipeline memory arenas to parse the file safely.
-// We briefly spin up a temporary arena here to "probe" the file early so modules like NRSC5 don't run blind.
-static bool wav_input_validate_options(AppConfig* config) {
+static bool wav_input_validate_options(AppContext* app) {
+    AppConfig* config = app ? (AppConfig*)app->config : NULL;
     if (!config) return true;
 
 #ifdef _WIN32
@@ -628,36 +625,67 @@ static bool wav_input_validate_options(AppConfig* config) {
 
     if (!input_path || input_path[0] == '\0') return true;
 
-    SF_INFO sfinfo;
-    memset(&sfinfo, 0, sizeof(sfinfo));
-    SNDFILE *infile = sf_open(input_path, SFM_READ, &sfinfo);
-    if (!infile) return true; // Let initialization handle the actual missing file error
+    WavInputContext* private_data = (WavInputContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(WavInputContext), true);
+    if (!private_data) return false;
+    app->module.input_private_data = private_data;
 
-    // Create a temporary arena just for the probe
-    MemoryArena temp_arena;
-    mem_arena_init(&temp_arena, 1024 * 64);
+    // Set up default file list
+    private_data->split_enabled = s_wav_config.wav_read_split;
+    private_data->repeat_enabled = s_wav_config.wav_repeat;
+    private_data->current_file_index = 0;
+    private_data->total_files = 1;
+    private_data->file_list = (char**)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(char*) * 1, true);
+#ifdef _WIN32
+    private_data->file_list[0] = arena_strdup(&app->pipeline.setup_arena, input_path);
+#else
+    private_data->file_list[0] = arena_strdup(&app->pipeline.setup_arena, input_path);
+#endif
 
-    SdrMetadata temp_metadata;
-    init_sdr_metadata(&temp_metadata);
-
-    // Call the exact existing metadata logic!
-    parse_sdr_metadata_chunks(infile, &sfinfo, &temp_metadata, &temp_arena);
-
-    if (!temp_metadata.center_freq_hz_present) {
-        char basename_buffer[MAX_PATH_BUFFER];
-        const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer), &temp_arena);
-        if (base_filename) {
-            parse_sdr_metadata_from_filename(base_filename, &temp_metadata);
+    // Run directory prober if requested
+    if (private_data->split_enabled) {
+        if (!_probe_split_sequence(private_data, config, app, &app->pipeline.setup_arena)) {
+            return false;
         }
     }
 
-    if (temp_metadata.center_freq_hz_present) {
-        config->iq_file_metadata.rf_freq_hz = temp_metadata.center_freq_hz;
+    // Open file
+#ifdef _WIN32
+    log_info("Opening WAV input file: %s", private_data->file_list[0]);
+    memset(&private_data->sfinfo, 0, sizeof(SF_INFO));
+    private_data->infile = sf_wchar_open(config->input.effective_path_w, SFM_READ, &private_data->sfinfo);
+#else
+    log_info("Opening WAV input file: %s", private_data->file_list[0]);
+    memset(&private_data->sfinfo, 0, sizeof(SF_INFO));
+    private_data->infile = sf_open(private_data->file_list[0], SFM_READ, &private_data->sfinfo);
+#endif
+
+    if (!private_data->infile) {
+        log_error("Error opening input file: %s", sf_strerror(private_data->infile));
+        return false;
+    }
+
+    if (private_data->sfinfo.channels != 1 && private_data->sfinfo.channels != 2) {
+        log_error("Error: Input file must have 1 (Mono) or 2 (I/Q) channels, but found %d.", private_data->sfinfo.channels);
+        sf_close(private_data->infile);
+        private_data->infile = NULL;
+        return false;
+    }
+
+    init_sdr_metadata(&private_data->sdr_metadata);
+    private_data->sdr_metadata_present = parse_sdr_metadata_chunks(private_data->infile, &private_data->sfinfo, &private_data->sdr_metadata, &app->pipeline.setup_arena);
+
+    char basename_buffer[MAX_PATH_BUFFER];
+    const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer), &app->pipeline.setup_arena);
+    if (base_filename) {
+        bool filename_parsed = parse_sdr_metadata_from_filename(base_filename, &private_data->sdr_metadata);
+        private_data->sdr_metadata_present = private_data->sdr_metadata_present || filename_parsed;
+    }
+
+    if (private_data->sdr_metadata.center_freq_hz_present) {
+        config->iq_file_metadata.rf_freq_hz = private_data->sdr_metadata.center_freq_hz;
         config->iq_file_metadata.rf_freq_provided = true;
     }
 
-    mem_arena_destroy(&temp_arena);
-    sf_close(infile);
     return true;
 }
 
@@ -665,59 +693,15 @@ static bool wav_input_initialize(ModuleContext* context) {
     const AppConfig *config = context->config;
     AppContext* app = context->app;
 
-    WavInputContext* private_data = (WavInputContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(WavInputContext), true);
-    if (!private_data) {
-        return false;
-    }
-    app->module.input_private_data = private_data;
-
-    // Set up default file list (just the single input file)
-    private_data->split_enabled = s_wav_config.wav_read_split;
-    private_data->repeat_enabled = s_wav_config.wav_repeat;
-    private_data->current_file_index = 0;
-    private_data->total_files = 1;
-    private_data->file_list = (char**)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(char*) * 1, true);
-    #ifdef _WIN32
-        private_data->file_list[0] = arena_strdup(&app->pipeline.setup_arena, config->input.effective_path_utf8);
-    #else
-        private_data->file_list[0] = arena_strdup(&app->pipeline.setup_arena, config->input.effective_path);
-    #endif
-
-    // Run the directory prober if split reading is requested by the user
-    if (private_data->split_enabled) {
-        if (!_probe_split_sequence(private_data, config, app, &app->pipeline.setup_arena)) {
-            return false;
-        }
-    }
-
-    // Open the active file handle
-    #ifdef _WIN32
-        log_info("Opening WAV input file: %s", private_data->file_list[0]);
-        SF_INFO sfinfo;
-        memset(&sfinfo, 0, sizeof(SF_INFO));
-        private_data->infile = sf_wchar_open(config->input.effective_path_w, SFM_READ, &sfinfo);
-    #else
-        log_info("Opening WAV input file: %s", private_data->file_list[0]);
-        SF_INFO sfinfo;
-        memset(&sfinfo, 0, sizeof(SF_INFO));
-        private_data->infile = sf_open(private_data->file_list[0], SFM_READ, &sfinfo);
-    #endif
-
-    if (!private_data->infile) {
-        log_error("Error opening input file: %s", sf_strerror(private_data->infile));
+    WavInputContext* private_data = (WavInputContext*)app->module.input_private_data;
+    if (!private_data || !private_data->infile) {
+        // If validate_options failed or didn't run, we can't initialize
         return false;
     }
 
-    if (sfinfo.channels != 1 && sfinfo.channels != 2) {
-        log_error("Error: Input file must have 1 (Mono) or 2 (I/Q) channels, but found %d.", sfinfo.channels);
-        sf_close(private_data->infile);
-        private_data->infile = NULL;
-        return false;
-    }
+    private_data->is_real = (private_data->sfinfo.channels == 1);
 
-    private_data->is_real = (sfinfo.channels == 1);
-
-    int sf_subtype = (sfinfo.format & SF_FORMAT_SUBMASK);
+    int sf_subtype = (private_data->sfinfo.format & SF_FORMAT_SUBMASK);
     switch (sf_subtype) {
         case SF_FORMAT_PCM_16: app->module.input_format = private_data->is_real ? S16 : CS16; break;
         case SF_FORMAT_PCM_U8: app->module.input_format = private_data->is_real ? U8 : CU8; break;
@@ -734,35 +718,17 @@ static bool wav_input_initialize(ModuleContext* context) {
 
     app->module.input_bytes_per_iq_sample = get_bytes_per_iq_sample(app->module.input_format);
 
-    if (sfinfo.samplerate <= 0) {
-        log_error("Error: Invalid input sample rate (%d Hz).", sfinfo.samplerate);
+    if (private_data->sfinfo.samplerate <= 0) {
+        log_error("Error: Invalid input sample rate (%d Hz).", private_data->sfinfo.samplerate);
         sf_close(private_data->infile);
         private_data->infile = NULL;
         return false;
     }
 
-    app->module.source_info.sample_rate = sfinfo.samplerate;
+    app->module.source_info.sample_rate = private_data->sfinfo.samplerate;
 
-    // Only overwrite frames if split mode didn't already calculate it
     if (!private_data->split_enabled) {
-        app->module.source_info.frames = sfinfo.frames;
-    }
-
-    init_sdr_metadata(&private_data->sdr_metadata);
-    private_data->sdr_metadata_present = parse_sdr_metadata_chunks(private_data->infile, &sfinfo, &private_data->sdr_metadata, &app->pipeline.setup_arena);
-
-    char basename_buffer[MAX_PATH_BUFFER];
-    const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer), &app->pipeline.setup_arena);
-    if (base_filename) {
-        bool filename_parsed = parse_sdr_metadata_from_filename(base_filename, &private_data->sdr_metadata);
-        private_data->sdr_metadata_present = private_data->sdr_metadata_present || filename_parsed;
-    }
-
-    // Push metadata to global AppConfig so output modules can use it
-    if (private_data->sdr_metadata.center_freq_hz_present) {
-        AppConfig* rw_config = (AppConfig*)context->config;
-        rw_config->iq_file_metadata.rf_freq_hz = private_data->sdr_metadata.center_freq_hz;
-        rw_config->iq_file_metadata.rf_freq_provided = true;
+        app->module.source_info.frames = private_data->sfinfo.frames;
     }
 
     if (s_wav_config.center_target_hz_arg != 0.0f) {

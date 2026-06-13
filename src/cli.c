@@ -39,7 +39,7 @@ static const char** g_original_argv = NULL;
 #define MAX_TOTAL_OPTIONS (MAX_STATIC_OPTIONS + MAX_PRESETS)
 
 // --- Forward Declarations ---
-static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const char** non_opt_argv, MemoryArena* arena);
+static bool validate_and_process_args(AppContext* app, int non_opt_argc, const char** non_opt_argv);
 static int version_cb(struct argparse *self, const struct argparse_option *option);
 static int build_cli_options(struct argparse_option* options_buffer, int max_options, AppConfig* config, MemoryArena* arena, const char* active_input_type, const char* active_output_type);
 static void apply_preset_if_requested(AppConfig* config, MemoryArena* arena);
@@ -159,7 +159,9 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
     return total_opts;
 }
 
-bool cli_parse(int argc, char *argv[], AppConfig *config, MemoryArena* arena) {
+bool cli_parse(int argc, char *argv[], AppContext *app) {
+    AppConfig *config = (AppConfig*)app->config;
+    MemoryArena *arena = &app->pipeline.setup_arena;
     g_original_argc = argc;
     g_original_argv = (const char**)argv;
 
@@ -193,9 +195,7 @@ bool cli_parse(int argc, char *argv[], AppConfig *config, MemoryArena* arena) {
     // Apply presets first, so user flags can override them.
     apply_preset_if_requested(config, arena);
 
-    if (!validate_and_process_args(config, non_opt_argc, argparse.out, arena)) {
-        return false;
-    }
+    if (!validate_and_process_args(app, non_opt_argc, argparse.out)) return false;
 
     return true;
 }
@@ -283,7 +283,9 @@ static bool resolve_file_paths(AppConfig *config, MemoryArena* arena) {
     return true;
 }
 
-static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const char** non_opt_argv, MemoryArena* arena) {
+static bool validate_and_process_args(AppContext *app, int non_opt_argc, const char** non_opt_argv) {
+    AppConfig* config = (AppConfig*)app->config;
+    MemoryArena* arena = &app->pipeline.setup_arena;
     if (!config->input.type_name) {
         log_error("Missing required argument: --input <type>");
         return false;
@@ -354,14 +356,14 @@ static bool validate_and_process_args(AppConfig *config, int non_opt_argc, const
 
     // --- Final Validation Cascade ---
     if (!validate_output_type_and_sample_format(config)) return false;
-    if (selected_module_api->validate_options && !selected_module_api->validate_options(config)) return false;
+    if (selected_module_api->validate_options && !selected_module_api->validate_options(app)) return false;
     if (selected_module_api->validate_generic_options && !selected_module_api->validate_generic_options(config)) return false;
 
     const Module* out_mod_val = module_get(config->output.module_name, MODULE_TYPE_OUTPUT, arena);
     if (out_mod_val) {
         OutputModuleInterface* out_api = (OutputModuleInterface*)out_mod_val->api;
         if (out_api && out_api->validate_options) {
-            if (!out_api->validate_options(config)) return false;
+            if (!out_api->validate_options(app)) return false;
         }
     }
 

@@ -94,7 +94,8 @@ static struct {
 
 // --- Module Interface ---
 
-static bool nfm_output_validate_options(AppConfig* config) {
+static bool nfm_output_validate_options(AppContext* app) {
+    AppConfig* config = app ? (AppConfig*)app->config : NULL;
     config->baseband_sample_format.format = CF32;
 
     // 1. Default to NFM_DEFAULT_INPUT_RATE (48k) if not specified

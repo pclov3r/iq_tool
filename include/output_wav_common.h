@@ -34,7 +34,7 @@ typedef struct {
 /**
  * @brief Validates that the selected sample format is compatible with WAV output.
  */
-bool wav_common_validate_options(struct AppConfig* config);
+bool wav_common_validate_options(struct AppContext* app);
 
 /**
  * @brief The core initialization logic for opening a WAV or RF64 file.

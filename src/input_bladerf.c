@@ -224,7 +224,7 @@ static void* bladerf_rx_stream_callback(struct bladerf *dev, struct bladerf_stre
 // Redefine bladerf_stream macro after struct declarations
 #if defined(_WIN32) && defined(WITH_BLADERF)
 #endif
-static bool bladerf_input_validate_options(AppConfig* config);
+static bool bladerf_input_validate_options(AppContext* app);
 static bool bladerf_input_validate_generic_options(const AppConfig* config);
 
 static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev);
@@ -239,7 +239,8 @@ static bool bladerf_input_validate_generic_options(const AppConfig* config) {
     return true;
 }
 
-static bool bladerf_input_validate_options(AppConfig* config) {
+static bool bladerf_input_validate_options(AppContext* app) {
+    AppConfig* config = app ? (AppConfig*)app->config : NULL;
     if (s_bladerf_config.bladerf_gain_arg != 0) {
         s_bladerf_config.gain = (int)s_bladerf_config.bladerf_gain_arg;
         s_bladerf_config.gain_provided = true;

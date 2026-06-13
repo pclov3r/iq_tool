@@ -128,7 +128,8 @@ static struct {
 
 // --- Module Interface Implementation ---
 
-static bool am_output_validate_options(AppConfig* config) {
+static bool am_output_validate_options(AppContext* app) {
+    AppConfig* config = app ? (AppConfig*)app->config : NULL;
     config->output.sample_format = CF32;
 
     if (config->baseband_sample_rate.rate_hz == 0.0) {

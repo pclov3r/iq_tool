@@ -72,7 +72,7 @@ const struct argparse_option* airspyhf_input_get_cli_options(int* count) {
 }
 
 static void airspyhf_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
-static bool airspyhf_input_validate_options(AppConfig* config);
+static bool airspyhf_input_validate_options(AppContext* app);
 static bool airspyhf_input_validate_generic_options(const AppConfig* config);
 
 static int airspyhf_input_buffered_stream_callback(airspyhf_transfer_t* transfer);
@@ -85,7 +85,8 @@ static bool airspyhf_input_validate_generic_options(const AppConfig* config) {
     return true;
 }
 
-static bool airspyhf_input_validate_options(AppConfig* config) {
+static bool airspyhf_input_validate_options(AppContext* app) {
+    AppConfig* config = app ? (AppConfig*)app->config : NULL;
     // AGC Mode Validation
     if (s_airspyhf_config.agc_mode) {
         s_airspyhf_config.agc_mode_provided = true;

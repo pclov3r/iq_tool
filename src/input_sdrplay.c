@@ -257,7 +257,7 @@ const struct argparse_option* sdrplay_input_get_cli_options(int* count) {
 }
 
 static void sdrplay_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
-static bool sdrplay_input_validate_options(AppConfig* config);
+static bool sdrplay_input_validate_options(AppContext* app);
 static bool sdrplay_input_validate_generic_options(const AppConfig* config);
 
 static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz);
@@ -270,7 +270,8 @@ static bool sdrplay_input_validate_generic_options(const AppConfig* config) {
     return true;
 }
 
-static bool sdrplay_input_validate_options(AppConfig* config) {
+static bool sdrplay_input_validate_options(AppContext* app) {
+    AppConfig* config = app ? (AppConfig*)app->config : NULL;
     if (s_sdrplay_config.lna_state != 0) {
         s_sdrplay_config.lna_state_provided = true;
     } else {

@@ -133,7 +133,7 @@ typedef struct InputModuleInterface {
      * @param config A pointer to the application configuration, which can be modified.
      * @return true if the options are valid, false otherwise.
      */
-    bool (*validate_options)(struct AppConfig* config);
+    bool (*validate_options)(struct AppContext* app);
 
     /**
      * @brief Validates generic options (e.g., --sdr-rf-freq) in the context of this module.
@@ -153,7 +153,7 @@ typedef struct InputModuleInterface {
  */
 typedef struct OutputModuleInterface {
     // Validates module-specific options (e.g., WAV only supports cs16/cu8)
-    bool (*validate_options)(struct AppConfig* config);
+    bool (*validate_options)(struct AppContext* app);
 
     // Returns any CLI options specific to this output format
     const struct argparse_option* (*get_cli_options)(int* count);
