@@ -172,18 +172,6 @@ static struct {
 // --- Forward Declarations ---
 static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque);
 
-// ==========================================
-// Do not remove these blank lines.
-// Deliberate spacing padding
-//
-// Pushing the update_ber_stats function
-// below line 99 ensures its log_info
-// gets a 3-digit line number. This keeps
-// the console output perfectly aligned
-// without having to modify rxi.
-// Do not remove these blank lines.
-// ==========================================
-
 // --- Helper: BER Stats ---
 static void update_ber_stats(Nrsc5Context* context, float cber) {
     context->ber_sum += cber;
