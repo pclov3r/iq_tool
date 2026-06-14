@@ -182,8 +182,11 @@ static bool airspy_input_validate_options(AppContext* app) {
     if (s_airspy_config.sample_format) {
         s_airspy_config.sample_format_provided = true;
         if (strcasecmp(s_airspy_config.sample_format, "cf32") != 0 &&
-            strcasecmp(s_airspy_config.sample_format, "cs16") != 0) {
-            log_error("Invalid --airspy-sample-format '%s'. Must be 'cf32' or 'cs16'.", s_airspy_config.sample_format);
+            strcasecmp(s_airspy_config.sample_format, "cs16") != 0 &&
+            strcasecmp(s_airspy_config.sample_format, "f32") != 0 &&
+            strcasecmp(s_airspy_config.sample_format, "s16") != 0 &&
+            strcasecmp(s_airspy_config.sample_format, "u16") != 0) {
+            log_error("Invalid --airspy-sample-format '%s'. Must be 'cf32', 'cs16', 'f32', 's16', or 'u16'.", s_airspy_config.sample_format);
             return false;
         }
     }
@@ -241,8 +244,6 @@ static bool airspy_input_validate_options(AppContext* app) {
 static int airspy_input_buffered_stream_callback(airspy_transfer* transfer) {
     AppContext* app = (AppContext*)transfer->ctx;
 
-    // --- HEARTBEAT ---
-
     if (is_shutdown_requested() || app->stats.error_occurred) {
         return -1;
     }
@@ -255,28 +256,29 @@ static int airspy_input_buffered_stream_callback(airspy_transfer* transfer) {
     switch (transfer->sample_type) {
         case AIRSPY_SAMPLE_INT16_IQ:
             // When packing is enabled, the library unpacks to INT16_IQ automatically
-            if (!app->module.queue_samples(app->module.pipeline_context, transfer->samples, transfer->sample_count, CS16)) {
-        /* Warning handled internally by pipeline */
-    }
+            if (!app->module.queue_samples(app->module.pipeline_context, transfer->samples, transfer->sample_count, CS16)) {}
             break;
 
         case AIRSPY_SAMPLE_FLOAT32_IQ:
-            if (!app->module.queue_samples(app->module.pipeline_context, transfer->samples, transfer->sample_count, CF32)) {
-        /* Warning handled internally by pipeline */
-    }
+            if (!app->module.queue_samples(app->module.pipeline_context, transfer->samples, transfer->sample_count, CF32)) {}
+            break;
+
+        case AIRSPY_SAMPLE_FLOAT32_REAL:
+            if (!app->module.queue_samples(app->module.pipeline_context, transfer->samples, transfer->sample_count, F32)) {}
+            break;
+
+        case AIRSPY_SAMPLE_INT16_REAL:
+            if (!app->module.queue_samples(app->module.pipeline_context, transfer->samples, transfer->sample_count, S16)) {}
+            break;
+
+        case AIRSPY_SAMPLE_UINT16_REAL:
+            if (!app->module.queue_samples(app->module.pipeline_context, transfer->samples, transfer->sample_count, U16)) {}
             break;
 
         case AIRSPY_SAMPLE_RAW:
             // We force INT16_IQ mode during initialization, so we should not see RAW here.
             // If we do, it implies the library failed to unpack or configuration is wrong.
             handle_fatal_thread_error("Airspy unexpected RAW sample type. Library unpacking config error?", app);
-            return -1;
-
-        case AIRSPY_SAMPLE_INT16_REAL:
-        case AIRSPY_SAMPLE_FLOAT32_REAL:
-        case AIRSPY_SAMPLE_UINT16_REAL:
-            // Real (non-IQ) sample formats are not supported by our pipeline
-            handle_fatal_thread_error("Airspy real-only sample format not supported. Pipeline requires I/Q samples.", app);
             return -1;
 
         default:
@@ -469,9 +471,24 @@ static bool airspy_input_initialize(ModuleContext* context) {
             private_data->sample_type = AIRSPY_SAMPLE_INT16_IQ;
         }
     } else if (s_airspy_config.sample_format_provided) {
+        // --- Complex (IQ) Formats ---
         if (strcasecmp(s_airspy_config.sample_format, "cf32") == 0) {
             private_data->sample_type = AIRSPY_SAMPLE_FLOAT32_IQ;
             app->module.input_format = CF32;
+        } else if (strcasecmp(s_airspy_config.sample_format, "cs16") == 0) {
+            private_data->sample_type = AIRSPY_SAMPLE_INT16_IQ;
+            app->module.input_format = CS16;
+        }
+        // --- Real (IF) Formats ---
+        else if (strcasecmp(s_airspy_config.sample_format, "f32") == 0) {
+            private_data->sample_type = AIRSPY_SAMPLE_FLOAT32_REAL;
+            app->module.input_format = F32;
+        } else if (strcasecmp(s_airspy_config.sample_format, "s16") == 0) {
+            private_data->sample_type = AIRSPY_SAMPLE_INT16_REAL;
+            app->module.input_format = S16;
+        } else if (strcasecmp(s_airspy_config.sample_format, "u16") == 0) {
+            private_data->sample_type = AIRSPY_SAMPLE_UINT16_REAL;
+            app->module.input_format = U16;
         }
     }
 
