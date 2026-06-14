@@ -790,6 +790,7 @@ static bool sdrplay_input_initialize(ModuleContext* context) {
     }
 
     if (s_sdrplay_config.if_gain_db_provided) {
+        chParams->tunerParams.gain.minGr = sdrplay_api_EXTENDED_MIN_GR;
         chParams->tunerParams.gain.gRdB = -s_sdrplay_config.if_gain_db;
     }
 
