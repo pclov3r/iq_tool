@@ -129,15 +129,37 @@ size_t audio_output_write(AudioOutputContext* context, const void* pcm_data, siz
         return bytes;
     }
 
-    // --- CONDITIONAL BACKPRESSURE ---
-    if (mode == PIPELINE_MODE_SYNCHRONOUS_PULL) {
-        const size_t THROTTLE_THRESHOLD = (size_t)(context->buffer_size * 0.8);
-        ring_buffer_wait_for_threshold(context->audio_ring_buffer, THROTTLE_THRESHOLD);
-        if (is_shutdown_requested()) return 0;
+    const uint8_t* ptr = (const uint8_t*)pcm_data;
+    size_t bytes_left = bytes;
+    size_t safe_capacity = (context->buffer_size > 0) ? context->buffer_size - 1 : 0;
+    
+    // Cap chunk size to 50% of buffer capacity to guarantee it fits safely
+    size_t max_chunk = safe_capacity / 2;
+    if (max_chunk == 0) max_chunk = 1;
+
+    while (bytes_left > 0) {
+        if (is_shutdown_requested()) break;
+
+        size_t chunk_size = (bytes_left > max_chunk) ? max_chunk : bytes_left;
+
+        // --- CONDITIONAL BACKPRESSURE ---
+        if (mode == PIPELINE_MODE_SYNCHRONOUS_PULL) {
+            size_t target_size = safe_capacity - chunk_size;
+            ring_buffer_wait_for_threshold(context->audio_ring_buffer, target_size);
+            if (is_shutdown_requested()) break;
+        }
+
+        size_t written = ring_buffer_write(context->audio_ring_buffer, ptr, chunk_size);
+        if (written > 0) {
+            ptr += written;
+            bytes_left -= written;
+        } else {
+            // Write failed (buffer likely shutting down), break to prevent infinite loop
+            break;
+        }
     }
 
-    ring_buffer_write(context->audio_ring_buffer, pcm_data, bytes);
-    return bytes;
+    return bytes - bytes_left;
 }
 
 void audio_output_flush(AudioOutputContext* context) {
