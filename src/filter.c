@@ -222,7 +222,6 @@ static liquid_float_complex* _compound_filter_stages(
             if (current_taps_length < FILTER_MINIMUM_TAPS) current_taps_length = FILTER_MINIMUM_TAPS;
 
             if (current_taps_length > FILTER_MAXIMUM_AUTO_TAPS) {
-                log_warn("Clamping filter taps to %d", FILTER_MAXIMUM_AUTO_TAPS);
                 current_taps_length = FILTER_MAXIMUM_AUTO_TAPS;
             }
         }
@@ -354,7 +353,14 @@ bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena) {
     liquid_float_complex* master_taps = _compound_filter_stages(config, sample_rate, &master_length, &is_complex, &norm_peak, arena);
     if (!master_taps) return false;
 
-    log_info("Final combined filter requires %d taps.", master_length);
+    if (config->dsp.filter.args.taps > 0) {
+        log_info("Using user-specified filter size of %d taps.", master_length);
+    } else if (master_length >= FILTER_MAXIMUM_AUTO_TAPS) {
+        log_info("Final combined filter clamped to maximum %d taps.", master_length);
+    } else {
+        log_info("Final combined filter requires %d taps.", master_length);
+    }
+
     if (is_complex) log_info("Asymmetric filter detected.");
 
     if (!_compile_filter_object(config, app, master_taps, master_length, is_complex, norm_peak, arena)) {
