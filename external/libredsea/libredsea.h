@@ -46,8 +46,6 @@
 typedef struct {
     int toggle;
     int item_running;
-    char title[65];
-    char artist[65];
     bool is_update;
 } RdsRTPlusState;
 
@@ -134,8 +132,8 @@ typedef struct {
 
 // RadioText Plus Event
 typedef struct {
-    char title[65];
-    char artist[65];
+    uint8_t content_type;
+    char text[65];
 } RdsRTPlusEvent;
 
 // TMC Event
@@ -238,6 +236,9 @@ void libredsea_process_mpx(LibRedseaHandle context, const float *mpx_data, int n
  * @param context Decoder handle
  */
 void libredsea_clear_events(LibRedseaHandle context);
+
+// RT+ Utilities
+const char* libredsea_get_rt_plus_tag_name(uint8_t id);
 
 // TMC Utilities
 const char *get_tmc_event_description(uint16_t code);

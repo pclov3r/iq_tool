@@ -128,6 +128,29 @@ static void decode_0a(RdsState *state, const RdsGroup *group) {
     state->ps_name[segment * 2 + 1] = c2;
 }
 
+static const char* const rt_plus_tag_names[66] = {
+    "Dummy", "Title", "Album", "Track Number", "Artist", "Composition",
+    "Movement", "Conductor", "Composer", "Band", "Comment", "Genre",
+    "News", "Local News", "Stock Market", "Sport", "Lottery", "Horoscope",
+    "Daily Diversion", "Health", "Event", "Scene", "Cinema", "TV",
+    "Date & Time", "Weather", "Traffic", "Alarm", "Advertisement", "URL",
+    "Other Info", "Station Name (Short)", "Station Name (Long)",
+    "Programme (Now)", "Programme (Next)", "Programme (Part)",
+    "Programme (Host)", "Programme (Editorial Staff)", "Programme (Frequency)",
+    "Programme (Homepage)", "Programme (Subchannel)", "Phone (Hotline)",
+    "Phone (Studio)", "Phone (Other)", "SMS (Studio)", "SMS (Other)",
+    "Email (Hotline)", "Email (Studio)", "Email (Other)", "MMS (Studio)",
+    "MMS (Other)", "Chat", "Chat (Center)", "Vote (Question)",
+    "Vote (Center)", "Unknown", "Unknown", "Unknown", "Unknown",
+    "Private 1", "Private 2", "Private 3", "Private 4", "Private 5",
+    "Private 6", "Place"
+};
+
+const char* libredsea_get_rt_plus_tag_name(uint8_t id) {
+    if (id < 66) return rt_plus_tag_names[id];
+    return "Unknown";
+}
+
 static void decode_rt_plus(RdsState *state, const RdsGroup *group) {
     if (!group->blocks[RDS_BLOCK_2].is_received)
         return;
@@ -139,8 +162,6 @@ static void decode_rt_plus(RdsState *state, const RdsGroup *group) {
     if (item_toggle != state->rt_plus.toggle || item_running != state->rt_plus.item_running) {
         state->rt_plus.toggle = item_toggle;
         state->rt_plus.item_running = item_running;
-        memset(state->rt_plus.title, 0, sizeof(state->rt_plus.title));
-        memset(state->rt_plus.artist, 0, sizeof(state->rt_plus.artist));
     }
 
     int num_tags = 0;
@@ -155,15 +176,11 @@ static void decode_rt_plus(RdsState *state, const RdsGroup *group) {
         int tag1_start = (b3 >> 7) & 0x3F;
         int tag1_length = ((b3 >> 1) & 0x3F) + 1;
 
-        bool updated = false;
-
-        if (tag1_type == 1 || tag1_type == 4) { // 1=Title, 4=Artist
-            char *target = (tag1_type == 1) ? state->rt_plus.title : state->rt_plus.artist;
-            if (tag1_start + tag1_length <= 64) {
-                strncpy(target, state->radiotext + tag1_start, tag1_length);
-                target[tag1_length] = '\0';
-                updated = true;
-            }
+        if (tag1_type != 0 && tag1_start + tag1_length <= 64 && state->rt_plus_event_count < RDS_MAX_EVENTS) {
+            RdsRTPlusEvent *ev = &state->rt_plus_events[state->rt_plus_event_count++];
+            ev->content_type = tag1_type;
+            strncpy(ev->text, state->radiotext + tag1_start, tag1_length);
+            ev->text[tag1_length] = '\0';
         }
 
         if (num_tags == 2) {
@@ -172,20 +189,12 @@ static void decode_rt_plus(RdsState *state, const RdsGroup *group) {
             int tag2_start = (b4 >> 5) & 0x3F;
             int tag2_length = (b4 & 0x1F) + 1;
 
-            if (tag2_type == 1 || tag2_type == 4) {
-                char *target = (tag2_type == 1) ? state->rt_plus.title : state->rt_plus.artist;
-                if (tag2_start + tag2_length <= 64) {
-                    strncpy(target, state->radiotext + tag2_start, tag2_length);
-                    target[tag2_length] = '\0';
-                    updated = true;
-                }
+            if (tag2_type != 0 && tag2_start + tag2_length <= 64 && state->rt_plus_event_count < RDS_MAX_EVENTS) {
+                RdsRTPlusEvent *ev = &state->rt_plus_events[state->rt_plus_event_count++];
+                ev->content_type = tag2_type;
+                strncpy(ev->text, state->radiotext + tag2_start, tag2_length);
+                ev->text[tag2_length] = '\0';
             }
-        }
-
-        if (updated && state->rt_plus_event_count < RDS_MAX_EVENTS) {
-            RdsRTPlusEvent *ev = &state->rt_plus_events[state->rt_plus_event_count++];
-            strncpy(ev->title, state->rt_plus.title, sizeof(ev->title));
-            strncpy(ev->artist, state->rt_plus.artist, sizeof(ev->artist));
         }
     }
 }

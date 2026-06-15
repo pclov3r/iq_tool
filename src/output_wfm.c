@@ -164,6 +164,8 @@ typedef struct {
     // RDS
     LibRedseaHandle redsea;
     RdsState last_rds_state;
+    RdsRTPlusEvent active_rt_plus_tags[66];
+    bool active_rt_plus_tags_valid[66];
     size_t rds_display_counter;
     size_t rds_display_threshold;
 } WfmContext;
@@ -548,35 +550,27 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
                  log_info("%s RT: %s", current.is_rbds ? "RBDS" : "RDS", rt_ptr);
             }
 
+            if (strcmp(current.radiotext, wfm_decoder->last_rds_state.radiotext) != 0) {
+                memset(wfm_decoder->active_rt_plus_tags_valid, 0, sizeof(wfm_decoder->active_rt_plus_tags_valid));
+            }
+
             for (int e = 0; e < current.rt_plus_event_count; e++) {
                 RdsRTPlusEvent* event = &current.rt_plus_events[e];
-
-                size_t t_length = strlen(event->title);
-                while (t_length > 0 && (event->title[t_length - 1] == ' ' || event->title[t_length - 1] == '\r')) { event->title[t_length - 1] = '\0'; t_length--; }
-                size_t a_length = strlen(event->artist);
-                while (a_length > 0 && (event->artist[a_length - 1] == ' ' || event->artist[a_length - 1] == '\r')) { event->artist[a_length - 1] = '\0'; a_length--; }
-
-                bool is_dup = false;
-                for (int i = 0; i < e; i++) {
-                    if (strcmp(current.rt_plus_events[i].artist, event->artist) == 0 &&
-                        strcmp(current.rt_plus_events[i].title, event->title) == 0) {
-                        is_dup = true; break;
+                if (event->content_type < 66 && event->text[0] != '\0') {
+                    size_t t_length = strlen(event->text);
+                    while (t_length > 0 && (event->text[t_length - 1] == ' ' || event->text[t_length - 1] == '\r')) {
+                        event->text[t_length - 1] = '\0';
+                        t_length--;
                     }
+                    wfm_decoder->active_rt_plus_tags[event->content_type] = *event;
+                    wfm_decoder->active_rt_plus_tags_valid[event->content_type] = true;
                 }
-                for (int i = 0; i < wfm_decoder->last_rds_state.rt_plus_event_count; i++) {
-                    if (strcmp(wfm_decoder->last_rds_state.rt_plus_events[i].artist, event->artist) == 0 &&
-                        strcmp(wfm_decoder->last_rds_state.rt_plus_events[i].title, event->title) == 0) {
-                        is_dup = true; break;
-                    }
-                }
-                if (is_dup) continue;
+            }
 
-                if (event->title[0] != '\0' && event->artist[0] != '\0') {
-                    log_info("%s RT+: Artist=%s | Title=%s", current.is_rbds ? "RBDS" : "RDS", event->artist, event->title);
-                } else if (event->artist[0] != '\0') {
-                    log_info("%s RT+: Artist=%s", current.is_rbds ? "RBDS" : "RDS", event->artist);
-                } else if (event->title[0] != '\0') {
-                    log_info("%s RT+: Title=%s", current.is_rbds ? "RBDS" : "RDS", event->title);
+            for (int i = 0; i < 66; i++) {
+                if (wfm_decoder->active_rt_plus_tags_valid[i]) {
+                    log_info("%s RT+: %s = %s", current.is_rbds ? "RBDS" : "RDS",
+                             libredsea_get_rt_plus_tag_name(i), wfm_decoder->active_rt_plus_tags[i].text);
                 }
             }
 
