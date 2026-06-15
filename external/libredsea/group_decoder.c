@@ -844,71 +844,26 @@ void rds_group_decode(RdsState *state, const RdsGroup *group) {
     int pty = (b2 >> 5) & 0x1F;
 
     // Update PTY string
-    static const char *pty_names_rds[32] = {"No PTY",
-                                            "News",
-                                            "Current affairs",
-                                            "Information",
-                                            "Sport",
-                                            "Education",
-                                            "Drama",
-                                            "Culture",
-                                            "Science",
-                                            "Varied",
-                                            "Pop music",
-                                            "Rock music",
-                                            "Easy listening",
-                                            "Light classical",
-                                            "Serious classical",
-                                            "Other music",
-                                            "Weather",
-                                            "Finance",
-                                            "Children's programmes",
-                                            "Social affairs",
-                                            "Religion",
-                                            "Phone-in",
-                                            "Travel",
-                                            "Leisure",
-                                            "Jazz music",
-                                            "Country music",
-                                            "National music",
-                                            "Oldies music",
-                                            "Folk music",
-                                            "Documentary",
-                                            "Alarm test",
-                                            "Alarm"};
+    static const char *pty_names_rds[32] = {
+        "No PTY", "News", "Current affairs", "Information", "Sport", "Education",
+        "Drama", "Culture", "Science", "Varied", "Pop music", "Rock music",
+        "Easy listening", "Light classical", "Serious classical", "Other music",
+        "Weather", "Finance", "Children's programmes", "Social affairs", "Religion",
+        "Phone-in", "Travel", "Leisure", "Jazz music", "Country music",
+        "National music", "Oldies music", "Folk music", "Documentary",
+        "Alarm test", "Alarm"
+    };
 
-    static const char *pty_names_rbds[32] = {"No PTY",
-                                             "News",
-                                             "Information",
-                                             "Sports",
-                                             "Talk",
-                                             "Rock",
-                                             "Classic rock",
-                                             "Adult hits",
-                                             "Soft rock",
-                                             "Top 40",
-                                             "Country",
-                                             "Oldies",
-                                             "Soft",
-                                             "Nostalgia",
-                                             "Jazz",
-                                             "Classical",
-                                             "Rhythm and blues",
-                                             "Soft rhythm and blues",
-                                             "Language",
-                                             "Religious music",
-                                             "Religious talk",
-                                             "Personality",
-                                             "Public",
-                                             "College",
-                                             "Spanish talk",
-                                             "Spanish music",
-                                             "Hip hop",
-                                             "",
-                                             "",
-                                             "Weather",
-                                             "Emergency test",
-                                             "Emergency"};
+    static const char *pty_names_rbds[32] = {
+        "No PTY", "News", "Information", "Sports", "Talk", "Rock",
+        "Classic rock", "Adult hits", "Soft rock", "Top 40", "Country",
+        "Oldies", "Soft", "Nostalgia", "Jazz", "Classical",
+        "Rhythm and blues", "Soft rhythm and blues", "Language",
+        "Religious music", "Religious talk", "Personality", "Public", "College",
+        "Spanish talk", "Spanish music", "Hip hop",
+        "", "", /* PTY 27 & 28 Unassigned in NRSC-4-B */
+        "Weather", "Emergency test", "Emergency"
+    };
 
     const char *pty_str = "Unknown";
     if (pty < 32) {
@@ -928,7 +883,7 @@ void rds_group_decode(RdsState *state, const RdsGroup *group) {
             decode_rt_plus(state, group);
         } else if (oda_aid == 0x4BD8) { // eRT / eRT+
             // TODO: eRT (Enhanced RadioText) is an RDS2 feature allowing 128-byte UTF-8 strings.
-            // It was intentionally NOT ported from the original C++ redsea implementation 
+            // It was intentionally NOT ported from the original C++ redsea implementation
             // because RDS2 is practically non-existent in the wild. Avoiding it removes
             // massive UTF-8 state-machine tracking and character table fallback overhead.
             decode_rt_plus(state, group); // Fallback to standard RT+ parsing if possible
