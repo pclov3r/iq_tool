@@ -219,9 +219,11 @@ RTL-SDR Input (rtlsdr)
 
 SDRplay Input (sdrplay)
     --sdrplay-bandwidth=<flt>                 Set analog bandwidth in Hz. (Optional, Default: 1.536e6)
-    --sdrplay-device-idx=<int>                Select specific SDRplay device by index (0-indexed). (Default: 0)
+    --sdrplay-device-index=<int>              Select specific SDRplay device by index (0-indexed). (Default: 0)
     --sdrplay-lna-state=<int>                 Set LNA state (0=min gain). Disables AGC.
-    --sdrplay-if-gain=<int>                   Set IF gain in dB (fine gain, e.g., -20, -35, -59). (Default: -50 if --sdrplay-lna-state is specified.) Disables AGC.
+    --sdrplay-if-gain=<int>                   Set IF gain in dB (fine gain, e.g., -20, -35, -59). (Default: -50 if a manual LNA state is specified.) Disables AGC.
+    --sdrplay-lna-state-target=<flt>          Target a percentage (0-100) of the maximum LNA state. Automatically rounds down to the nearest LNA state.
+    --sdrplay-lna-round-up                    Force LNA state target to round UP instead of down.
     --sdrplay-antenna=<str>                   Select antenna port (device-specific).
     --sdrplay-notch-fm                        Enable FM Broadcast Notch Filter.
     --sdrplay-notch-dab                       Enable DAB Broadcast Notch Filter.
