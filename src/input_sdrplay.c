@@ -200,10 +200,6 @@ static struct {
     int if_gain_db;
     bool if_gain_db_provided;
     int sdrplay_if_gain_db_arg;
-    sdrplay_api_RspDx_HdrModeBwT hdr_bw_mode;
-    bool hdr_bw_mode_provided;
-    float sdrplay_hdr_bw_hz_arg;
-    bool use_hdr_mode;
     char *antenna_port_name;
     double bandwidth_hz;
     float sdrplay_bandwidth_hz_arg;
@@ -230,7 +226,6 @@ void sdrplay_set_default_config(AppConfig* config) {
     s_sdrplay_config.bandwidth_hz = SDRPLAY_DEFAULT_BANDWIDTH_HZ;
     s_sdrplay_config.sdrplay_bandwidth_hz_arg = 0.0f;
     s_sdrplay_config.sdrplay_if_gain_db_arg = 0;
-    s_sdrplay_config.sdrplay_hdr_bw_hz_arg = 0.0f;
     s_sdrplay_config.notch_fm = false;
     s_sdrplay_config.notch_dab = false;
     s_sdrplay_config.notch_am = false;
@@ -243,8 +238,6 @@ static const struct argparse_option sdrplay_input_cli_options[] = {
     OPT_INTEGER(0, "sdrplay-lna-state", &s_sdrplay_config.lna_state, "Set LNA state (0=min gain). Disables AGC.", NULL, 0, 0),
     OPT_INTEGER(0, "sdrplay-if-gain", &s_sdrplay_config.sdrplay_if_gain_db_arg, "Set IF gain in dB (fine gain, e.g., -20, -35, -59). (Default: -50 if --sdrplay-lna-state is specified.) Disables AGC.", NULL, 0, 0),
     OPT_STRING(0, "sdrplay-antenna", &s_sdrplay_config.antenna_port_name, "Select antenna port (device-specific).", NULL, 0, 0),
-    OPT_BOOLEAN(0, "sdrplay-hdr-mode", &s_sdrplay_config.use_hdr_mode, "(Optional) Enable HDR mode on RSPdx/RSPdxR2.", NULL, 0, 0),
-    OPT_FLOAT(0, "sdrplay-hdr-bw", &s_sdrplay_config.sdrplay_hdr_bw_hz_arg, "Set bandwidth for HDR mode. Requires --sdrplay-hdr-mode.", NULL, 0, 0),
     // Notch Filter Options
     OPT_BOOLEAN(0, "sdrplay-notch-fm", &s_sdrplay_config.notch_fm, "Enable FM Broadcast Notch Filter.", NULL, 0, 0),
     OPT_BOOLEAN(0, "sdrplay-notch-dab",&s_sdrplay_config.notch_dab, "Enable DAB Broadcast Notch Filter.", NULL, 0, 0),
@@ -294,24 +287,6 @@ static bool sdrplay_input_validate_options(AppContext* app) {
         s_sdrplay_config.bandwidth_provided = true;
     }
 
-    if (s_sdrplay_config.sdrplay_hdr_bw_hz_arg != 0.0) {
-        double bw_hz = s_sdrplay_config.sdrplay_hdr_bw_hz_arg;
-        if      (fabs(bw_hz - 200000.0) < 1.0) s_sdrplay_config.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_0_200;
-        else if (fabs(bw_hz - 500000.0) < 1.0) s_sdrplay_config.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_0_500;
-        else if (fabs(bw_hz - 1200000.0) < 1.0) s_sdrplay_config.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_1_200;
-        else if (fabs(bw_hz - 1700000.0) < 1.0) s_sdrplay_config.hdr_bw_mode = sdrplay_api_RspDx_HDRMODE_BW_1_700;
-        else {
-            log_error("Invalid HDR bandwidth '%.15g'. Valid values are 200e3, 500e3, 1.2e6, 1.7e6.", bw_hz);
-            return false;
-        }
-        s_sdrplay_config.hdr_bw_mode_provided = true;
-    }
-
-    if (s_sdrplay_config.hdr_bw_mode_provided && !s_sdrplay_config.use_hdr_mode) {
-        log_error("Option --sdrplay-hdr-bw requires --sdrplay-hdr-mode to be specified.");
-        return false;
-    }
-
     if (config->sdr_general.sample_rate_provided) {
         if (config->sdr_general.sample_rate_hz < 2e6 || config->sdr_general.sample_rate_hz > 10e6) {
             log_error("Invalid SDRplay sample rate %.15g Hz. Must be between 2,000,000 and 10,000,000.", config->sdr_general.sample_rate_hz);
@@ -344,7 +319,7 @@ const char* get_sdrplay_device_name(uint8_t hwVer) {
     }
 }
 
-static int get_num_lna_states(uint8_t hwVer, double rfFreqHz, bool useHdrMode, bool isHizPortActive) {
+static int get_num_lna_states(uint8_t hwVer, double rfFreqHz, bool isHizPortActive) {
     double rfFreqMHz = rfFreqHz / 1e6;
     switch (hwVer) {
         case SDRPLAY_RSP1_ID: return 4;
@@ -364,7 +339,6 @@ static int get_num_lna_states(uint8_t hwVer, double rfFreqHz, bool useHdrMode, b
             return 9;
         case SDRPLAY_RSPdx_ID:
         case SDRPLAY_RSPdxR2_ID:
-            if (useHdrMode && rfFreqMHz <= 2.0) return 21;
             if (rfFreqMHz <= 12.0) return 14;
             if (rfFreqMHz <= 50.0) return 14;
             if (rfFreqMHz <= 60.0) return 28;
@@ -503,19 +477,6 @@ static void sdrplay_input_get_summary_info(const ModuleContext* context, InputSu
 
     if (s_sdrplay_config.antenna_port_name) add_summary_item(info, "Antenna Port", "%s", s_sdrplay_config.antenna_port_name);
 
-    if (s_sdrplay_config.use_hdr_mode) {
-        const char* bw_str = "1700000";
-        if (s_sdrplay_config.hdr_bw_mode_provided) {
-            switch(s_sdrplay_config.hdr_bw_mode) {
-                case sdrplay_api_RspDx_HDRMODE_BW_0_200: bw_str = "200000"; break;
-                case sdrplay_api_RspDx_HDRMODE_BW_0_500: bw_str = "500000"; break;
-                case sdrplay_api_RspDx_HDRMODE_BW_1_200: bw_str = "1200000"; break;
-                case sdrplay_api_RspDx_HDRMODE_BW_1_700: bw_str = "1700000"; break;
-            }
-        }
-        add_summary_item(info, "HDR Mode", "Enabled (BW: %s Hz)", bw_str);
-    }
-
     // Notch Filter Summary
     if (s_sdrplay_config.notch_fm)  add_summary_item(info, "FM Notch", "Enabled");
     if (s_sdrplay_config.notch_dab) add_summary_item(info, "DAB Notch", "Enabled");
@@ -645,14 +606,10 @@ static bool sdrplay_input_initialize(ModuleContext* context) {
     log_debug("SDRplay: API accepting sample rate %.15g Hz.", devParams->fsFreq.fsHz);
     log_debug("SDRplay: API accepting bandwidth %.15g Hz.", s_sdrplay_config.bandwidth_hz);
 
-    if (s_sdrplay_config.use_hdr_mode) {
-        if (private_data->sdr_device->hwVer != SDRPLAY_RSPdx_ID && private_data->sdr_device->hwVer != SDRPLAY_RSPdxR2_ID) {
-            log_error("--sdrplay-hdr-mode is only supported on RSPdx and RSPdx-R2 devices.");
-            goto cleanup;
-        }
-        devParams->rspDxParams.hdrEnable = 1;
-        chParams->rspDxTunerParams.hdrBw = s_sdrplay_config.hdr_bw_mode_provided ? s_sdrplay_config.hdr_bw_mode : sdrplay_api_RspDx_HDRMODE_BW_1_700;
-    }
+    // TODO: Implement HDR mode for RSPdx devices
+    // The SDRplay API's implementation of this feature relies on highly undocumented and
+    // extremely brittle LO-to-filter mappings that crash the pipeline without warning.
+    // It is currently disabled. Good luck!
 
     if (private_data->sdr_device->hwVer == SDRPLAY_RSPduo_ID) {
         private_data->sdr_device->rspDuoMode = sdrplay_api_RspDuoMode_Single_Tuner;
@@ -795,7 +752,7 @@ static bool sdrplay_input_initialize(ModuleContext* context) {
     }
 
     if (s_sdrplay_config.lna_state_provided) {
-        int num_lna_states = get_num_lna_states(private_data->sdr_device->hwVer, config->sdr_general.rf_freq_hz, s_sdrplay_config.use_hdr_mode, hiz_port_selected);
+        int num_lna_states = get_num_lna_states(private_data->sdr_device->hwVer, config->sdr_general.rf_freq_hz, hiz_port_selected);
         if (s_sdrplay_config.lna_state < 0 || s_sdrplay_config.lna_state >= num_lna_states) {
             log_error("Invalid LNA state '%d'. Valid range for this device/frequency is 0 (min gain) to %d (max gain).",
                       s_sdrplay_config.lna_state, num_lna_states - 1);

@@ -223,8 +223,6 @@ SDRplay Input (sdrplay)
     --sdrplay-lna-state=<int>                 Set LNA state (0=min gain). Disables AGC.
     --sdrplay-if-gain=<int>                   Set IF gain in dB (fine gain, e.g., -20, -35, -59). (Default: -50 if --sdrplay-lna-state is specified.) Disables AGC.
     --sdrplay-antenna=<str>                   Select antenna port (device-specific).
-    --sdrplay-hdr-mode                        (Optional) Enable HDR mode on RSPdx/RSPdxR2.
-    --sdrplay-hdr-bw=<flt>                    Set bandwidth for HDR mode. Requires --sdrplay-hdr-mode.
     --sdrplay-notch-fm                        Enable FM Broadcast Notch Filter.
     --sdrplay-notch-dab                       Enable DAB Broadcast Notch Filter.
     --sdrplay-notch-am                        Enable MW/AM Notch Filter (RSPduo Tuner A only).
