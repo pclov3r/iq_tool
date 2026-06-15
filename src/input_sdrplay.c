@@ -310,9 +310,15 @@ static bool sdrplay_input_validate_options(AppContext* app) {
         s_sdrplay_config.bandwidth_provided = true;
     }
 
-    if (config->sdr_general.sample_rate_provided) {
-        if (config->sdr_general.sample_rate_hz < 2e6 || config->sdr_general.sample_rate_hz > 10e6) {
-            log_error("Invalid SDRplay sample rate %.15g Hz. Must be between 2,000,000 and 10,000,000.", config->sdr_general.sample_rate_hz);
+    if (!config->sdr_general.sample_rate_provided) {
+        config->sdr_general.sample_rate_hz = SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
+    } else {
+        double sr = config->sdr_general.sample_rate_hz;
+        // We strictly enforce 2M, 6M, 8M, or 10M to ensure hardware-native integer decimation.
+        // This prevents the proprietary SDRplay API from silently invoking its internal
+        // software resampler for arbitrary rates, forcing iq_tool to handle any necessary resampling.
+        if (sr != 2000000.0 && sr != 6000000.0 && sr != 8000000.0 && sr != 10000000.0) {
+            log_error("Invalid SDRplay sample rate %.0f Hz. Must be exactly 2000000, 6000000, 8000000, or 10000000.", sr);
             return false;
         }
     }
