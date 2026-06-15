@@ -760,27 +760,26 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
                 const char *rds_std = (s_wfm_config.rds_standard == RDS_STANDARD_RBDS) ? "RBDS" : "RDS";
                 if (libredsea_get_sync(wfm_decoder->redsea)) {
                     float bler = libredsea_get_bler(wfm_decoder->redsea);
-                    log_info("dBFS: %5.1f | SNR: %.1f dB | Stereo: Mono | %s BER: %.1f%%", dbfs, snr_db, rds_std, bler);
+                    log_info("dBFS: %.1f | SNR: %.1f dB | Stereo: Mono | %s BER: %.1f%%", dbfs, snr_db, rds_std, bler);
                 } else {
-                    log_info("dBFS: %5.1f | SNR: %.1f dB | Stereo: Mono | %s BER: no-sync", dbfs, snr_db, rds_std);
+                    log_info("dBFS: %.1f | SNR: %.1f dB | Stereo: Mono | %s BER: no-sync", dbfs, snr_db, rds_std);
                 }
             } else {
-                log_info("dBFS: %5.1f | SNR: %.1f dB | Stereo: Mono", dbfs, snr_db);
+                log_info("dBFS: %.1f | SNR: %.1f dB | Stereo: Mono", dbfs, snr_db);
             }
         } else {
             if (wfm_decoder->redsea) {
                 const char *rds_std = (s_wfm_config.rds_standard == RDS_STANDARD_RBDS) ? "RBDS" : "RDS";
                 if (libredsea_get_sync(wfm_decoder->redsea)) {
                     float bler = libredsea_get_bler(wfm_decoder->redsea);
-                    log_info("dBFS: %5.1f | SNR: %.1f dB | Stereo: %.1f%% | Pilot Err: %.1f%% | %s BER: %.1f%%", dbfs, snr_db, avg_stereo_pct, pilot_pct, rds_std, bler);
+                    log_info("dBFS: %.1f | SNR: %.1f dB | Stereo: %.1f%% | Pilot Err: %.1f%% | %s BER: %.1f%%", dbfs, snr_db, avg_stereo_pct, pilot_pct, rds_std, bler);
                 } else {
-                    log_info("dBFS: %5.1f | SNR: %.1f dB | Stereo: %.1f%% | Pilot Err: %.1f%% | %s BER: no-sync", dbfs, snr_db, avg_stereo_pct, pilot_pct, rds_std);
+                    log_info("dBFS: %.1f | SNR: %.1f dB | Stereo: %.1f%% | Pilot Err: %.1f%% | %s BER: no-sync", dbfs, snr_db, avg_stereo_pct, pilot_pct, rds_std);
                 }
             } else {
-                log_info("dBFS: %5.1f | SNR: %.1f dB | Stereo: %.1f%% | Pilot Err: %.1f%%", dbfs, snr_db, avg_stereo_pct, pilot_pct);
+                log_info("dBFS: %.1f | SNR: %.1f dB | Stereo: %.1f%% | Pilot Err: %.1f%%", dbfs, snr_db, avg_stereo_pct, pilot_pct);
             }
         }
-        fprintf(stderr, "\n");
         stat_counter = 0; accum_mag_sum = 0.0; accum_mag_sq_sum = 0.0; accum_pilot_mag_sum = 0.0;
         accum_stereo_pct_sum = 0.0; accum_pilot_err_sq_sum = 0.0; accum_pilot_count = 0;
     }
