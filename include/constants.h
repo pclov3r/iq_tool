@@ -164,18 +164,6 @@
 
 // --- Output AGC Tuning Parameters ---
 
-// 1. DX Profile
-// Strategy: Very slow RMS tracking to ride out atmospheric fading on weak signals.
-// Target: 0.5 (-6 dBFS RMS). Safe headroom for general analog content.
-#define AGC_DX_BANDWIDTH         1e-4f
-#define AGC_DX_TARGET            0.5f
-
-// 2. Local Profile
-// Strategy: Fast RMS tracking for strong, stable analog signals (voice/music).
-// Target: 0.5 (-6 dBFS RMS).
-#define AGC_LOCAL_BANDWIDTH      1e-2f
-#define AGC_LOCAL_TARGET         0.5f
-
 // Harris/LMS AGC Logic
 //
 // The algorithm operates entirely in dB (treating the AGC as a linear
