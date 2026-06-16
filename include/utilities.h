@@ -88,7 +88,19 @@ bool utility_check_nyquist_warning(double freq_to_check_hz, double sample_rate_h
  */
 bool utility_check_file_exists(const char* full_path);
 
-#endif // UTILS_H_
+#include <math.h>
+
+/**
+ * @brief Calculates Decibels relative to Full Scale (dBFS) from a power value.
+ * Uses a strict threshold clamp to preserve signal purity while preventing log10(0).
+ * @param power The input power value.
+ * @return The calculated dBFS value.
+ */
+static inline float utility_calculate_dbfs(float power) {
+    return 10.0f * log10f(fmaxf(1e-12f, power));
+}
+
+#endif // UTILITIES_H_
 
 /**
  * @brief Prompts the user for permission to overwrite a file.

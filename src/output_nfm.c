@@ -233,7 +233,7 @@ static size_t nfm_output_write_chunk(ModuleContext* context, const void* buffer,
     // 4. Periodic console logging (unchanged, rates aligned to CONSOLE_UPDATE_INTERVAL)
     if (stat_counter >= stat_rate_threshold) {
         double avg_power = accum_mag_sq_sum / (double)stat_counter;
-        float dbfs = 10.0f * log10f((float)avg_power + 1e-12f);
+        float dbfs = utility_calculate_dbfs((float)avg_power);
 
         if (p->squelch_open) {
             double mean_mag = accum_mag_sum / (double)stat_counter;

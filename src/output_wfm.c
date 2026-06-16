@@ -743,7 +743,7 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
 
         if (stat_counter >= stat_rate_threshold) {
         double avg_power = accum_mag_sq_sum / (double)stat_counter;
-        float dbfs = 10.0f * log10f((float)avg_power + 1e-10f);
+        float dbfs = utility_calculate_dbfs((float)avg_power);
 
         double mean_mag = accum_mag_sum / (double)stat_counter;
         float snr_db = 10.0f * log10f((float)((mean_mag*mean_mag) / fmax(1e-10, avg_power - (mean_mag*mean_mag))));

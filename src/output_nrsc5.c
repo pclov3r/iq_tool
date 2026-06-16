@@ -590,7 +590,7 @@ static size_t nrsc5_output_write_chunk(ModuleContext* context, const void* buffe
     // Print dBFS according to global console interval
     if (stat_counter >= stat_rate_threshold) {
         double avg_power = accum_mag_sq_sum / (double)stat_counter;
-        float dbfs = 10.0f * log10f((float)fmax(1e-10, avg_power));
+        float dbfs = utility_calculate_dbfs((float)avg_power);
 
         log_info("NRSC5: dBFS: %.1f", dbfs);
 

@@ -323,7 +323,7 @@ static size_t am_output_write_chunk(ModuleContext* context, const void* buffer, 
 
     // --- Stats Logging, SNR dB check, & Hysteresis Logic ---
     if (am_context->stat_counter >= am_context->stat_threshold) {
-        float dbfs = 10.0f * log10f((float)(am_context->accum_mag_sq_sum / (double)am_context->stat_counter) + 1e-10f);
+        float dbfs = utility_calculate_dbfs((float)(am_context->accum_mag_sq_sum / (double)am_context->stat_counter));
 
         if (am_context->sync_mode && am_context->accum_pll_count > 0) {
 
