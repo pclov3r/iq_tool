@@ -35,6 +35,7 @@
  */
 
 #include "block_sync.h"
+#include "rds_demodulator_fec_table.h"
 #include <string.h>
 
 #define MAX_TOLERABLE_BLER 85
@@ -63,9 +64,9 @@ static RdsOffset get_offset_for_syndrome(uint32_t syndrome) {
 static uint32_t calculate_syndrome(uint32_t input_vector) {
     // 16 Information Data Bits (Reversed to map directly to k = 0..15)
     static const uint32_t generator_matrix[16] = {
-        0x31B, 0x38F, 0x2A7, 0x0F7, 
-        0x1EE, 0x3DC, 0x201, 0x1BB, 
-        0x376, 0x355, 0x313, 0x39F, 
+        0x31B, 0x38F, 0x2A7, 0x0F7,
+        0x1EE, 0x3DC, 0x201, 0x1BB,
+        0x376, 0x355, 0x313, 0x39F,
         0x287, 0x0B7, 0x16E, 0x2DC
     };
 
@@ -79,58 +80,22 @@ static uint32_t calculate_syndrome(uint32_t input_vector) {
             result ^= generator_matrix[k];
         }
     }
-    
+
     return result;
-}
-
-typedef struct {
-    uint32_t syndrome;
-    uint32_t error_vector;
-} RdsErrorLookupEntry;
-
-static RdsErrorLookupEntry error_lookup_table[5][52];
-static bool error_lookup_table_initialized = false;
-
-static void init_error_lookup_table() {
-    if (error_lookup_table_initialized)
-        return;
-    uint32_t offset_words[5] = {
-        0x0FC, // A
-        0x198, // B
-        0x168, // C
-        0x350, // Cprime
-        0x1B4  // D
-    };
-
-    for (int offset = 0; offset < 5; offset++) {
-        int entry_idx = 0;
-        uint32_t error_bits_arr[2] = {0x1U, 0x3U};
-        for (int i = 0; i < 2; i++) {
-            uint32_t error_bits = error_bits_arr[i];
-            for (int shift = 0; shift < 26; shift++) {
-                uint32_t error_vector = (error_bits << shift) & BLOCK_BITMASK;
-                uint32_t syndrome = calculate_syndrome(error_vector ^ offset_words[offset]);
-                error_lookup_table[offset][entry_idx].syndrome = syndrome;
-                error_lookup_table[offset][entry_idx].error_vector = error_vector;
-                entry_idx++;
-            }
-        }
-    }
-    error_lookup_table_initialized = true;
 }
 
 static bool correct_burst_errors(uint32_t raw, RdsOffset expected_offset, uint32_t *corrected_bits) {
     if (expected_offset == RDS_OFFSET_INVALID)
         return false;
     uint32_t syndrome = calculate_syndrome(raw);
-    *corrected_bits = raw;
 
-    for (int i = 0; i < 52; i++) {
-        if (error_lookup_table[expected_offset][i].syndrome == syndrome) {
-            *corrected_bits ^= error_lookup_table[expected_offset][i].error_vector;
-            return true;
-        }
+    uint32_t error_vector = rds_fec_lookup_table[expected_offset][syndrome];
+    if (error_vector != 0) {
+        *corrected_bits = raw ^ error_vector;
+        return true;
     }
+
+    *corrected_bits = raw;
     return false;
 }
 
@@ -167,7 +132,6 @@ void rds_block_stream_init(RdsBlockStream *stream) {
     memset(stream, 0, sizeof(RdsBlockStream));
     stream->num_bits_until_next_block = 1;
     stream->expected_offset = RDS_OFFSET_A;
-    init_error_lookup_table();
 }
 
 static void acquire_sync(RdsBlockStream *stream, RdsOffset offset) {
