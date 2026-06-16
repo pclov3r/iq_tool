@@ -61,9 +61,17 @@ static RdsOffset get_offset_for_syndrome(uint32_t syndrome) {
 }
 
 static uint32_t calculate_syndrome(uint32_t input_vector) {
-    static const uint32_t parity_check_matrix[26] = {0x200, 0x100, 0x080, 0x040, 0x020, 0x010, 0x008, 0x004, 0x002,
-                                                     0x001, 0x2DC, 0x16E, 0x0B7, 0x287, 0x39F, 0x313, 0x355, 0x376,
-                                                     0x1BB, 0x201, 0x3DC, 0x1EE, 0x0F7, 0x2A7, 0x38F, 0x31B};
+    static const uint32_t parity_check_matrix[26] = {
+        // 10 Parity Check Bits (Identity Matrix)
+        0x200, 0x100, 0x080, 0x040, 0x020, 
+        0x010, 0x008, 0x004, 0x002, 0x001,
+
+        // 16 Information Data Bits (Generator Polynomial)
+        0x2DC, 0x16E, 0x0B7, 0x287, 
+        0x39F, 0x313, 0x355, 0x376, 
+        0x1BB, 0x201, 0x3DC, 0x1EE, 
+        0x0F7, 0x2A7, 0x38F, 0x31B
+    };
     uint32_t result = 0;
     for (int k = 0; k < 26; k++) {
         result ^= (parity_check_matrix[25 - k] * ((input_vector >> k) & 1U));
