@@ -244,9 +244,6 @@ const char* libredsea_get_rt_plus_tag_name(uint8_t id);
 const char *get_tmc_event_description(uint16_t code);
 const char *get_tmc_supplementary_description(uint16_t code);
 
-// Country Utilities
-void rds_get_country_string(uint16_t cc, uint16_t ecc, char *out_buffer, size_t buffer_size);
-
 /**
  * @brief Get the Block Error Rate (BLER) percentage over the last 50 blocks
  * @param context Decoder handle

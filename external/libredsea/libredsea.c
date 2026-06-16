@@ -42,57 +42,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct {
-    uint16_t ecc;
-    const char *cc_strs[15];
-} CountryCodeEntry;
-
-static const CountryCodeEntry country_codes[] = {
-    {0xA0, {"us", "us", "us", "us", "us", "us", "us", "us", "us", "us", "us", "--", "us", "us", "--"}},
-    {0xA1, {"--", "--", "--", "--", "--", "--", "--", "--", "--", "--", "ca", "ca", "ca", "ca", "gl"}},
-    {0xA2, {"ai", "ag", "ec", "fk", "bb", "bz", "ky", "cr", "cu", "ar", "br", "bm", "an", "gp", "bs"}},
-    {0xA3, {"bo", "co", "jm", "mq", "gf", "py", "ni", "--", "pa", "dm", "do", "cl", "gd", "tc", "gy"}},
-    {0xA4, {"gt", "hn", "aw", "--", "ms", "tt", "pe", "sr", "uy", "kn", "lc", "sv", "ht", "ve", "--"}},
-    {0xA5, {"--", "--", "--", "--", "--", "--", "--", "--", "--", "--", "mx", "vc", "mx", "mx", "mx"}},
-    {0xA6, {"--", "--", "--", "--", "--", "--", "--", "--", "--", "--", "--", "--", "--", "--", "pm"}},
-    {0xD0, {"cm", "cf", "dj", "mg", "ml", "ao", "gq", "ga", "gn", "za", "bf", "cg", "tg", "bj", "mw"}},
-    {0xD1, {"na", "lr", "gh", "mr", "st", "cv", "sn", "gm", "bi", "--", "bw", "km", "tz", "et", "bg"}},
-    {0xD2, {"sl", "zw", "mz", "ug", "sz", "ke", "so", "ne", "td", "gw", "zr", "ci", "tz", "zm", "--"}},
-    {0xD3, {"--", "--", "eh", "--", "rw", "ls", "--", "sc", "--", "mu", "--", "sd", "--", "--", "--"}},
-    {0xE0, {"de", "dz", "ad", "il", "it", "be", "ru", "ps", "al", "at", "hu", "mt", "de", "--", "eg"}},
-    {0xE1, {"gr", "cy", "sm", "ch", "jo", "fi", "lu", "bg", "dk", "gi", "iq", "gb", "ly", "ro", "fr"}},
-    {0xE2, {"ma", "cz", "pl", "va", "sk", "sy", "tn", "--", "li", "is", "mc", "lt", "rs", "es", "no"}},
-    {0xE3, {"me", "ie", "tr", "mk", "--", "--", "--", "nl", "lv", "lb", "az", "hr", "kz", "se", "by"}},
-    {0xE4, {"md", "ee", "kg", "--", "--", "ua", "ks", "pt", "si", "am", "--", "ge", "--", "--", "ba"}},
-    {0xF0, {"au", "au", "au", "au", "au", "au", "au", "au", "sa", "af", "mm", "cn", "kp", "bh", "my"}},
-    {0xF1, {"ki", "bt", "bd", "pk", "fj", "om", "nr", "ir", "nz", "sb", "bn", "lk", "tw", "kr", "hk"}},
-    {0xF2, {"kw", "qa", "kh", "ws", "in", "mo", "vn", "ph", "jp", "sg", "mv", "id", "ae", "np", "vu"}},
-    {0xF3, {"la", "th", "to", "--", "--", "--", "--", "--", "pg", "--", "ye", "--", "--", "fm", "mn"}}};
-
-void rds_get_country_string(uint16_t cc, uint16_t ecc, char *out_buffer, size_t buffer_size) {
-    if (out_buffer == NULL || buffer_size == 0)
-        return;
-    strncpy(out_buffer, "--", buffer_size);
-
-    for (size_t i = 0; i < sizeof(country_codes) / sizeof(CountryCodeEntry); i++) {
-        if (country_codes[i].ecc == ecc) {
-            if (cc > 0 && cc <= 15) {
-                strncpy(out_buffer, country_codes[i].cc_strs[cc - 1], buffer_size);
-                out_buffer[buffer_size - 1] = '\0';
-
-                // Convert to uppercase
-                for (int j = 0; out_buffer[j] != '\0'; j++) {
-                    if (out_buffer[j] >= 'a' && out_buffer[j] <= 'z') {
-                        out_buffer[j] -= 32;
-                    }
-                }
-
-                return;
-            }
-        }
-    }
-}
-
 struct RDSContext_T {
     RdsSubcarrierSet dsp;
     RdsBlockStream stream;
