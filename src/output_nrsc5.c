@@ -170,7 +170,7 @@ static struct {
 };
 
 // --- Forward Declarations ---
-static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque);
+static void nrsc5_event_callback(const nrsc5_event_t *event_payload, void *opaque);
 
 // --- Helper: BER Stats ---
 static void update_ber_stats(Nrsc5Context* context, float cber) {
@@ -205,7 +205,7 @@ static void sanitize_aas_filename(const char* raw, char* out, size_t max_length)
 /**
  * @brief Safely dumps AAS/AAA files to disk using pre-allocated arena memory.
  */
-static void dump_aas_file(Nrsc5Context* context, const nrsc5_event_t *evt) {
+static void dump_aas_file(Nrsc5Context* context, const nrsc5_event_t *event_payload) {
     if (is_shutdown_requested()) return;
 
     const char *name_raw = NULL;
@@ -213,21 +213,21 @@ static void dump_aas_file(Nrsc5Context* context, const nrsc5_event_t *evt) {
     unsigned int size = 0;
     unsigned int number = 0;
 
-    switch (evt->event) {
+    switch (event_payload->event) {
         case NRSC5_EVENT_LOT:
-            name_raw = evt->lot.name;
-            data = evt->lot.data;
-            size = evt->lot.size;
-            number = evt->lot.lot;
+            name_raw = event_payload->lot.name;
+            data = event_payload->lot.data;
+            size = event_payload->lot.size;
+            number = event_payload->lot.lot;
             break;
         case NRSC5_EVENT_HERE_IMAGE:
-            name_raw = evt->here_image.name;
-            data = evt->here_image.data;
-            size = evt->here_image.size;
+            name_raw = event_payload->here_image.name;
+            data = event_payload->here_image.data;
+            size = event_payload->here_image.size;
             #if defined(_WIN32)
-                number = (unsigned int)_mkgmtime64(evt->here_image.time_utc);
+                number = (unsigned int)_mkgmtime64(event_payload->here_image.time_utc);
             #else
-                number = (unsigned int)timegm(evt->here_image.time_utc);
+                number = (unsigned int)timegm(event_payload->here_image.time_utc);
             #endif
             break;
         default: return;
@@ -260,20 +260,20 @@ static void dump_aas_file(Nrsc5Context* context, const nrsc5_event_t *evt) {
 }
 
 // --- NRSC5 Event Callback ---
-static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
+static void nrsc5_event_callback(const nrsc5_event_t *event_payload, void *opaque) {
     Nrsc5Context* context = (Nrsc5Context*)opaque;
     const char* name_ptr = NULL;
     char time_str[64];
 
-    switch (evt->event) {
+    switch (event_payload->event) {
         case NRSC5_EVENT_LOST_DEVICE:
             log_error("NRSC5: Lost device synchronization.");
             break;
 
         case NRSC5_EVENT_SYNC:
             log_info("NRSC5: Synchronized");
-            log_info("NRSC5: Frequency offset: %.15g Hz", evt->sync.freq_offset);
-            log_info("NRSC5: Primary service mode: %d", evt->sync.psmi);
+            log_info("NRSC5: Frequency offset: %.15g Hz", event_payload->sync.freq_offset);
+            log_info("NRSC5: Primary service mode: %d", event_payload->sync.psmi);
             context->ber_min = 1.0f;
             context->ber_max = 0.0f;
             context->ber_sum = 0.0f;
@@ -285,19 +285,19 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
             break;
 
         case NRSC5_EVENT_MER:
-            log_info("NRSC5: MER: %.1f dB (lower), %.1f dB (upper)", evt->mer.lower, evt->mer.upper);
+            log_info("NRSC5: MER: %.1f dB (lower), %.1f dB (upper)", event_payload->mer.lower, event_payload->mer.upper);
             break;
 
         case NRSC5_EVENT_BER:
-            update_ber_stats(context, evt->ber.cber);
+            update_ber_stats(context, event_payload->ber.cber);
             break;
 
         case NRSC5_EVENT_HDC:
-            if (evt->hdc.program == context->active_program) {
-                context->audio_bytes += evt->hdc.count;
+            if (event_payload->hdc.program == context->active_program) {
+                context->audio_bytes += event_payload->hdc.count;
                 context->audio_packets++;
 
-                if (evt->hdc.flags & NRSC5_PKT_FLAGS_CRC_ERROR) {
+                if (event_payload->hdc.flags & NRSC5_PKT_FLAGS_CRC_ERROR) {
                     context->audio_errors++;
                     context->total_audio_errors++;
                 } else {
@@ -324,29 +324,29 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
             break;
 
         case NRSC5_EVENT_AUDIO:
-            if (evt->audio.program == context->active_program) {
-                if (!evt->audio.data || evt->audio.count == 0 || evt->audio.count > 100000) return;
-                size_t bytes = evt->audio.count * sizeof(int16_t);
-                audio_output_write(context->audio_out, evt->audio.data, bytes, context->pipeline_mode);
+            if (event_payload->audio.program == context->active_program) {
+                if (!event_payload->audio.data || event_payload->audio.count == 0 || event_payload->audio.count > 100000) return;
+                size_t bytes = event_payload->audio.count * sizeof(int16_t);
+                audio_output_write(context->audio_out, event_payload->audio.data, bytes, context->pipeline_mode);
             }
             break;
 
         case NRSC5_EVENT_ID3:
-            if (evt->id3.program == context->active_program) {
-                if (evt->id3.title)  log_info("NRSC5: Title: %s", evt->id3.title);
-                if (evt->id3.artist) log_info("NRSC5: Artist: %s", evt->id3.artist);
-                if (evt->id3.album)  log_info("NRSC5: Album: %s", evt->id3.album);
-                if (evt->id3.genre)  log_info("NRSC5: Genre: %s", evt->id3.genre);
+            if (event_payload->id3.program == context->active_program) {
+                if (event_payload->id3.title)  log_info("NRSC5: Title: %s", event_payload->id3.title);
+                if (event_payload->id3.artist) log_info("NRSC5: Artist: %s", event_payload->id3.artist);
+                if (event_payload->id3.album)  log_info("NRSC5: Album: %s", event_payload->id3.album);
+                if (event_payload->id3.genre)  log_info("NRSC5: Genre: %s", event_payload->id3.genre);
 
-                if (evt->id3.xhdr.param >= 0) {
+                if (event_payload->id3.xhdr.param >= 0) {
                     log_info("NRSC5: XHDR: %d %08X %d",
-                             evt->id3.xhdr.param, evt->id3.xhdr.mime, evt->id3.xhdr.lot);
+                             event_payload->id3.xhdr.param, event_payload->id3.xhdr.mime, event_payload->id3.xhdr.lot);
                 }
             }
             break;
 
         case NRSC5_EVENT_SIG:
-            for (nrsc5_sig_service_t* svc = evt->sig.services; svc != NULL; svc = svc->next) {
+            for (nrsc5_sig_service_t* svc = event_payload->sig.services; svc != NULL; svc = svc->next) {
                 log_info("NRSC5: SIG Service: type=%s number=%d name=%s",
                          svc->type == NRSC5_SIG_SERVICE_AUDIO ? "audio" : "data",
                          svc->number, SAFE_STR(svc->name));
@@ -365,104 +365,104 @@ static void nrsc5_event_callback(const nrsc5_event_t *evt, void *opaque) {
             break;
 
         case NRSC5_EVENT_STATION_NAME:
-            log_info("NRSC5: Station name: %s", SAFE_STR(evt->station_name.name));
+            log_info("NRSC5: Station name: %s", SAFE_STR(event_payload->station_name.name));
             break;
 
         case NRSC5_EVENT_STATION_SLOGAN:
-            log_info("NRSC5: Slogan: %s", SAFE_STR(evt->station_slogan.slogan));
+            log_info("NRSC5: Slogan: %s", SAFE_STR(event_payload->station_slogan.slogan));
             break;
 
         case NRSC5_EVENT_STATION_MESSAGE:
-            log_info("NRSC5: Message: %s", SAFE_STR(evt->station_message.message));
+            log_info("NRSC5: Message: %s", SAFE_STR(event_payload->station_message.message));
             break;
 
         case NRSC5_EVENT_STATION_ID:
             log_info("NRSC5: Country: %s, FCC facility ID: %d",
-                     SAFE_STR(evt->station_id.country_code), evt->station_id.fcc_facility_id);
+                     SAFE_STR(event_payload->station_id.country_code), event_payload->station_id.fcc_facility_id);
             break;
 
         case NRSC5_EVENT_STATION_LOCATION:
             log_info("NRSC5: Station location: %.4f, %.4f, %dm",
-                     evt->station_location.latitude,
-                     evt->station_location.longitude,
-                     evt->station_location.altitude);
+                     event_payload->station_location.latitude,
+                     event_payload->station_location.longitude,
+                     event_payload->station_location.altitude);
             break;
 
         case NRSC5_EVENT_AUDIO_SERVICE_DESCRIPTOR:
-            nrsc5_program_type_name(evt->asd.type, &name_ptr);
+            nrsc5_program_type_name(event_payload->asd.type, &name_ptr);
             log_info("NRSC5: Audio program %d: %s, type: %s, sound experience %d",
-                     evt->asd.program,
-                     evt->asd.access == NRSC5_ACCESS_PUBLIC ? "public" : "restricted",
-                     SAFE_STR(name_ptr), evt->asd.sound_exp);
+                     event_payload->asd.program,
+                     event_payload->asd.access == NRSC5_ACCESS_PUBLIC ? "public" : "restricted",
+                     SAFE_STR(name_ptr), event_payload->asd.sound_exp);
             break;
 
         case NRSC5_EVENT_DATA_SERVICE_DESCRIPTOR:
-            nrsc5_service_data_type_name(evt->dsd.type, &name_ptr);
+            nrsc5_service_data_type_name(event_payload->dsd.type, &name_ptr);
             log_info("NRSC5: Data service: %s, type: %s, MIME type %03x",
-                     evt->dsd.access == NRSC5_ACCESS_PUBLIC ? "public" : "restricted",
-                     SAFE_STR(name_ptr), evt->dsd.mime_type);
+                     event_payload->dsd.access == NRSC5_ACCESS_PUBLIC ? "public" : "restricted",
+                     SAFE_STR(name_ptr), event_payload->dsd.mime_type);
             break;
 
         case NRSC5_EVENT_AUDIO_SERVICE:
-            nrsc5_program_type_name(evt->audio_service.type, &name_ptr);
+            nrsc5_program_type_name(event_payload->audio_service.type, &name_ptr);
             log_info("NRSC5: Audio service %d: %s, type: %s, codec: %d, blend: %d, gain: %d dB, delay: %d, latency: %d",
-                     evt->audio_service.program,
-                     evt->audio_service.access == NRSC5_ACCESS_PUBLIC ? "public" : "restricted",
+                     event_payload->audio_service.program,
+                     event_payload->audio_service.access == NRSC5_ACCESS_PUBLIC ? "public" : "restricted",
                      SAFE_STR(name_ptr),
-                     evt->audio_service.codec_mode,
-                     evt->audio_service.blend_control,
-                     evt->audio_service.digital_audio_gain,
-                     evt->audio_service.common_delay,
-                     evt->audio_service.latency);
+                     event_payload->audio_service.codec_mode,
+                     event_payload->audio_service.blend_control,
+                     event_payload->audio_service.digital_audio_gain,
+                     event_payload->audio_service.common_delay,
+                     event_payload->audio_service.latency);
             break;
 
         case NRSC5_EVENT_EMERGENCY_ALERT:
-            if (evt->emergency_alert.message) {
+            if (event_payload->emergency_alert.message) {
                 char alert_buf[1024];
                 int offset = 0;
                 offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "Category=[");
-                if (evt->emergency_alert.category1 >= 1) {
-                    nrsc5_alert_category_name(evt->emergency_alert.category1, &name_ptr);
+                if (event_payload->emergency_alert.category1 >= 1) {
+                    nrsc5_alert_category_name(event_payload->emergency_alert.category1, &name_ptr);
                     offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "%s", SAFE_STR(name_ptr));
                 }
-                if (evt->emergency_alert.category2 >= 1) {
-                    nrsc5_alert_category_name(evt->emergency_alert.category2, &name_ptr);
+                if (event_payload->emergency_alert.category2 >= 1) {
+                    nrsc5_alert_category_name(event_payload->emergency_alert.category2, &name_ptr);
                     offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, ", %s", SAFE_STR(name_ptr));
                 }
                 offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "] ");
 
-                switch (evt->emergency_alert.location_format) {
+                switch (event_payload->emergency_alert.location_format) {
                     case NRSC5_LOCATION_FORMAT_SAME: offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "SAME="); break;
                     case NRSC5_LOCATION_FORMAT_FIPS: offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "FIPS="); break;
                     case NRSC5_LOCATION_FORMAT_ZIP:  offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "ZIP="); break;
                 }
                 offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "[");
-                for (int i = 0; i < evt->emergency_alert.num_locations; i++) {
+                for (int i = 0; i < event_payload->emergency_alert.num_locations; i++) {
                     if (i > 0) offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, ", ");
-                    offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "%d", evt->emergency_alert.locations[i]);
+                    offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "%d", event_payload->emergency_alert.locations[i]);
                 }
                 offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "]");
-                log_info("NRSC5: Alert: %s %s", alert_buf, SAFE_STR(evt->emergency_alert.message));
+                log_info("NRSC5: Alert: %s %s", alert_buf, SAFE_STR(event_payload->emergency_alert.message));
             } else {
                 log_info("NRSC5: Alert ended");
             }
             break;
 
         case NRSC5_EVENT_HERE_IMAGE:
-            strftime(time_str, sizeof(time_str), "%Y-%m-%dT%H:%M:%SZ", evt->here_image.time_utc);
+            strftime(time_str, sizeof(time_str), "%Y-%m-%dT%H:%M:%SZ", event_payload->here_image.time_utc);
             log_info("NRSC5: HERE Image: type=%s, seq=%d, n1=%d, n2=%d, time=%s, name=%s, size=%d",
-                     evt->here_image.image_type == NRSC5_HERE_IMAGE_TRAFFIC ? "TRAFFIC" : "WEATHER",
-                     evt->here_image.seq, evt->here_image.n1, evt->here_image.n2, time_str,
-                     SAFE_STR(evt->here_image.name), evt->here_image.size);
-            if (s_nrsc5_config.aas_dir_arg) dump_aas_file(context, evt);
+                     event_payload->here_image.image_type == NRSC5_HERE_IMAGE_TRAFFIC ? "TRAFFIC" : "WEATHER",
+                     event_payload->here_image.seq, event_payload->here_image.n1, event_payload->here_image.n2, time_str,
+                     SAFE_STR(event_payload->here_image.name), event_payload->here_image.size);
+            if (s_nrsc5_config.aas_dir_arg) dump_aas_file(context, event_payload);
             break;
 
         case NRSC5_EVENT_LOT:
-            strftime(time_str, sizeof(time_str), "%Y-%m-%dT%H:%M:%SZ", evt->lot.expiry_utc);
+            strftime(time_str, sizeof(time_str), "%Y-%m-%dT%H:%M:%SZ", event_payload->lot.expiry_utc);
             log_info("NRSC5: LOT file: port=%04X lot=%d name=%s size=%d mime=%08X expiry=%s",
-                     evt->lot.component->data.port, evt->lot.lot, SAFE_STR(evt->lot.name),
-                     evt->lot.size, evt->lot.mime, time_str);
-            if (s_nrsc5_config.aas_dir_arg) dump_aas_file(context, evt);
+                     event_payload->lot.component->data.port, event_payload->lot.lot, SAFE_STR(event_payload->lot.name),
+                     event_payload->lot.size, event_payload->lot.mime, time_str);
+            if (s_nrsc5_config.aas_dir_arg) dump_aas_file(context, event_payload);
             break;
 
         default:
