@@ -94,7 +94,7 @@ typedef struct {
  * @param format The format of the samples (e.g., CU8, CS16).
  * @return true if written successfully, false if dropped due to lack of space.
  */
-bool packet_serializer_write_block(struct RingBuffer* buffer, uint32_t num_samples, const void* sample_data, SampleFormat format);
+bool packet_serializer_write_packet(struct RingBuffer* buffer, uint32_t num_samples, const void* sample_data, SampleFormat format);
 
 /**
  * @brief Writes a "Stream Reset" event packet to the buffer.

@@ -633,7 +633,7 @@ static void* spyserver_client_input_producer_thread(void* arg) {
 
                 // 2. Wrap and Write to Ring Buffer
                 uint32_t samples_in_chunk = (uint32_t)(aligned_read / bpp);
-                if (!packet_serializer_write_block(client->stream_buffer, samples_in_chunk, client->rx_buffer, client->active_format)) {
+                if (!packet_serializer_write_packet(client->stream_buffer, samples_in_chunk, client->rx_buffer, client->active_format)) {
                     static double last_drop_log_time = 0.0;
                     static size_t accumulated_drops = 0;
 

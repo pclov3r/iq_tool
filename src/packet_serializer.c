@@ -20,7 +20,7 @@ static bool _has_space_for(RingBuffer* buffer, size_t bytes_needed) {
 
 // --- WRITE IMPLEMENTATION ---
 
-bool packet_serializer_write_block(RingBuffer* buffer, uint32_t num_samples, const void* sample_data, SampleFormat format) {
+bool packet_serializer_write_packet(RingBuffer* buffer, uint32_t num_samples, const void* sample_data, SampleFormat format) {
     const SampleFormatInfo* fmt_info = get_format_info_by_enum(format);
     size_t bytes_per_sample = fmt_info ? fmt_info->bytes_per_iq_sample : 0;
     size_t data_size = num_samples * bytes_per_sample;

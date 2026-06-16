@@ -37,7 +37,7 @@ static bool pipeline_queue_samples(void* context, const void* data, size_t num_s
     source_update_heartbeat(app);
     if (is_shutdown_requested() || atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed)) return false;
 
-    if (!packet_serializer_write_block(app->pipeline.source_input_buffer, num_samples, data, format)) {
+    if (!packet_serializer_write_packet(app->pipeline.source_input_buffer, num_samples, data, format)) {
         static double last_drop_log_time = 0.0;
         static size_t accumulated_drops = 0;
 
