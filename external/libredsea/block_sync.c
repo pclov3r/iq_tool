@@ -61,21 +61,25 @@ static RdsOffset get_offset_for_syndrome(uint32_t syndrome) {
 }
 
 static uint32_t calculate_syndrome(uint32_t input_vector) {
-    static const uint32_t parity_check_matrix[26] = {
-        // 10 Parity Check Bits (Identity Matrix)
-        0x200, 0x100, 0x080, 0x040, 0x020, 
-        0x010, 0x008, 0x004, 0x002, 0x001,
-
-        // 16 Information Data Bits (Generator Polynomial)
-        0x2DC, 0x16E, 0x0B7, 0x287, 
-        0x39F, 0x313, 0x355, 0x376, 
-        0x1BB, 0x201, 0x3DC, 0x1EE, 
-        0x0F7, 0x2A7, 0x38F, 0x31B
+    // 16 Information Data Bits (Reversed to map directly to k = 0..15)
+    static const uint32_t generator_matrix[16] = {
+        0x31B, 0x38F, 0x2A7, 0x0F7, 
+        0x1EE, 0x3DC, 0x201, 0x1BB, 
+        0x376, 0x355, 0x313, 0x39F, 
+        0x287, 0x0B7, 0x16E, 0x2DC
     };
-    uint32_t result = 0;
-    for (int k = 0; k < 26; k++) {
-        result ^= (parity_check_matrix[25 - k] * ((input_vector >> k) & 1U));
+
+    // The top 10 parity bits map exactly to the 0x001 -> 0x200 identity matrix.
+    // We can extract them directly without looping.
+    uint32_t result = (input_vector >> 16) & 0x3FF;
+
+    // Only loop through the 16 data bits
+    for (int k = 0; k < 16; k++) {
+        if ((input_vector >> k) & 1U) {
+            result ^= generator_matrix[k];
+        }
     }
+    
     return result;
 }
 
