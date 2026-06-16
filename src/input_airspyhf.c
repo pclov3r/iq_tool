@@ -5,6 +5,7 @@
 #include "input_airspyhf.h"
 #include "module.h"
 #include "constants.h"
+#include "module_defaults.h"
 #include "app_context.h"
 #include "signal_handler.h"
 #include "log.h"

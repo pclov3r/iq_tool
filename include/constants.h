@@ -269,83 +269,6 @@
 // riding during a fade without flooding the log during normal operation.
 #define AGC_LOG_INTERVAL_SEC                 5.0f
 
-// =============================================================================
-// == Tier 4: SDR Hardware Interaction & Tuning
-// =============================================================================
-// Default values and tuning parameters specific to each SDR device.
-
-// --- RTLSDR Constants ---
-#define RTLSDR_DEFAULT_FILTER_ATTENUATION_DB     60.0f
-#define RTLSDR_DEFAULT_SAMPLE_RATE     2400000.0
-#define RTLSDR_PASSTHROUGH_BUFFER_SIZE 16384
-
-// --- SDRPLAY Unconditional Constants ---
-#define SDRPLAY_DEFAULT_FILTER_ATTENUATION_DB    80.0f
-#define SDRPLAY_DEFAULT_SAMPLE_RATE_HZ 2000000.0
-#define SDRPLAY_DEFAULT_BANDWIDTH_HZ   1536000.0
-#define SDRPLAY_DEFAULT_IF_GAIN_DB     -50
-
-// Define a safe max chunk size (16384 samples * 2 channels * 2 bytes = 64KB)
-#define MAX_SDRPLAY_CONVERSION_SAMPLES 16384
-
-// --- HACKRF Constants ---
-#define HACKRF_DEFAULT_FILTER_ATTENUATION_DB   60.0f
-#define HACKRF_DEFAULT_SAMPLE_RATE   8000000.0
-#define HACKRF_DEFAULT_LNA_GAIN      16
-#define HACKRF_DEFAULT_VGA_GAIN      0
-
-// --- BLADERF Constants ---
-#define BLADERF_DEFAULT_FILTER_ATTENUATION_DB    80.0f
-#define BLADERF_DEFAULT_SAMPLE_RATE_HZ 2000000
-#define BLADERF_DEFAULT_BANDWIDTH_HZ   1500000
-
-// --- BladeRF Async Stream Tuning ---
-#define BLADERF_TRANSFER_SIZE_SECONDS    0.020
-
-// --- BladeRF Adaptive Streaming Profiles ---
-#define BLADERF_PROFILE_LOWLATENCY_NUM_BUFFERS        32
-#define BLADERF_PROFILE_LOWLATENCY_NUM_TRANSFERS      16
-
-#define BLADERF_PROFILE_BALANCED_NUM_BUFFERS          64
-#define BLADERF_PROFILE_BALANCED_NUM_TRANSFERS        32
-
-#define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_BUFFERS    96
-#define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS  48
-
-// --- AIRSPY Constants ---
-#define AIRSPY_DEFAULT_FILTER_ATTENUATION_DB   80.0f
-#define AIRSPY_DEFAULT_SAMPLE_RATE   2500000.0
-#define AIRSPY_DEFAULT_SAMPLE_FORMAT CS16
-#define AIRSPY_DEFAULT_GAIN_VALUE    10
-#define AIRSPY_DEFAULT_LNA_GAIN      5
-#define AIRSPY_DEFAULT_MIXER_GAIN    5
-#define AIRSPY_DEFAULT_VGA_GAIN      5
-
-// --- AIRSPY HF+ Constants ---
-#define AIRSPYHF_DEFAULT_FILTER_ATTENUATION_DB   100.0f
-#define AIRSPYHF_DEFAULT_SAMPLE_RATE   768000
-
-// --- SPYSERVER Constants --
-#define SPYSERVER_DEFAULT_SAMPLE_RATE_HZ 600000.0
-
-// Absolute hard limit for the ring buffer size (128 MB)
-#define SPYSERVER_MAX_BUFFER_BYTES (256 * 1024 * 1024)
-
-// Start processing only after buffering this much data
-#define SPYSERVER_PREBUFFER_TARGET_SECONDS 5.0f
-
-// Minimum data floor required to trigger pre-buffering
-#define SPYSERVER_PREBUFFER_MIN_BYTES 65536
-
-// Total buffer capacity multiplier relative to target (Safety Margin)
-#define SPYSERVER_BUFFER_HEADROOM_FACTOR 4.0f
-
-// Absolute minimum capacity for the ring buffer (1 MB)
-#define SPYSERVER_RING_BUFFER_MIN_BYTES (1024 * 1024)
-
-// Cap pre-buffering at 80% of capacity to prevent immediate overrun
-#define SPYSERVER_PREBUFFER_MAX_FILL_RATIO 0.8f
-
 // --- Dynamic DSP Filter Attenuation ---
 #define DEFAULT_FILTER_ATTENUATION_8BIT_DB   60.0f
 #define DEFAULT_FILTER_ATTENUATION_16BIT_DB  100.0f
@@ -353,7 +276,7 @@
 #define DEFAULT_FILTER_ATTENUATION_32BIT_DB  150.0f
 
 // =============================================================================
-// == Tier 5: Sanity Checks & Hard Limits
+// == Tier 4: Sanity Checks & Hard Limits
 // =============================================================================
 
 #define MIN_ACCEPTABLE_RATIO      0.001f
@@ -369,7 +292,7 @@
 #define MAX_PATH_BUFFER           4096
 
 // =============================================================================
-// == Tier 6: Application Lifecycle Tuning
+// == Tier 5: Application Lifecycle Tuning
 // =============================================================================
 
 /**

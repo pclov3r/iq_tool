@@ -5,6 +5,7 @@
 #include "input_bladerf.h"
 #include "module.h"
 #include "constants.h"
+#include "module_defaults.h"
 #include "log.h"
 #include "signal_handler.h"
 #include "app_context.h"
