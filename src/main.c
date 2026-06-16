@@ -79,6 +79,7 @@ int main(int argc, char *argv[]) {
 
     int exit_status = EXIT_FAILURE;
     AppContext app;
+    PipelineContext pipeline_context = {0};
     bool resources_initialized = false;
     bool arena_initialized = false;
 
@@ -181,7 +182,8 @@ int main(int argc, char *argv[]) {
         ModuleContext context = { .config = &config, .app = &app };
         if (!app.module.input_api->pre_stream_iq_correction(&context)) goto cleanup;
     }
-    PipelineContext pipeline_context = { .config = &config, .app = &app };
+    pipeline_context.config = &config;
+    pipeline_context.app = &app;
     if (!pipeline_setup_buffers(&pipeline_context)) {
         goto cleanup;
     }
