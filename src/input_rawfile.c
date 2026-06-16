@@ -24,12 +24,10 @@
 #include <stdarg.h>
 #include <sndfile.h>
 
-#ifndef _WIN32
-#include <strings.h>
-#endif
-
 #ifdef _WIN32
 #define strcasecmp _stricmp
+#else
+#include <strings.h>
 #endif
 
 static struct {

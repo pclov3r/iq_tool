@@ -32,12 +32,10 @@
 #include <stddef.h>
 #include <math.h>
 
-#ifndef _WIN32
-#include <strings.h>
-#endif
-
 #ifdef _WIN32
 #define strcasecmp _stricmp
+#else
+#include <strings.h>
 #endif
 
 #define SDRC_AUXI_CHUNK_ID_STR "auxi"
