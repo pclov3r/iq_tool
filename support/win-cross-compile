@@ -11,6 +11,18 @@ set -e
 # and optional hardware modules.
 # ==============================================================================
 
+# --- Master Module List ---
+# Format: "module_name REQUIRES_LIBUSB=YES/NO"
+MODULES=(
+    "rtlsdr REQUIRES_LIBUSB=YES"
+    "sdrplay REQUIRES_LIBUSB=NO"
+    "hackrf REQUIRES_LIBUSB=YES"
+    "bladerf REQUIRES_LIBUSB=YES"
+    "airspy REQUIRES_LIBUSB=YES"
+    "airspyhf REQUIRES_LIBUSB=YES"
+    "nrsc5 REQUIRES_LIBUSB=NO"
+)
+
 # --- Dependency Path ---
 DEPS_BASE_PATH="/usr/local/src/windows_deps_files/src"
 
@@ -107,21 +119,32 @@ usage() {
 }
 
 # --- Parse Command-Line Arguments ---
+if [ "$#" -eq 0 ]; then
+    usage
+fi
+
 MAKE_ARGS=()
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --avx) BUILD_TYPE="avx";;
         --avx2) BUILD_TYPE="avx2";;
-        --with-rtlsdr) WITH_RTLSDR="ON";;
-        --with-sdrplay) WITH_SDRPLAY="ON";;
-        --with-hackrf) WITH_HACKRF="ON";;
-        --with-bladerf) WITH_BLADERF="ON";;
-        --with-nrsc5) WITH_NRSC5="ON";;
-        --with-airspy) WITH_AIRSPY="ON";;
-        --with-airspyhf) WITH_AIRSPYHF="ON";;
         --package) DO_PACKAGE="YES";;
         --cmake-args) CMAKE_EXTRA_ARGS="$2"; shift;;
         -h|--help) usage;;
+        --with-*)
+            mod_arg="${1#--with-}"
+            valid=0
+            for entry in "${MODULES[@]}"; do
+                read -r mod req <<< "$entry"
+                if [ "$mod" == "$mod_arg" ]; then valid=1; break; fi
+            done
+            if [ $valid -eq 1 ]; then
+                # Dynamically set WITH_MODULENAME="ON"
+                eval "WITH_${mod_arg^^}=\"ON\""
+            else
+                echo "Error: Unknown module option '$1'"; usage
+            fi
+            ;;
         --*) echo "Error: Unknown option '$1'"; usage;;
         *) MAKE_ARGS+=("$1");;
     esac
@@ -141,101 +164,82 @@ fi
 case "$BUILD_TYPE" in
     avx) CPU_TARGET_ARCHITECTURE="x86-64-v2" ;;
     avx2) CPU_TARGET_ARCHITECTURE="x86-64-v3" ;;
-    *) echo "Warning: Unknown BUILD_TYPE '$BUILD_TYPE'. No specific CPU_TARGET_ARCHITECTURE will be set." ;;
+    *) echo "Error: Unknown BUILD_TYPE '$BUILD_TYPE'."; exit 1 ;;
 esac
 
-# --- Setup Build Directories and Names ---
+# --- Setup Shared Variables ---
 root=$(cd "$(dirname "$0")/.." && pwd)
-
 build_suffix="${BUILD_TYPE}"
-if [ -n "$WITH_RTLSDR" ]; then build_suffix+="-rtlsdr"; fi
-if [ -n "$WITH_SDRPLAY" ]; then build_suffix+="-sdrplay"; fi
-if [ -n "$WITH_HACKRF" ]; then build_suffix+="-hackrf"; fi
-if [ -n "$WITH_BLADERF" ]; then build_suffix+="-bladerf"; fi
-if [ -n "$WITH_NRSC5" ]; then build_suffix+="-nrsc5"; fi
-if [ -n "$WITH_AIRSPY" ]; then build_suffix+="-airspy"; fi
-if [ -n "$WITH_AIRSPYHF" ]; then build_suffix+="-airspyhf"; fi
 
-prefix=${root}/build-win64-${build_suffix}
-
-# --- Construct CMake Options Array ---
+# The core libraries included in every build
 cmake_opts=(
-    -D CMAKE_SYSTEM_NAME=Windows
-    -D CMAKE_C_COMPILER=${host}-gcc
-    -D SNDFILE_INCLUDE_DIR=${SNDFILE_INCLUDE_DIR}
-    -D SNDFILE_LIBRARY=${SNDFILE_LIBRARY}
-    -D LIQUID_INCLUDE_DIR=${LIQUID_INCLUDE_DIR}
-    -D EXPAT_INCLUDE_DIR=${EXPAT_INCLUDE_DIR}
-    -D EXPAT_LIBRARY=${EXPAT_LIBRARY}
-    -D CPU_TARGET_ARCHITECTURE=${CPU_TARGET_ARCHITECTURE}
+    "-DCMAKE_SYSTEM_NAME=Windows"
+    "-DCMAKE_C_COMPILER=${host}-gcc"
+    "-DSNDFILE_INCLUDE_DIR=${SNDFILE_INCLUDE_DIR}"
+    "-DSNDFILE_LIBRARY=${SNDFILE_LIBRARY}"
+    "-DLIQUID_INCLUDE_DIR=${LIQUID_INCLUDE_DIR}"
+    "-DLIQUID_LIBRARY=${LIQUID_LIB_BASE_PATH}/build-win64-${BUILD_TYPE}/libliquid.dll.a"
+    "-DEXPAT_INCLUDE_DIR=${EXPAT_INCLUDE_DIR}"
+    "-DEXPAT_LIBRARY=${EXPAT_LIBRARY}"
+    "-DCPU_TARGET_ARCHITECTURE=${CPU_TARGET_ARCHITECTURE}"
 )
 
-# liquid-dsp library path based on selection
-liquid_library_path="${LIQUID_LIB_BASE_PATH}/build-win64-${BUILD_TYPE}/libliquid.dll.a"
-cmake_opts+=(-D LIQUID_LIBRARY=${liquid_library_path})
+# Base DLLs required for every build
+DLLS_TO_COPY=(
+    "${SNDFILE_DLL}"
+    "${LIQUID_LIB_BASE_PATH}/build-win64-${BUILD_TYPE}/libliquid.dll"
+    "${EXPAT_DLL}"
+    "${FFTW_DLL}"
+    "${MINGW_GCC_DLL}"
+    "${MINGW_PTHREAD_DLL}"
+)
 
-# Optional Module: RTL-SDR
-if [ -n "$WITH_RTLSDR" ]; then
-    cmake_opts+=( -D WITH_RTLSDR=ON
-                  -D RTLSDR_INCLUDE_DIR=${RTLSDR_INCLUDE_DIR}
-                  -D RTLSDR_LIBRARY=${RTLSDR_LIBRARY}
-                  -D LIBUSB_INCLUDE_DIR=${LIBUSB_INCLUDE_DIR}
-                  -D LIBUSB_LIBRARY=${LIBUSB_LIBRARY} )
+# --- Dynamic Module Injection ---
+# Helper function to inject module CMake variables without copy-pasting
+inject_module() {
+    local name=$1 inc_dir=$2 lib_path=$3
+    cmake_opts+=("-DWITH_${name}=ON" "-D${name}_INCLUDE_DIR=${inc_dir}" "-D${name}_LIBRARY=${lib_path}")
+}
+
+NEEDS_LIBUSB=0
+for entry in "${MODULES[@]}"; do
+    read -r mod req <<< "$entry"
+    var_name="WITH_${mod^^}"
+
+    # If the user passed the flag for this module...
+    if [ -n "${!var_name}" ]; then
+        build_suffix+="-${mod}"
+
+        # Dynamically inject the CMake vars
+        inc_var="${mod^^}_INCLUDE_DIR"
+        lib_var="${mod^^}_LIBRARY"
+        inject_module "${mod^^}" "${!inc_var}" "${!lib_var}"
+
+        # Dynamically check if a DLL variable exists and add it (skip nrsc5 intentionally)
+        dll_var="${mod^^}_DLL"
+        if [ -n "${!dll_var}" ] && [ "$mod" != "nrsc5" ]; then
+            DLLS_TO_COPY+=("${!dll_var}")
+        fi
+
+        # Check if it requires LibUSB
+        if [ "$req" == "REQUIRES_LIBUSB=YES" ]; then
+            NEEDS_LIBUSB=1
+        fi
+    fi
+done
+
+if [ $NEEDS_LIBUSB -eq 1 ]; then
+    cmake_opts+=("-DLIBUSB_INCLUDE_DIR=${LIBUSB_INCLUDE_DIR}" "-DLIBUSB_LIBRARY=${LIBUSB_LIBRARY}")
+    DLLS_TO_COPY+=("${LIBUSB_DLL}")
 fi
 
-# Optional Module: SDRplay
-if [ -n "$WITH_SDRPLAY" ]; then
-    cmake_opts+=( -D WITH_SDRPLAY=ON
-                  -D SDRPLAY_INCLUDE_DIR=${SDRPLAY_INCLUDE_DIR}
-                  -D SDRPLAY_LIBRARY=${SDRPLAY_LIBRARY} )
-fi
-
-# Optional Module: HackRF
-if [ -n "$WITH_HACKRF" ]; then
-    cmake_opts+=( -D WITH_HACKRF=ON
-                  -D HACKRF_INCLUDE_DIR=${HACKRF_INCLUDE_DIR}
-                  -D HACKRF_LIBRARY=${HACKRF_LIBRARY}
-                  -D LIBUSB_INCLUDE_DIR=${LIBUSB_INCLUDE_DIR}
-                  -D LIBUSB_LIBRARY=${LIBUSB_LIBRARY} )
-fi
-
-# Optional Module: bladeRF
-if [ -n "$WITH_BLADERF" ]; then
-    cmake_opts+=( -D WITH_BLADERF=ON
-                  -D BLADERF_INCLUDE_DIR=${BLADERF_INCLUDE_DIR}
-                  -D BLADERF_LIBRARY=${BLADERF_LIBRARY}
-                  -D LIBUSB_INCLUDE_DIR=${LIBUSB_INCLUDE_DIR}
-                  -D LIBUSB_LIBRARY=${LIBUSB_LIBRARY} )
-fi
-
-# Optional Module: NRSC5
-if [ -n "$WITH_NRSC5" ]; then
-    cmake_opts+=( -D WITH_NRSC5=ON
-                  -D NRSC5_INCLUDE_DIR=${NRSC5_INCLUDE_DIR}
-                  -D NRSC5_LIBRARY=${NRSC5_LIBRARY} )
-fi
-
-# Optional Module: Airspy
-if [ -n "$WITH_AIRSPY" ]; then
-    cmake_opts+=( -D WITH_AIRSPY=ON
-                  -D AIRSPY_INCLUDE_DIR=${AIRSPY_INCLUDE_DIR}
-                  -D AIRSPY_LIBRARY=${AIRSPY_LIBRARY} )
-fi
-
-# Optional Module: Airspy HF+
-if [ -n "$WITH_AIRSPYHF" ]; then
-    cmake_opts+=( -D WITH_AIRSPYHF=ON
-                  -D AIRSPYHF_INCLUDE_DIR=${AIRSPYHF_INCLUDE_DIR}
-                  -D AIRSPYHF_LIBRARY=${AIRSPYHF_LIBRARY} )
-fi
-
-# Pass through any extra arguments provided
 if [ -n "$CMAKE_EXTRA_ARGS" ]; then
     read -r -a CMAKE_EXTRA_ARGS_ARRAY <<< "$CMAKE_EXTRA_ARGS"
     cmake_opts+=("${CMAKE_EXTRA_ARGS_ARRAY[@]}")
 fi
 
 # --- Execute Build ---
+prefix="${root}/build-win64-${build_suffix}"
 echo "--- Configuring and Building in ${prefix} ---"
 mkdir -p "${prefix}"
 cd "${prefix}"
@@ -245,17 +249,14 @@ make "${MAKE_ARGS[@]}"
 # --- Packaging ---
 if [ "$DO_PACKAGE" = "YES" ]; then
     echo "--- Packaging distributable ZIP file ---"
-
     dist_dir="${prefix}/iq_tool_win64"
     zip_file_name="iq_tool_${build_suffix}_win64.zip"
 
     rm -rf "${dist_dir}"
     mkdir -p "${dist_dir}"
 
-    echo "Copying executable..."
+    echo "Copying executable, license, and documentation..."
     cp "${prefix}/iq_tool.exe" "${dist_dir}/"
-
-    echo "Copying license, documentation, and presets..."
     cp "${root}/LICENSE" "${dist_dir}/"
     cp "${root}/README.md" "${dist_dir}/"
 
@@ -266,38 +267,13 @@ if [ "$DO_PACKAGE" = "YES" ]; then
     fi
 
     echo "Copying required DLLs..."
-    cp "${SNDFILE_DLL}" "${dist_dir}/"
-    cp "${LIQUID_LIB_BASE_PATH}/build-win64-${BUILD_TYPE}/libliquid.dll" "${dist_dir}/"
-    cp "${EXPAT_DLL}" "${dist_dir}/"
-    cp "${FFTW_DLL}" "${dist_dir}/"
-
-    echo "Copying MinGW runtime DLLs..."
-    cp "${MINGW_GCC_DLL}" "${dist_dir}/"
-    cp "${MINGW_PTHREAD_DLL}" "${dist_dir}/"
-
-    if [ -n "$WITH_RTLSDR" ]; then
-        echo "Copying RTL-SDR DLLs..."
-        cp "${RTLSDR_DLL}" "${dist_dir}/"
-        cp "${LIBUSB_DLL}" "${dist_dir}/"
-    fi
-
-    if [ -n "$WITH_HACKRF" ]; then
-        echo "Copying HackRF DLLs..."
-        cp "${HACKRF_DLL}" "${dist_dir}/"
-        if [ ! -f "${dist_dir}/libusb-1.0.dll" ]; then
-            cp "${LIBUSB_DLL}" "${dist_dir}/"
+    for dll in "${DLLS_TO_COPY[@]}"; do
+        if [ -f "$dll" ]; then
+            cp "$dll" "${dist_dir}/"
+        else
+            echo "Warning: Expected DLL not found: $dll"
         fi
-    fi
-
-    if [ -n "$WITH_AIRSPY" ]; then
-        echo "Copying Airspy DLLs..."
-        cp "${AIRSPY_DLL}" "${dist_dir}/"
-    fi
-
-    if [ -n "$WITH_AIRSPYHF" ]; then
-        echo "Copying Airspy HF+ DLLs..."
-        cp "${AIRSPYHF_DLL}" "${dist_dir}/"
-    fi
+    done
 
     echo "Creating ZIP archive: ${zip_file_name}"
     cd "${dist_dir}"
