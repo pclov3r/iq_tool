@@ -196,6 +196,7 @@ set(OTHER_SOURCES
     external/argparse/argparse.c
     external/libredsea/block_sync.c
     external/libredsea/libredsea.c
+    external/libredsea/libredsea_utilities.c
     external/libredsea/group_decoder.c
     external/libredsea/tmc_events.c
     src/audio_output_functions.c

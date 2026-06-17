@@ -543,11 +543,15 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
             log_info("%s PTY: %s%s", current.is_rbds ? "RBDS" : "RDS", current.program_type, ptyn_buf);
 
             if (ps_ptr[0] != '\0') {
-                 log_info("%s PS: %s", current.is_rbds ? "RBDS" : "RDS", ps_ptr);
+                 char utf8_ps[32];
+                 libredsea_utility_translate_to_utf8(ps_ptr, utf8_ps, sizeof(utf8_ps));
+                 log_info("%s PS: %s", current.is_rbds ? "RBDS" : "RDS", utf8_ps);
             }
 
             if (rt_ptr[0] != '\0') {
-                 log_info("%s RT: %s", current.is_rbds ? "RBDS" : "RDS", rt_ptr);
+                 char utf8_rt[256];
+                 libredsea_utility_translate_to_utf8(rt_ptr, utf8_rt, sizeof(utf8_rt));
+                 log_info("%s RT: %s", current.is_rbds ? "RBDS" : "RDS", utf8_rt);
             }
 
             if (strcmp(current.radiotext, wfm_decoder->last_rds_state.radiotext) != 0) {

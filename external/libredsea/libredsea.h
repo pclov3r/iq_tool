@@ -259,6 +259,14 @@ float libredsea_get_bler(LibRedseaHandle context);
 bool libredsea_get_sync(LibRedseaHandle context);
 
 /**
+ * @brief Helper to translate raw 8-bit RDS characters into standard UTF-8 string for UI display.
+ * @param raw_input Raw null-terminated RDS character array
+ * @param utf8_output Pre-allocated destination buffer (should be 3x size of input)
+ * @param max_output_length Size of utf8_output buffer
+ */
+void libredsea_utility_translate_to_utf8(const char *raw_input, char *utf8_output, int max_output_length);
+
+/**
  * @brief Free the native C LibRedsea decoder.
  * @param context Decoder handle
  */
