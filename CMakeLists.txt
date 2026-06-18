@@ -173,7 +173,6 @@ set(COMPILE_WITH_FFAST_MATH_SOURCES
     src/filter.c
     src/frequency_shift.c
     src/iq_correction.c
-    src/keyboard_handler.c
     src/output_am.c
     src/output_nfm.c
     src/output_wfm.c
@@ -200,6 +199,7 @@ set(OTHER_SOURCES
     external/libredsea/tmc_events.c
     src/audio_output_functions.c
     src/cli.c
+    src/keyboard_handler.c
     src/config.c
     src/input_rawfile.c
     src/input_stdin.c
