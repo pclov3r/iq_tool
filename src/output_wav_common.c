@@ -81,10 +81,6 @@ bool wav_common_initialize(ModuleContext* context, int sf_format_flag) {
     const char* out_path = config->output.effective_path;
     #endif
 
-    if (!utility_verify_output_path(config, out_path)) {
-        return false;
-    }
-
     // Prepare the libsndfile info struct.
     SF_INFO sfinfo;
     memset(&sfinfo, 0, sizeof(SF_INFO));
