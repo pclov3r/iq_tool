@@ -174,7 +174,6 @@ set(COMPILE_WITH_FFAST_MATH_SOURCES
     src/frequency_shift.c
     src/iq_correction.c
     src/keyboard_handler.c
-    src/main.c
     src/output_am.c
     src/output_nfm.c
     src/output_wfm.c
