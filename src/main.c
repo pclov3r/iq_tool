@@ -61,6 +61,7 @@ pthread_mutex_t g_console_mutex;
 static void initialize_resource_struct(AppConfig *config, AppContext* app);
 static bool validate_configuration(AppConfig *config, const AppContext* app);
 static void print_configuration_summary(const AppConfig *config, const AppContext* app);
+static void print_summary_section(const char* header, const InputSummaryInfo* info, int w);
 static void print_final_summary(const AppConfig *config, const AppContext* app, bool success);
 static void console_lock_function(bool lock, void *udata);
 static void application_progress_callback(unsigned long long current_output_frames, long long total_output_frames, unsigned long long current_bytes_written, void* udata);
@@ -194,7 +195,6 @@ int main(int argc, char *argv[]) {
     resources_initialized = true;
 
     print_configuration_summary(&config, &app);
-    fprintf(stderr, "\n");
 
     if (app.pipeline_mode == PIPELINE_MODE_ASYNCHRONOUS_PUSH) {
         log_info("Starting %s live source capture...", config.input.type_name);
@@ -239,7 +239,7 @@ cleanup:
     if (resources_initialized) {
         print_final_summary(&config, &app, final_ok);
     }
-    
+
     pthread_mutex_unlock(&g_console_mutex);
 
     // Always tear down pipeline buffers and components before freeing their memory arena
@@ -312,6 +312,12 @@ static void close_output_module(AppConfig *config, AppContext* app) {
 
 // --- Static Helper Function Definitions ---
 
+static void print_summary_section(const char* header, const InputSummaryInfo* info, int w) {
+    fprintf(stderr, "--- %s ---\n", header);
+    for (int i = 0; i < info->count; i++)
+        fprintf(stderr, " %-*s : %s\n", w, info->items[i].label, info->items[i].value);
+}
+
 static void initialize_resource_struct(AppConfig *config, AppContext* app) {
     memset(app, 0, sizeof(AppContext));
     app->config = config;
@@ -334,157 +340,111 @@ static bool validate_configuration(AppConfig *config, const AppContext* app) {
 static void print_configuration_summary(const AppConfig *config, const AppContext* app) {
     if (!config || !app || !app->module.input_api) return;
 
-    InputSummaryInfo summary_info;
-    memset(&summary_info, 0, sizeof(InputSummaryInfo));
     const ModuleContext context = { .config = config, .app = (AppContext*)app };
-    app->module.input_api->get_summary_info(&context, &summary_info);
 
-    int max_label_length = 0;
-    if (summary_info.count > 0) {
-        for (int i = 0; i < summary_info.count; i++) {
-            int length = (int)strlen(summary_info.items[i].label);
-            if (length > max_label_length) {
-                max_label_length = length;
-            }
-        }
-    }
-
-    if (config->sdr_general.rf_freq_provided) {
-        const char* offset_labels[] = { "Actual Frequency", "Frequency Offset", "Tuned Frequency", "RF Frequency" };
-        for (int i = 0; i < 4; i++) {
-            int length = (int)strlen(offset_labels[i]);
-            if (length > max_label_length) max_label_length = length;
-        }
-    }
-
-    const char* base_output_labels[] = {
-        "Output Type", "Sample Type", "Output Sample Rate", "Baseband Sample Rate", "Input Gain", "Output Gain", "Frequency Shift",
-        "Resampling", "Output Target", "FIR Filter", "FFT Filter", "Output AGC"
-    };
-    for (size_t i = 0; i < sizeof(base_output_labels) / sizeof(base_output_labels[0]); i++) {
-        int length = (int)strlen(base_output_labels[i]);
-        if (length > max_label_length) {
-            max_label_length = length;
-        }
-    }
-
-    fprintf(stderr, "\n--- Input Details ---\n");
-    if (summary_info.count > 0) {
-        for (int i = 0; i < summary_info.count; i++) {
-            fprintf(stderr, " %-*s : %s\n", max_label_length, summary_info.items[i].label, summary_info.items[i].value);
-        }
-    }
+    // --- Build input section ---
+    InputSummaryInfo input_info = {0};
+    app->module.input_api->get_summary_info(&context, &input_info);
 
     if (config->sdr_general.rf_freq_provided) {
         if (fabs(config->sdr_general.frequency_offset_hz) > 1e-9) {
-            double user_target_hz = config->sdr_general.rf_freq_hz - config->sdr_general.frequency_offset_hz;
-            fprintf(stderr, " %-*s : %.15g Hz\n", max_label_length, "Actual Frequency", user_target_hz);
-            fprintf(stderr, " %-*s : %+.0f Hz\n", max_label_length, "Frequency Offset", config->sdr_general.frequency_offset_hz);
-            fprintf(stderr, " %-*s : %.15g Hz\n", max_label_length, "Tuned Frequency", config->sdr_general.rf_freq_hz);
+            double user_hz = config->sdr_general.rf_freq_hz - config->sdr_general.frequency_offset_hz;
+            add_summary_item(&input_info, "Actual Frequency", "%.15g Hz", user_hz);
+            add_summary_item(&input_info, "Frequency Offset", "%+.0f Hz", config->sdr_general.frequency_offset_hz);
+            add_summary_item(&input_info, "Tuned Frequency",  "%.15g Hz", config->sdr_general.rf_freq_hz);
         } else {
-            fprintf(stderr, " %-*s : %.15g Hz\n", max_label_length, "RF Frequency", config->sdr_general.rf_freq_hz);
+            add_summary_item(&input_info, "RF Frequency", "%.15g Hz", config->sdr_general.rf_freq_hz);
         }
     }
+    add_summary_item(&input_info, "I/Q Correction", "%s", config->dsp.iq_correction.enable ? "Enabled" : "Disabled");
+    add_summary_item(&input_info, "DC Block",        "%s", config->dsp.dc_block.enable      ? "Enabled" : "Disabled");
 
-    fprintf(stderr, " %-*s : %s\n", max_label_length, "I/Q Correction", config->dsp.iq_correction.enable ? "Enabled" : "Disabled");
-    fprintf(stderr, " %-*s : %s\n", max_label_length, "DC Block", config->dsp.dc_block.enable ? "Enabled" : "Disabled");
+    // --- Build output section ---
+    OutputSummaryInfo output_info = {0};
+    if (app->module.output_api && app->module.output_api->get_summary_info)
+        app->module.output_api->get_summary_info(&context, &output_info);
 
-    fprintf(stderr, "--- Output Details ---\n");
-    if (app->module.output_api && app->module.output_api->get_summary_info) {
-        OutputSummaryInfo output_summary;
-        memset(&output_summary, 0, sizeof(output_summary));
-        app->module.output_api->get_summary_info(&context, &output_summary);
-        for (int i = 0; i < output_summary.count; i++) {
-            fprintf(stderr, " %-*s : %s\n", max_label_length, output_summary.items[i].label, output_summary.items[i].value);
-        }
-    }
-
-    const char* sample_type_str = get_format_info_by_enum(app->dsp.pipeline_sample_format) ? get_format_info_by_enum(app->dsp.pipeline_sample_format)->description_str : "Unknown";
-    fprintf(stderr, " %-*s : %s\n", max_label_length, "Sample Type", sample_type_str);
+    const char* sample_type_str = get_format_info_by_enum(app->dsp.pipeline_sample_format)
+                                ? get_format_info_by_enum(app->dsp.pipeline_sample_format)->description_str
+                                : "Unknown";
+    add_summary_item(&output_info, "Sample Type", "%s", sample_type_str);
 
     if (config->output.payload == PAYLOAD_AUDIO) {
-        fprintf(stderr, " %-*s : %.15g Hz\n", max_label_length, "Baseband Sample Rate", config->baseband_sample_rate.rate_hz);
+        add_summary_item(&output_info, "Baseband Sample Rate", "%.15g Hz", config->baseband_sample_rate.rate_hz);
     } else {
-        fprintf(stderr, " %-*s : %.15g Hz\n", max_label_length, "Output Sample Rate", config->output_sample_rate.rate_hz);
+        add_summary_item(&output_info, "Output Sample Rate",   "%.15g Hz", config->output_sample_rate.rate_hz);
     }
 
-    fprintf(stderr, " %-*s : %.5f\n", max_label_length, "Input Gain", config->dsp.input_gain);
+    add_summary_item(&output_info, "Input Gain",  "%.5f", config->dsp.input_gain);
+    if (config->dsp.output_gain != 1.0f)
+        add_summary_item(&output_info, "Output Gain", "%.5f", config->dsp.output_gain);
 
-    if (config->dsp.output_gain != 1.0f) {
-        fprintf(stderr, " %-*s : %.5f\n", max_label_length, "Output Gain", config->dsp.output_gain);
-    }
-
-    if (fabs(app->dsp.nco_shift_hz) > 1e-9) {
-        char shift_buf[64];
-        snprintf(shift_buf, sizeof(shift_buf), "%+.2f Hz%s", app->dsp.nco_shift_hz, config->dsp.shift_after_resample ? " (Post-Resample)" : "");
-        fprintf(stderr, " %-*s : %s\n", max_label_length, "Frequency Shift", shift_buf);
-    }
+    if (fabs(app->dsp.nco_shift_hz) > 1e-9)
+        add_summary_item(&output_info, "Frequency Shift", "%+.2f Hz%s",
+            app->dsp.nco_shift_hz, config->dsp.shift_after_resample ? " (Post-Resample)" : "");
 
     if (config->dsp.filter.count == 0) {
-        fprintf(stderr, " %-*s : %s\n", max_label_length, "Filter", "Disabled");
+        add_summary_item(&output_info, "Filter", "Disabled");
     } else {
         const char* filter_label;
         switch (app->dsp.filter.type_actual) {
             case FILTER_IMPL_FIR_SYMMETRIC:
-            case FILTER_IMPL_FIR_ASYMMETRIC:
-                filter_label = "FIR Filter";
-                break;
+            case FILTER_IMPL_FIR_ASYMMETRIC: filter_label = "FIR Filter"; break;
             case FILTER_IMPL_FFT_SYMMETRIC:
-            case FILTER_IMPL_FFT_ASYMMETRIC:
-                filter_label = "FFT Filter";
-                break;
-            default:
-                filter_label = "Filter";
-                break;
+            case FILTER_IMPL_FFT_ASYMMETRIC: filter_label = "FFT Filter"; break;
+            default:                          filter_label = "Filter";     break;
         }
-
         char filter_buf[256] = {0};
         const char* stage = config->dsp.filter.apply_post_resample ? " (Post-Resample)" : "";
         strncat(filter_buf, "Enabled: ", sizeof(filter_buf) - strlen(filter_buf) - 1);
         for (int i = 0; i < config->dsp.filter.count; i++) {
-            char current_filter_desc[128];
+            char desc[128] = {0};
             const FilterRequest* req = &config->dsp.filter.requests[i];
             switch (req->type) {
-                case FILTER_TYPE_LOWPASS: snprintf(current_filter_desc, sizeof(current_filter_desc), "LPF(%.15g Hz)", req->freq1_hz); break;
-                case FILTER_TYPE_HIGHPASS: snprintf(current_filter_desc, sizeof(current_filter_desc), "HPF(%.15g Hz)", req->freq1_hz); break;
-                case FILTER_TYPE_PASSBAND: snprintf(current_filter_desc, sizeof(current_filter_desc), "BPF(%.15g Hz, BW %.15g Hz)", req->freq1_hz, req->freq2_hz); break;
-                case FILTER_TYPE_STOPBAND: snprintf(current_filter_desc, sizeof(current_filter_desc), "BSF(%.15g Hz, BW %.15g Hz)", req->freq1_hz, req->freq2_hz); break;
+                case FILTER_TYPE_LOWPASS:  snprintf(desc, sizeof(desc), "LPF(%.15g Hz)", req->freq1_hz); break;
+                case FILTER_TYPE_HIGHPASS: snprintf(desc, sizeof(desc), "HPF(%.15g Hz)", req->freq1_hz); break;
+                case FILTER_TYPE_PASSBAND: snprintf(desc, sizeof(desc), "BPF(%.15g Hz, BW %.15g Hz)", req->freq1_hz, req->freq2_hz); break;
+                case FILTER_TYPE_STOPBAND: snprintf(desc, sizeof(desc), "BSF(%.15g Hz, BW %.15g Hz)", req->freq1_hz, req->freq2_hz); break;
                 default: break;
             }
             if (i > 0) strncat(filter_buf, " + ", sizeof(filter_buf) - strlen(filter_buf) - 1);
-            strncat(filter_buf, current_filter_desc, sizeof(filter_buf) - strlen(filter_buf) - 1);
+            strncat(filter_buf, desc, sizeof(filter_buf) - strlen(filter_buf) - 1);
         }
         strncat(filter_buf, stage, sizeof(filter_buf) - strlen(filter_buf) - 1);
-        fprintf(stderr, " %-*s : %s\n", max_label_length, filter_label, filter_buf);
+        add_summary_item(&output_info, filter_label, "%s", filter_buf);
     }
 
     if (app->dsp.pipeline_agc.enable) {
-        char agc_buf[128];
-        snprintf(agc_buf, sizeof(agc_buf), "Enabled (Target: %.2f)", app->dsp.pipeline_agc.target_level);
-        fprintf(stderr, " %-*s : %s\n", max_label_length, "Pipeline AGC", agc_buf);
+        add_summary_item(&output_info, "Pipeline AGC", "Enabled (Target: %.2f)", app->dsp.pipeline_agc.target_level);
     } else {
-        fprintf(stderr, " %-*s : %s\n", max_label_length, "Pipeline AGC", "Disabled");
+        add_summary_item(&output_info, "Pipeline AGC", "Disabled");
     }
 
-    if (app->dsp.pipeline_gain != 1.0f) {
-        char gain_buf[128];
-        snprintf(gain_buf, sizeof(gain_buf), "%.2fx", app->dsp.pipeline_gain);
-        fprintf(stderr, " %-*s : %s\n", max_label_length, "Pipeline Gain", gain_buf);
-    }
+    if (app->dsp.pipeline_gain != 1.0f)
+        add_summary_item(&output_info, "Pipeline Gain", "%.2fx", app->dsp.pipeline_gain);
 
-    fprintf(stderr, " %-*s : %s\n", max_label_length, "Resampling", app->dsp.bypass_resampler ? "Disabled" : "Enabled");
+    add_summary_item(&output_info, "Resampling", "%s", app->dsp.bypass_resampler ? "Disabled" : "Enabled");
 
     if (config->output.path_arg != NULL) {
-        const char* out_path;
 #ifdef _WIN32
-        out_path = config->output.effective_path_utf8;
+        add_summary_item(&output_info, "Output File", "%s", config->output.effective_path_utf8);
 #else
-        out_path = config->output.effective_path;
+        add_summary_item(&output_info, "Output File", "%s", config->output.effective_path);
 #endif
-        fprintf(stderr, " %-*s : %s\n", max_label_length, "Output File", out_path);
     } else if (config->output.payload == PAYLOAD_AUDIO) {
-        fprintf(stderr, " %-*s : %s\n", max_label_length, "Output Target", "Audio Device");
+        add_summary_item(&output_info, "Output Target", "Audio Device");
     }
+
+    // --- Single unified width pass ---
+    int w = 0;
+    for (int i = 0; i < input_info.count;  i++) { int l = (int)strlen(input_info.items[i].label);  if (l > w) w = l; }
+    for (int i = 0; i < output_info.count; i++) { int l = (int)strlen(output_info.items[i].label); if (l > w) w = l; }
+
+    // --- Render ---
+    fprintf(stderr, "\n");
+    print_summary_section("Input Details",  &input_info,  w);
+    print_summary_section("Output Details", &output_info, w);
+    fprintf(stderr, "\n");
 }
 
 static void print_final_summary(const AppConfig *config, const AppContext* app, bool success) {
