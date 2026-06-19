@@ -17,6 +17,8 @@
 #include "app_context.h"
 #include "mem_arena.h"
 #include "pipeline_types.h" // For SampleChunk
+#include "module.h" // For OutputSummaryInfo
+
 
 // --- Function Declarations ---
 
@@ -76,5 +78,14 @@ unsigned int filter_apply(DspContext* dsp, SampleChunk* item, bool is_post_resam
  * @return The number of options added.
  */
 int filter_populate_cli_options(struct argparse_option* buffer, struct AppConfig* config);
+
+/**
+ * @brief Adds filter summary information to the provided OutputSummaryInfo object.
+ *
+ * @param config The application configuration struct.
+ * @param app The application context.
+ * @param info The OutputSummaryInfo struct to add items to.
+ */
+void filter_get_summary_info(const AppConfig* config, const AppContext* app, OutputSummaryInfo* info);
 
 #endif // FILTER_H_

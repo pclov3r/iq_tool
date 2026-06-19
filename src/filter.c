@@ -8,6 +8,8 @@
 #include "log.h"
 #include "app_context.h"
 #include "mem_arena.h"
+#include "module.h"
+#include "utilities.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -572,4 +574,37 @@ int filter_populate_cli_options(struct argparse_option* buffer, struct AppConfig
     size_t count = sizeof(options) / sizeof(options[0]);
     memcpy(buffer, options, sizeof(options));
     return (int)count;
+}
+
+void filter_get_summary_info(const AppConfig* config, const AppContext* app, OutputSummaryInfo* output_info) {
+    if (config->dsp.filter.count == 0) {
+        add_summary_item(output_info, "Filter", "Disabled");
+    } else {
+        const char* filter_label;
+        switch (app->dsp.filter.type_actual) {
+            case FILTER_IMPL_FIR_SYMMETRIC:
+            case FILTER_IMPL_FIR_ASYMMETRIC: filter_label = "FIR Filter"; break;
+            case FILTER_IMPL_FFT_SYMMETRIC:
+            case FILTER_IMPL_FFT_ASYMMETRIC: filter_label = "FFT Filter"; break;
+            default:                          filter_label = "Filter";     break;
+        }
+        char filter_buf[256] = {0};
+        const char* stage = config->dsp.filter.apply_post_resample ? " (Post-Resample)" : "";
+        strncat(filter_buf, "Enabled: ", sizeof(filter_buf) - strlen(filter_buf) - 1);
+        for (int i = 0; i < config->dsp.filter.count; i++) {
+            char desc[128] = {0};
+            const FilterRequest* req = &config->dsp.filter.requests[i];
+            switch (req->type) {
+                case FILTER_TYPE_LOWPASS:  snprintf(desc, sizeof(desc), "LPF(%.15g Hz)", req->freq1_hz); break;
+                case FILTER_TYPE_HIGHPASS: snprintf(desc, sizeof(desc), "HPF(%.15g Hz)", req->freq1_hz); break;
+                case FILTER_TYPE_PASSBAND: snprintf(desc, sizeof(desc), "BPF(%.15g Hz, BW %.15g Hz)", req->freq1_hz, req->freq2_hz); break;
+                case FILTER_TYPE_STOPBAND: snprintf(desc, sizeof(desc), "BSF(%.15g Hz, BW %.15g Hz)", req->freq1_hz, req->freq2_hz); break;
+                default: break;
+            }
+            if (i > 0) strncat(filter_buf, " + ", sizeof(filter_buf) - strlen(filter_buf) - 1);
+            strncat(filter_buf, desc, sizeof(filter_buf) - strlen(filter_buf) - 1);
+        }
+        strncat(filter_buf, stage, sizeof(filter_buf) - strlen(filter_buf) - 1);
+        add_summary_item(output_info, filter_label, "%s", filter_buf);
+    }
 }
