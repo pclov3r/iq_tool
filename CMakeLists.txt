@@ -169,20 +169,14 @@ include_directories(${Expat_INCLUDE_DIRS})
 
 set(COMPILE_WITH_FFAST_MATH_SOURCES
     src/agc.c
-    src/dc_block.c
     src/filter.c
-    src/frequency_shift.c
     src/iq_correction.c
     src/output_am.c
     src/output_nfm.c
     src/output_wfm.c
-    src/pipeline_stages.c
     src/post_processor.c
-    src/pre_processor.c
-    src/resampler.c
     src/sample_conversion_functions.c
     src/interleave_functions.c
-    src/utility_threads.c
     external/libredsea/rds_demodulator.c
 )
 
@@ -201,6 +195,8 @@ set(OTHER_SOURCES
     src/cli.c
     src/keyboard_handler.c
     src/config.c
+    src/dc_block.c
+    src/frequency_shift.c
     src/input_rawfile.c
     src/input_stdin.c
     src/input_wav.c
@@ -217,15 +213,19 @@ set(OTHER_SOURCES
     src/output_wav_common.c
     src/output_wav_rf64.c
     src/pipeline.c
+    src/pipeline_stages.c
     src/platform.c
+    src/pre_processor.c
     src/presets_loader.c
     src/queue.c
+    src/resampler.c
     src/ring_buffer.c
     src/packet_serializer.c
     src/sample_format_table.c
     src/signal_handler.c
     src/thread_manager.c
     src/utilities.c
+    src/utility_threads.c
     src/wait_event.c
 )
 
