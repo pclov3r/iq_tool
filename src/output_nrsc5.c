@@ -21,6 +21,7 @@
 #endif
 
 #include "output_nrsc5.h"
+#include "signal_handler.h"
 #include "audio_output_functions.h"
 #include "module.h"
 #include "app_context.h"
@@ -563,7 +564,11 @@ static void nrsc5_output_reset(ModuleContext* context) { (void)context; }
 
 static void nrsc5_output_flush(ModuleContext* context) {
     Nrsc5Context* nrsc5_decoder = (Nrsc5Context*)context->app->module.output_private_data;
-    audio_output_clear(nrsc5_decoder->audio_out);
+    if (is_shutdown_requested()) {
+        audio_output_clear(nrsc5_decoder->audio_out);
+    } else {
+        audio_output_drain(nrsc5_decoder->audio_out);
+    }
 }
 
 static size_t nrsc5_output_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {

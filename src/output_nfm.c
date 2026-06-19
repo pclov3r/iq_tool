@@ -5,6 +5,7 @@
 #include "output_nfm.h"
 #include "constants.h"
 #include "audio_output_functions.h"
+#include "signal_handler.h"
 #include "module.h"
 #include "app_context.h"
 #include "log.h"
@@ -166,7 +167,11 @@ static bool nfm_output_initialize(ModuleContext* context) {
 static void nfm_output_reset(ModuleContext* context) { (void)context; }
 static void nfm_output_flush(ModuleContext* context) {
     NfmContext* p = (NfmContext*)context->app->module.output_private_data;
-    audio_output_clear(p->audio_out);
+    if (is_shutdown_requested()) {
+        audio_output_clear(p->audio_out);
+    } else {
+        audio_output_drain(p->audio_out);
+    }
 }
 static size_t nfm_output_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
     AppContext* res = context->app;
