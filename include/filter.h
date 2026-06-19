@@ -17,7 +17,7 @@
 #include "app_context.h"
 #include "mem_arena.h"
 #include "pipeline_types.h" // For SampleChunk
-#include "module.h" // For OutputSummaryInfo
+#include "utilities.h" // For OutputSummaryInfo
 
 
 // --- Function Declarations ---

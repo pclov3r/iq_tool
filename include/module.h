@@ -32,6 +32,7 @@ typedef enum {
 struct AppConfig;
 struct AppContext;
 struct InputSummaryInfo;
+typedef struct InputSummaryInfo OutputSummaryInfo;
 struct ModuleContext;
 
 // --- Data Structures ---
@@ -45,25 +46,6 @@ typedef struct InputSourceInfo {
     int     sample_rate; ///< The native sample rate of the source in Hz.
     size_t  demod_audio_buffer_size; ///< Downstream demodulator audio buffer size dictated by this input source.
 } InputSourceInfo;
-
-/**
- * @struct SummaryItem
- * @brief A single key-value pair for displaying in the configuration summary.
- */
-typedef struct SummaryItem {
-    char label[64];
-    char value[128];
-} SummaryItem;
-
-/**
- * @struct InputSummaryInfo
- * @brief A collection of SummaryItem objects to be displayed.
- */
-typedef struct InputSummaryInfo {
-    SummaryItem items[MAX_SUMMARY_ITEMS];
-    int         count;
-} InputSummaryInfo;
-typedef struct InputSummaryInfo OutputSummaryInfo;
 
 /**
  * @struct ModuleContext

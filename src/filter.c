@@ -8,7 +8,6 @@
 #include "log.h"
 #include "app_context.h"
 #include "mem_arena.h"
-#include "module.h"
 #include "utilities.h"
 #include <stdlib.h>
 #include <string.h>

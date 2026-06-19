@@ -16,6 +16,27 @@
 #include "module.h"
 #include "mem_arena.h"
 
+#include "constants.h" // For MAX_SUMMARY_ITEMS
+
+/**
+ * @struct SummaryItem
+ * @brief A single key-value pair for displaying in the configuration summary.
+ */
+typedef struct SummaryItem {
+    char label[64];
+    char value[128];
+} SummaryItem;
+
+/**
+ * @struct InputSummaryInfo
+ * @brief A collection of SummaryItem objects to be displayed.
+ */
+typedef struct InputSummaryInfo {
+    SummaryItem items[MAX_SUMMARY_ITEMS];
+    int         count;
+} InputSummaryInfo;
+typedef struct InputSummaryInfo OutputSummaryInfo;
+
 // --- Function Declarations ---
 
 /**
