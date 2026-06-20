@@ -3741,7 +3741,7 @@ static size_t noaawx_output_write_chunk(ModuleContext* context, const void* buff
         if (s_noaawx_config.audio_in) {
             log_info("dBFS: %5.1f", dbfs);
         } else {
-            log_info("dBFS: %5.1f | SNR: %5.1f dB", dbfs, snr_db);
+            log_info("dBFS: %.1f | SNR: %.1f dB", dbfs, snr_db);
         }
 
         stat_counter = 0; accum_mag_sum = 0.0; accum_mag_sq_sum = 0.0;
