@@ -173,6 +173,7 @@ set(COMPILE_WITH_FFAST_MATH_SOURCES
     src/iq_correction.c
     src/output_am.c
     src/output_nfm.c
+    src/output_noaawx.c
     src/output_wfm.c
     src/post_processor.c
     src/sample_conversion_functions.c

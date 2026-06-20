@@ -45,6 +45,7 @@
 #endif
 #include "output_wfm.h"
 #include "output_nfm.h"
+#include "output_noaawx.h"
 #include "output_am.h"
 
 #ifdef _WIN32
@@ -289,6 +290,17 @@ static void initialize_modules_list(MemoryArena* arena) {
             .api = output_nfm_get_module_api(),
             .set_default_config = NULL,
             .get_cli_options = nfm_output_get_cli_options,
+            .requires_input_path = false,
+            .requires_output_path = false,
+            .module_defines_format = true,
+        },
+        {
+            .name = "noaawx",
+            .type = MODULE_TYPE_OUTPUT,
+            .payload = PAYLOAD_AUDIO,
+            .api = output_noaawx_get_module_api(),
+            .set_default_config = NULL,
+            .get_cli_options = noaawx_output_get_cli_options,
             .requires_input_path = false,
             .requires_output_path = false,
             .module_defines_format = true,

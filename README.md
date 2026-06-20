@@ -42,6 +42,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
     *   **Demodulation & Decoding:**
         *   **Wideband FM (WFM):** Demodulates FM Broadcast signals to audio with integrated RDS/RBDS decoding.
         *   **Narrowband FM (NFM):** Demodulates voice signals with adjustable squelch and standard/narrow bandwidths
+        *   **NOAAWX (SAME):** Demodulates NOAA Weather Radio signals and decodes SAME (Specific Area Message Encoding) alerts.
         *   **AM:** Demodulates AM signals using a Synchronous (PLL) detector, or standard Envelope detection.
         *   **NRSC5 (HD Radio):** Integrated support for demodulating and playing HD Radio streams (via `libnrsc5`).
 *   **Automatic Gain Control (AGC):** A universal Harris/LMS block-level tracker that provides smooth gain control for all signal types. It features a crucial **deadband** that allows strong, stable signals to pass through untouched—preserving Modulation Error Ratio (MER) for digital signals and audio transparency for analog ones—while still capable of automatically rescuing weak signals from deep fades.
@@ -308,6 +309,12 @@ NFM Output (nfm)
     --nfm-narrow                              Enable Narrow mode (2.5kHz dev). Default is Standard (5kHz dev).
     --nfm-no-squelch                          Disable squelch (force open audio)
     --nfm-no-discriminator-filter             Disable the discriminator filter.
+
+NOAAWX Output (noaawx)
+    --noaawx-gain=<flt>                       Audio gain (default: 1.0)
+    --noaawx-no-nfm                           Bypass FM Demodulator and process input as direct audio.
+    --noaawx-no-alert-tone                    Disable the alert tone on SAME alert received.
+    --noaawx-standby                          Mute audio until a SAME alert is received, then mute again after EOM.
 
 AM Output (am)
     --am-gain=<flt>                           Set audio output gain (linear).
