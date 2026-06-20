@@ -3667,9 +3667,9 @@ static void run_byte_wise_voting(NoaawxContext* decoder) {
     parse_same_header(final_msg);
 
     if (!s_noaawx_config.no_alert_tone) {
-        // Delay for 1.0 second, then trigger a 5.5-second alert tone signal
+        // Delay for 1.0 second, then trigger a 6.0-second alert tone signal
         decoder->alert_tone_delay_samples = 1 * 24000;
-        decoder->alert_tone_samples_remaining = (int)(5.5f * 24000);
+        decoder->alert_tone_samples_remaining = (int)(6.00f * 24000);
         decoder->alert_tone_phase_1 = 0.0f;
         decoder->alert_tone_phase_2 = 0.0f;
     }
@@ -3869,34 +3869,49 @@ static size_t noaawx_output_write_chunk(ModuleContext* context, const void* buff
             }
 
             if (decoder->alert_tone_samples_remaining > 0) {
-                float time_sec = (5.5f * 24000 - decoder->alert_tone_samples_remaining) / 24000.0f;
-                float cycle_time = fmodf(time_sec, 6.0f);
+                float total_sec = 6.00f;
+                float time_sec = (total_sec * 24000 - decoder->alert_tone_samples_remaining) / 24000.0f;
                 bool is_on = false;
+                float current_freq = 0.0f;
 
-                // Alert Tone Cadence: 2s ON, 0.5s OFF, 1s ON, 0.5s OFF, 1s ON, 0.5s OFF
-                if (cycle_time < 2.0f) is_on = true;
-                else if (cycle_time >= 2.5f && cycle_time < 3.5f) is_on = true;
-                else if (cycle_time >= 4.0f && cycle_time < 5.0f) is_on = true;
-
-                if (is_on) {
-                    decoder->alert_tone_phase_1 += 2.0f * M_PI * 853.0f / 24000.0f;
-                    if (decoder->alert_tone_phase_1 > 2.0f * M_PI) decoder->alert_tone_phase_1 -= 2.0f * M_PI;
-
-                    decoder->alert_tone_phase_2 += 2.0f * M_PI * 960.0f / 24000.0f;
-                    if (decoder->alert_tone_phase_2 > 2.0f * M_PI) decoder->alert_tone_phase_2 -= 2.0f * M_PI;
-
-                    // Mixed sine waves
-                    float s1 = sinf(decoder->alert_tone_phase_1);
-                    float s2 = sinf(decoder->alert_tone_phase_2);
-                    float mixed_val = (s1 + s2) * 0.5f;
-
-                    // Play the alert tone at 80% volume
-                    decoder->mono_buffer[i] = mixed_val * 0.8f;
+                // Alert tone uses a staircase sweep (2.0s cycle)
+                float cycle_time = fmodf(time_sec, 2.00f);
+                if (cycle_time < 1.20f) {
+                    // Step 17.5 Hz every 42ms to complete the 1.20s sweep from 100 Hz to 600 Hz.
+                    int step = (int)(cycle_time / 0.042f);
+                    current_freq = 100.0f + (step * 17.5f);
+                    if (current_freq > 600.0f) current_freq = 600.0f;
+                    is_on = true;
+                } else if (cycle_time < 1.80f) {
+                    // Hold at the peak frequency (600 Hz) for 0.60 seconds
+                    current_freq = 600.0f;
+                    is_on = true;
                 } else {
-                    // Mute the broadcast completely during the silent cadence gaps
-                    decoder->mono_buffer[i] = 0.0f;
+                    // Silence for 0.20 seconds between sweeps
+                    is_on = false;
                 }
 
+                if (is_on) {
+                    // To simulate a cheap 8-bit microcontroller,
+                    // we DO NOT use a floating-point NCO phase accumulator. Microcontrollers use
+                    // integer countdown timers to toggle GPIO pins, which creates massive period
+                    // quantization (e.g. it can generate 600Hz or 571Hz, but nothing in between).
+                    // We simulate this by casting the period to an integer number of samples!
+                    int half_period_samples = (int)(24000.0f / (2.0f * current_freq));
+                    int counter = (int)decoder->alert_tone_phase_1;
+
+                    if (counter <= 0) {
+                        counter = half_period_samples; // Reload the hardware timer
+                        decoder->alert_tone_phase_2 = (decoder->alert_tone_phase_2 > 0.0f) ? -1.0f : 1.0f; // Toggle GPIO pin
+                    }
+                    counter--;
+                    decoder->alert_tone_phase_1 = (float)counter;
+
+                    // The 8-bit MCU generates a raw square wave (GPIO high/low)
+                    decoder->mono_buffer[i] = decoder->alert_tone_phase_2 * 0.3f;
+                } else {
+                    decoder->mono_buffer[i] = 0.0f;
+                }
                 decoder->alert_tone_samples_remaining--;
             }
         }
