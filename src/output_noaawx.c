@@ -3484,7 +3484,7 @@ static const SameEvent event_table[] = {
     {"SVS", "Severe Weather Statement"},
     {"TOA", "Tornado Watch"},
     {"TOE", "911 Telephone Outage Emergency"},
-    {"TOR", "Tornado Warning/Emergency"},
+    {"TOR", "Tornado Warning"},
     {"TRA", "Tropical Storm Watch"},
     {"TRW", "Tropical Storm Warning"},
     {"TSA", "Tsunami Watch"},
