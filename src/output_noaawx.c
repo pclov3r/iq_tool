@@ -3982,7 +3982,8 @@ static size_t noaawx_output_write_chunk(ModuleContext* context, const void* buff
                 bool is_on = false;
                 float current_freq = 0.0f;
 
-                // Alert tone uses a staircase sweep (2.0s cycle)
+                // Attempt to emulate Uniden warning siren for NOAA weather radio alert
+                // Uses a digital staircase sweep (2.0s cycle)
                 float cycle_time = fmodf(time_sec, 2.00f);
                 if (cycle_time < 1.20f) {
                     // Step 17.5 Hz every 42ms to complete the 1.20s sweep from 100 Hz to 600 Hz.
