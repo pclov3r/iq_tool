@@ -42,8 +42,9 @@
 #define NOAAWX_AUDIO_CUTOFF        4000.0f
 
 // --- Alert Printing Configuration ---
-static int SAME_ALERT_REPEAT_COUNT = 3;       // How many EXTRA times to print the alert
-static int SAME_ALERT_REPEAT_DELAY_SEC = 5;   // Delay between prints in seconds
+// Total Prints = 1 (Initial Decode) + SAME_ALERT_EXTRA_REPEATS
+static int SAME_ALERT_EXTRA_REPEATS = 4;       // How many ADDITIONAL times to print the alert
+static int SAME_ALERT_REPEAT_DELAY_SEC = 10;   // Delay between extra prints in seconds
 
 static char same_alert_saved_header[256] = {0};
 static int same_alert_repeat_counter = 0;
@@ -3777,7 +3778,7 @@ static void run_bit_wise_voting(NoaawxContext* decoder) {
     if (!same_alert_is_repeat) {
         strncpy(same_alert_saved_header, final_msg, sizeof(same_alert_saved_header)-1);
         same_alert_saved_header[255] = '\0';
-        same_alert_repeat_counter = SAME_ALERT_REPEAT_COUNT;
+        same_alert_repeat_counter = SAME_ALERT_EXTRA_REPEATS;
         same_alert_samples_until_next_print = SAME_ALERT_REPEAT_DELAY_SEC * NOAAWX_SAMPLE_RATE;
     }
     parse_same_header(final_msg);
