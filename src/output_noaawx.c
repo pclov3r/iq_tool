@@ -41,6 +41,15 @@
 // Brickwall Audio LPF (Voice Band cutoff)
 #define NOAAWX_AUDIO_CUTOFF        4000.0f
 
+// --- Alert Printing Configuration ---
+static int SAME_ALERT_REPEAT_COUNT = 3;       // How many EXTRA times to print the alert
+static int SAME_ALERT_REPEAT_DELAY_SEC = 5;   // Delay between prints in seconds
+
+static char same_alert_saved_header[256] = {0};
+static int same_alert_repeat_counter = 0;
+static int same_alert_samples_until_next_print = 0;
+static bool same_alert_is_repeat = false;
+
 // --- Context ---
 typedef struct {
     // Pipeline
@@ -3608,9 +3617,11 @@ static void parse_same_header(const char* header) {
         else if (event[2] == 'W') event_str = "Unrecognized Warning";
     }
 
-    log_info("SAME ALERT: %s has issued a %s.", org_str, event_str);
+    log_info("================ *SAME ALERT!* ===============");
+    log_info("%s has issued a %s", org_str, event_str);
 
     char for_str[1024] = {0};
+    bool first_line = true;
     for (int i = 0; i < num_fips; i++) {
         const char* fips = fips_list[i];
         char current[128];
@@ -3638,18 +3649,37 @@ static void parse_same_header(const char* header) {
             snprintf(current, sizeof(current), "FIPS %s", fips);
         }
 
-        if (i == 0) {
-            snprintf(for_str + strlen(for_str), sizeof(for_str) - strlen(for_str), "%s", current);
+        // Chunking logic: print and reset every 7 items
+        if (i > 0 && i % 7 == 0) {
+            if (first_line) {
+                log_info("For:                 %s", for_str);
+                first_line = false;
+            } else {
+                log_info("                     %s", for_str);
+            }
+            for_str[0] = '\0';
+        }
+
+        if (for_str[0] == '\0') {
+            snprintf(for_str, sizeof(for_str), "%s", current);
         } else {
             snprintf(for_str + strlen(for_str), sizeof(for_str) - strlen(for_str), " | %s", current);
         }
     }
-    log_info("SAME ALERT: For: %s", for_str);
+    
+    // Print the final chunk
+    if (for_str[0] != '\0') {
+        if (first_line) {
+            log_info("For:                 %s", for_str);
+        } else {
+            log_info("                     %s", for_str);
+        }
+    }
 
     if (strlen(dur_str) >= 4) {
         int hr = (dur_str[0]-'0')*10 + (dur_str[1]-'0');
         int mn = (dur_str[2]-'0')*10 + (dur_str[3]-'0');
-        log_info("SAME ALERT: Valid for: %d hour(s), %d minute(s).", hr, mn);
+        log_info("Valid for:           %d %s, %d %s", hr, hr == 1 ? "hour" : "hours", mn, mn == 1 ? "minute" : "minutes");
     }
 
     if (strlen(julian_time) >= 7) {
@@ -3680,9 +3710,11 @@ static void parse_same_header(const char* header) {
 
         const char* months[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
 
-        log_info("SAME ALERT: Issued at: %s %d at %02d:%02d UTC.", months[month], day, hr, mn);
-        log_info("SAME ALERT: Originating Station: %s", station);
+        log_info("Issued on:           %s %d at %02d:%02d UTC", months[month], day, hr, mn);
+        log_info("Originating Station: %s", station);
     }
+
+    log_info("==============================================");
 }
 
 static void noaawx_output_reset(ModuleContext* context) { (void)context; }
@@ -3721,9 +3753,16 @@ static void run_byte_wise_voting(NoaawxContext* decoder) {
     }
 
     log_info("Error corrected SAME Header: %s", final_msg);
+    if (!same_alert_is_repeat) {
+        strncpy(same_alert_saved_header, final_msg, sizeof(same_alert_saved_header)-1);
+        same_alert_saved_header[255] = '\0';
+        same_alert_repeat_counter = SAME_ALERT_REPEAT_COUNT;
+        same_alert_samples_until_next_print = SAME_ALERT_REPEAT_DELAY_SEC * NOAAWX_SAMPLE_RATE;
+    }
     parse_same_header(final_msg);
 
     if (!s_noaawx_config.no_alert_tone) {
+        log_info("Playing alert tone...");
         // Delay for 1.0 second, then trigger a 6.0-second alert tone signal
         decoder->alert_tone_delay_samples = 1 * 24000;
         decoder->alert_tone_samples_remaining = (int)(6.00f * 24000);
@@ -3913,6 +3952,19 @@ static size_t noaawx_output_write_chunk(ModuleContext* context, const void* buff
         // Apply standby muting before mixing the alert tone
         if (!decoder->is_unmuted) {
             decoder->mono_buffer[i] = 0.0f;
+        }
+    }
+
+    // --- SAME Alert Repetition Logic ---
+    if (same_alert_repeat_counter > 0) {
+        same_alert_samples_until_next_print -= n;
+        if (same_alert_samples_until_next_print <= 0) {
+            same_alert_is_repeat = true;
+            parse_same_header(same_alert_saved_header);
+            same_alert_is_repeat = false;
+
+            same_alert_repeat_counter--;
+            same_alert_samples_until_next_print = SAME_ALERT_REPEAT_DELAY_SEC * NOAAWX_SAMPLE_RATE;
         }
     }
 
