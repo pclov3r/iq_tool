@@ -3910,11 +3910,10 @@ static size_t noaawx_output_write_chunk(ModuleContext* context, const void* buff
                 }
             }
         }
-    }
-
-    // Apply standby muting before mixing the alert tone
-    if (!decoder->is_unmuted) {
-        memset(decoder->mono_buffer, 0, n * sizeof(float));
+        // Apply standby muting before mixing the alert tone
+        if (!decoder->is_unmuted) {
+            decoder->mono_buffer[i] = 0.0f;
+        }
     }
 
     // Mix in Alert Tone if active
