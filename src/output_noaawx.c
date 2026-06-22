@@ -3726,7 +3726,7 @@ static void noaawx_output_flush(ModuleContext* context) {
         audio_output_drain(decoder->audio_out);
     }
 }
-static void run_byte_wise_voting(NoaawxContext* decoder) {
+static void run_bit_wise_voting(NoaawxContext* decoder) {
     if (decoder->num_bursts == 0) return;
 
     char final_msg[256];
@@ -3737,7 +3737,7 @@ static void run_byte_wise_voting(NoaawxContext* decoder) {
     } else if (decoder->num_bursts == 2) {
         strncpy(final_msg, decoder->same_bursts[0], 255); // Fallback to burst 1 if only 2 received
     } else {
-        // 3 bursts received, Byte-Wise Voting!
+        // 3 bursts received, Bit-Wise Voting!
         for (int i = 0; i < 255; i++) {
             char c1 = decoder->same_bursts[0][i];
             char c2 = decoder->same_bursts[1][i];
@@ -3745,10 +3745,31 @@ static void run_byte_wise_voting(NoaawxContext* decoder) {
 
             if (c1 == '\0' && c2 == '\0' && c3 == '\0') break;
 
-            if (c1 == c2 && c1 != '\0') final_msg[i] = c1;
-            else if (c2 == c3 && c2 != '\0') final_msg[i] = c2;
-            else if (c1 == c3 && c1 != '\0') final_msg[i] = c1;
-            else final_msg[i] = c3 != '\0' ? c3 : c1; // Tiebreaker
+            char voted_char = 0;
+            for (int b = 0; b < 8; b++) {
+                int bit1 = (c1 >> b) & 1;
+                int bit2 = (c2 >> b) & 1;
+                int bit3 = (c3 >> b) & 1;
+                
+                int sum = 0;
+                int active = 0;
+                int tiebreaker = 0;
+
+                // Only count the bit if the burst actually has a valid character
+                if (c1 != '\0') { sum += bit1; active++; tiebreaker = bit1; }
+                if (c2 != '\0') { sum += bit2; active++; tiebreaker = bit2; }
+                if (c3 != '\0') { sum += bit3; active++; tiebreaker = bit3; }
+
+                if (active == 3) {
+                    if (sum >= 2) voted_char |= (1 << b);
+                } else if (active == 2) {
+                    if (sum == 2) voted_char |= (1 << b);
+                    else if (sum == 1) voted_char |= (tiebreaker << b); // Tiebreaker
+                } else if (active == 1) {
+                    if (sum == 1) voted_char |= (1 << b);
+                }
+            }
+            final_msg[i] = voted_char;
         }
     }
 
@@ -3802,7 +3823,7 @@ static size_t noaawx_output_write_chunk(ModuleContext* context, const void* buff
     // Timeout logic for byte-wise voting
     decoder->samples_since_last_burst += n;
     if (decoder->num_bursts > 0 && decoder->samples_since_last_burst > (size_t)(decoder->input_samplerate * 5.0f)) {
-        run_byte_wise_voting(decoder);
+        run_bit_wise_voting(decoder);
     }
 
     // 1. Calculate block-level sum of magnitudes and sum of squares
@@ -3933,7 +3954,7 @@ static size_t noaawx_output_write_chunk(ModuleContext* context, const void* buff
 
                                 // If we've successfully collected all 3 bursts, vote immediately!
                                 if (decoder->num_bursts == 3) {
-                                    run_byte_wise_voting(decoder);
+                                    run_bit_wise_voting(decoder);
                                 }
                             } else if (strncmp(decoder->same_msg, "NNNN", 4) == 0) {
                                 log_info("SAME Decoder: %s", decoder->same_msg);
