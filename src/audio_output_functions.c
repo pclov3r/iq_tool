@@ -100,16 +100,18 @@ AudioOutputContext* audio_output_create(AppContext* app, int sample_rate, int ch
     deviceConfig.dataCallback      = miniaudio_data_callback;
     deviceConfig.pUserData         = context;
 
-    if (ma_device_init(NULL, &deviceConfig, &context->audio_device) != MA_SUCCESS) {
-        log_fatal("AudioOutput: Failed to initialize OS audio device.");
+    ma_result init_res = ma_device_init(NULL, &deviceConfig, &context->audio_device);
+    if (init_res != MA_SUCCESS) {
+        log_fatal("AudioOutput: Failed to initialize audio device: %s", ma_result_description(init_res));
         ring_buffer_destroy(context->audio_ring_buffer);
         return NULL;
     }
     context->audio_device_initialized = true;
 
     // 3. Start Audio Hardware
-    if (ma_device_start(&context->audio_device) != MA_SUCCESS) {
-        log_fatal("AudioOutput: Failed to start OS audio device.");
+    ma_result start_res = ma_device_start(&context->audio_device);
+    if (start_res != MA_SUCCESS) {
+        log_fatal("AudioOutput: Failed to open audio device: %s", ma_result_description(start_res));
         ma_device_uninit(&context->audio_device);
         ring_buffer_destroy(context->audio_ring_buffer);
         return NULL;
