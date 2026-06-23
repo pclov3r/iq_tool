@@ -73,6 +73,16 @@
 #define AIRSPYHF_DEFAULT_SAMPLE_RATE                    768000
 #define AIRSPYHF_DEMOD_AUDIO_BUFFER_SIZE                (128 * 1024)
 
+// --- HYDRASDR Constants ---
+#define HYDRASDR_DEFAULT_FILTER_ATTENUATION_DB          80.0f
+#define HYDRASDR_DEFAULT_SAMPLE_RATE                    2500000.0
+#define HYDRASDR_DEFAULT_SAMPLE_FORMAT                  CS16
+#define HYDRASDR_DEFAULT_GAIN_VALUE                     10
+#define HYDRASDR_DEFAULT_LNA_GAIN                       5
+#define HYDRASDR_DEFAULT_MIXER_GAIN                     5
+#define HYDRASDR_DEFAULT_VGA_GAIN                       5
+#define HYDRASDR_DEMOD_AUDIO_BUFFER_SIZE                (128 * 1024)
+
 // --- SPYSERVER Constants --
 #define SPYSERVER_DEFAULT_SAMPLE_RATE_HZ                600000.0
 #define SPYSERVER_MAX_BUFFER_BYTES                      (256 * 1024 * 1024)

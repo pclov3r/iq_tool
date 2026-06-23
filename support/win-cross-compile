@@ -20,6 +20,7 @@ MODULES=(
     "bladerf REQUIRES_LIBUSB=YES"
     "airspy REQUIRES_LIBUSB=YES"
     "airspyhf REQUIRES_LIBUSB=YES"
+    "hydrasdr REQUIRES_LIBUSB=YES"
     "nrsc5 REQUIRES_LIBUSB=NO"
 )
 
@@ -88,6 +89,11 @@ AIRSPYHF_INCLUDE_DIR="${DEPS_BASE_PATH}/airspyhf/libairspyhf/src"
 AIRSPYHF_LIBRARY="${DEPS_BASE_PATH}/airspyhf/build-win64/libairspyhf/src/libairspyhf.dll.a"
 AIRSPYHF_DLL="${DEPS_BASE_PATH}/airspyhf/build-win64/libairspyhf/src/libairspyhf.dll"
 
+# HydraSDR
+HYDRASDR_INCLUDE_DIR="${DEPS_BASE_PATH}/hydrasdr-host/libhydrasdr/src"
+HYDRASDR_LIBRARY="${DEPS_BASE_PATH}/hydrasdr-host/build-win64/libhydrasdr/src/libhydrasdr.dll.a"
+HYDRASDR_DLL="${DEPS_BASE_PATH}/hydrasdr-host/build-win64/hydrasdr-tools/src/libhydrasdr.dll"
+
 # --- Function to Display Usage ---
 usage() {
     echo "Usage: $0 [options] [make arguments]"
@@ -104,6 +110,7 @@ usage() {
     echo "  --with-nrsc5       Enable and link NRSC5 (HD Radio) support."
     echo "  --with-airspy      Enable and link Airspy support."
     echo "  --with-airspyhf    Enable and link Airspy HF+ support."
+    echo "  --with-hydrasdr    Enable and link HydraSDR support."
     echo
     echo "Packaging:"
     echo "  --package          Create a distributable .zip file after a successful build."

@@ -30,6 +30,9 @@
 #if defined(WITH_AIRSPYHF)
 #include "input_airspyhf.h"
 #endif
+#if defined(WITH_HYDRASDR)
+#include "input_hydrasdr.h"
+#endif
 #if defined(WITH_BLADERF)
 #include "input_bladerf.h"
 #endif
@@ -180,6 +183,20 @@ static void initialize_modules_list(MemoryArena* arena) {
             .requires_input_path = false,
             .requires_output_path = false,
             .default_demod_audio_buffer_size = AIRSPYHF_DEMOD_AUDIO_BUFFER_SIZE,
+        },
+    #endif
+    #if defined(WITH_HYDRASDR)
+        {
+            .name = "hydrasdr",
+            .type = MODULE_TYPE_INPUT,
+            .default_filter_attenuation_db = HYDRASDR_DEFAULT_FILTER_ATTENUATION_DB,
+            .api = input_hydrasdr_get_module_api(),
+            .pipeline_mode = PIPELINE_MODE_ASYNCHRONOUS_PUSH,
+            .set_default_config = hydrasdr_set_default_config,
+            .get_cli_options = hydrasdr_input_get_cli_options,
+            .requires_input_path = false,
+            .requires_output_path = false,
+            .default_demod_audio_buffer_size = HYDRASDR_DEMOD_AUDIO_BUFFER_SIZE,
         },
     #endif
     #if defined(WITH_BLADERF)

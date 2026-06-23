@@ -31,7 +31,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
 *   **Flexible Inputs:**
     *   **WAV Files:** Reads standard 8-bit and 16-bit complex (I/Q) WAV files.
     *   **Raw I/Q Files:** Just point it at a headerless file, but you have to tell it the sample rate and format.
-    *   **SDR Hardware:** Streams directly from **RTL-SDR**, **SDRplay**, **HackRF**, **Airspy**, **Airspy HF+**, and **BladeRF** devices.
+    *   **SDR Hardware:** Streams directly from **RTL-SDR**, **SDRplay**, **HackRF**, **Airspy**, **Airspy HF+**, **BladeRF**, and **HydraSDR** devices.
     *   **SpyServer Support:** Connect to networked SpyServer instances.
 *   **WAV Metadata Parsing:** Automatically reads metadata from SDR I/Q captures to make your life easier, especially for frequency correction.
     *   `auxi` chunks from **SDR Console, SDRconnect,** and **SDRuno**.
@@ -71,6 +71,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
 *   **(Optional) HackRF Library (libhackrf):** For HackRF support (e.g., `libhackrf-dev`).
 *   **(Optional) Airspy Library (libairspy):** For Airspy support (e.g., `libairspy-dev`).
 *   **(Optional) Airspy HF+ Library (libairspyhf):** For Airspy HF+ support (e.g., `libairspyhf-dev`).
+*   **(Optional) HydraSDR Library (libhydrasdr):** For HydraSDR support. GitHub repo found **[here](https://github.com/hydrasdr/hydrasdr-host)**. *(**Please make sure latest firmware is installed otherwise the HydraSDR module will not work**).*
 *   **(Optional) SDRplay API Library:** To build with SDRplay support, you must first download and install the official API from the **[SDRplay website](https://www.sdrplay.com/downloads/)**.
 *   **(Optional) NRSC5 Library (libnrsc5):** For NRSC5 (HD Radio) playback support. GitHub repo found **[here](https://github.com/theori-io/nrsc5)**.
 
@@ -82,7 +83,19 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
     sudo apt-get install build-essential cmake libsndfile1-dev libliquid-dev libexpat1-dev librtlsdr-dev libhackrf-dev libairspy-dev libairspyhf-dev libbladerf-dev libusb-1.0-0-dev libfftw3-dev
     ```
 
-2.  **Build NRSC5 if enabling support:**
+2.  **Build HydraSDR if enabling support:**
+    ```bash
+    git clone https://github.com/hydrasdr/hydrasdr-host
+    cd hydrasdr-host/libhydrasdr
+    mkdir build
+    cd build
+    cmake ..
+    make or make -j N (Replace N with number of threads)
+    sudo make install
+    sudo ldconfig
+    ```
+
+3.  **Build NRSC5 if enabling support:**
     ```bash
     git clone https://github.com/theori-io/nrsc5
     cd nrsc5
@@ -90,11 +103,11 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
     cd build
     cmake .. (Add -DUSE_SSE=ON for x86 or -DUSE_NEON=ON for ARM for higher performance)
     make or make -j N (Replace N with number of threads)
-    make install
-    ldconfig
+    sudo make install
+    sudo ldconfig
     ```
 
-3.  **Build the tool:**
+4.  **Build the tool:**
     ```bash
     git clone https://github.com/pclov3r/iq_tool.git
     cd iq_tool
@@ -105,7 +118,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
     cmake ..
 
     # Or, build with everything enabled
-    cmake -DWITH_RTLSDR=ON -DWITH_SDRPLAY=ON -DWITH_HACKRF=ON -DWITH_AIRSPY=ON -DWITH_AIRSPYHF=ON -DWITH_BLADERF=ON -DWITH_NRSC5=ON ..
+    cmake -DWITH_RTLSDR=ON -DWITH_SDRPLAY=ON -DWITH_HACKRF=ON -DWITH_AIRSPY=ON -DWITH_AIRSPYHF=ON -DWITH_BLADERF=ON -DWITH_HYDRASDR=ON -DWITH_NRSC5=ON ..
 
     make or make -j N (Replace N with number of threads)
     make install 
@@ -252,6 +265,16 @@ Airspy HF+ Input (airspyhf)
     --airspyhf-serial=<int>                   Select device by serial number (hex, e.g., 0x123456789ABCDEF0).
     --airspyhf-no-lib-dsp                     Disable library DSP processing (IQ correction, DC removal, etc).
 
+HydraSDR Input (hydrasdr)
+    --hydrasdr-gain-mode=<str>                Gain mode: 'linearity', 'sensitivity', or 'manual'. (Default: AGC)
+    --hydrasdr-gain-value=<int>               Gain value for linearity/sensitivity modes (0-21). (Default: 10)
+    --hydrasdr-lna-gain=<int>                 Manual LNA gain (0-14). Only with manual mode. (Default: 5)
+    --hydrasdr-mixer-gain=<int>               Manual Mixer gain (0-15). Only with manual mode. (Default: 5)
+    --hydrasdr-vga-gain=<int>                 Manual VGA gain (0-15). Only with manual mode. (Default: 5)
+    --hydrasdr-sample-format=<str>            Sample format: 'cf32' or 'cs16'. (Default: cs16)
+    --hydrasdr-serial=<int>                   Select device by serial number (hex, e.g., 0x123456789ABCDEF0).
+    --hydrasdr-packing                        Enable bit-packing mode (12-bit samples).
+
 BladeRF Input (bladerf)
     --bladerf-device-idx=<int>                Select specific BladeRF device by index (0-indexed). (Default: 0)
     --bladerf-load-fpga=<str>                 Load an FPGA bitstream from the specified file.
@@ -392,7 +415,7 @@ This tool is a work in progress.
     *   [x] Airspy Support
     *   [x] Airspy HF+ support
     *   [x] SpyServer Support
-    *   [ ] Add HydraSDR support
+    *   [x] Add HydraSDR support
     *   [ ] Improve I/Q correction algorithm stability.
     *   [ ] Refine and standardize log levels throughout the application.
     *   [ ] Add unit tests. 
@@ -456,6 +479,10 @@ The tool features a fully modular architecture designed for the rapid extension 
     5.  **Update the Build System:** Add the new source file to `CMakeLists.txt` and link any necessary external libraries.
 
 This design ensures that hardware-specific quirks and complex output formats remain isolated from the high-speed processing core, resulting in a codebase that is clean, maintainable, and highly portable.
+
+### Acknowledgements
+
+A massive thank you to Benjamin of **[HydraSDR](https://hydrasdr.com/)** for generously providing a HydraSDR unit.
 
 ### Contributing
 
