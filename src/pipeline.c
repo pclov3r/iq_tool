@@ -521,7 +521,7 @@ static void _destroy_queues_and_buffers(AppContext* app) {
     if(app->pipeline.iq_estimation_free_queue) queue_destroy(app->pipeline.iq_estimation_free_queue);
     
     if (app->pipeline.chunk_data_pool) {
-        free(app->pipeline.chunk_data_pool);
+        aligned_free(app->pipeline.chunk_data_pool);
         app->pipeline.chunk_data_pool = NULL;
     }
 }
