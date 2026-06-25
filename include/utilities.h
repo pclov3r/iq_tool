@@ -16,7 +16,7 @@
 #include "module.h"
 #include "mem_arena.h"
 
-#include "constants.h" // For MAX_SUMMARY_ITEMS
+#include "constants.h" // For APP_MAX_SUMMARY_ITEMS
 
 /**
  * @struct SummaryItem
@@ -32,7 +32,7 @@ typedef struct SummaryItem {
  * @brief A collection of SummaryItem objects to be displayed.
  */
 typedef struct InputSummaryInfo {
-    SummaryItem items[MAX_SUMMARY_ITEMS];
+    SummaryItem items[APP_MAX_SUMMARY_ITEMS];
     int         count;
 } InputSummaryInfo;
 typedef struct InputSummaryInfo OutputSummaryInfo;

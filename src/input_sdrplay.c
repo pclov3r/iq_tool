@@ -79,7 +79,7 @@ static SdrplayApiFunctionPointers sdrplay_api;
 static wchar_t* get_sdrplay_dll_path(void) {
     HKEY hKey;
     LONG reg_status;
-    wchar_t api_path_buf[MAX_PATH_BUFFER] = {0};
+    wchar_t api_path_buf[APP_MAX_PATH_BUFFER] = {0};
     DWORD buffer_size = sizeof(api_path_buf);
     bool path_found = false;
 
@@ -108,7 +108,7 @@ static wchar_t* get_sdrplay_dll_path(void) {
         return NULL;
     }
 
-    api_path_buf[MAX_PATH_BUFFER - 1] = L'\0';
+    api_path_buf[APP_MAX_PATH_BUFFER - 1] = L'\0';
 
 #ifdef _WIN64
     PathAppendW(api_path_buf, L"x64");

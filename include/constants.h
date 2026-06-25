@@ -267,17 +267,17 @@
 // == Tier 4: Sanity Checks & Hard Limits
 // =============================================================================
 
-#define MIN_ACCEPTABLE_RATIO      0.001f
-#define MAX_ACCEPTABLE_RATIO      1000.0f
-#define MAX_FILTER_CHAIN          5
-#define MAX_PRESETS               128
-#define MAX_LINE_LENGTH           1024
-#define MAX_SUMMARY_ITEMS         16
+#define RESAMPLER_MIN_RATIO      0.001f
+#define RESAMPLER_MAX_RATIO      1000.0f
+#define FILTER_MAX_CHAIN          5
+#define PRESETS_MAX_COUNT               128
+#define PRESETS_MAX_LINE_LENGTH           1024
+#define APP_MAX_SUMMARY_ITEMS         16
 
 // The absolute maximum number of samples allowed in a single pipeline chunk.
 // Prevents OOM crashes if user requests extreme upsampling + extreme filter taps.
 #define PIPELINE_MAX_CHUNK_SAMPLES (4 * 1024 * 1024)
-#define MAX_PATH_BUFFER           4096
+#define APP_MAX_PATH_BUFFER           4096
 
 // =============================================================================
 // == Tier 5: Application Lifecycle Tuning

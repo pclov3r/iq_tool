@@ -110,7 +110,7 @@ static bool calculate_and_validate_resample_ratio(AppConfig *config, AppContext*
     }
 
     // --- Step 4: Validate Ratio ---
-    if (!isfinite(r) || r < MIN_ACCEPTABLE_RATIO || r > MAX_ACCEPTABLE_RATIO) {
+    if (!isfinite(r) || r < RESAMPLER_MIN_RATIO || r > RESAMPLER_MAX_RATIO) {
         log_error("Error: Calculated resampling ratio (%.6f) is invalid or outside acceptable range.", r);
         return false;
     }

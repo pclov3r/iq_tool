@@ -17,7 +17,7 @@
 #include <stdbool.h>
 #include <time.h>
 #include <stdint.h>
-#include "constants.h" // For MAX_SUMMARY_ITEMS
+#include "constants.h" // For APP_MAX_SUMMARY_ITEMS
 #include "common_types.h" // For SampleFormat
 #include "argparse.h"  // For argparse_option struct
 

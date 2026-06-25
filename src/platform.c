@@ -127,11 +127,11 @@ bool get_absolute_path_windows(const char* path_arg_mbcs,
                                char* out_path_utf8, size_t out_path_utf8_size) {
     if (!path_arg_mbcs || !out_path_w || !out_path_utf8) return false;
 
-    wchar_t path_arg_w[MAX_PATH_BUFFER];
-    wchar_t path_to_canonicalize_w[MAX_PATH_BUFFER];
+    wchar_t path_arg_w[APP_MAX_PATH_BUFFER];
+    wchar_t path_to_canonicalize_w[APP_MAX_PATH_BUFFER];
 
     int required_length_w = MultiByteToWideChar(CP_ACP, 0, path_arg_mbcs, -1, NULL, 0);
-    if (required_length_w <= 0 || (size_t)required_length_w > MAX_PATH_BUFFER) {
+    if (required_length_w <= 0 || (size_t)required_length_w > APP_MAX_PATH_BUFFER) {
         print_win_error("MultiByteToWideChar (get size)", GetLastError());
         return false;
     }
@@ -141,20 +141,20 @@ bool get_absolute_path_windows(const char* path_arg_mbcs,
     }
 
     if (PathIsRelativeW(path_arg_w)) {
-        wchar_t cwd_w[MAX_PATH_BUFFER];
-        DWORD cwd_length = GetCurrentDirectoryW(MAX_PATH_BUFFER, cwd_w);
-        if (cwd_length == 0 || cwd_length >= MAX_PATH_BUFFER) {
+        wchar_t cwd_w[APP_MAX_PATH_BUFFER];
+        DWORD cwd_length = GetCurrentDirectoryW(APP_MAX_PATH_BUFFER, cwd_w);
+        if (cwd_length == 0 || cwd_length >= APP_MAX_PATH_BUFFER) {
             print_win_error("GetCurrentDirectoryW", GetLastError());
             return false;
         }
-        HRESULT hr = PathCchCombineEx(path_to_canonicalize_w, MAX_PATH_BUFFER, cwd_w, path_arg_w, PATHCCH_ALLOW_LONG_PATHS);
+        HRESULT hr = PathCchCombineEx(path_to_canonicalize_w, APP_MAX_PATH_BUFFER, cwd_w, path_arg_w, PATHCCH_ALLOW_LONG_PATHS);
         if (FAILED(hr)) {
             log_error("PathCchCombineEx failed to combine paths.");
             return false;
         }
     } else {
-        wcsncpy(path_to_canonicalize_w, path_arg_w, MAX_PATH_BUFFER - 1);
-        path_to_canonicalize_w[MAX_PATH_BUFFER - 1] = L'\0';
+        wcsncpy(path_to_canonicalize_w, path_arg_w, APP_MAX_PATH_BUFFER - 1);
+        path_to_canonicalize_w[APP_MAX_PATH_BUFFER - 1] = L'\0';
     }
 
     required_length_w = GetFullPathNameW(path_to_canonicalize_w, 0, NULL, NULL);
@@ -181,9 +181,9 @@ bool get_absolute_path_windows(const char* path_arg_mbcs,
 }
 
 bool platform_get_executable_dir(char* buffer, size_t buffer_size) {
-    wchar_t w_path[MAX_PATH_BUFFER];
-    DWORD length = GetModuleFileNameW(NULL, w_path, MAX_PATH_BUFFER);
-    if (length == 0 || length >= MAX_PATH_BUFFER) {
+    wchar_t w_path[APP_MAX_PATH_BUFFER];
+    DWORD length = GetModuleFileNameW(NULL, w_path, APP_MAX_PATH_BUFFER);
+    if (length == 0 || length >= APP_MAX_PATH_BUFFER) {
         log_error("GetModuleFileNameW failed or buffer too small.");
         return false;
     }
@@ -191,8 +191,8 @@ bool platform_get_executable_dir(char* buffer, size_t buffer_size) {
     if (last_slash) {
         *last_slash = L'\0';
     } else {
-        wcsncpy(w_path, L".", MAX_PATH_BUFFER);
-        w_path[MAX_PATH_BUFFER - 1] = L'\0';
+        wcsncpy(w_path, L".", APP_MAX_PATH_BUFFER);
+        w_path[APP_MAX_PATH_BUFFER - 1] = L'\0';
     }
     if (WideCharToMultiByte(CP_UTF8, 0, w_path, -1, buffer, (int)buffer_size, NULL, NULL) == 0) {
         log_error("Failed to convert wide char path to UTF-8 for executable directory.");

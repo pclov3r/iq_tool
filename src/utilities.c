@@ -99,7 +99,7 @@ const char* utility_get_basename_for_parsing(const AppConfig *config, char* buff
 }
 
 void utility_add_summary_item(InputSummaryInfo* info, const char* label, const char* value_fmt, ...) {
-    if (info->count >= MAX_SUMMARY_ITEMS) {
+    if (info->count >= APP_MAX_SUMMARY_ITEMS) {
         return;
     }
     SummaryItem* item = &info->items[info->count];

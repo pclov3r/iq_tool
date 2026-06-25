@@ -154,7 +154,7 @@ typedef struct {
     unsigned int audio_errors;        // Recent CRC errors
     unsigned int total_audio_errors;  // Total CRC errors since sync
 
-    char filepath_buffer[MAX_PATH_BUFFER];
+    char filepath_buffer[APP_MAX_PATH_BUFFER];
 } Nrsc5Context;
 
 // --- CLI Configuration Storage ---
@@ -239,12 +239,12 @@ static void dump_aas_file(Nrsc5Context* context, const nrsc5_event_t *event_payl
     char safe_name[256];
     sanitize_aas_filename(name_raw, safe_name, sizeof(safe_name));
 
-    snprintf(context->filepath_buffer, MAX_PATH_BUFFER, "%s" PATH_SEPARATOR "%u_%s",
+    snprintf(context->filepath_buffer, APP_MAX_PATH_BUFFER, "%s" PATH_SEPARATOR "%u_%s",
              s_nrsc5_config.aas_dir_arg, number, safe_name);
 
 #ifdef _WIN32
-    wchar_t w_path[MAX_PATH_BUFFER];
-    MultiByteToWideChar(CP_UTF8, 0, context->filepath_buffer, -1, w_path, MAX_PATH_BUFFER);
+    wchar_t w_path[APP_MAX_PATH_BUFFER];
+    MultiByteToWideChar(CP_UTF8, 0, context->filepath_buffer, -1, w_path, APP_MAX_PATH_BUFFER);
     FILE *fp = _wfopen(w_path, L"wb");
 #else
     FILE *fp = fopen(context->filepath_buffer, "wb");

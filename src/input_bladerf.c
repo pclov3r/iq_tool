@@ -757,21 +757,21 @@ static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev) {
         return false;
     }
 
-    wchar_t exe_path_w[MAX_PATH_BUFFER];
-    if (GetModuleFileNameW(NULL, exe_path_w, MAX_PATH_BUFFER) == 0) {
+    wchar_t exe_path_w[APP_MAX_PATH_BUFFER];
+    if (GetModuleFileNameW(NULL, exe_path_w, APP_MAX_PATH_BUFFER) == 0) {
         log_error("Failed to get executable path.");
         return false;
     }
     PathRemoveFileSpecW(exe_path_w);
 
-    wchar_t search_path_w[MAX_PATH_BUFFER];
-    PathCchCombine(search_path_w, MAX_PATH_BUFFER, exe_path_w, L"fpga\\bladerf");
+    wchar_t search_path_w[APP_MAX_PATH_BUFFER];
+    PathCchCombine(search_path_w, APP_MAX_PATH_BUFFER, exe_path_w, L"fpga\\bladerf");
 
-    wchar_t full_path_w[MAX_PATH_BUFFER];
-    PathCchCombine(full_path_w, MAX_PATH_BUFFER, search_path_w, filename_w);
+    wchar_t full_path_w[APP_MAX_PATH_BUFFER];
+    PathCchCombine(full_path_w, APP_MAX_PATH_BUFFER, search_path_w, filename_w);
 
     if (PathFileExistsW(full_path_w)) {
-        char full_path_utf8[MAX_PATH_BUFFER];
+        char full_path_utf8[APP_MAX_PATH_BUFFER];
         if (WideCharToMultiByte(CP_UTF8, 0, full_path_w, -1, full_path_utf8, sizeof(full_path_utf8), NULL, NULL) > 0) {
             log_debug("Found FPGA file at: %s", full_path_utf8);
             status = bladerf_load_fpga(dev, full_path_utf8);
@@ -786,17 +786,17 @@ static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev) {
         }
     }
 #else
-    char exe_path_buf[MAX_PATH_BUFFER] = {0};
-    char exe_dir[MAX_PATH_BUFFER] = {0};
-    char parent_dir_buf[MAX_PATH_BUFFER] = {0};
+    char exe_path_buf[APP_MAX_PATH_BUFFER] = {0};
+    char exe_dir[APP_MAX_PATH_BUFFER] = {0};
+    char parent_dir_buf[APP_MAX_PATH_BUFFER] = {0};
 
     ssize_t length = readlink("/proc/self/exe", exe_path_buf, sizeof(exe_path_buf) - 1);
     if (length > 0) {
         exe_path_buf[length] = '\0';
-        char temp_path1[MAX_PATH_BUFFER];
+        char temp_path1[APP_MAX_PATH_BUFFER];
         snprintf(temp_path1, sizeof(temp_path1), "%s", exe_path_buf);
         snprintf(exe_dir, sizeof(exe_dir), "%s", dirname(temp_path1));
-        char temp_path2[MAX_PATH_BUFFER];
+        char temp_path2[APP_MAX_PATH_BUFFER];
         snprintf(temp_path2, sizeof(temp_path2), "%s", exe_path_buf);
         dirname(temp_path2);
         snprintf(parent_dir_buf, sizeof(parent_dir_buf), "%s", dirname(temp_path2));
@@ -806,7 +806,7 @@ static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev) {
     }
 
     const char* search_bases[] = { exe_dir, parent_dir_buf, "/usr/local/share/" APP_NAME, "/usr/share/" APP_NAME, NULL };
-    char full_path[MAX_PATH_BUFFER];
+    char full_path[APP_MAX_PATH_BUFFER];
 
     for (int i = 0; search_bases[i] != NULL; i++) {
         snprintf(full_path, sizeof(full_path), "%s/fpga/bladerf/%s", search_bases[i], filename_utf8);

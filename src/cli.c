@@ -36,7 +36,7 @@ static int g_original_argc = 0;
 static const char** g_original_argv = NULL;
 
 #define MAX_STATIC_OPTIONS 128
-#define MAX_TOTAL_OPTIONS (MAX_STATIC_OPTIONS + MAX_PRESETS)
+#define MAX_TOTAL_OPTIONS (MAX_STATIC_OPTIONS + PRESETS_MAX_COUNT)
 
 // --- Forward Declarations ---
 static bool validate_and_process_args(AppContext* app, int non_opt_argc, const char** non_opt_argv);
@@ -148,8 +148,8 @@ static int build_cli_options(struct argparse_option* options_buffer, int max_opt
     if (config->num_presets > 0) {
         struct argparse_option preset_header[] = { OPT_GROUP("Available Presets") };
         APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], preset_header, 1);
-        struct argparse_option preset_opts[MAX_PRESETS];
-        int presets_to_add = (config->num_presets > MAX_PRESETS) ? MAX_PRESETS : config->num_presets;
+        struct argparse_option preset_opts[PRESETS_MAX_COUNT];
+        int presets_to_add = (config->num_presets > PRESETS_MAX_COUNT) ? PRESETS_MAX_COUNT : config->num_presets;
         for (int i = 0; i < presets_to_add; i++) {
             preset_opts[i] = (struct argparse_option){ .type = ARGPARSE_OPT_BOOLEAN, .long_name = config->presets[i].name, .help = config->presets[i].description, .flags = OPT_LONG_NOPREFIX, .callback = preset_flag_warning_cb, .value = NULL };
         }
@@ -253,13 +253,13 @@ static bool resolve_file_paths(AppConfig *config, MemoryArena* arena) {
     if (!config || !arena) return false;
 #ifdef _WIN32
     if (config->input.path_arg) {
-        if (!get_absolute_path_windows(config->input.path_arg, config->input.effective_path_w, MAX_PATH_BUFFER, config->input.effective_path_utf8, MAX_PATH_BUFFER)) return false;
+        if (!get_absolute_path_windows(config->input.path_arg, config->input.effective_path_w, APP_MAX_PATH_BUFFER, config->input.effective_path_utf8, APP_MAX_PATH_BUFFER)) return false;
     }
     if (config->output.path_arg) {
-        if (!get_absolute_path_windows(config->output.path_arg, config->output.effective_path_w, MAX_PATH_BUFFER, config->output.effective_path_utf8, MAX_PATH_BUFFER)) return false;
+        if (!get_absolute_path_windows(config->output.path_arg, config->output.effective_path_w, APP_MAX_PATH_BUFFER, config->output.effective_path_utf8, APP_MAX_PATH_BUFFER)) return false;
     }
     if (config->audio.path_arg) {
-        if (!get_absolute_path_windows(config->audio.path_arg, config->audio.effective_path_w, MAX_PATH_BUFFER, config->audio.effective_path_utf8, MAX_PATH_BUFFER)) return false;
+        if (!get_absolute_path_windows(config->audio.path_arg, config->audio.effective_path_w, APP_MAX_PATH_BUFFER, config->audio.effective_path_utf8, APP_MAX_PATH_BUFFER)) return false;
     }
 #else
     if (config->input.path_arg) {

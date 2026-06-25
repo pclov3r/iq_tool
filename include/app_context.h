@@ -53,8 +53,8 @@ typedef struct AppConfig {
         char* type_name;
         char* path_arg;
     #ifdef _WIN32
-        wchar_t effective_path_w[MAX_PATH_BUFFER];
-        char    effective_path_utf8[MAX_PATH_BUFFER];
+        wchar_t effective_path_w[APP_MAX_PATH_BUFFER];
+        char    effective_path_utf8[APP_MAX_PATH_BUFFER];
     #else
         char*   effective_path;
     #endif
@@ -70,8 +70,8 @@ typedef struct AppConfig {
         OutputPayload payload;
         SampleFormat sample_format;
     #ifdef _WIN32
-        wchar_t effective_path_w[MAX_PATH_BUFFER];
-        char    effective_path_utf8[MAX_PATH_BUFFER];
+        wchar_t effective_path_w[APP_MAX_PATH_BUFFER];
+        char    effective_path_utf8[APP_MAX_PATH_BUFFER];
     #else
         char*   effective_path;
     #endif
@@ -102,8 +102,8 @@ typedef struct AppConfig {
     struct {
         char* path_arg; // Raw command line argument
 #ifdef _WIN32
-        char    effective_path_utf8[MAX_PATH_BUFFER];
-        wchar_t effective_path_w[MAX_PATH_BUFFER];
+        char    effective_path_utf8[APP_MAX_PATH_BUFFER];
+        wchar_t effective_path_w[APP_MAX_PATH_BUFFER];
 #else
         char*   effective_path;
 #endif
@@ -129,15 +129,15 @@ typedef struct AppConfig {
         OutputAgcConfig    baseband_agc;
 
         struct {
-            FilterRequest requests[MAX_FILTER_CHAIN];
+            FilterRequest requests[FILTER_MAX_CHAIN];
             int           count;
             bool          apply_post_resample;
             FilterTypeRequest type_req;
             struct {
-                float       lowpass[MAX_FILTER_CHAIN];
-                float       highpass[MAX_FILTER_CHAIN];
-                const char* pass_range[MAX_FILTER_CHAIN];
-                const char* stopband[MAX_FILTER_CHAIN];
+                float       lowpass[FILTER_MAX_CHAIN];
+                float       highpass[FILTER_MAX_CHAIN];
+                const char* pass_range[FILTER_MAX_CHAIN];
+                const char* stopband[FILTER_MAX_CHAIN];
                 float       transition_width;
                 int         taps;
                 float       attenuation;

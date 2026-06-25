@@ -532,8 +532,8 @@ static bool _probe_split_sequence(WavInputContext* wav_input, const AppConfig* c
     wav_input->active_pattern = matched;
 
     // Isolate the base path by copying up to the separator position
-    char base_path[MAX_PATH_BUFFER];
-    strncpy(base_path, filename, MAX_PATH_BUFFER - 1);
+    char base_path[APP_MAX_PATH_BUFFER];
+    strncpy(base_path, filename, APP_MAX_PATH_BUFFER - 1);
     base_path[suffix_start_pos] = '\0'; // Truncate cleanly at the separator
     wav_input->base_path_no_suffix = arena_strdup(arena, base_path);
 
@@ -541,7 +541,7 @@ static bool _probe_split_sequence(WavInputContext* wav_input, const AppConfig* c
     int file_count = 0;
     int current_idx = starting_index;
     while (true) {
-        char test_path[MAX_PATH_BUFFER];
+        char test_path[APP_MAX_PATH_BUFFER];
 
         // Use the dynamically measured digit_width (e.g. 3 for "000")
         snprintf(test_path, sizeof(test_path), matched->format_template,
@@ -566,7 +566,7 @@ static bool _probe_split_sequence(WavInputContext* wav_input, const AppConfig* c
     sf_count_t cumulative_frames = 0;
 
     for (int i = 0; i < file_count; i++) {
-        char resolved_path[MAX_PATH_BUFFER];
+        char resolved_path[APP_MAX_PATH_BUFFER];
         snprintf(resolved_path, sizeof(resolved_path), matched->format_template,
                  wav_input->base_path_no_suffix, digit_width, starting_index + i);
 
@@ -581,8 +581,8 @@ static bool _probe_split_sequence(WavInputContext* wav_input, const AppConfig* c
         SF_INFO temp_sfinfo;
         memset(&temp_sfinfo, 0, sizeof(SF_INFO));
 #ifdef _WIN32
-        wchar_t w_path[MAX_PATH_BUFFER];
-        MultiByteToWideChar(CP_UTF8, 0, wav_input->file_list[i], -1, w_path, MAX_PATH_BUFFER);
+        wchar_t w_path[APP_MAX_PATH_BUFFER];
+        MultiByteToWideChar(CP_UTF8, 0, wav_input->file_list[i], -1, w_path, APP_MAX_PATH_BUFFER);
         SNDFILE* temp_file = sf_wchar_open(w_path, SFM_READ, &temp_sfinfo);
 #else
         SNDFILE* temp_file = sf_open(wav_input->file_list[i], SFM_READ, &temp_sfinfo);
@@ -656,8 +656,8 @@ static bool input_wav_validate_options(AppContext* app) {
     log_info("Opening WAV input file: %s", private_data->file_list[0]);
     memset(&private_data->sfinfo, 0, sizeof(SF_INFO));
 #ifdef _WIN32
-    wchar_t w_path[MAX_PATH_BUFFER];
-    MultiByteToWideChar(CP_UTF8, 0, private_data->file_list[0], -1, w_path, MAX_PATH_BUFFER);
+    wchar_t w_path[APP_MAX_PATH_BUFFER];
+    MultiByteToWideChar(CP_UTF8, 0, private_data->file_list[0], -1, w_path, APP_MAX_PATH_BUFFER);
     private_data->infile = sf_wchar_open(w_path, SFM_READ, &private_data->sfinfo);
 #else
     private_data->infile = sf_open(private_data->file_list[0], SFM_READ, &private_data->sfinfo);
@@ -678,7 +678,7 @@ static bool input_wav_validate_options(AppContext* app) {
     init_sdr_metadata(&private_data->sdr_metadata);
     private_data->sdr_metadata_present = parse_sdr_metadata_chunks(private_data->infile, &private_data->sfinfo, &private_data->sdr_metadata, &app->pipeline.setup_arena);
 
-    char basename_buffer[MAX_PATH_BUFFER];
+    char basename_buffer[APP_MAX_PATH_BUFFER];
     const char* base_filename = utility_get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer), &app->pipeline.setup_arena);
     if (base_filename) {
         bool filename_parsed = parse_sdr_metadata_from_filename(base_filename, &private_data->sdr_metadata);
@@ -788,8 +788,8 @@ static size_t input_wav_read_chunk(ModuleContext* context, void* buffer, size_t 
                 SF_INFO new_sfinfo;
                 memset(&new_sfinfo, 0, sizeof(SF_INFO));
 #ifdef _WIN32
-                wchar_t w_path[MAX_PATH_BUFFER];
-                MultiByteToWideChar(CP_UTF8, 0, wav_input->file_list[wav_input->current_file_index], -1, w_path, MAX_PATH_BUFFER);
+                wchar_t w_path[APP_MAX_PATH_BUFFER];
+                MultiByteToWideChar(CP_UTF8, 0, wav_input->file_list[wav_input->current_file_index], -1, w_path, APP_MAX_PATH_BUFFER);
                 wav_input->infile = sf_wchar_open(w_path, SFM_READ, &new_sfinfo);
 #else
                 wav_input->infile = sf_open(wav_input->file_list[wav_input->current_file_index], SFM_READ, &new_sfinfo);
@@ -821,8 +821,8 @@ static size_t input_wav_read_chunk(ModuleContext* context, void* buffer, size_t 
                 SF_INFO new_sfinfo;
                 memset(&new_sfinfo, 0, sizeof(SF_INFO));
 #ifdef _WIN32
-                wchar_t w_path[MAX_PATH_BUFFER];
-                MultiByteToWideChar(CP_UTF8, 0, wav_input->file_list[0], -1, w_path, MAX_PATH_BUFFER);
+                wchar_t w_path[APP_MAX_PATH_BUFFER];
+                MultiByteToWideChar(CP_UTF8, 0, wav_input->file_list[0], -1, w_path, APP_MAX_PATH_BUFFER);
                 wav_input->infile = sf_wchar_open(w_path, SFM_READ, &new_sfinfo);
 #else
                 wav_input->infile = sf_open(wav_input->file_list[0], SFM_READ, &new_sfinfo);

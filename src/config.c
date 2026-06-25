@@ -44,11 +44,11 @@ static bool parse_start_end_string(const char* input_str, const char* arg_name, 
 }
 
 static void add_filter_request(AppConfig *config, FilterType type, float f1, float f2) {
-    if (config->dsp.filter.count < MAX_FILTER_CHAIN) {
+    if (config->dsp.filter.count < FILTER_MAX_CHAIN) {
         config->dsp.filter.requests[config->dsp.filter.count] = (FilterRequest){ .type = type, .freq1_hz = f1, .freq2_hz = f2 };
         config->dsp.filter.count++;
     } else {
-        log_warn("Maximum number of chained filters (%d) reached. Ignoring further filter options.", MAX_FILTER_CHAIN);
+        log_warn("Maximum number of chained filters (%d) reached. Ignoring further filter options.", FILTER_MAX_CHAIN);
     }
 }
 
@@ -95,7 +95,7 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
 
 bool validate_filter_options(AppConfig *config) {
     config->dsp.filter.count = 0;
-    for (int i = 0; i < MAX_FILTER_CHAIN; i++) {
+    for (int i = 0; i < FILTER_MAX_CHAIN; i++) {
         if (config->dsp.filter.args.lowpass[i] > 0.0f) add_filter_request(config, FILTER_TYPE_LOWPASS, config->dsp.filter.args.lowpass[i], 0.0f);
         if (config->dsp.filter.args.highpass[i] > 0.0f) add_filter_request(config, FILTER_TYPE_HIGHPASS, config->dsp.filter.args.highpass[i], 0.0f);
         if (config->dsp.filter.args.pass_range[i]) {
