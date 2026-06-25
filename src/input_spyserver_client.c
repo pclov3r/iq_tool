@@ -196,7 +196,7 @@ typedef struct {
 } SpyServerClientContext;
 
 // --- CLI Options ---
-static const struct argparse_option spyserver_client_input_cli_options[] = {
+static const struct argparse_option input_spyserver_client_cli_options[] = {
     OPT_GROUP("SpyServer Client Input (spyserver-client)"),
     OPT_STRING(0, "spyserver-client-host", &s_spyserver_client_config.hostname, "Hostname or IP of the spyserver instance (Required).", NULL, 0, 0),
     OPT_INTEGER(0, "spyserver-client-port", &s_spyserver_client_config.port, "Port number of the spyserver instance (Required).", NULL, 0, 0),
@@ -204,13 +204,13 @@ static const struct argparse_option spyserver_client_input_cli_options[] = {
     OPT_STRING(0, "spyserver-client-sample-format", &s_spyserver_client_config.sample_format_str, "Select sample format {cu8|cs16|cs24|cf32}. Default is cu8.", NULL, 0, 0),
 };
 
-const struct argparse_option* spyserver_client_input_get_cli_options(int* count) {
-    *count = sizeof(spyserver_client_input_cli_options) / sizeof(spyserver_client_input_cli_options[0]);
-    return spyserver_client_input_cli_options;
+const struct argparse_option* input_spyserver_client_get_cli_options(int* count) {
+    *count = sizeof(input_spyserver_client_cli_options) / sizeof(input_spyserver_client_cli_options[0]);
+    return input_spyserver_client_cli_options;
 }
 
 // --- Default Configuration ---
-void spyserver_client_set_default_config(struct AppConfig* config) {
+void input_spyserver_client_set_default_config(struct AppConfig* config) {
     config->sdr_general.sample_rate_hz = SPYSERVER_DEFAULT_SAMPLE_RATE_HZ;
     s_spyserver_client_config.hostname = NULL;
     s_spyserver_client_config.port = 0;
@@ -220,9 +220,9 @@ void spyserver_client_set_default_config(struct AppConfig* config) {
 }
 
 // --- Function Prototypes ---
-static void* spyserver_client_input_producer_thread(void* arg);
-static void spyserver_client_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
-static bool spyserver_client_input_validate_options(AppContext* app);
+static void* input_spyserver_client_producer_thread(void* arg);
+static void input_spyserver_client_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
+static bool input_spyserver_client_validate_options(AppContext* app);
 
 // --- The InputModuleInterface V-Table ---
 
@@ -273,7 +273,7 @@ static bool send_setting(SpyServerClientContext* client, uint32_t setting, uint3
 }
 
 // --- Validation Function ---
-static bool spyserver_client_input_validate_options(AppContext* app) {
+static bool input_spyserver_client_validate_options(AppContext* app) {
     AppConfig* config = app ? (AppConfig*)app->config : NULL;
     (void)config;
     if (s_spyserver_client_config.hostname == NULL) {
@@ -301,7 +301,7 @@ static bool spyserver_client_input_validate_options(AppContext* app) {
     return true;
 }
 
-static bool spyserver_client_input_initialize(ModuleContext* context) {
+static bool input_spyserver_client_initialize(ModuleContext* context) {
     AppConfig* config = (AppConfig*)context->config;
     AppContext* app = context->app;
 
@@ -577,7 +577,7 @@ static bool spyserver_client_input_initialize(ModuleContext* context) {
     return true;
 }
 
-static void* spyserver_client_input_producer_thread(void* arg) {
+static void* input_spyserver_client_producer_thread(void* arg) {
     platform_set_thread_priority(PRIORITY_REALTIME, "SpyServer Producer");
 
     ModuleContext* context = (ModuleContext*)arg;
@@ -674,7 +674,7 @@ end_loop:;
     return NULL;
 }
 
-static void* spyserver_client_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+static void* input_spyserver_client_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     context->app->module.queue_samples = queue_samples;
     context->app->module.pipeline_context = pipeline_context;
     AppContext* app = context->app;
@@ -686,7 +686,7 @@ static void* spyserver_client_input_push_samples_to_queue(ModuleContext* context
     }
 
     pthread_t producer_thread_id;
-    if (pthread_create(&producer_thread_id, NULL, spyserver_client_input_producer_thread, context) != 0) {
+    if (pthread_create(&producer_thread_id, NULL, input_spyserver_client_producer_thread, context) != 0) {
         handle_fatal_thread_error("Failed to create spyserver producer thread.", app);
         return NULL;
     }
@@ -778,7 +778,7 @@ static void* spyserver_client_input_push_samples_to_queue(ModuleContext* context
     return NULL;
 }
 
-static void spyserver_client_input_stop_sample_queue_push(ModuleContext* context) {
+static void input_spyserver_client_stop_sample_queue_push(ModuleContext* context) {
     AppContext* app = context->app;
     if (app->module.input_private_data) {
         SpyServerClientContext* client = (SpyServerClientContext*)app->module.input_private_data;
@@ -788,7 +788,7 @@ static void spyserver_client_input_stop_sample_queue_push(ModuleContext* context
     }
 }
 
-static void spyserver_client_input_cleanup(ModuleContext* context) {
+static void input_spyserver_client_cleanup(ModuleContext* context) {
     AppContext* app = context->app;
     if (app->module.input_private_data) {
         SpyServerClientContext* client = (SpyServerClientContext*)app->module.input_private_data;
@@ -805,7 +805,7 @@ static void spyserver_client_input_cleanup(ModuleContext* context) {
     }
 }
 
-static void spyserver_client_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+static void input_spyserver_client_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
     const SpyServerClientContext* client = (const SpyServerClientContext*)context->app->module.input_private_data;
     const AppContext* app = context->app;
     char server_addr[256];
@@ -835,17 +835,17 @@ static void spyserver_client_input_get_summary_info(const ModuleContext* context
 }
 
 // --- The InputModuleInterface V-Table ---
-static InputModuleInterface s_spyserver_client_input_api = {
-    .initialize = spyserver_client_input_initialize,
-    .push_samples_to_queue = spyserver_client_input_push_samples_to_queue,
-    .stop_sample_queue_push = spyserver_client_input_stop_sample_queue_push,
-    .cleanup = spyserver_client_input_cleanup,
-    .get_summary_info = spyserver_client_input_get_summary_info,
-    .validate_options = spyserver_client_input_validate_options,
+static InputModuleInterface s_input_spyserver_client_api = {
+    .initialize = input_spyserver_client_initialize,
+    .push_samples_to_queue = input_spyserver_client_push_samples_to_queue,
+    .stop_sample_queue_push = input_spyserver_client_stop_sample_queue_push,
+    .cleanup = input_spyserver_client_cleanup,
+    .get_summary_info = input_spyserver_client_get_summary_info,
+    .validate_options = input_spyserver_client_validate_options,
     .validate_generic_options = NULL,
     .pre_stream_iq_correction = NULL
 };
 
 InputModuleInterface* input_spyserver_client_get_module_api(void) {
-    return &s_spyserver_client_input_api;
+    return &s_input_spyserver_client_api;
 }

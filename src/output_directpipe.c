@@ -30,7 +30,7 @@ typedef struct {
     long long total_bytes_written;
 } DirectPipeContext;
 
-static bool directpipe_output_initialize(ModuleContext* context) {
+static bool output_directpipe_initialize(ModuleContext* context) {
     DirectPipeContext* data = (DirectPipeContext*)mem_arena_alloc(&context->app->pipeline.setup_arena, sizeof(DirectPipeContext), true);
     if (!data) return false;
 
@@ -53,7 +53,7 @@ static bool directpipe_output_initialize(ModuleContext* context) {
     return true;
 }
 
-static size_t directpipe_output_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write) {
+static size_t output_directpipe_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write) {
     DirectPipeContext* data = (DirectPipeContext*)context->app->module.output_private_data;
     if (!data || bytes_to_write == 0) return 0;
 
@@ -96,14 +96,14 @@ static size_t directpipe_output_write_chunk(ModuleContext* context, const void* 
     return (bytes_to_write - bytes_left);
 }
 
-static void directpipe_output_cleanup(ModuleContext* context) {
+static void output_directpipe_cleanup(ModuleContext* context) {
     DirectPipeContext* data = (DirectPipeContext*)context->app->module.output_private_data;
     if (data) {
         context->app->stats.final_output_size_bytes = data->total_bytes_written;
     }
 }
 
-static void directpipe_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+static void output_directpipe_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
     (void)context;
     add_summary_item(info, "Output Type", "directpipe");
 }
@@ -115,20 +115,20 @@ static const struct argparse_option directpipe_cli_options[] = {
     OPT_GROUP("    (No module-specific options)"),
 };
 
-const struct argparse_option* directpipe_output_get_cli_options(int* count) {
+const struct argparse_option* output_directpipe_get_cli_options(int* count) {
     *count = sizeof(directpipe_cli_options) / sizeof(directpipe_cli_options[0]);
     return directpipe_cli_options;
 }
 
 static OutputModuleInterface s_directpipe_api = {
     .validate_options = NULL,
-    .get_cli_options = directpipe_output_get_cli_options,
-    .initialize = directpipe_output_initialize,
+    .get_cli_options = output_directpipe_get_cli_options,
+    .initialize = output_directpipe_initialize,
     .reset = NULL,
     .flush = NULL,
-    .write_chunk = directpipe_output_write_chunk,
-    .cleanup = directpipe_output_cleanup,
-    .get_summary_info = directpipe_output_get_summary_info,
+    .write_chunk = output_directpipe_write_chunk,
+    .cleanup = output_directpipe_cleanup,
+    .get_summary_info = output_directpipe_get_summary_info,
 };
 
 OutputModuleInterface* output_directpipe_get_module_api(void) {

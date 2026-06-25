@@ -16,6 +16,6 @@ InputModuleInterface* input_stdin_get_module_api(void);
 /**
  * @brief Returns the command-line options specific to the stdin module.
  */
-const struct argparse_option* stdin_input_get_cli_options(int* count);
+const struct argparse_option* input_stdin_get_cli_options(int* count);
 
 #endif // INPUT_STDIN_H_

@@ -15,6 +15,6 @@ OutputModuleInterface* output_nfm_get_module_api(void);
 /**
  * @brief Returns the command-line options specific to the NFM output module.
  */
-const struct argparse_option* nfm_output_get_cli_options(int* count);
+const struct argparse_option* output_nfm_get_cli_options(int* count);
 
 #endif // OUTPUT_NFM_H_

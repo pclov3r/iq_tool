@@ -53,23 +53,23 @@ typedef struct {
     bool repeat_enabled; // Loop state
 } RawfileInputContext;
 
-static const struct argparse_option rawfile_input_cli_options[] = {
+static const struct argparse_option input_rawfile_cli_options[] = {
     OPT_GROUP("Raw File Input (rawfile)"),
     OPT_FLOAT(0, "rawfile-input-sample-rate", &s_rawfile_config.raw_file_sample_rate_hz_arg, "(Required) The sample rate of the RAW input file.", NULL, 0, 0),
     OPT_STRING(0, "rawfile-input-sample-format", &s_rawfile_config.format_str, "(Required) The sample format of the RAW input file.", NULL, 0, 0),
     OPT_BOOLEAN(0, "rawfile-repeat", &s_rawfile_config.repeat_enabled, "Loop the RAW input file.", NULL, 0, 0),
 };
 
-const struct argparse_option* rawfile_input_get_cli_options(int* count) {
-    *count = sizeof(rawfile_input_cli_options) / sizeof(rawfile_input_cli_options[0]);
-    return rawfile_input_cli_options;
+const struct argparse_option* input_rawfile_get_cli_options(int* count) {
+    *count = sizeof(input_rawfile_cli_options) / sizeof(input_rawfile_cli_options[0]);
+    return input_rawfile_cli_options;
 }
 
-static void rawfile_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
-static bool rawfile_input_validate_options(AppContext* app);
-static bool rawfile_input_pre_stream_iq_correction(ModuleContext* context);
+static void input_rawfile_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
+static bool input_rawfile_validate_options(AppContext* app);
+static bool input_rawfile_pre_stream_iq_correction(ModuleContext* context);
 
-static bool rawfile_input_validate_options(AppContext* app) {
+static bool input_rawfile_validate_options(AppContext* app) {
     AppConfig* config = app ? (AppConfig*)app->config : NULL;
     if (s_rawfile_config.raw_file_sample_rate_hz_arg > 0.0f) {
         s_rawfile_config.sample_rate_hz = (double)s_rawfile_config.raw_file_sample_rate_hz_arg;
@@ -125,7 +125,7 @@ static bool rawfile_input_validate_options(AppContext* app) {
         case CU32: format_code |= SF_FORMAT_PCM_32; break;
         case CF32: format_code |= SF_FORMAT_FLOAT;  break;
         default:
-            log_fatal("Internal error: unhandled format enum in rawfile_input_validate_options.");
+            log_fatal("Internal error: unhandled format enum in input_rawfile_validate_options.");
             return false;
     }
     sfinfo.format = format_code;
@@ -147,7 +147,7 @@ static bool rawfile_input_validate_options(AppContext* app) {
     return true;
 }
 
-static bool rawfile_input_initialize(ModuleContext* context) {
+static bool input_rawfile_initialize(ModuleContext* context) {
     const AppConfig *config = context->config;
     AppContext* app = context->app;
 
@@ -177,7 +177,7 @@ static bool rawfile_input_initialize(ModuleContext* context) {
     return true;
 }
 
-static size_t rawfile_input_read_chunk(ModuleContext* context, void* buffer, size_t bytes_to_read) {
+static size_t input_rawfile_read_chunk(ModuleContext* context, void* buffer, size_t bytes_to_read) {
     AppContext* app = context->app;
     RawfileInputContext* p = (RawfileInputContext*)app->module.input_private_data;
     if (!p || !p->infile || bytes_to_read == 0) return 0;
@@ -213,15 +213,15 @@ static size_t rawfile_input_read_chunk(ModuleContext* context, void* buffer, siz
     return bytes_read_total;
 }
 
-static void* rawfile_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+static void* input_rawfile_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     (void)context; (void)queue_samples; (void)pipeline_context;
     return NULL; // Not used for synchronous file readers
 }
-static void rawfile_input_stop_sample_queue_push(ModuleContext* context) {
+static void input_rawfile_stop_sample_queue_push(ModuleContext* context) {
     (void)context;
 }
 
-static void rawfile_input_cleanup(ModuleContext* context) {
+static void input_rawfile_cleanup(ModuleContext* context) {
     AppContext* app = context->app;
     if (app->module.input_private_data) {
         RawfileInputContext* private_data = (RawfileInputContext*)app->module.input_private_data;
@@ -233,7 +233,7 @@ static void rawfile_input_cleanup(ModuleContext* context) {
     }
 }
 
-static void rawfile_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+static void input_rawfile_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
     const AppConfig *config = context->config;
     const AppContext* app = context->app;
     const char* display_path = config->input.path_arg;
@@ -258,7 +258,7 @@ static size_t raw_iq_cal_read_cb(void* user_data, void* buffer, size_t bytes) {
     return (size_t)sf_read_raw(infile, buffer, bytes);
 }
 
-static bool rawfile_input_pre_stream_iq_correction(ModuleContext* context) {
+static bool input_rawfile_pre_stream_iq_correction(ModuleContext* context) {
     AppConfig* config = (AppConfig*)context->config;
     RawfileInputContext* private_data = (RawfileInputContext*)context->app->module.input_private_data;
 
@@ -283,18 +283,18 @@ static bool rawfile_input_pre_stream_iq_correction(ModuleContext* context) {
 }
 
 // --- The InputModuleInterface V-Table ---
-static InputModuleInterface s_rawfile_input_api = {
-    .initialize = rawfile_input_initialize,
-    .push_samples_to_queue = rawfile_input_push_samples_to_queue,
-    .read_chunk = rawfile_input_read_chunk,
-    .stop_sample_queue_push = rawfile_input_stop_sample_queue_push,
-    .cleanup = rawfile_input_cleanup,
-    .get_summary_info = rawfile_input_get_summary_info,
-    .validate_options = rawfile_input_validate_options,
+static InputModuleInterface s_input_rawfile_api = {
+    .initialize = input_rawfile_initialize,
+    .push_samples_to_queue = input_rawfile_push_samples_to_queue,
+    .read_chunk = input_rawfile_read_chunk,
+    .stop_sample_queue_push = input_rawfile_stop_sample_queue_push,
+    .cleanup = input_rawfile_cleanup,
+    .get_summary_info = input_rawfile_get_summary_info,
+    .validate_options = input_rawfile_validate_options,
     .validate_generic_options = NULL,
-    .pre_stream_iq_correction = rawfile_input_pre_stream_iq_correction,
+    .pre_stream_iq_correction = input_rawfile_pre_stream_iq_correction,
 };
 
 InputModuleInterface* input_rawfile_get_module_api(void) {
-    return &s_rawfile_input_api;
+    return &s_input_rawfile_api;
 }

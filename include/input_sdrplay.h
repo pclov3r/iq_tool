@@ -22,12 +22,12 @@ InputModuleInterface* input_sdrplay_get_module_api(void);
 /**
  * @brief Returns the command-line options specific to the SDRplay module.
  */
-const struct argparse_option* sdrplay_input_get_cli_options(int* count);
+const struct argparse_option* input_sdrplay_get_cli_options(int* count);
 
 /**
  * @brief Sets the default configuration values for the SDRplay module.
  */
-void sdrplay_set_default_config(struct AppConfig* config);
+void input_sdrplay_set_default_config(struct AppConfig* config);
 
 /**
  * @brief Helper function to get a human-readable device name from its hardware version ID.

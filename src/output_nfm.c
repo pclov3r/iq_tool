@@ -95,7 +95,7 @@ static struct {
 
 // --- Module Interface ---
 
-static bool nfm_output_validate_options(AppContext* app) {
+static bool output_nfm_validate_options(AppContext* app) {
     AppConfig* config = app ? (AppConfig*)app->config : NULL;
     config->baseband_sample_format.format = CF32;
 
@@ -116,7 +116,7 @@ static bool nfm_output_validate_options(AppContext* app) {
     return true;
 }
 
-static bool nfm_output_initialize(ModuleContext* context) {
+static bool output_nfm_initialize(ModuleContext* context) {
     AppContext* res = context->app;
     NfmContext* p = (NfmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(NfmContext), true);
     res->module.output_private_data = p;
@@ -164,8 +164,8 @@ static bool nfm_output_initialize(ModuleContext* context) {
     return true;
 }
 
-static void nfm_output_reset(ModuleContext* context) { (void)context; }
-static void nfm_output_flush(ModuleContext* context) {
+static void output_nfm_reset(ModuleContext* context) { (void)context; }
+static void output_nfm_flush(ModuleContext* context) {
     NfmContext* p = (NfmContext*)context->app->module.output_private_data;
     if (is_shutdown_requested()) {
         audio_output_clear(p->audio_out);
@@ -173,7 +173,7 @@ static void nfm_output_flush(ModuleContext* context) {
         audio_output_drain(p->audio_out);
     }
 }
-static size_t nfm_output_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
+static size_t output_nfm_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
     AppContext* res = context->app;
     NfmContext* p = (NfmContext*)res->module.output_private_data;
 
@@ -272,7 +272,7 @@ static size_t nfm_output_write_chunk(ModuleContext* context, const void* buffer,
     return input_bytes;
 }
 
-static void nfm_output_cleanup(ModuleContext* context) {
+static void output_nfm_cleanup(ModuleContext* context) {
     AppContext* res = context->app;
     if (!res->module.output_private_data) return;
     NfmContext* p = (NfmContext*)res->module.output_private_data;
@@ -284,7 +284,7 @@ static void nfm_output_cleanup(ModuleContext* context) {
     if (p->resampler) msresamp_rrrf_destroy(p->resampler);
 }
 
-static void nfm_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+static void output_nfm_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
     (void)context;
     const char* mode = s_nfm_config.is_narrow ? "Narrow (2.5k Dev)" : "Standard (5k Dev)";
     const char* type = s_nfm_config.disable_discriminator_filter ? "Discriminator Filter Disabled" : "Discriminator Filter Enabled";
@@ -295,7 +295,7 @@ static void nfm_output_get_summary_info(const ModuleContext* context, OutputSumm
     add_summary_item(info, "Squelch", "%.15g dB", s_nfm_config.squelch_snr);
 }
 
-static const struct argparse_option nfm_output_cli_options[] = {
+static const struct argparse_option output_nfm_cli_options[] = {
     OPT_GROUP("NFM Output (nfm)"),
     OPT_FLOAT(0, "nfm-gain", &s_nfm_config.gain, "Audio gain (default: 1.0)", NULL, 0, 0),
     OPT_FLOAT(0, "nfm-squelch", &s_nfm_config.squelch_snr, "Squelch SNR threshold in dB (default: 10.0)", NULL, 0, 0),
@@ -304,22 +304,22 @@ static const struct argparse_option nfm_output_cli_options[] = {
     OPT_BOOLEAN(0, "nfm-no-discriminator-filter", &s_nfm_config.disable_discriminator_filter, "Disable the discriminator filter.", NULL, 0, 0),
 };
 
-const struct argparse_option* nfm_output_get_cli_options(int* count) {
-    *count = sizeof(nfm_output_cli_options) / sizeof(nfm_output_cli_options[0]);
-    return nfm_output_cli_options;
+const struct argparse_option* output_nfm_get_cli_options(int* count) {
+    *count = sizeof(output_nfm_cli_options) / sizeof(output_nfm_cli_options[0]);
+    return output_nfm_cli_options;
 }
 
-static OutputModuleInterface s_nfm_output_api = {
-    .initialize = nfm_output_initialize,
-    .write_chunk = nfm_output_write_chunk,
-    .reset = nfm_output_reset,
-    .flush = nfm_output_flush,
-    .cleanup = nfm_output_cleanup,
-    .get_summary_info = nfm_output_get_summary_info,
-    .validate_options = nfm_output_validate_options,
-    .get_cli_options = nfm_output_get_cli_options,
+static OutputModuleInterface s_output_nfm_api = {
+    .initialize = output_nfm_initialize,
+    .write_chunk = output_nfm_write_chunk,
+    .reset = output_nfm_reset,
+    .flush = output_nfm_flush,
+    .cleanup = output_nfm_cleanup,
+    .get_summary_info = output_nfm_get_summary_info,
+    .validate_options = output_nfm_validate_options,
+    .get_cli_options = output_nfm_get_cli_options,
 };
 
 OutputModuleInterface* output_nfm_get_module_api(void) {
-    return &s_nfm_output_api;
+    return &s_output_nfm_api;
 }

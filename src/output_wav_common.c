@@ -28,7 +28,7 @@
 
 // --- Shared Implementation ---
 
-bool wav_common_validate_options(AppContext* app) {
+bool output_wav_common_validate_options(AppContext* app) {
     AppConfig* config = app ? (AppConfig*)app->config : NULL;
     // This logic is identical for both WAV and RF64.
     if (config->output.sample_format != CS16 && config->output.sample_format != CU8 &&
@@ -65,7 +65,7 @@ bool wav_common_validate_options(AppContext* app) {
     return true;
 }
 
-bool wav_common_initialize(ModuleContext* context, int sf_format_flag) {
+bool output_wav_common_initialize(ModuleContext* context, int sf_format_flag) {
     const AppConfig* config = context->config;
     AppContext* app = context->app;
 
@@ -215,7 +215,7 @@ bool wav_common_initialize(ModuleContext* context, int sf_format_flag) {
     return true;
 }
 
-size_t wav_common_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write) {
+size_t output_wav_common_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write) {
     AppContext* app = context->app;
     WavCommonContext* data = (WavCommonContext*)app->module.output_private_data;
     if (!data || !data->handle || bytes_to_write == 0) return 0;
@@ -224,7 +224,7 @@ size_t wav_common_write_chunk(ModuleContext* context, const void* buffer, size_t
     return (size_t)written;
 }
 
-void wav_common_cleanup(ModuleContext* context) {
+void output_wav_common_cleanup(ModuleContext* context) {
     AppContext* app = context->app;
     if (!app->module.output_private_data) return;
     WavCommonContext* data = (WavCommonContext*)app->module.output_private_data;

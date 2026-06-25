@@ -72,7 +72,7 @@ typedef struct {
     pthread_mutex_t driver_mutex;
 } HydraSDRContext;
 
-void hydrasdr_set_default_config(AppConfig* config) {
+void input_hydrasdr_set_default_config(AppConfig* config) {
     config->sdr_general.sample_rate_hz = HYDRASDR_DEFAULT_SAMPLE_RATE;
     s_hydrasdr_config.gain_value = HYDRASDR_DEFAULT_GAIN_VALUE;
     s_hydrasdr_config.hydrasdr_gain_value_arg = HYDRASDR_DEFAULT_GAIN_VALUE;
@@ -84,7 +84,7 @@ void hydrasdr_set_default_config(AppConfig* config) {
     s_hydrasdr_config.hydrasdr_vga_gain_arg = HYDRASDR_DEFAULT_VGA_GAIN;
 }
 
-static const struct argparse_option hydrasdr_input_cli_options[] = {
+static const struct argparse_option input_hydrasdr_cli_options[] = {
     OPT_GROUP("HydraSDR Input (hydrasdr)"),
     OPT_STRING(0, "hydrasdr-gain-mode", &s_hydrasdr_config.gain_mode, "Gain mode: 'linearity', 'sensitivity', or 'manual'. (Default: AGC)", NULL, 0, 0),
     OPT_INTEGER(0, "hydrasdr-gain-value", &s_hydrasdr_config.hydrasdr_gain_value_arg, "Gain value for linearity/sensitivity modes (0-21). (Default: 10)", NULL, 0, 0),
@@ -96,18 +96,18 @@ static const struct argparse_option hydrasdr_input_cli_options[] = {
     OPT_BOOLEAN(0, "hydrasdr-packing", &s_hydrasdr_config.packing_enabled, "Enable bit-packing mode (12-bit samples).", NULL, 0, 0),
 };
 
-const struct argparse_option* hydrasdr_input_get_cli_options(int* count) {
-    *count = sizeof(hydrasdr_input_cli_options) / sizeof(hydrasdr_input_cli_options[0]);
-    return hydrasdr_input_cli_options;
+const struct argparse_option* input_hydrasdr_get_cli_options(int* count) {
+    *count = sizeof(input_hydrasdr_cli_options) / sizeof(input_hydrasdr_cli_options[0]);
+    return input_hydrasdr_cli_options;
 }
 
-static void hydrasdr_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
-static bool hydrasdr_input_validate_options(AppContext* app);
-static bool hydrasdr_input_validate_generic_options(const AppConfig* config);
+static void input_hydrasdr_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
+static bool input_hydrasdr_validate_options(AppContext* app);
+static bool input_hydrasdr_validate_generic_options(const AppConfig* config);
 
-static int hydrasdr_input_buffered_stream_callback(hydrasdr_transfer* transfer);
+static int input_hydrasdr_buffered_stream_callback(hydrasdr_transfer* transfer);
 
-static bool hydrasdr_input_validate_generic_options(const AppConfig* config) {
+static bool input_hydrasdr_validate_generic_options(const AppConfig* config) {
     if (!config->sdr_general.rf_freq_provided) {
         log_error("HydraSDR input requires the --sdr-rf-freq option.");
         return false;
@@ -115,7 +115,7 @@ static bool hydrasdr_input_validate_generic_options(const AppConfig* config) {
     return true;
 }
 
-static bool hydrasdr_input_validate_options(AppContext* app) {
+static bool input_hydrasdr_validate_options(AppContext* app) {
     AppConfig* config = app ? (AppConfig*)app->config : NULL;
     // Gain Mode Validation
     if (s_hydrasdr_config.gain_mode) {
@@ -210,7 +210,7 @@ static bool hydrasdr_input_validate_options(AppContext* app) {
     return true;
 }
 
-static int hydrasdr_input_buffered_stream_callback(hydrasdr_transfer* transfer) {
+static int input_hydrasdr_buffered_stream_callback(hydrasdr_transfer* transfer) {
     AppContext* app = (AppContext*)transfer->ctx;
 
     if (is_shutdown_requested() || app->stats.error_occurred) {
@@ -258,7 +258,7 @@ static int hydrasdr_input_buffered_stream_callback(hydrasdr_transfer* transfer) 
     return 0;
 }
 
-static void hydrasdr_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+static void input_hydrasdr_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
     const AppConfig *config = context->config;
     const AppContext* app = context->app;
     HydraSDRContext* private_data = (HydraSDRContext*)app->module.input_private_data;
@@ -301,7 +301,7 @@ static void hydrasdr_input_get_summary_info(const ModuleContext* context, InputS
     add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
-static bool hydrasdr_input_initialize(ModuleContext* context) {
+static bool input_hydrasdr_initialize(ModuleContext* context) {
     const AppConfig *config = context->config;
     AppContext* app = context->app;
     int result;
@@ -449,14 +449,14 @@ static bool hydrasdr_input_initialize(ModuleContext* context) {
 
 cleanup:
     if (!success) {
-        // Cleanup will be handled by hydrasdr_input_cleanup()
+        // Cleanup will be handled by input_hydrasdr_cleanup()
     }
     return success;
 }
 
-static void hydrasdr_input_stop_sample_queue_push(ModuleContext* context);
+static void input_hydrasdr_stop_sample_queue_push(ModuleContext* context);
 
-static void* hydrasdr_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+static void* input_hydrasdr_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     context->app->module.queue_samples = queue_samples;
     context->app->module.pipeline_context = pipeline_context;
     AppContext* app = context->app;
@@ -552,7 +552,7 @@ static void* hydrasdr_input_push_samples_to_queue(ModuleContext* context, QueueS
         }
     }
 
-    hydrasdr_sample_block_cb_fn callback_fn = hydrasdr_input_buffered_stream_callback;
+    hydrasdr_sample_block_cb_fn callback_fn = input_hydrasdr_buffered_stream_callback;
     result = hydrasdr_start_rx(private_data->dev, callback_fn, app);
     if (result != HYDRASDR_SUCCESS) {
         char error_buf[256];
@@ -567,13 +567,13 @@ static void* hydrasdr_input_push_samples_to_queue(ModuleContext* context, QueueS
     }
 
     if (!is_shutdown_requested()) {
-        hydrasdr_input_stop_sample_queue_push(context);
+        input_hydrasdr_stop_sample_queue_push(context);
     }
 
     return NULL;
 }
 
-static void hydrasdr_input_stop_sample_queue_push(ModuleContext* context) {
+static void input_hydrasdr_stop_sample_queue_push(ModuleContext* context) {
     AppContext* app = context->app;
     HydraSDRContext* private_data = (HydraSDRContext*)app->module.input_private_data;
     if (private_data) {
@@ -589,7 +589,7 @@ static void hydrasdr_input_stop_sample_queue_push(ModuleContext* context) {
     }
 }
 
-static void hydrasdr_input_cleanup(ModuleContext* context) {
+static void input_hydrasdr_cleanup(ModuleContext* context) {
     AppContext* app = context->app;
     if (app->module.input_private_data) {
         HydraSDRContext* private_data = (HydraSDRContext*)app->module.input_private_data;
@@ -606,17 +606,17 @@ static void hydrasdr_input_cleanup(ModuleContext* context) {
     }
 
 // --- The InputModuleInterface V-Table ---
-static InputModuleInterface s_hydrasdr_input_api = {
-    .initialize = hydrasdr_input_initialize,
-    .push_samples_to_queue = hydrasdr_input_push_samples_to_queue,
-    .stop_sample_queue_push = hydrasdr_input_stop_sample_queue_push,
-    .cleanup = hydrasdr_input_cleanup,
-    .get_summary_info = hydrasdr_input_get_summary_info,
-    .validate_options = hydrasdr_input_validate_options,
-    .validate_generic_options = hydrasdr_input_validate_generic_options,
+static InputModuleInterface s_input_hydrasdr_api = {
+    .initialize = input_hydrasdr_initialize,
+    .push_samples_to_queue = input_hydrasdr_push_samples_to_queue,
+    .stop_sample_queue_push = input_hydrasdr_stop_sample_queue_push,
+    .cleanup = input_hydrasdr_cleanup,
+    .get_summary_info = input_hydrasdr_get_summary_info,
+    .validate_options = input_hydrasdr_validate_options,
+    .validate_generic_options = input_hydrasdr_validate_generic_options,
     .pre_stream_iq_correction = NULL
 };
 
 InputModuleInterface* input_hydrasdr_get_module_api(void) {
-    return &s_hydrasdr_input_api;
+    return &s_input_hydrasdr_api;
 }

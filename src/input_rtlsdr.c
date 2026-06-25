@@ -51,11 +51,11 @@ typedef struct {
     pthread_mutex_t driver_mutex;
 } RtlSdrContext;
 
-void rtlsdr_set_default_config(AppConfig* config) {
+void input_rtlsdr_set_default_config(AppConfig* config) {
     config->sdr_general.sample_rate_hz = RTLSDR_DEFAULT_SAMPLE_RATE;
 }
 
-static const struct argparse_option rtlsdr_input_cli_options[] = {
+static const struct argparse_option input_rtlsdr_cli_options[] = {
     OPT_GROUP("RTL-SDR Input (rtlsdr)"),
     OPT_INTEGER(0, "rtlsdr-device-index", &s_rtlsdr_config.device_index, "Select specific RTL-SDR device by index (0-indexed). (Default: 0)", NULL, 0, 0),
     OPT_FLOAT(0, "rtlsdr-gain", &s_rtlsdr_config.rtlsdr_gain_db_arg, "Set manual tuner gain in dB (e.g., 28.0, 49.6). Disables AGC.", NULL, 0, 0),
@@ -63,14 +63,14 @@ static const struct argparse_option rtlsdr_input_cli_options[] = {
     OPT_INTEGER(0, "rtlsdr-direct-sampling", &s_rtlsdr_config.direct_sampling_mode, "Enable direct sampling mode for HF reception (1=I-branch, 2=Q-branch)", NULL, 0, 0),
 };
 
-const struct argparse_option* rtlsdr_input_get_cli_options(int* count) {
-    *count = sizeof(rtlsdr_input_cli_options) / sizeof(rtlsdr_input_cli_options[0]);
-    return rtlsdr_input_cli_options;
+const struct argparse_option* input_rtlsdr_get_cli_options(int* count) {
+    *count = sizeof(input_rtlsdr_cli_options) / sizeof(input_rtlsdr_cli_options[0]);
+    return input_rtlsdr_cli_options;
 }
 
-static void rtlsdr_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
-static bool rtlsdr_input_validate_options(AppContext* app);
-static bool rtlsdr_input_validate_generic_options(const AppConfig* config);
+static void input_rtlsdr_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
+static bool input_rtlsdr_validate_options(AppContext* app);
+static bool input_rtlsdr_validate_generic_options(const AppConfig* config);
 
 static int rtlsdr_find_nearest_gain(rtlsdr_dev_t *dev,
                                     int requested_gain_tenths,
@@ -116,7 +116,7 @@ static const char* get_tuner_name_from_enum(enum rtlsdr_tuner tuner_type) {
     }
 }
 
-static bool rtlsdr_input_validate_generic_options(const AppConfig* config) {
+static bool input_rtlsdr_validate_generic_options(const AppConfig* config) {
     if (!config->sdr_general.rf_freq_provided) {
         log_error("RTL-SDR input requires the --sdr-rf-freq option.");
         return false;
@@ -124,7 +124,7 @@ static bool rtlsdr_input_validate_generic_options(const AppConfig* config) {
     return true;
 }
 
-static bool rtlsdr_input_validate_options(AppContext* app) {
+static bool input_rtlsdr_validate_options(AppContext* app) {
     AppConfig* config = app ? (AppConfig*)app->config : NULL;
     if (s_rtlsdr_config.rtlsdr_gain_db_arg != 0.0f) {
         s_rtlsdr_config.gain = (int)(s_rtlsdr_config.rtlsdr_gain_db_arg * 10.0f);
@@ -153,7 +153,7 @@ static bool rtlsdr_input_validate_options(AppContext* app) {
     return true;
 }
 
-static void rtlsdr_input_stream_callback(unsigned char *buffer, uint32_t length, void *cb_context) {
+static void input_rtlsdr_stream_callback(unsigned char *buffer, uint32_t length, void *cb_context) {
     AppContext* app = (AppContext*)cb_context;
 
     // --- HEARTBEAT ---
@@ -172,7 +172,7 @@ static void rtlsdr_input_stream_callback(unsigned char *buffer, uint32_t length,
     }
 }
 
-static bool rtlsdr_input_initialize(ModuleContext* context) {
+static bool input_rtlsdr_initialize(ModuleContext* context) {
     const AppConfig *config = context->config;
     AppContext* app = context->app;
     int result;
@@ -330,7 +330,7 @@ cleanup:
     return success;
 }
 
-static void* rtlsdr_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+static void* input_rtlsdr_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     context->app->module.queue_samples = queue_samples;
     context->app->module.pipeline_context = pipeline_context;
     AppContext* app = context->app;
@@ -338,7 +338,7 @@ static void* rtlsdr_input_push_samples_to_queue(ModuleContext* context, QueueSam
     int result;
 
     // NOTE: rtlsdr_read_async BLOCKS until the stream stops or is cancelled.
-    result = rtlsdr_read_async(private_data->dev, rtlsdr_input_stream_callback, app, 0, 0);
+    result = rtlsdr_read_async(private_data->dev, input_rtlsdr_stream_callback, app, 0, 0);
 
     if (result < 0) {
         char error_buf[256];
@@ -350,7 +350,7 @@ static void* rtlsdr_input_push_samples_to_queue(ModuleContext* context, QueueSam
     return NULL;
 }
 
-static void rtlsdr_input_stop_sample_queue_push(ModuleContext* context) {
+static void input_rtlsdr_stop_sample_queue_push(ModuleContext* context) {
     AppContext* app = context->app;
     RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
     if (private_data && private_data->dev) {
@@ -359,7 +359,7 @@ static void rtlsdr_input_stop_sample_queue_push(ModuleContext* context) {
     }
 }
 
-static void rtlsdr_input_cleanup(ModuleContext* context) {
+static void input_rtlsdr_cleanup(ModuleContext* context) {
     AppContext* app = context->app;
     if (app->module.input_private_data) {
         RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
@@ -376,7 +376,7 @@ static void rtlsdr_input_cleanup(ModuleContext* context) {
     }
 }
 
-static void rtlsdr_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+static void input_rtlsdr_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
     const AppConfig *config = context->config;
     AppContext* app = context->app;
     RtlSdrContext* private_data = (RtlSdrContext*)app->module.input_private_data;
@@ -402,17 +402,17 @@ static void rtlsdr_input_get_summary_info(const ModuleContext* context, InputSum
 }
 
 // --- The InputModuleInterface V-Table ---
-static InputModuleInterface s_rtlsdr_input_api = {
-    .initialize = rtlsdr_input_initialize,
-    .push_samples_to_queue = rtlsdr_input_push_samples_to_queue,
-    .stop_sample_queue_push = rtlsdr_input_stop_sample_queue_push,
-    .cleanup = rtlsdr_input_cleanup,
-    .get_summary_info = rtlsdr_input_get_summary_info,
-    .validate_options = rtlsdr_input_validate_options,
-    .validate_generic_options = rtlsdr_input_validate_generic_options,
+static InputModuleInterface s_input_rtlsdr_api = {
+    .initialize = input_rtlsdr_initialize,
+    .push_samples_to_queue = input_rtlsdr_push_samples_to_queue,
+    .stop_sample_queue_push = input_rtlsdr_stop_sample_queue_push,
+    .cleanup = input_rtlsdr_cleanup,
+    .get_summary_info = input_rtlsdr_get_summary_info,
+    .validate_options = input_rtlsdr_validate_options,
+    .validate_generic_options = input_rtlsdr_validate_generic_options,
     .pre_stream_iq_correction = NULL
 };
 
 InputModuleInterface* input_rtlsdr_get_module_api(void) {
-    return &s_rtlsdr_input_api;
+    return &s_input_rtlsdr_api;
 }

@@ -26,7 +26,7 @@ typedef struct {
 
 // --- Module Implementation ---
 
-static bool stdout_output_initialize(ModuleContext* context) {
+static bool output_stdout_initialize(ModuleContext* context) {
     AppContext* app = context->app;
 
     StdoutContext* data = (StdoutContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(StdoutContext), true);
@@ -47,7 +47,7 @@ static bool stdout_output_initialize(ModuleContext* context) {
     return true;
 }
 
-static size_t stdout_output_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write) {
+static size_t output_stdout_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write) {
     AppContext* app = context->app;
     StdoutContext* data = (StdoutContext*)app->module.output_private_data;
     if (!data) return 0;
@@ -59,7 +59,7 @@ static size_t stdout_output_write_chunk(ModuleContext* context, const void* buff
     return written;
 }
 
-static void stdout_output_cleanup(ModuleContext* context) {
+static void output_stdout_cleanup(ModuleContext* context) {
     AppContext* app = context->app;
     if (!app->module.output_private_data) return;
     StdoutContext* data = (StdoutContext*)app->module.output_private_data;
@@ -68,34 +68,34 @@ static void stdout_output_cleanup(ModuleContext* context) {
     app->stats.final_output_size_bytes = data->total_bytes_written;
 }
 
-static void stdout_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+static void output_stdout_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
     (void)context;
     add_summary_item(info, "Output Type", "stdout");
 }
 
-static const struct argparse_option stdout_output_cli_options[] = {
+static const struct argparse_option output_stdout_cli_options[] = {
     OPT_GROUP("Standard Output (stdout)"),
     OPT_GROUP("    (No module-specific options)"),
 };
 
-const struct argparse_option* stdout_output_get_cli_options(int* count) {
-    *count = sizeof(stdout_output_cli_options) / sizeof(stdout_output_cli_options[0]);
-    return stdout_output_cli_options;
+const struct argparse_option* output_stdout_get_cli_options(int* count) {
+    *count = sizeof(output_stdout_cli_options) / sizeof(output_stdout_cli_options[0]);
+    return output_stdout_cli_options;
 }
 
 // --- The V-Table ---
-static OutputModuleInterface s_stdout_output_api = {
+static OutputModuleInterface s_output_stdout_api = {
     .validate_options = NULL,
-    .get_cli_options = stdout_output_get_cli_options,
-    .initialize = stdout_output_initialize,
+    .get_cli_options = output_stdout_get_cli_options,
+    .initialize = output_stdout_initialize,
     .reset = NULL,
     .flush = NULL,
-    .write_chunk = stdout_output_write_chunk,
-    .cleanup = stdout_output_cleanup,
-    .get_summary_info = stdout_output_get_summary_info,
+    .write_chunk = output_stdout_write_chunk,
+    .cleanup = output_stdout_cleanup,
+    .get_summary_info = output_stdout_get_summary_info,
 };
 
 // --- Public Getter ---
 OutputModuleInterface* output_stdout_get_module_api(void) {
-    return &s_stdout_output_api;
+    return &s_output_stdout_api;
 }

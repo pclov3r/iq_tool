@@ -496,7 +496,7 @@ static double calculate_buffer_power(const void* buffer, unsigned int frames, Nr
 
 // --- Module Interface Implementation ---
 
-static bool nrsc5_output_initialize(ModuleContext* context) {
+static bool output_nrsc5_initialize(ModuleContext* context) {
     AppContext* app = context->app;
 
 #ifdef _WIN32
@@ -560,9 +560,9 @@ static bool nrsc5_output_initialize(ModuleContext* context) {
     return true;
 }
 
-static void nrsc5_output_reset(ModuleContext* context) { (void)context; }
+static void output_nrsc5_reset(ModuleContext* context) { (void)context; }
 
-static void nrsc5_output_flush(ModuleContext* context) {
+static void output_nrsc5_flush(ModuleContext* context) {
     Nrsc5Context* nrsc5_decoder = (Nrsc5Context*)context->app->module.output_private_data;
     if (is_shutdown_requested()) {
         audio_output_clear(nrsc5_decoder->audio_out);
@@ -571,7 +571,7 @@ static void nrsc5_output_flush(ModuleContext* context) {
     }
 }
 
-static size_t nrsc5_output_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
+static size_t output_nrsc5_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
     AppContext* app = context->app;
     Nrsc5Context* nrsc5_decoder = (Nrsc5Context*)app->module.output_private_data;
     if (input_bytes == 0) return 0;
@@ -619,7 +619,7 @@ static size_t nrsc5_output_write_chunk(ModuleContext* context, const void* buffe
     return input_bytes;
 }
 
-static void nrsc5_output_cleanup(ModuleContext* context) {
+static void output_nrsc5_cleanup(ModuleContext* context) {
     AppContext* app = context->app;
     if (!app->module.output_private_data) return;
     Nrsc5Context* nrsc5_decoder = (Nrsc5Context*)app->module.output_private_data;
@@ -633,7 +633,7 @@ static void nrsc5_output_cleanup(ModuleContext* context) {
     }
 }
 
-static bool nrsc5_output_validate_options(AppContext* app) {
+static bool output_nrsc5_validate_options(AppContext* app) {
     AppConfig* config = app ? (AppConfig*)app->config : NULL;
     // 1. Resolve Mode
     if (!s_nrsc5_config.mode_str) {
@@ -732,7 +732,7 @@ static bool nrsc5_output_validate_options(AppContext* app) {
     return true;
 }
 
-static void nrsc5_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+static void output_nrsc5_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
     (void)context;
     add_summary_item(info, "Output Type", "NRSC5 (HD Radio Player)");
 
@@ -741,19 +741,19 @@ static void nrsc5_output_get_summary_info(const ModuleContext* context, OutputSu
 }
 
 // --- CLI Options ---
-static const struct argparse_option nrsc5_output_cli_options[] = {
+static const struct argparse_option output_nrsc5_cli_options[] = {
     OPT_GROUP("NRSC5 Output (nrsc5)"),
     OPT_STRING(0, "nrsc5-mode", &s_nrsc5_config.mode_str, "Set decoder mode {cs16-fm|cs16-am|cu8-fm|cu8-am}. (Default: cs16-fm)", NULL, 0, 0),
     OPT_INTEGER(0, "nrsc5-program", &s_nrsc5_config.program_id, "Select initial HD program/subchannel (0-7). (Required) Press keys 0-7 during playback to switch.", NULL, 0, 0),
     OPT_STRING(0, "nrsc5-aas-dir", &s_nrsc5_config.aas_dir_arg, "Directory to dump AAS files (logos, maps, etc).", NULL, 0, 0),
 };
 
-const struct argparse_option* nrsc5_output_get_cli_options(int* count) {
-    *count = sizeof(nrsc5_output_cli_options) / sizeof(nrsc5_output_cli_options[0]);
-    return nrsc5_output_cli_options;
+const struct argparse_option* output_nrsc5_get_cli_options(int* count) {
+    *count = sizeof(output_nrsc5_cli_options) / sizeof(output_nrsc5_cli_options[0]);
+    return output_nrsc5_cli_options;
 }
 
-static void nrsc5_output_on_keypress(ModuleContext* context, int key) {
+static void output_nrsc5_on_keypress(ModuleContext* context, int key) {
     if (key >= '0' && key <= '7') {
         unsigned int new_program = key - '0';
         Nrsc5Context* nrsc5_decoder = (Nrsc5Context*)context->app->module.output_private_data;
@@ -776,18 +776,18 @@ static void nrsc5_output_on_keypress(ModuleContext* context, int key) {
 }
 
 // --- The V-Table ---
-static OutputModuleInterface s_nrsc5_output_api = {
-    .validate_options = nrsc5_output_validate_options,
-    .get_cli_options = nrsc5_output_get_cli_options,
-    .initialize = nrsc5_output_initialize,
-    .write_chunk = nrsc5_output_write_chunk,
-    .reset = nrsc5_output_reset,
-    .flush = nrsc5_output_flush,
-    .cleanup = nrsc5_output_cleanup,
-    .get_summary_info = nrsc5_output_get_summary_info,
-    .on_keypress = nrsc5_output_on_keypress,
+static OutputModuleInterface s_output_nrsc5_api = {
+    .validate_options = output_nrsc5_validate_options,
+    .get_cli_options = output_nrsc5_get_cli_options,
+    .initialize = output_nrsc5_initialize,
+    .write_chunk = output_nrsc5_write_chunk,
+    .reset = output_nrsc5_reset,
+    .flush = output_nrsc5_flush,
+    .cleanup = output_nrsc5_cleanup,
+    .get_summary_info = output_nrsc5_get_summary_info,
+    .on_keypress = output_nrsc5_on_keypress,
 };
 
 OutputModuleInterface* output_nrsc5_get_module_api(void) {
-    return &s_nrsc5_output_api;
+    return &s_output_nrsc5_api;
 }

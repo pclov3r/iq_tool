@@ -129,7 +129,7 @@ static struct {
 
 // --- Module Interface Implementation ---
 
-static bool am_output_validate_options(AppContext* app) {
+static bool output_am_validate_options(AppContext* app) {
     AppConfig* config = app ? (AppConfig*)app->config : NULL;
     config->output.sample_format = CF32;
 
@@ -150,7 +150,7 @@ static bool am_output_validate_options(AppContext* app) {
     return true;
 }
 
-static bool am_output_initialize(ModuleContext* context) {
+static bool output_am_initialize(ModuleContext* context) {
     AppContext* res = context->app;
 
     AmContext* am_context = (AmContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(AmContext), true);
@@ -243,9 +243,9 @@ static bool am_output_initialize(ModuleContext* context) {
     return true;
 }
 
-static void am_output_reset(ModuleContext* context) { (void)context; }
+static void output_am_reset(ModuleContext* context) { (void)context; }
 
-static void am_output_flush(ModuleContext* context) {
+static void output_am_flush(ModuleContext* context) {
     AmContext* am_context = (AmContext*)context->app->module.output_private_data;
     if (is_shutdown_requested()) {
         audio_output_clear(am_context->audio_out);
@@ -254,7 +254,7 @@ static void am_output_flush(ModuleContext* context) {
     }
 }
 
-static size_t am_output_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
+static size_t output_am_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
     AppContext* res = context->app;
     AmContext* am_context = (AmContext*)res->module.output_private_data;
 
@@ -427,7 +427,7 @@ static size_t am_output_write_chunk(ModuleContext* context, const void* buffer, 
     return input_bytes;
 }
 
-static void am_output_cleanup(ModuleContext* context) {
+static void output_am_cleanup(ModuleContext* context) {
     AppContext* res = context->app;
     if (!res->module.output_private_data) return;
     AmContext* am_context = (AmContext*)res->module.output_private_data;
@@ -440,7 +440,7 @@ static void am_output_cleanup(ModuleContext* context) {
     if (am_context->resamp_out) msresamp_rrrf_destroy(am_context->resamp_out);
 }
 
-static void am_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+static void output_am_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
     (void)context;
     add_summary_item(info, "Output Type", "AM Audio");
     add_summary_item(info, "Mode", "%s", s_am_config.force_envelope ? "Envelope (Mag)" : "Synchronous (PLL)");
@@ -448,29 +448,29 @@ static void am_output_get_summary_info(const ModuleContext* context, OutputSumma
     add_summary_item(info, "Filter Cutoff", "%.15g Hz", s_am_config.audio_cutoff);
 }
 
-static const struct argparse_option am_output_cli_options[] = {
+static const struct argparse_option output_am_cli_options[] = {
     OPT_GROUP("AM Output (am)"),
     OPT_FLOAT(0, "am-gain", &s_am_config.gain_val, "Set audio output gain (linear).", NULL, 0, 0),
     OPT_FLOAT(0, "am-cutoff", &s_am_config.audio_cutoff, "Set audio lowpass filter cutoff in Hz (default: 5000).", NULL, 0, 0),
     OPT_BOOLEAN(0, "am-envelope", &s_am_config.force_envelope, "Disable Synchronous AM (PLL) and use Magnitude Envelope Detection.", NULL, 0, 0),
 };
 
-const struct argparse_option* am_output_get_cli_options(int* count) {
-    *count = sizeof(am_output_cli_options) / sizeof(am_output_cli_options[0]);
-    return am_output_cli_options;
+const struct argparse_option* output_am_get_cli_options(int* count) {
+    *count = sizeof(output_am_cli_options) / sizeof(output_am_cli_options[0]);
+    return output_am_cli_options;
 }
 
-static OutputModuleInterface s_am_output_api = {
-    .initialize = am_output_initialize,
-    .write_chunk = am_output_write_chunk,
-    .reset = am_output_reset,
-    .flush = am_output_flush,
-    .cleanup = am_output_cleanup,
-    .get_summary_info = am_output_get_summary_info,
-    .validate_options = am_output_validate_options,
-    .get_cli_options = am_output_get_cli_options,
+static OutputModuleInterface s_output_am_api = {
+    .initialize = output_am_initialize,
+    .write_chunk = output_am_write_chunk,
+    .reset = output_am_reset,
+    .flush = output_am_flush,
+    .cleanup = output_am_cleanup,
+    .get_summary_info = output_am_get_summary_info,
+    .validate_options = output_am_validate_options,
+    .get_cli_options = output_am_get_cli_options,
 };
 
 OutputModuleInterface* output_am_get_module_api(void) {
-    return &s_am_output_api;
+    return &s_output_am_api;
 }

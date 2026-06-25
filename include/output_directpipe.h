@@ -18,6 +18,6 @@ OutputModuleInterface* output_directpipe_get_module_api(void);
  * @param count Pointer to store the number of options returned.
  * @return Pointer to an array of argparse_option structs.
  */
-const struct argparse_option* directpipe_output_get_cli_options(int* count);
+const struct argparse_option* output_directpipe_get_cli_options(int* count);
 
 #endif // OUTPUT_DIRECTPIPE_H_

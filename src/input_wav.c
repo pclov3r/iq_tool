@@ -612,12 +612,12 @@ static const struct argparse_option wav_cli_options[] = {
     OPT_BOOLEAN(0, "wav-repeat", &s_wav_config.wav_repeat, "Loop the WAV input file or sequence.", NULL, 0, 0),
 };
 
-const struct argparse_option* wav_input_get_cli_options(int* count) {
+const struct argparse_option* input_wav_get_cli_options(int* count) {
     *count = sizeof(wav_cli_options) / sizeof(wav_cli_options[0]);
     return wav_cli_options;
 }
 
-static bool wav_input_validate_options(AppContext* app) {
+static bool input_wav_validate_options(AppContext* app) {
     AppConfig* config = app ? (AppConfig*)app->config : NULL;
     if (!config) return true;
 
@@ -693,7 +693,7 @@ static bool wav_input_validate_options(AppContext* app) {
     return true;
 }
 
-static bool wav_input_initialize(ModuleContext* context) {
+static bool input_wav_initialize(ModuleContext* context) {
     const AppConfig *config = context->config;
     AppContext* app = context->app;
 
@@ -755,7 +755,7 @@ static bool wav_input_initialize(ModuleContext* context) {
     return true;
 }
 
-static size_t wav_input_read_chunk(ModuleContext* context, void* buffer, size_t bytes_to_read) {
+static size_t input_wav_read_chunk(ModuleContext* context, void* buffer, size_t bytes_to_read) {
     AppContext* app = context->app;
     WavInputContext* wav_input = (WavInputContext*)app->module.input_private_data;
     if (!wav_input || !wav_input->infile || bytes_to_read == 0) return 0;
@@ -854,16 +854,16 @@ static size_t wav_input_read_chunk(ModuleContext* context, void* buffer, size_t 
     return bytes_read_total;
 }
 
-static void* wav_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+static void* input_wav_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     (void)context; (void)queue_samples; (void)pipeline_context;
     return NULL; // Not used for synchronous file readers
 }
 
-static void wav_input_stop_sample_queue_push(ModuleContext* context) {
+static void input_wav_stop_sample_queue_push(ModuleContext* context) {
     (void)context;
 }
 
-static void wav_input_cleanup(ModuleContext* context) {
+static void input_wav_cleanup(ModuleContext* context) {
     AppContext* app = context->app;
     if (app->module.input_private_data) {
         WavInputContext* private_data = (WavInputContext*)app->module.input_private_data;
@@ -880,7 +880,7 @@ static size_t wav_iq_cal_read_cb(void* user_data, void* buffer, size_t bytes) {
     return (size_t)sf_read_raw(infile, buffer, bytes);
 }
 
-static bool wav_input_pre_stream_iq_correction(ModuleContext* context) {
+static bool input_wav_pre_stream_iq_correction(ModuleContext* context) {
     AppConfig* config = (AppConfig*)context->config;
     WavInputContext* private_data = (WavInputContext*)context->app->module.input_private_data;
 
@@ -904,7 +904,7 @@ static bool wav_input_pre_stream_iq_correction(ModuleContext* context) {
     return result;
 }
 
-static void wav_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+static void input_wav_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
     const AppConfig *config = context->config;
     const AppContext* app = context->app;
     WavInputContext* private_data = (WavInputContext*)app->module.input_private_data;
@@ -1004,18 +1004,18 @@ static void wav_input_get_summary_info(const ModuleContext* context, InputSummar
     }
 }
 
-static InputModuleInterface s_wav_input_api = {
-    .initialize = wav_input_initialize,
-    .push_samples_to_queue = wav_input_push_samples_to_queue,
-    .read_chunk = wav_input_read_chunk,
-    .stop_sample_queue_push = wav_input_stop_sample_queue_push,
-    .cleanup = wav_input_cleanup,
-    .get_summary_info = wav_input_get_summary_info,
-    .validate_options = wav_input_validate_options,
+static InputModuleInterface s_input_wav_api = {
+    .initialize = input_wav_initialize,
+    .push_samples_to_queue = input_wav_push_samples_to_queue,
+    .read_chunk = input_wav_read_chunk,
+    .stop_sample_queue_push = input_wav_stop_sample_queue_push,
+    .cleanup = input_wav_cleanup,
+    .get_summary_info = input_wav_get_summary_info,
+    .validate_options = input_wav_validate_options,
     .validate_generic_options = NULL,
-    .pre_stream_iq_correction = wav_input_pre_stream_iq_correction,
+    .pre_stream_iq_correction = input_wav_pre_stream_iq_correction,
 };
 
 InputModuleInterface* input_wav_get_module_api(void) {
-    return &s_wav_input_api;
+    return &s_input_wav_api;
 }

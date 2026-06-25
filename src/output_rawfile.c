@@ -32,7 +32,7 @@ typedef struct {
 
 // --- Helper Functions ---
 
-static bool rawfile_output_validate_options(AppContext* app) {
+static bool output_rawfile_validate_options(AppContext* app) {
     AppConfig* config = (AppConfig*)app->config;
 
     #ifdef _WIN32
@@ -72,14 +72,14 @@ static bool rawfile_output_validate_options(AppContext* app) {
     return true;
 }
 
-static bool rawfile_output_initialize(ModuleContext* context) {
+static bool output_rawfile_initialize(ModuleContext* context) {
     AppContext* app = context->app;
     RawfileOutputContext* data = (RawfileOutputContext*)app->module.output_private_data;
     if (!data || !data->handle) return false;
     return true;
 }
 
-static size_t rawfile_output_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write) {
+static size_t output_rawfile_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write) {
     AppContext* app = context->app;
     RawfileOutputContext* data = (RawfileOutputContext*)app->module.output_private_data;
     if (!data || !data->handle) return 0;
@@ -91,7 +91,7 @@ static size_t rawfile_output_write_chunk(ModuleContext* context, const void* buf
     return written;
 }
 
-static void rawfile_output_cleanup(ModuleContext* context) {
+static void output_rawfile_cleanup(ModuleContext* context) {
     AppContext* app = context->app;
     if (!app->module.output_private_data) return;
     RawfileOutputContext* data = (RawfileOutputContext*)app->module.output_private_data;
@@ -103,34 +103,34 @@ static void rawfile_output_cleanup(ModuleContext* context) {
     app->stats.final_output_size_bytes = data->total_bytes_written;
 }
 
-static void rawfile_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+static void output_rawfile_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
     (void)context;
     add_summary_item(info, "Output Type", "RAW File");
 }
 
-static const struct argparse_option rawfile_output_cli_options[] = {
+static const struct argparse_option output_rawfile_cli_options[] = {
     OPT_GROUP("RAW File Output (rawfile)"),
     OPT_GROUP("    (No module-specific options)"),
 };
 
-const struct argparse_option* rawfile_output_get_cli_options(int* count) {
-    *count = sizeof(rawfile_output_cli_options) / sizeof(rawfile_output_cli_options[0]);
-    return rawfile_output_cli_options;
+const struct argparse_option* output_rawfile_get_cli_options(int* count) {
+    *count = sizeof(output_rawfile_cli_options) / sizeof(output_rawfile_cli_options[0]);
+    return output_rawfile_cli_options;
 }
 
 // --- The V-Table ---
-static OutputModuleInterface s_rawfile_output_api = {
-    .validate_options = rawfile_output_validate_options,
-    .get_cli_options = rawfile_output_get_cli_options,
-    .initialize = rawfile_output_initialize,
+static OutputModuleInterface s_output_rawfile_api = {
+    .validate_options = output_rawfile_validate_options,
+    .get_cli_options = output_rawfile_get_cli_options,
+    .initialize = output_rawfile_initialize,
     .reset = NULL,
     .flush = NULL,
-    .write_chunk = rawfile_output_write_chunk,
-    .cleanup = rawfile_output_cleanup,
-    .get_summary_info = rawfile_output_get_summary_info,
+    .write_chunk = output_rawfile_write_chunk,
+    .cleanup = output_rawfile_cleanup,
+    .get_summary_info = output_rawfile_get_summary_info,
 };
 
 // --- Public Getter ---
 OutputModuleInterface* output_rawfile_get_module_api(void) {
-    return &s_rawfile_output_api;
+    return &s_output_rawfile_api;
 }

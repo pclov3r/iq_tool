@@ -34,7 +34,7 @@ typedef struct {
 /**
  * @brief Validates that the selected sample format is compatible with WAV output.
  */
-bool wav_common_validate_options(struct AppContext* app);
+bool output_wav_common_validate_options(struct AppContext* app);
 
 /**
  * @brief The core initialization logic for opening a WAV or RF64 file.
@@ -42,16 +42,16 @@ bool wav_common_validate_options(struct AppContext* app);
  * @param sf_format_flag The specific libsndfile format flag (e.g., SF_FORMAT_WAV or SF_FORMAT_RF64).
  * @return true on success, false on failure.
  */
-bool wav_common_initialize(ModuleContext* context, int sf_format_flag);
+bool output_wav_common_initialize(ModuleContext* context, int sf_format_flag);
 
 /**
  * @brief Writes a single chunk of raw data to the open file handle. (Used for passthrough mode).
  */
-size_t wav_common_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write);
+size_t output_wav_common_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write);
 
 /**
  * @brief Finalizes the WAV/RF64 file by closing the handle and updating final size.
  */
-void wav_common_cleanup(ModuleContext* context);
+void output_wav_common_cleanup(ModuleContext* context);
 
 #endif // OUTPUT_WAV_COMMON_H_

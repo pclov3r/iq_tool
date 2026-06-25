@@ -250,7 +250,7 @@ static void deemphasis_destroy(DeEmphasis* de) {
 
 // --- Module Interface Implementation ---
 
-static bool wfm_output_validate_options(AppContext* app) {
+static bool output_wfm_validate_options(AppContext* app) {
     AppConfig* config = app ? (AppConfig*)app->config : NULL;
     // Resolve the user's choice from the CLI flag into our clean enum state.
     if (s_wfm_config.use_world_rds) {
@@ -285,7 +285,7 @@ static bool wfm_output_validate_options(AppContext* app) {
     return true;
 }
 
-static bool wfm_output_initialize(ModuleContext* context) {
+static bool output_wfm_initialize(ModuleContext* context) {
     AppContext* res = context->app;
 
     // Windows: stdout defaults to text mode (\n -> \r\n), which corrupts binary I/Q data.
@@ -398,9 +398,9 @@ static bool wfm_output_initialize(ModuleContext* context) {
     return true;
 }
 
-static void wfm_output_reset(ModuleContext* context) { (void)context; /* TODO: Reset PLL state */ }
+static void output_wfm_reset(ModuleContext* context) { (void)context; /* TODO: Reset PLL state */ }
 
-static void wfm_output_flush(ModuleContext* context) {
+static void output_wfm_flush(ModuleContext* context) {
     WfmContext* wfm_decoder = (WfmContext*)context->app->module.output_private_data;
     if (is_shutdown_requested()) {
         audio_output_clear(wfm_decoder->audio_out);
@@ -408,7 +408,7 @@ static void wfm_output_flush(ModuleContext* context) {
         audio_output_drain(wfm_decoder->audio_out);
     }
 }
-static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
+static size_t output_wfm_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
     AppContext* res = context->app;
     WfmContext* wfm_decoder = (WfmContext*)res->module.output_private_data;
 
@@ -801,7 +801,7 @@ static size_t wfm_output_write_chunk(ModuleContext* context, const void* buffer,
     return input_bytes;
 }
 
-static void wfm_output_cleanup(ModuleContext* context) {
+static void output_wfm_cleanup(ModuleContext* context) {
     AppContext* res = context->app;
     if (!res->module.output_private_data) return;
     WfmContext* wfm_decoder = (WfmContext*)res->module.output_private_data;
@@ -826,7 +826,7 @@ static void wfm_output_cleanup(ModuleContext* context) {
 
 }
 
-static void wfm_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+static void output_wfm_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
     (void)context;
     add_summary_item(info, "Output Type", "WFM Stereo Audio");
     add_summary_item(info, "Audio Sample Rate", "%d Hz", AUDIO_SAMPLE_RATE);
@@ -838,7 +838,7 @@ static void wfm_output_get_summary_info(const ModuleContext* context, OutputSumm
     add_summary_item(info, "Stereo Mode", "%s", mode);
 }
 
-const struct argparse_option wfm_output_cli_options[] = {
+const struct argparse_option output_wfm_cli_options[] = {
     OPT_GROUP("WFM Output (wfm)"),
     OPT_FLOAT(0, "wfm-de-emphasis-time", &s_wfm_config.deemph_us, "Set FM de-emphasis time constant in microseconds (default: 75.0).", NULL, 0, 0),
     OPT_FLOAT(0, "wfm-gain", &s_wfm_config.gain_val, "Set audio output gain (linear).", NULL, 0, 0),
@@ -851,22 +851,22 @@ const struct argparse_option wfm_output_cli_options[] = {
 
 };
 
-const struct argparse_option* wfm_output_get_cli_options(int* count) {
-    *count = sizeof(wfm_output_cli_options) / sizeof(wfm_output_cli_options[0]);
-    return wfm_output_cli_options;
+const struct argparse_option* output_wfm_get_cli_options(int* count) {
+    *count = sizeof(output_wfm_cli_options) / sizeof(output_wfm_cli_options[0]);
+    return output_wfm_cli_options;
 }
 
-static OutputModuleInterface s_wfm_output_api = {
-    .initialize = wfm_output_initialize,
-    .write_chunk = wfm_output_write_chunk,
-    .reset = wfm_output_reset,
-    .flush = wfm_output_flush,
-    .cleanup = wfm_output_cleanup,
-    .get_summary_info = wfm_output_get_summary_info,
-    .validate_options = wfm_output_validate_options,
-    .get_cli_options = wfm_output_get_cli_options,
+static OutputModuleInterface s_output_wfm_api = {
+    .initialize = output_wfm_initialize,
+    .write_chunk = output_wfm_write_chunk,
+    .reset = output_wfm_reset,
+    .flush = output_wfm_flush,
+    .cleanup = output_wfm_cleanup,
+    .get_summary_info = output_wfm_get_summary_info,
+    .validate_options = output_wfm_validate_options,
+    .get_cli_options = output_wfm_get_cli_options,
 };
 
 OutputModuleInterface* output_wfm_get_module_api(void) {
-    return &s_wfm_output_api;
+    return &s_output_wfm_api;
 }

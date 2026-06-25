@@ -26,7 +26,7 @@
 // --- CLI Config ---
 static struct {
     double sample_rate_hz;
-    float stdin_input_sample_rate_hz_arg;
+    float input_stdin_sample_rate_hz_arg;
     bool sample_rate_provided;
     char *format_str;
     bool format_provided;
@@ -38,24 +38,24 @@ typedef struct {
     size_t rx_buffer_size;
 } StdinContext;
 
-static const struct argparse_option stdin_input_cli_options[] = {
+static const struct argparse_option input_stdin_cli_options[] = {
     OPT_GROUP("Standard Input (stdin)"),
-    OPT_FLOAT(0, "stdin-input-sample-rate", &s_stdin_config.stdin_input_sample_rate_hz_arg, "(Required) The sample rate of the stdin stream in Hz.", NULL, 0, 0),
+    OPT_FLOAT(0, "stdin-input-sample-rate", &s_stdin_config.input_stdin_sample_rate_hz_arg, "(Required) The sample rate of the stdin stream in Hz.", NULL, 0, 0),
     OPT_STRING(0, "stdin-input-sample-format", &s_stdin_config.format_str, "(Required) The sample format of the stdin stream.", NULL, 0, 0),
 };
 
-const struct argparse_option* stdin_input_get_cli_options(int* count) {
-    *count = sizeof(stdin_input_cli_options) / sizeof(stdin_input_cli_options[0]);
-    return stdin_input_cli_options;
+const struct argparse_option* input_stdin_get_cli_options(int* count) {
+    *count = sizeof(input_stdin_cli_options) / sizeof(input_stdin_cli_options[0]);
+    return input_stdin_cli_options;
 }
 
 // --- Module Implementation ---
 
-static bool stdin_input_validate_options(AppContext* app) {
+static bool input_stdin_validate_options(AppContext* app) {
     AppConfig* config = app ? (AppConfig*)app->config : NULL;
     (void)config;
-    if (s_stdin_config.stdin_input_sample_rate_hz_arg > 0.0f) {
-        s_stdin_config.sample_rate_hz = (double)s_stdin_config.stdin_input_sample_rate_hz_arg;
+    if (s_stdin_config.input_stdin_sample_rate_hz_arg > 0.0f) {
+        s_stdin_config.sample_rate_hz = (double)s_stdin_config.input_stdin_sample_rate_hz_arg;
         s_stdin_config.sample_rate_provided = true;
     }
 
@@ -72,7 +72,7 @@ static bool stdin_input_validate_options(AppContext* app) {
     return true;
 }
 
-static bool stdin_input_initialize(ModuleContext* context) {
+static bool input_stdin_initialize(ModuleContext* context) {
     const AppConfig *config = context->config;
     (void)config;
     AppContext* app = context->app;
@@ -111,7 +111,7 @@ static bool stdin_input_initialize(ModuleContext* context) {
     return true;
 }
 
-static void* stdin_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+static void* input_stdin_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     AppContext* app = context->app;
     StdinContext* p = (StdinContext*)app->module.input_private_data;
 
@@ -137,7 +137,7 @@ static void* stdin_input_push_samples_to_queue(ModuleContext* context, QueueSamp
     return NULL;
 }
 
-static size_t stdin_input_read_chunk(ModuleContext* context, void* buffer, size_t bytes_to_read) {
+static size_t input_stdin_read_chunk(ModuleContext* context, void* buffer, size_t bytes_to_read) {
     size_t total_read = 0;
     unsigned char* ptr = (unsigned char*)buffer;
 
@@ -155,33 +155,33 @@ static size_t stdin_input_read_chunk(ModuleContext* context, void* buffer, size_
     return total_read;
 }
 
-static void stdin_input_stop_sample_queue_push(ModuleContext* context) {
+static void input_stdin_stop_sample_queue_push(ModuleContext* context) {
     (void)context;
 }
 
-static void stdin_input_cleanup(ModuleContext* context) {
+static void input_stdin_cleanup(ModuleContext* context) {
     (void)context;
 }
 
-static void stdin_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+static void input_stdin_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
     (void)context;
     add_summary_item(info, "Input Source", "Standard Input (stdin)");
     add_summary_item(info, "Input Format", "%s", s_stdin_config.format_str);
     add_summary_item(info, "Input Sample Rate", "%.15g Hz", s_stdin_config.sample_rate_hz);
 }
 
-static InputModuleInterface s_stdin_input_api = {
-    .initialize = stdin_input_initialize,
-    .push_samples_to_queue = stdin_input_push_samples_to_queue,
-    .read_chunk = stdin_input_read_chunk,
-    .stop_sample_queue_push = stdin_input_stop_sample_queue_push,
-    .cleanup = stdin_input_cleanup,
-    .get_summary_info = stdin_input_get_summary_info,
-    .validate_options = stdin_input_validate_options,
+static InputModuleInterface s_input_stdin_api = {
+    .initialize = input_stdin_initialize,
+    .push_samples_to_queue = input_stdin_push_samples_to_queue,
+    .read_chunk = input_stdin_read_chunk,
+    .stop_sample_queue_push = input_stdin_stop_sample_queue_push,
+    .cleanup = input_stdin_cleanup,
+    .get_summary_info = input_stdin_get_summary_info,
+    .validate_options = input_stdin_validate_options,
     .validate_generic_options = NULL,
     .pre_stream_iq_correction = NULL,
 };
 
 InputModuleInterface* input_stdin_get_module_api(void) {
-    return &s_stdin_input_api;
+    return &s_input_stdin_api;
 }

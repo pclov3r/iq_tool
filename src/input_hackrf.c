@@ -52,7 +52,7 @@ typedef struct {
     pthread_mutex_t driver_mutex;
 } HackrfContext;
 
-void hackrf_set_default_config(AppConfig* config) {
+void input_hackrf_set_default_config(AppConfig* config) {
     config->sdr_general.sample_rate_hz = HACKRF_DEFAULT_SAMPLE_RATE;
     s_hackrf_config.lna_gain = HACKRF_DEFAULT_LNA_GAIN;
     s_hackrf_config.hackrf_lna_gain_arg = HACKRF_DEFAULT_LNA_GAIN;
@@ -60,25 +60,25 @@ void hackrf_set_default_config(AppConfig* config) {
     s_hackrf_config.hackrf_vga_gain_arg = HACKRF_DEFAULT_VGA_GAIN;
 }
 
-static const struct argparse_option hackrf_input_cli_options[] = {
+static const struct argparse_option input_hackrf_cli_options[] = {
     OPT_GROUP("HackRF Input (hackrf)"),
     OPT_INTEGER(0, "hackrf-lna-gain", &s_hackrf_config.hackrf_lna_gain_arg, "Set LNA (IF) gain in dB. (Optional, Default: 16)", NULL, 0, 0),
     OPT_INTEGER(0, "hackrf-vga-gain", &s_hackrf_config.hackrf_vga_gain_arg, "Set VGA (Baseband) gain in dB. (Optional, Default: 0)", NULL, 0, 0),
     OPT_BOOLEAN(0, "hackrf-amp-enable", &s_hackrf_config.amp_enable, "Enable the front-end RF amplifier (+14 dB).", NULL, 0, 0),
 };
 
-const struct argparse_option* hackrf_input_get_cli_options(int* count) {
-    *count = sizeof(hackrf_input_cli_options) / sizeof(hackrf_input_cli_options[0]);
-    return hackrf_input_cli_options;
+const struct argparse_option* input_hackrf_get_cli_options(int* count) {
+    *count = sizeof(input_hackrf_cli_options) / sizeof(input_hackrf_cli_options[0]);
+    return input_hackrf_cli_options;
 }
 
-static void hackrf_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
-static bool hackrf_input_validate_options(AppContext* app);
-static bool hackrf_input_validate_generic_options(const AppConfig* config);
+static void input_hackrf_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
+static bool input_hackrf_validate_options(AppContext* app);
+static bool input_hackrf_validate_generic_options(const AppConfig* config);
 
-static int hackrf_input_buffered_stream_callback(hackrf_transfer* transfer);
+static int input_hackrf_buffered_stream_callback(hackrf_transfer* transfer);
 
-static bool hackrf_input_validate_generic_options(const AppConfig* config) {
+static bool input_hackrf_validate_generic_options(const AppConfig* config) {
     if (!config->sdr_general.rf_freq_provided) {
         log_error("HackRF input requires the --sdr-rf-freq option.");
         return false;
@@ -86,7 +86,7 @@ static bool hackrf_input_validate_generic_options(const AppConfig* config) {
     return true;
 }
 
-static bool hackrf_input_validate_options(AppContext* app) {
+static bool input_hackrf_validate_options(AppContext* app) {
     AppConfig* config = app ? (AppConfig*)app->config : NULL;
     if (s_hackrf_config.hackrf_lna_gain_arg != HACKRF_DEFAULT_LNA_GAIN) {
         int lna_gain = s_hackrf_config.hackrf_lna_gain_arg;
@@ -122,7 +122,7 @@ static bool hackrf_input_validate_options(AppContext* app) {
     return true;
 }
 
-static int hackrf_input_buffered_stream_callback(hackrf_transfer* transfer) {
+static int input_hackrf_buffered_stream_callback(hackrf_transfer* transfer) {
     AppContext* app = (AppContext*)transfer->rx_ctx;
 
     // --- HEARTBEAT ---
@@ -142,7 +142,7 @@ static int hackrf_input_buffered_stream_callback(hackrf_transfer* transfer) {
     return 0;
 }
 
-static void hackrf_input_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
+static void input_hackrf_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
     const AppConfig *config = context->config;
     const AppContext* app = context->app;
     add_summary_item(info, "Input Source", "HackRF One");
@@ -156,7 +156,7 @@ static void hackrf_input_get_summary_info(const ModuleContext* context, InputSum
     add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
-static bool hackrf_input_initialize(ModuleContext* context) {
+static bool input_hackrf_initialize(ModuleContext* context) {
     const AppConfig *config = context->config;
     AppContext* app = context->app;
     int result;
@@ -235,21 +235,21 @@ static bool hackrf_input_initialize(ModuleContext* context) {
 
 cleanup:
     if (!success) {
-        // The main application cleanup will call hackrf_input_cleanup(), which handles these.
+        // The main application cleanup will call input_hackrf_cleanup(), which handles these.
     }
     return success;
 }
 
-static void hackrf_input_stop_sample_queue_push(ModuleContext* context);
+static void input_hackrf_stop_sample_queue_push(ModuleContext* context);
 
-static void* hackrf_input_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
+static void* input_hackrf_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
     context->app->module.queue_samples = queue_samples;
     context->app->module.pipeline_context = pipeline_context;
     AppContext* app = context->app;
     HackrfContext* private_data = (HackrfContext*)app->module.input_private_data;
     int result;
     hackrf_sample_block_cb_fn callback_fn;
-    callback_fn = hackrf_input_buffered_stream_callback;
+    callback_fn = input_hackrf_buffered_stream_callback;
 
     result = hackrf_start_rx(private_data->dev, callback_fn, app);
     if (result != HACKRF_SUCCESS) {
@@ -265,13 +265,13 @@ static void* hackrf_input_push_samples_to_queue(ModuleContext* context, QueueSam
     }
 
     if (!is_shutdown_requested()) {
-        hackrf_input_stop_sample_queue_push(context);
+        input_hackrf_stop_sample_queue_push(context);
     }
 
     return NULL;
 }
 
-static void hackrf_input_stop_sample_queue_push(ModuleContext* context) {
+static void input_hackrf_stop_sample_queue_push(ModuleContext* context) {
     AppContext* app = context->app;
     HackrfContext* private_data = (HackrfContext*)app->module.input_private_data;
     if (private_data) {
@@ -287,7 +287,7 @@ static void hackrf_input_stop_sample_queue_push(ModuleContext* context) {
 }
 }
 
-static void hackrf_input_cleanup(ModuleContext* context) {
+static void input_hackrf_cleanup(ModuleContext* context) {
     AppContext* app = context->app;
     if (app->module.input_private_data) {
         HackrfContext* private_data = (HackrfContext*)app->module.input_private_data;
@@ -305,17 +305,17 @@ static void hackrf_input_cleanup(ModuleContext* context) {
 }
 
 // --- The InputModuleInterface V-Table ---
-static InputModuleInterface s_hackrf_input_api = {
-    .initialize = hackrf_input_initialize,
-    .push_samples_to_queue = hackrf_input_push_samples_to_queue,
-    .stop_sample_queue_push = hackrf_input_stop_sample_queue_push,
-    .cleanup = hackrf_input_cleanup,
-    .get_summary_info = hackrf_input_get_summary_info,
-    .validate_options = hackrf_input_validate_options,
-    .validate_generic_options = hackrf_input_validate_generic_options,
+static InputModuleInterface s_input_hackrf_api = {
+    .initialize = input_hackrf_initialize,
+    .push_samples_to_queue = input_hackrf_push_samples_to_queue,
+    .stop_sample_queue_push = input_hackrf_stop_sample_queue_push,
+    .cleanup = input_hackrf_cleanup,
+    .get_summary_info = input_hackrf_get_summary_info,
+    .validate_options = input_hackrf_validate_options,
+    .validate_generic_options = input_hackrf_validate_generic_options,
     .pre_stream_iq_correction = NULL
 };
 
 InputModuleInterface* input_hackrf_get_module_api(void) {
-    return &s_hackrf_input_api;
+    return &s_input_hackrf_api;
 }

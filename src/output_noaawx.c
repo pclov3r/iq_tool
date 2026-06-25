@@ -109,7 +109,7 @@ static struct {
 
 // --- Module Interface ---
 
-static bool noaawx_output_validate_options(AppContext* app) {
+static bool output_noaawx_validate_options(AppContext* app) {
     AppConfig* config = app ? (AppConfig*)app->config : NULL;
     config->baseband_sample_format.format = CF32;
 
@@ -120,7 +120,7 @@ static bool noaawx_output_validate_options(AppContext* app) {
     return true;
 }
 
-static bool noaawx_output_initialize(ModuleContext* context) {
+static bool output_noaawx_initialize(ModuleContext* context) {
     AppContext* res = context->app;
     NoaawxContext* decoder = (NoaawxContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(NoaawxContext), true);
     res->module.output_private_data = decoder;
@@ -3718,8 +3718,8 @@ static void parse_same_header(const char* header) {
     log_info("==============================================");
 }
 
-static void noaawx_output_reset(ModuleContext* context) { (void)context; }
-static void noaawx_output_flush(ModuleContext* context) {
+static void output_noaawx_reset(ModuleContext* context) { (void)context; }
+static void output_noaawx_flush(ModuleContext* context) {
     NoaawxContext* decoder = (NoaawxContext*)context->app->module.output_private_data;
     if (is_shutdown_requested()) {
         audio_output_clear(decoder->audio_out);
@@ -3804,7 +3804,7 @@ static void run_bit_wise_voting(NoaawxContext* decoder) {
     memset(decoder->same_bursts, 0, sizeof(decoder->same_bursts));
 }
 
-static size_t noaawx_output_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
+static size_t output_noaawx_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
     AppContext* res = context->app;
     NoaawxContext* decoder = (NoaawxContext*)res->module.output_private_data;
 
@@ -4060,7 +4060,7 @@ static size_t noaawx_output_write_chunk(ModuleContext* context, const void* buff
     return input_bytes;
 }
 
-static void noaawx_output_cleanup(ModuleContext* context) {
+static void output_noaawx_cleanup(ModuleContext* context) {
     AppContext* res = context->app;
     if (!res->module.output_private_data) return;
     NoaawxContext* decoder = (NoaawxContext*)res->module.output_private_data;
@@ -4076,7 +4076,7 @@ static void noaawx_output_cleanup(ModuleContext* context) {
     if (decoder->afsk_sync) symsync_rrrf_destroy(decoder->afsk_sync);
 }
 
-static void noaawx_output_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
+static void output_noaawx_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
     (void)context;
     add_summary_item(info, "Output Type", "NOAAWX");
     if (s_noaawx_config.audio_in) {
@@ -4086,7 +4086,7 @@ static void noaawx_output_get_summary_info(const ModuleContext* context, OutputS
     }
 }
 
-static const struct argparse_option noaawx_output_cli_options[] = {
+static const struct argparse_option output_noaawx_cli_options[] = {
     OPT_GROUP("NOAAWX Output (noaawx)"),
     OPT_FLOAT(0, "noaawx-gain", &s_noaawx_config.gain, "Audio gain (default: 1.0)", NULL, 0, 0),
     OPT_BOOLEAN(0, "noaawx-no-nfm", &s_noaawx_config.audio_in, "Bypass FM Demodulator and process input as direct audio.", NULL, 0, 0),
@@ -4094,22 +4094,22 @@ static const struct argparse_option noaawx_output_cli_options[] = {
     OPT_BOOLEAN(0, "noaawx-standby", &s_noaawx_config.standby, "Mute audio until a SAME alert is received, then mute again after EOM.", NULL, 0, 0),
 };
 
-const struct argparse_option* noaawx_output_get_cli_options(int* count) {
-    *count = sizeof(noaawx_output_cli_options) / sizeof(noaawx_output_cli_options[0]);
-    return noaawx_output_cli_options;
+const struct argparse_option* output_noaawx_get_cli_options(int* count) {
+    *count = sizeof(output_noaawx_cli_options) / sizeof(output_noaawx_cli_options[0]);
+    return output_noaawx_cli_options;
 }
 
-static OutputModuleInterface s_noaawx_output_api = {
-    .initialize = noaawx_output_initialize,
-    .write_chunk = noaawx_output_write_chunk,
-    .reset = noaawx_output_reset,
-    .flush = noaawx_output_flush,
-    .cleanup = noaawx_output_cleanup,
-    .get_summary_info = noaawx_output_get_summary_info,
-    .validate_options = noaawx_output_validate_options,
-    .get_cli_options = noaawx_output_get_cli_options,
+static OutputModuleInterface s_output_noaawx_api = {
+    .initialize = output_noaawx_initialize,
+    .write_chunk = output_noaawx_write_chunk,
+    .reset = output_noaawx_reset,
+    .flush = output_noaawx_flush,
+    .cleanup = output_noaawx_cleanup,
+    .get_summary_info = output_noaawx_get_summary_info,
+    .validate_options = output_noaawx_validate_options,
+    .get_cli_options = output_noaawx_get_cli_options,
 };
 
 OutputModuleInterface* output_noaawx_get_module_api(void) {
-    return &s_noaawx_output_api;
+    return &s_output_noaawx_api;
 }

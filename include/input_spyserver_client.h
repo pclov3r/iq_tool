@@ -22,11 +22,11 @@ InputModuleInterface* input_spyserver_client_get_module_api(void);
 /**
  * @brief Returns the command-line options specific to the SpyServer client module.
  */
-const struct argparse_option* spyserver_client_input_get_cli_options(int* count);
+const struct argparse_option* input_spyserver_client_get_cli_options(int* count);
 
 /**
  * @brief Sets the default configuration values for the SpyServer client module.
  */
-void spyserver_client_set_default_config(struct AppConfig* config);
+void input_spyserver_client_set_default_config(struct AppConfig* config);
 
 #endif // INPUT_SPYSERVER_CLIENT_H_
