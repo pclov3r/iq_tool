@@ -12,6 +12,7 @@
 #define UTILITIES_H_
 
 #include <stddef.h>
+#include <math.h>
 #include "app_context.h"
 #include "module.h"
 #include "mem_arena.h"
@@ -109,7 +110,6 @@ bool utility_check_nyquist_warning(double freq_to_check_hz, double sample_rate_h
  */
 bool utility_check_file_exists(const char* full_path);
 
-#include <math.h>
 
 /**
  * @brief Calculates Decibels relative to Full Scale (dBFS) from a power value.

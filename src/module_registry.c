@@ -61,7 +61,7 @@
 typedef struct {
     const char* active_input;
     const char* active_output;
-} InactiveWarningContext;
+} ModuleWarningContext;
 
 static int inactive_option_warning_cb(struct argparse *self, const struct argparse_option *opt);
 
@@ -409,7 +409,7 @@ void module_populate_cli_options(
                 memcpy(&dest_buffer[*total_opts_ptr], opts, count * sizeof(struct argparse_option));
 
                 // Allocate our warning context once
-                InactiveWarningContext* warning_context = (InactiveWarningContext*)mem_arena_alloc(arena, sizeof(InactiveWarningContext), true);
+                ModuleWarningContext* warning_context = (ModuleWarningContext*)mem_arena_alloc(arena, sizeof(ModuleWarningContext), true);
                 if (warning_context) {
                     warning_context->active_input = active_input_type;
                     warning_context->active_output = active_output_type;
@@ -443,7 +443,7 @@ const Module* module_get(const char* name, ModuleType type, MemoryArena* arena) 
 // Callback triggered when a user provides a flag for a module that isn't currently active.
 static int inactive_option_warning_cb(struct argparse *self, const struct argparse_option *opt) {
     if (opt->type != ARGPARSE_OPT_GROUP && opt->data != 0) {
-        InactiveWarningContext* context = (InactiveWarningContext*)opt->data;
+        ModuleWarningContext* context = (ModuleWarningContext*)opt->data;
 
         const char* user_value = self->optvalue;
 
