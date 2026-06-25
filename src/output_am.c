@@ -442,10 +442,10 @@ static void output_am_cleanup(ModuleContext* context) {
 
 static void output_am_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
     (void)context;
-    add_summary_item(info, "Output Type", "AM Audio");
-    add_summary_item(info, "Mode", "%s", s_am_config.force_envelope ? "Envelope (Mag)" : "Synchronous (PLL)");
-    add_summary_item(info, "Audio Sample Rate", "%d Hz", AUDIO_SAMPLE_RATE);
-    add_summary_item(info, "Filter Cutoff", "%.15g Hz", s_am_config.audio_cutoff);
+    utility_add_summary_item(info, "Output Type", "AM Audio");
+    utility_add_summary_item(info, "Mode", "%s", s_am_config.force_envelope ? "Envelope (Mag)" : "Synchronous (PLL)");
+    utility_add_summary_item(info, "Audio Sample Rate", "%d Hz", AUDIO_SAMPLE_RATE);
+    utility_add_summary_item(info, "Filter Cutoff", "%.15g Hz", s_am_config.audio_cutoff);
 }
 
 static const struct argparse_option output_am_cli_options[] = {

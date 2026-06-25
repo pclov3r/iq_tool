@@ -73,7 +73,7 @@ const char* utility_format_size(long long size_bytes, char* buffer, size_t buffe
     return buffer;
 }
 
-const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size_t buffer_size, MemoryArena* arena) {
+const char* utility_get_basename_for_parsing(const AppConfig *config, char* buffer, size_t buffer_size, MemoryArena* arena) {
 #ifdef _WIN32
     (void)arena; // arena is unused on Windows, this silences the warning.
     if (config->input.effective_path_w[0] != L'\0') {
@@ -98,7 +98,7 @@ const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size
     return NULL;
 }
 
-void add_summary_item(InputSummaryInfo* info, const char* label, const char* value_fmt, ...) {
+void utility_add_summary_item(InputSummaryInfo* info, const char* label, const char* value_fmt, ...) {
     if (info->count >= MAX_SUMMARY_ITEMS) {
         return;
     }

@@ -734,10 +734,10 @@ static bool output_nrsc5_validate_options(AppContext* app) {
 
 static void output_nrsc5_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
     (void)context;
-    add_summary_item(info, "Output Type", "NRSC5 (HD Radio Player)");
+    utility_add_summary_item(info, "Output Type", "NRSC5 (HD Radio Player)");
 
-    add_summary_item(info, "Mode", "%s", s_nrsc5_config.mode_str);
-    add_summary_item(info, "Program", "%d (HD%d)", s_nrsc5_config.program_id, s_nrsc5_config.program_id + 1);
+    utility_add_summary_item(info, "Mode", "%s", s_nrsc5_config.mode_str);
+    utility_add_summary_item(info, "Program", "%d (HD%d)", s_nrsc5_config.program_id, s_nrsc5_config.program_id + 1);
 }
 
 // --- CLI Options ---

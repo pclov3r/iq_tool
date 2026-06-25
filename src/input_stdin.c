@@ -165,9 +165,9 @@ static void input_stdin_cleanup(ModuleContext* context) {
 
 static void input_stdin_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
     (void)context;
-    add_summary_item(info, "Input Source", "Standard Input (stdin)");
-    add_summary_item(info, "Input Format", "%s", s_stdin_config.format_str);
-    add_summary_item(info, "Input Sample Rate", "%.15g Hz", s_stdin_config.sample_rate_hz);
+    utility_add_summary_item(info, "Input Source", "Standard Input (stdin)");
+    utility_add_summary_item(info, "Input Format", "%s", s_stdin_config.format_str);
+    utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz", s_stdin_config.sample_rate_hz);
 }
 
 static InputModuleInterface s_input_stdin_api = {

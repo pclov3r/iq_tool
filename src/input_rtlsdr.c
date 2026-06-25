@@ -387,17 +387,17 @@ static void input_rtlsdr_get_summary_info(const ModuleContext* context, InputSum
              private_data->product,
              private_data->serial);
 
-    add_summary_item(info, "Input Source", "%s", source_name_buf);
-    add_summary_item(info, "Input Format", "8-bit Unsigned Complex (cu8)");
-    add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
+    utility_add_summary_item(info, "Input Source", "%s", source_name_buf);
+    utility_add_summary_item(info, "Input Format", "8-bit Unsigned Complex (cu8)");
+    utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
     if (s_rtlsdr_config.gain_provided) {
-        add_summary_item(info, "Gain", "%.1f dB (Manual)", (float)s_rtlsdr_config.gain / 10.0f);
+        utility_add_summary_item(info, "Gain", "%.1f dB (Manual)", (float)s_rtlsdr_config.gain / 10.0f);
     } else {
-        add_summary_item(info, "Gain", "Automatic (AGC)");
+        utility_add_summary_item(info, "Gain", "Automatic (AGC)");
     }
-    add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
+    utility_add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
     if (s_rtlsdr_config.ppm_provided) {
-        add_summary_item(info, "PPM Correction", "%d", s_rtlsdr_config.ppm);
+        utility_add_summary_item(info, "PPM Correction", "%d", s_rtlsdr_config.ppm);
     }
 }
 

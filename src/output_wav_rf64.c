@@ -9,7 +9,7 @@
 
 #include "output_wav_rf64.h"
 #include "output_wav_common.h" // Include the shared implementation
-#include "utilities.h"             // For add_summary_item
+#include "utilities.h"             // For utility_add_summary_item
 #include <sndfile.h>           // For the SF_FORMAT_RF64 constant
 
 /**
@@ -28,7 +28,7 @@ static bool output_wav_rf64_initialize(ModuleContext* context) {
  */
 static void output_wav_rf64_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
     (void)context; // Unused in this simple implementation
-    add_summary_item(info, "Output Type", "WAV-RF64");
+    utility_add_summary_item(info, "Output Type", "WAV-RF64");
 }
 
 static const struct argparse_option output_wav_rf64_cli_options[] = {

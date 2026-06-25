@@ -184,33 +184,33 @@ static void input_airspyhf_get_summary_info(const ModuleContext* context, InputS
     const AppConfig *config = context->config;
     const AppContext* app = context->app;
 
-    add_summary_item(info, "Input Source", "Airspy HF+");
-    add_summary_item(info, "Input Format", "32-bit Float Complex (cf32)");
-    add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
+    utility_add_summary_item(info, "Input Source", "Airspy HF+");
+    utility_add_summary_item(info, "Input Format", "32-bit Float Complex (cf32)");
+    utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
 
     // Gain reporting
     if (s_airspyhf_config.agc_mode_provided) {
         if (strcasecmp(s_airspyhf_config.agc_mode, "off") == 0) {
-            add_summary_item(info, "AGC", "Off");
-            add_summary_item(info, "Attenuation", "%.1f dB", s_airspyhf_config.attenuation);
+            utility_add_summary_item(info, "AGC", "Off");
+            utility_add_summary_item(info, "Attenuation", "%.1f dB", s_airspyhf_config.attenuation);
         } else if (strcasecmp(s_airspyhf_config.agc_mode, "low") == 0) {
-            add_summary_item(info, "AGC", "Low Threshold");
+            utility_add_summary_item(info, "AGC", "Low Threshold");
         } else if (strcasecmp(s_airspyhf_config.agc_mode, "high") == 0) {
-            add_summary_item(info, "AGC", "High Threshold");
+            utility_add_summary_item(info, "AGC", "High Threshold");
         }
     } else {
-        add_summary_item(info, "AGC", "High Threshold (Default)");
+        utility_add_summary_item(info, "AGC", "High Threshold (Default)");
     }
 
     if (s_airspyhf_config.preamp_provided && s_airspyhf_config.preamp_enabled) {
-        add_summary_item(info, "LNA/PreAmp", "Enabled");
+        utility_add_summary_item(info, "LNA/PreAmp", "Enabled");
     }
 
     if (s_airspyhf_config.lib_dsp_disabled) {
-        add_summary_item(info, "Library DSP", "Disabled");
+        utility_add_summary_item(info, "Library DSP", "Disabled");
     }
 
-    add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
+    utility_add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
 static bool input_airspyhf_initialize(ModuleContext* context) {

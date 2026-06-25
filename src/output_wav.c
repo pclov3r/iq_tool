@@ -10,7 +10,7 @@
 
 #include "output_wav.h"
 #include "output_wav_common.h" // Include the shared implementation
-#include "utilities.h"             // For add_summary_item
+#include "utilities.h"             // For utility_add_summary_item
 #include <sndfile.h>           // For the SF_FORMAT_WAV constant
 
 /**
@@ -29,7 +29,7 @@ static bool output_wav_initialize(ModuleContext* context) {
  */
 static void output_wav_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
     (void)context; // Unused in this simple implementation
-    add_summary_item(info, "Output Type", "WAV");
+    utility_add_summary_item(info, "Output Type", "WAV");
 }
 
 static const struct argparse_option output_wav_cli_options[] = {

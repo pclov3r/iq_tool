@@ -828,14 +828,14 @@ static void output_wfm_cleanup(ModuleContext* context) {
 
 static void output_wfm_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
     (void)context;
-    add_summary_item(info, "Output Type", "WFM Stereo Audio");
-    add_summary_item(info, "Audio Sample Rate", "%d Hz", AUDIO_SAMPLE_RATE);
-    add_summary_item(info, "De-emphasis", "%.0f us", s_wfm_config.deemph_us);
+    utility_add_summary_item(info, "Output Type", "WFM Stereo Audio");
+    utility_add_summary_item(info, "Audio Sample Rate", "%d Hz", AUDIO_SAMPLE_RATE);
+    utility_add_summary_item(info, "De-emphasis", "%.0f us", s_wfm_config.deemph_us);
 
     const char* mode = "Adaptive";
     if (s_wfm_config.force_mono) mode = "Forced Mono";
     if (s_wfm_config.force_stereo) mode = "Forced Stereo";
-    add_summary_item(info, "Stereo Mode", "%s", mode);
+    utility_add_summary_item(info, "Stereo Mode", "%s", mode);
 }
 
 const struct argparse_option output_wfm_cli_options[] = {

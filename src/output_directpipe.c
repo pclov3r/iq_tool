@@ -105,7 +105,7 @@ static void output_directpipe_cleanup(ModuleContext* context) {
 
 static void output_directpipe_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
     (void)context;
-    add_summary_item(info, "Output Type", "directpipe");
+    utility_add_summary_item(info, "Output Type", "directpipe");
 }
 
 static const struct argparse_option directpipe_cli_options[] = {

@@ -679,7 +679,7 @@ static bool input_wav_validate_options(AppContext* app) {
     private_data->sdr_metadata_present = parse_sdr_metadata_chunks(private_data->infile, &private_data->sfinfo, &private_data->sdr_metadata, &app->pipeline.setup_arena);
 
     char basename_buffer[MAX_PATH_BUFFER];
-    const char* base_filename = get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer), &app->pipeline.setup_arena);
+    const char* base_filename = utility_get_basename_for_parsing(config, basename_buffer, sizeof(basename_buffer), &app->pipeline.setup_arena);
     if (base_filename) {
         bool filename_parsed = parse_sdr_metadata_from_filename(base_filename, &private_data->sdr_metadata);
         private_data->sdr_metadata_present = private_data->sdr_metadata_present || filename_parsed;
@@ -930,22 +930,22 @@ static void input_wav_get_summary_info(const ModuleContext* context, InputSummar
         if (!last_base) last_base = strrchr(last_file, '\\');
         last_base = last_base ? last_base + 1 : last_file;
 
-        add_summary_item(info, "Input Files", "%s ~ %s", first_base, last_base);
-        add_summary_item(info, "Total Files", "%d", private_data->total_files);
+        utility_add_summary_item(info, "Input Files", "%s ~ %s", first_base, last_base);
+        utility_add_summary_item(info, "Total Files", "%d", private_data->total_files);
 
         // Exact mathematical calculation of the total cumulative file sizes combined
         long long combined_bytes = (long long)app->module.source_info.frames * app->module.input_bytes_per_iq_sample;
         char size_buf[40];
-        add_summary_item(info, "Total Size", "%s", utility_format_size(combined_bytes, size_buf, sizeof(size_buf)));
+        utility_add_summary_item(info, "Total Size", "%s", utility_format_size(combined_bytes, size_buf, sizeof(size_buf)));
 
         // Reuse existing utilities.c duration parser for combined HH:MM:SS formatting
         double total_seconds = (double)app->module.source_info.frames / (double)app->module.source_info.sample_rate;
         char duration_buf[40];
         utility_format_duration(total_seconds, duration_buf, sizeof(duration_buf));
-        add_summary_item(info, "Total Duration", "%s", duration_buf);
+        utility_add_summary_item(info, "Total Duration", "%s", duration_buf);
     } else {
         // Standard single file fallback
-        add_summary_item(info, "Input File", "%s", display_path);
+        utility_add_summary_item(info, "Input File", "%s", display_path);
 
         long long input_file_size = -1LL;
         #ifdef _WIN32
@@ -958,7 +958,7 @@ static void input_wav_get_summary_info(const ModuleContext* context, InputSummar
                 input_file_size = stat_buf.st_size;
         #endif
         char size_buf[40];
-        add_summary_item(info, "Input File Size", "%s", utility_format_size(input_file_size, size_buf, sizeof(size_buf)));
+        utility_add_summary_item(info, "Input File Size", "%s", utility_format_size(input_file_size, size_buf, sizeof(size_buf)));
     }
 
     const char *format_str;
@@ -967,8 +967,8 @@ static void input_wav_get_summary_info(const ModuleContext* context, InputSummar
         case CU8:  format_str = "8-bit Unsigned Complex PCM (cu8)"; break;
         default:   format_str = "Unknown PCM"; break;
     }
-    add_summary_item(info, "Input Format", "%s", format_str);
-    add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
+    utility_add_summary_item(info, "Input Format", "%s", format_str);
+    utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
 
     if (private_data->sdr_metadata_present) {
         if (private_data->sdr_metadata.timestamp_unix_present) {
@@ -977,29 +977,29 @@ static void input_wav_get_summary_info(const ModuleContext* context, InputSummar
             #ifdef _WIN32
                 if (gmtime_s(&time_info, &private_data->sdr_metadata.timestamp_unix) == 0) {
                     strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC", &time_info);
-                    add_summary_item(info, "Timestamp", "%s", time_buf);
+                    utility_add_summary_item(info, "Timestamp", "%s", time_buf);
                 }
             #else
                 if (gmtime_r(&private_data->sdr_metadata.timestamp_unix, &time_info)) {
                     strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC", &time_info);
-                    add_summary_item(info, "Timestamp", "%s", time_buf);
+                    utility_add_summary_item(info, "Timestamp", "%s", time_buf);
                 }
             #endif
         } else if (private_data->sdr_metadata.timestamp_str_present) {
-            add_summary_item(info, "Timestamp", "%s", private_data->sdr_metadata.timestamp_str);
+            utility_add_summary_item(info, "Timestamp", "%s", private_data->sdr_metadata.timestamp_str);
         }
         if (private_data->sdr_metadata.center_freq_hz_present) {
-            add_summary_item(info, "Center Frequency", "%.15g Hz", private_data->sdr_metadata.center_freq_hz);
+            utility_add_summary_item(info, "Center Frequency", "%.15g Hz", private_data->sdr_metadata.center_freq_hz);
         }
         if (private_data->sdr_metadata.software_name_present) {
             char sw_buf[128];
             snprintf(sw_buf, sizeof(sw_buf), "%s %s",
                      private_data->sdr_metadata.software_name,
                      private_data->sdr_metadata.software_version_present ? private_data->sdr_metadata.software_version : "");
-            add_summary_item(info, "SDR Software", "%s", sw_buf);
+            utility_add_summary_item(info, "SDR Software", "%s", sw_buf);
         }
         if (private_data->sdr_metadata.radio_model_present) {
-            add_summary_item(info, "Radio Model", "%s", private_data->sdr_metadata.radio_model);
+            utility_add_summary_item(info, "Radio Model", "%s", private_data->sdr_metadata.radio_model);
         }
     }
 }

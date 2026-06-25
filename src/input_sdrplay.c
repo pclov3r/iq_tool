@@ -489,34 +489,34 @@ static void input_sdrplay_get_summary_info(const ModuleContext* context, InputSu
     char source_name_buf[128];
     snprintf(source_name_buf, sizeof(source_name_buf), "%s (S/N: %s)",
              get_sdrplay_device_name(private_data->sdr_device->hwVer), private_data->sdr_device->SerNo);
-    add_summary_item(info, "Input Source", "%s", source_name_buf);
-    add_summary_item(info, "Input Format", "16-bit Signed Complex (cs16)");
-    add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
+    utility_add_summary_item(info, "Input Source", "%s", source_name_buf);
+    utility_add_summary_item(info, "Input Format", "16-bit Signed Complex (cs16)");
+    utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
 
-    add_summary_item(info, "Bandwidth", "%.15g Hz", s_sdrplay_config.bandwidth_hz);
+    utility_add_summary_item(info, "Bandwidth", "%.15g Hz", s_sdrplay_config.bandwidth_hz);
 
     if (s_sdrplay_config.lna_state_provided || s_sdrplay_config.if_gain_db_provided) {
         // Manual gain mode is active. Show the status of both components.
         // The values in s_sdrplay_config will be either user-provided or the manual-mode defaults.
         if (s_sdrplay_config.lna_state_target >= 0.0f) {
-            add_summary_item(info, "LNA State", "%d (Targeted %.1f%%)", s_sdrplay_config.lna_state, s_sdrplay_config.lna_state_target);
+            utility_add_summary_item(info, "LNA State", "%d (Targeted %.1f%%)", s_sdrplay_config.lna_state, s_sdrplay_config.lna_state_target);
         } else {
-            add_summary_item(info, "LNA State", "%d", s_sdrplay_config.lna_state);
+            utility_add_summary_item(info, "LNA State", "%d", s_sdrplay_config.lna_state);
         }
-        add_summary_item(info, "IF Gain", "%d dB", s_sdrplay_config.if_gain_db);
+        utility_add_summary_item(info, "IF Gain", "%d dB", s_sdrplay_config.if_gain_db);
     } else {
         // AGC is active.
-        add_summary_item(info, "Gain", "Automatic (AGC)");
+        utility_add_summary_item(info, "Gain", "Automatic (AGC)");
     }
 
-    if (s_sdrplay_config.antenna_port_name) add_summary_item(info, "Antenna Port", "%s", s_sdrplay_config.antenna_port_name);
+    if (s_sdrplay_config.antenna_port_name) utility_add_summary_item(info, "Antenna Port", "%s", s_sdrplay_config.antenna_port_name);
 
     // Notch Filter Summary
-    if (s_sdrplay_config.notch_fm)  add_summary_item(info, "FM Notch", "Enabled");
-    if (s_sdrplay_config.notch_dab) add_summary_item(info, "DAB Notch", "Enabled");
-    if (s_sdrplay_config.notch_am)  add_summary_item(info, "AM Notch", "Enabled");
+    if (s_sdrplay_config.notch_fm)  utility_add_summary_item(info, "FM Notch", "Enabled");
+    if (s_sdrplay_config.notch_dab) utility_add_summary_item(info, "DAB Notch", "Enabled");
+    if (s_sdrplay_config.notch_am)  utility_add_summary_item(info, "AM Notch", "Enabled");
 
-    add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
+    utility_add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
 static bool input_sdrplay_initialize(ModuleContext* context) {

@@ -810,8 +810,8 @@ static void input_spyserver_client_get_summary_info(const ModuleContext* context
     const AppContext* app = context->app;
     char server_addr[256];
     snprintf(server_addr, sizeof(server_addr), "%s:%d", s_spyserver_client_config.hostname, s_spyserver_client_config.port);
-    add_summary_item(info, "Input Source", "SpyServer Client");
-    add_summary_item(info, "Server Address", server_addr);
+    utility_add_summary_item(info, "Input Source", "SpyServer Client");
+    utility_add_summary_item(info, "Server Address", server_addr);
 
     if (client && client->device_info_ok) {
         const char* dev_type_str = "Unknown";
@@ -822,14 +822,14 @@ static void input_spyserver_client_get_summary_info(const ModuleContext* context
         }
         char dev_info_str[128];
         snprintf(dev_info_str, sizeof(dev_info_str), "%s (S/N: %08X)", dev_type_str, client->device_info.DeviceSerial);
-        add_summary_item(info, "Remote Device", dev_info_str);
-        add_summary_item(info, "Input Format", get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->description_str : "Unknown");
-        add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
+        utility_add_summary_item(info, "Remote Device", dev_info_str);
+        utility_add_summary_item(info, "Input Format", get_format_info_by_enum(app->module.input_format) ? get_format_info_by_enum(app->module.input_format)->description_str : "Unknown");
+        utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
 
         if (s_spyserver_client_config.gain_provided) {
-            add_summary_item(info, "Gain", "%d (Manual)", s_spyserver_client_config.gain);
+            utility_add_summary_item(info, "Gain", "%d (Manual)", s_spyserver_client_config.gain);
         } else {
-            add_summary_item(info, "Gain", "Automatic (AGC)");
+            utility_add_summary_item(info, "Gain", "Automatic (AGC)");
         }
     }
 }

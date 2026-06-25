@@ -577,7 +577,7 @@ int filter_populate_cli_options(struct argparse_option* buffer, struct AppConfig
 
 void filter_get_summary_info(const AppConfig* config, const AppContext* app, OutputSummaryInfo* output_info) {
     if (config->dsp.filter.count == 0) {
-        add_summary_item(output_info, "Filter", "Disabled");
+        utility_add_summary_item(output_info, "Filter", "Disabled");
     } else {
         const char* filter_label;
         switch (app->dsp.filter.type_actual) {
@@ -604,6 +604,6 @@ void filter_get_summary_info(const AppConfig* config, const AppContext* app, Out
             strncat(filter_buf, desc, sizeof(filter_buf) - strlen(filter_buf) - 1);
         }
         strncat(filter_buf, stage, sizeof(filter_buf) - strlen(filter_buf) - 1);
-        add_summary_item(output_info, filter_label, "%s", filter_buf);
+        utility_add_summary_item(output_info, filter_label, "%s", filter_buf);
     }
 }

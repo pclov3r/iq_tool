@@ -145,15 +145,15 @@ static int input_hackrf_buffered_stream_callback(hackrf_transfer* transfer) {
 static void input_hackrf_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
     const AppConfig *config = context->config;
     const AppContext* app = context->app;
-    add_summary_item(info, "Input Source", "HackRF One");
-    add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
-    add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
+    utility_add_summary_item(info, "Input Source", "HackRF One");
+    utility_add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
+    utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
 
     // as HackRF does not have a true hardware AGC. The gain is always fixed.
-    add_summary_item(info, "LNA Gain", "%u dB", s_hackrf_config.lna_gain);
-    add_summary_item(info, "VGA Gain", "%u dB", s_hackrf_config.vga_gain);
-    add_summary_item(info, "RF Amp", "%s", s_hackrf_config.amp_enable ? "Enabled" : "Disabled");
-    add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
+    utility_add_summary_item(info, "LNA Gain", "%u dB", s_hackrf_config.lna_gain);
+    utility_add_summary_item(info, "VGA Gain", "%u dB", s_hackrf_config.vga_gain);
+    utility_add_summary_item(info, "RF Amp", "%s", s_hackrf_config.amp_enable ? "Enabled" : "Disabled");
+    utility_add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
 static bool input_hackrf_initialize(ModuleContext* context) {

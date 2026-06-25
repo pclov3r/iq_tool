@@ -350,15 +350,15 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
     if (config->sdr_general.rf_freq_provided) {
         if (fabs(config->sdr_general.frequency_offset_hz) > 1e-9) {
             double user_hz = config->sdr_general.rf_freq_hz - config->sdr_general.frequency_offset_hz;
-            add_summary_item(&input_info, "Actual Frequency", "%.15g Hz", user_hz);
-            add_summary_item(&input_info, "Frequency Offset", "%+.0f Hz", config->sdr_general.frequency_offset_hz);
-            add_summary_item(&input_info, "Tuned Frequency",  "%.15g Hz", config->sdr_general.rf_freq_hz);
+            utility_add_summary_item(&input_info, "Actual Frequency", "%.15g Hz", user_hz);
+            utility_add_summary_item(&input_info, "Frequency Offset", "%+.0f Hz", config->sdr_general.frequency_offset_hz);
+            utility_add_summary_item(&input_info, "Tuned Frequency",  "%.15g Hz", config->sdr_general.rf_freq_hz);
         } else {
-            add_summary_item(&input_info, "RF Frequency", "%.15g Hz", config->sdr_general.rf_freq_hz);
+            utility_add_summary_item(&input_info, "RF Frequency", "%.15g Hz", config->sdr_general.rf_freq_hz);
         }
     }
-    add_summary_item(&input_info, "I/Q Correction", "%s", config->dsp.iq_correction.enable ? "Enabled" : "Disabled");
-    add_summary_item(&input_info, "DC Block",        "%s", config->dsp.dc_block.enable      ? "Enabled" : "Disabled");
+    utility_add_summary_item(&input_info, "I/Q Correction", "%s", config->dsp.iq_correction.enable ? "Enabled" : "Disabled");
+    utility_add_summary_item(&input_info, "DC Block",        "%s", config->dsp.dc_block.enable      ? "Enabled" : "Disabled");
 
     // --- Build output section ---
     OutputSummaryInfo output_info = {0};
@@ -368,43 +368,43 @@ static void print_configuration_summary(const AppConfig *config, const AppContex
     const char* sample_type_str = get_format_info_by_enum(app->dsp.pipeline_sample_format)
                                 ? get_format_info_by_enum(app->dsp.pipeline_sample_format)->description_str
                                 : "Unknown";
-    add_summary_item(&output_info, "Sample Type", "%s", sample_type_str);
+    utility_add_summary_item(&output_info, "Sample Type", "%s", sample_type_str);
 
     if (config->output.payload == PAYLOAD_AUDIO) {
-        add_summary_item(&output_info, "Baseband Sample Rate", "%.15g Hz", config->baseband_sample_rate.rate_hz);
+        utility_add_summary_item(&output_info, "Baseband Sample Rate", "%.15g Hz", config->baseband_sample_rate.rate_hz);
     } else {
-        add_summary_item(&output_info, "Output Sample Rate",   "%.15g Hz", config->output_sample_rate.rate_hz);
+        utility_add_summary_item(&output_info, "Output Sample Rate",   "%.15g Hz", config->output_sample_rate.rate_hz);
     }
 
-    add_summary_item(&output_info, "Input Gain",  "%.5f", config->dsp.input_gain);
+    utility_add_summary_item(&output_info, "Input Gain",  "%.5f", config->dsp.input_gain);
     if (config->dsp.output_gain != 1.0f)
-        add_summary_item(&output_info, "Output Gain", "%.5f", config->dsp.output_gain);
+        utility_add_summary_item(&output_info, "Output Gain", "%.5f", config->dsp.output_gain);
 
     if (fabs(app->dsp.nco_shift_hz) > 1e-9)
-        add_summary_item(&output_info, "Frequency Shift", "%+.2f Hz%s",
+        utility_add_summary_item(&output_info, "Frequency Shift", "%+.2f Hz%s",
             app->dsp.nco_shift_hz, config->dsp.shift_after_resample ? " (Post-Resample)" : "");
 
     filter_get_summary_info(config, app, &output_info);
 
     if (app->dsp.pipeline_agc.enable) {
-        add_summary_item(&output_info, "Pipeline AGC", "Enabled (Target: %.2f)", app->dsp.pipeline_agc.target_level);
+        utility_add_summary_item(&output_info, "Pipeline AGC", "Enabled (Target: %.2f)", app->dsp.pipeline_agc.target_level);
     } else {
-        add_summary_item(&output_info, "Pipeline AGC", "Disabled");
+        utility_add_summary_item(&output_info, "Pipeline AGC", "Disabled");
     }
 
     if (app->dsp.pipeline_gain != 1.0f)
-        add_summary_item(&output_info, "Pipeline Gain", "%.2fx", app->dsp.pipeline_gain);
+        utility_add_summary_item(&output_info, "Pipeline Gain", "%.2fx", app->dsp.pipeline_gain);
 
-    add_summary_item(&output_info, "Resampling", "%s", app->dsp.bypass_resampler ? "Disabled" : "Enabled");
+    utility_add_summary_item(&output_info, "Resampling", "%s", app->dsp.bypass_resampler ? "Disabled" : "Enabled");
 
     if (config->output.path_arg != NULL) {
 #ifdef _WIN32
-        add_summary_item(&output_info, "Output File", "%s", config->output.effective_path_utf8);
+        utility_add_summary_item(&output_info, "Output File", "%s", config->output.effective_path_utf8);
 #else
-        add_summary_item(&output_info, "Output File", "%s", config->output.effective_path);
+        utility_add_summary_item(&output_info, "Output File", "%s", config->output.effective_path);
 #endif
     } else if (config->output.payload == PAYLOAD_AUDIO) {
-        add_summary_item(&output_info, "Output Target", "Audio Device");
+        utility_add_summary_item(&output_info, "Output Target", "Audio Device");
     }
 
     // --- Single unified width pass ---

@@ -67,7 +67,7 @@ const char* utility_format_size(long long size_bytes, char* buffer, size_t buffe
  * @param arena The memory arena, needed for temporary allocations on POSIX.
  * @return A pointer to the provided buffer containing the basename.
  */
-const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size_t buffer_size, MemoryArena* arena);
+const char* utility_get_basename_for_parsing(const AppConfig *config, char* buffer, size_t buffer_size, MemoryArena* arena);
 
 /**
  * @brief A helper to safely add a new key-value pair to the summary info struct.
@@ -76,7 +76,7 @@ const char* get_basename_for_parsing(const AppConfig *config, char* buffer, size
  * @param value_fmt A printf-style format string for the value.
  * @param ... Variable arguments corresponding to the format string.
  */
-void add_summary_item(InputSummaryInfo* info, const char* label, const char* value_fmt, ...);
+void utility_add_summary_item(InputSummaryInfo* info, const char* label, const char* value_fmt, ...);
 
 /**
  * @brief Helper function to trim leading/trailing whitespace from a string in-place.
@@ -121,10 +121,10 @@ static inline float utility_calculate_dbfs(float power) {
     return 10.0f * log10f(fmaxf(1e-12f, power));
 }
 
-#endif // UTILITIES_H_
-
 /**
  * @brief Prompts the user for permission to overwrite a file.
  */
 bool utility_prompt_for_overwrite(const char* path_for_messages);
 bool utility_verify_output_path(const struct AppConfig* config, const char* out_path_utf8);
+
+#endif // UTILITIES_H_

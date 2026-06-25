@@ -710,21 +710,21 @@ static void input_bladerf_get_summary_info(const ModuleContext* context, InputSu
     const AppConfig *config = context->config;
     AppContext* app = context->app;
     BladerfContext* private_data = (BladerfContext*)app->module.input_private_data;
-    add_summary_item(info, "Input Source", "%s", private_data->display_name);
+    utility_add_summary_item(info, "Input Source", "%s", private_data->display_name);
 
-    if (s_bladerf_config.active_bit_depth == 8) add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
-    else add_summary_item(info, "Input Format", "12-bit Signed Complex Q4.11 (sc16q11)");
+    if (s_bladerf_config.active_bit_depth == 8) utility_add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
+    else utility_add_summary_item(info, "Input Format", "12-bit Signed Complex Q4.11 (sc16q11)");
 
-    if (strcmp(private_data->board_name, "bladerf2") == 0) add_summary_item(info, "Channel", "%d (RXA)", s_bladerf_config.channel);
-    else add_summary_item(info, "Antenna Port", "Automatic");
+    if (strcmp(private_data->board_name, "bladerf2") == 0) utility_add_summary_item(info, "Channel", "%d (RXA)", s_bladerf_config.channel);
+    else utility_add_summary_item(info, "Antenna Port", "Automatic");
 
-    add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
-    add_summary_item(info, "Bandwidth", "%u Hz", s_bladerf_config.bandwidth_hz);
+    utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
+    utility_add_summary_item(info, "Bandwidth", "%u Hz", s_bladerf_config.bandwidth_hz);
 
-    if (s_bladerf_config.gain_provided) add_summary_item(info, "Gain", "%d dB (Manual)", s_bladerf_config.gain);
-    else add_summary_item(info, "Gain", "Automatic (AGC)");
+    if (s_bladerf_config.gain_provided) utility_add_summary_item(info, "Gain", "%d dB (Manual)", s_bladerf_config.gain);
+    else utility_add_summary_item(info, "Gain", "Automatic (AGC)");
 
-    add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
+    utility_add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
 static bool bladerf_find_and_load_fpga_automatically(struct bladerf* dev) {

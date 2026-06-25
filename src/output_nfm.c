@@ -289,10 +289,10 @@ static void output_nfm_get_summary_info(const ModuleContext* context, OutputSumm
     const char* mode = s_nfm_config.is_narrow ? "Narrow (2.5k Dev)" : "Standard (5k Dev)";
     const char* type = s_nfm_config.disable_discriminator_filter ? "Discriminator Filter Disabled" : "Discriminator Filter Enabled";
 
-    add_summary_item(info, "Output Type", "NFM");
-    add_summary_item(info, "Mode", "%s", mode);
-    add_summary_item(info, "Audio", "%s", type);
-    add_summary_item(info, "Squelch", "%.15g dB", s_nfm_config.squelch_snr);
+    utility_add_summary_item(info, "Output Type", "NFM");
+    utility_add_summary_item(info, "Mode", "%s", mode);
+    utility_add_summary_item(info, "Audio", "%s", type);
+    utility_add_summary_item(info, "Squelch", "%.15g dB", s_nfm_config.squelch_snr);
 }
 
 static const struct argparse_option output_nfm_cli_options[] = {

@@ -297,7 +297,7 @@ static void input_airspy_get_summary_info(const ModuleContext* context, InputSum
 
     // Use dynamic board name if available, else fallback
     const char* source_name = (private_data && private_data->board_name) ? private_data->board_name : "Airspy (Unknown)";
-    add_summary_item(info, "Input Source", "%s", source_name);
+    utility_add_summary_item(info, "Input Source", "%s", source_name);
 
     // Determine format string
     const char* format_str = "Unknown";
@@ -307,30 +307,30 @@ static void input_airspy_get_summary_info(const ModuleContext* context, InputSum
         format_str = "32-bit Float Complex (cf32)";
     }
 
-    add_summary_item(info, "Input Format", "%s", format_str);
-    add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
+    utility_add_summary_item(info, "Input Format", "%s", format_str);
+    utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
 
     // Gain reporting
     if (s_airspy_config.gain_mode_provided) {
         if (strcasecmp(s_airspy_config.gain_mode, "linearity") == 0) {
-            add_summary_item(info, "Gain Mode", "Linearity (Level: %d)", s_airspy_config.gain_value);
+            utility_add_summary_item(info, "Gain Mode", "Linearity (Level: %d)", s_airspy_config.gain_value);
         } else if (strcasecmp(s_airspy_config.gain_mode, "sensitivity") == 0) {
-            add_summary_item(info, "Gain Mode", "Sensitivity (Level: %d)", s_airspy_config.gain_value);
+            utility_add_summary_item(info, "Gain Mode", "Sensitivity (Level: %d)", s_airspy_config.gain_value);
         } else if (strcasecmp(s_airspy_config.gain_mode, "manual") == 0) {
-            add_summary_item(info, "Gain Mode", "Manual");
-            add_summary_item(info, "LNA Gain", "%d", s_airspy_config.lna_gain);
-            add_summary_item(info, "Mixer Gain", "%d", s_airspy_config.mixer_gain);
-            add_summary_item(info, "VGA Gain", "%d", s_airspy_config.vga_gain);
+            utility_add_summary_item(info, "Gain Mode", "Manual");
+            utility_add_summary_item(info, "LNA Gain", "%d", s_airspy_config.lna_gain);
+            utility_add_summary_item(info, "Mixer Gain", "%d", s_airspy_config.mixer_gain);
+            utility_add_summary_item(info, "VGA Gain", "%d", s_airspy_config.vga_gain);
         }
     } else {
-        add_summary_item(info, "Gain", "Automatic (AGC)");
+        utility_add_summary_item(info, "Gain", "Automatic (AGC)");
     }
 
     if (s_airspy_config.packing_enabled) {
-        add_summary_item(info, "Packing", "Enabled");
+        utility_add_summary_item(info, "Packing", "Enabled");
     }
 
-    add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
+    utility_add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
 }
 
 static bool input_airspy_initialize(ModuleContext* context) {
