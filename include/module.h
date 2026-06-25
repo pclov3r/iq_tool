@@ -1,5 +1,5 @@
 /**
- * @file input_source.h
+ * @file module.h
  * @brief Defines the abstract interface for all I/Q data input sources.
  *
  * This file is the cornerstone of the modular input system. It defines a generic

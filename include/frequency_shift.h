@@ -60,4 +60,4 @@ void frequency_shift_reset_nco(FreqShifter* nco);
  */
 void frequency_shift_destroy_ncos(AppContext* app);
 
-#endif // FREQ_SHIFT_H_
+#endif // FREQUENCY_SHIFT_H_
