@@ -310,21 +310,10 @@ static void nrsc5_event_callback(const nrsc5_event_t *event_payload, void *opaqu
 
         case NRSC5_EVENT_ID3:
             if (event_payload->id3.program == nrsc5_decoder->active_program) {
-                struct {
-                    const char* label;
-                    const char* value;
-                } fields[] = {
-                    { "Title",  event_payload->id3.title },
-                    { "Artist", event_payload->id3.artist },
-                    { "Album",  event_payload->id3.album },
-                    { "Genre",  event_payload->id3.genre }
-                };
-
-                for (size_t i = 0; i < sizeof(fields) / sizeof(fields[0]); i++) {
-                    if (fields[i].value) {
-                        log_info("NRSC5: %s: %s", fields[i].label, fields[i].value);
-                    }
-                }
+                if (event_payload->id3.title)  log_info("NRSC5: Title: %s", event_payload->id3.title);
+                if (event_payload->id3.artist) log_info("NRSC5: Artist: %s", event_payload->id3.artist);
+                if (event_payload->id3.album)  log_info("NRSC5: Album: %s", event_payload->id3.album);
+                if (event_payload->id3.genre)  log_info("NRSC5: Genre: %s", event_payload->id3.genre);
 
                 if (event_payload->id3.xhdr.param >= 0) {
                     log_info("NRSC5: XHDR: %d %08X %d",
