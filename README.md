@@ -226,7 +226,7 @@ Standard Input (stdin)
     --stdin-input-sample-format=<str>         (Required) The sample format of the stdin stream.
 
 RTL-SDR Input (rtlsdr)
-    --rtlsdr-device-idx=<int>                 Select specific RTL-SDR device by index (0-indexed). (Default: 0)
+    --rtlsdr-device-index=<int>               Select specific RTL-SDR device by index (0-indexed). (Default: 0)
     --rtlsdr-gain=<flt>                       Set manual tuner gain in dB (e.g., 28.0, 49.6). Disables AGC.
     --rtlsdr-ppm=<int>                        Set frequency correction in parts-per-million. (Optional, Default: 0)
     --rtlsdr-direct-sampling=<int>            Enable direct sampling mode for HF reception (1=I-branch, 2=Q-branch)
@@ -276,7 +276,7 @@ HydraSDR Input (hydrasdr)
     --hydrasdr-packing                        Enable bit-packing mode (12-bit samples).
 
 BladeRF Input (bladerf)
-    --bladerf-device-idx=<int>                Select specific BladeRF device by index (0-indexed). (Default: 0)
+    --bladerf-device-index=<int>              Select specific BladeRF device by index (0-indexed). (Default: 0)
     --bladerf-load-fpga=<str>                 Load an FPGA bitstream from the specified file.
     --bladerf-bandwidth=<flt>                 Set analog bandwidth in Hz. (Not applicable in 8-bit high-speed mode)
     --bladerf-gain=<int>                      Set overall manual gain in dB. Disables AGC.
@@ -313,7 +313,7 @@ Direct Pipe Output (directpipe)
     (No module-specific options)
 
 NRSC5 Output (nrsc5)
-    --nrsc5-mode=<str>                        Set decoder mode {cs16-fm|cs16-am|cu8-fm|cu8-am}. (Default: cs16-fm)
+    --nrsc5-band=<str>                        Set radio band {fm|am}. (Default: auto-detected)
     --nrsc5-program=<int>                     Select initial HD program/subchannel (0-7). (Required) Press keys 0-7 during playback to switch.
     --nrsc5-aas-dir=<str>                     Directory to dump AAS files (logos, maps, etc).
 
