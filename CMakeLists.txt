@@ -54,16 +54,68 @@ message(STATUS "Build type set to '${CMAKE_BUILD_TYPE}'")
 include(GNUInstallDirs)
 
 #=======================================================================
-# Options
+# Options & Hardware Module Registration
 #=======================================================================
-option(WITH_RTLSDR "Enable RTL-SDR device support" OFF)
-option(WITH_AIRSPY "Enable Airspy device support" OFF)
-option(WITH_AIRSPYHF "Enable Airspy HF+ device support" OFF)
-option(WITH_HYDRASDR "Enable HydraSDR device support" OFF)
-option(WITH_SDRPLAY "Enable SDRplay device support" OFF)
-option(WITH_HACKRF "Enable HackRF device support" OFF)
-option(WITH_BLADERF "Enable BladeRF device support" OFF)
-option(WITH_NRSC5 "Enable NRSC5 (HD Radio) output support" OFF)
+# PkgConfig is required by many Find<Pkg>.cmake scripts
+find_package(PkgConfig QUIET)
+
+set(ANY_MODULE_REQUIRES_LIBUSB FALSE)
+set(MODULE_SOURCES "")
+set(MODULE_FFAST_MATH_SOURCES "")
+set(MODULE_LIBRARIES "")
+set(MODULE_DEFINITIONS "")
+set(MODULE_SUMMARY_LIST "")
+
+macro(register_module OPTION_FLAG DESCRIPTION SUMMARY_NAME PKG_NAME SRC_FILE REQUIRES_LIBUSB NEEDS_FFAST_MATH)
+    option(${OPTION_FLAG} "${DESCRIPTION}" OFF)
+    string(TOUPPER "${PKG_NAME}" PKG_UPPER)
+    set(${PKG_UPPER}_INCLUDE_DIR "" CACHE PATH "Manual include path for lib${PKG_NAME}")
+    set(${PKG_UPPER}_LIBRARY "" CACHE PATH "Manual library path for lib${PKG_NAME}")
+
+    if(${OPTION_FLAG})
+        find_package(${PKG_NAME} REQUIRED)
+
+        if(${NEEDS_FFAST_MATH})
+            list(APPEND MODULE_FFAST_MATH_SOURCES src/${SRC_FILE})
+        else()
+            list(APPEND MODULE_SOURCES src/${SRC_FILE})
+        endif()
+
+        include_directories(${${PKG_NAME}_INCLUDE_DIRS})
+
+        if(NOT (${OPTION_FLAG} STREQUAL "WITH_SDRPLAY" AND WIN32))
+            list(APPEND MODULE_LIBRARIES ${${PKG_NAME}_LIBRARIES} ${ARGN})
+        endif()
+
+        list(APPEND MODULE_DEFINITIONS ${OPTION_FLAG})
+
+        if(${REQUIRES_LIBUSB})
+            set(ANY_MODULE_REQUIRES_LIBUSB TRUE)
+        endif()
+
+        string(REPLACE ";" " " LIB_STR "${${PKG_NAME}_LIBRARIES}")
+        list(APPEND MODULE_SUMMARY_LIST "  ${SUMMARY_NAME} ENABLED (${LIB_STR})")
+    else()
+        list(APPEND MODULE_SUMMARY_LIST "  ${SUMMARY_NAME} DISABLED (use -D${OPTION_FLAG}=ON to enable)")
+    endif()
+endmacro()
+
+# [CLI Flag]                     [Description]                          [Summary String]          [CMake Pkg]  [C Source File]     [LibUSB]   [FastMath]   [Extra Libs]
+register_module(WITH_RTLSDR      "Enable RTL-SDR device support"        "RTL-SDR Support:    "    RtlSdr       input_rtlsdr.c      TRUE       FALSE)       # NONE
+register_module(WITH_AIRSPY      "Enable Airspy device support"         "Airspy Support:     "    Airspy       input_airspy.c      TRUE       FALSE)       # NONE
+register_module(WITH_AIRSPYHF    "Enable Airspy HF+ device support"     "Airspy HF+ Support: "    AirspyHF     input_airspyhf.c    TRUE       FALSE)       # NONE
+register_module(WITH_HYDRASDR    "Enable HydraSDR device support"       "HydraSDR Support:   "    HydraSDR     input_hydrasdr.c    TRUE       FALSE)       # NONE
+register_module(WITH_SDRPLAY     "Enable SDRplay device support"        "SDRplay Support:    "    SDRplay      input_sdrplay.c     FALSE      FALSE)       # NONE
+register_module(WITH_HACKRF      "Enable HackRF device support"         "HackRF Support:     "    HackRF       input_hackrf.c      TRUE       FALSE)       # NONE
+register_module(WITH_BLADERF     "Enable BladeRF device support"        "BladeRF Support:    "    BladeRF      input_bladerf.c     TRUE       FALSE)       # NONE
+register_module(WITH_NRSC5       "Enable NRSC5 output support"          "NRSC5 Support:      "    NRSC5        output_nrsc5.c      FALSE      TRUE         "${CMAKE_DL_LIBS}")
+
+if(ANY_MODULE_REQUIRES_LIBUSB)
+    find_package(LibUSB REQUIRED)
+    include_directories(${LibUSB_INCLUDE_DIRS})
+    list(APPEND MODULE_LIBRARIES ${LibUSB_LIBRARIES})
+endif()
+
 option(BUILD_DOCUMENTATION "Enable building Doxygen documentation" OFF)
 
 set(SNDFILE_INCLUDE_DIR "" CACHE PATH "Manual include path for libsndfile")
@@ -72,14 +124,6 @@ set(LIQUID_INCLUDE_DIR "" CACHE PATH "Manual include path for liquid-dsp")
 set(LIQUID_LIBRARY "" CACHE PATH "Manual library path for liquid-dsp")
 set(EXPAT_INCLUDE_DIR "" CACHE PATH "Manual include path for Expat")
 set(EXPAT_LIBRARY "" CACHE PATH "Manual library path for Expat")
-set(NRSC5_INCLUDE_DIR "" CACHE PATH "Manual include path for libnrsc5")
-set(NRSC5_LIBRARY "" CACHE PATH "Manual library path for libnrsc5")
-set(AIRSPY_INCLUDE_DIR "" CACHE PATH "Manual include path for libairspy")
-set(AIRSPY_LIBRARY "" CACHE PATH "Manual library path for libairspy")
-set(AIRSPYHF_INCLUDE_DIR "" CACHE PATH "Manual include path for libairspyhf")
-set(AIRSPYHF_LIBRARY "" CACHE PATH "Manual library path for libairspyhf")
-set(HYDRASDR_INCLUDE_DIR "" CACHE PATH "Manual include path for libhydrasdr")
-set(HYDRASDR_LIBRARY "" CACHE PATH "Manual library path for libhydrasdr")
 set(ICONV_INCLUDE_DIR "" CACHE PATH "Manual include path for libiconv")
 set(ICONV_LIBRARY "" CACHE PATH "Manual library path for libiconv")
 
@@ -115,51 +159,11 @@ endif()
 #=======================================================================
 # Dependencies
 #=======================================================================
-find_package(PkgConfig QUIET)
-
 message(STATUS "Searching for required system libraries...")
 find_package(SndFile REQUIRED)
 find_package(LiquidDSP REQUIRED)
 find_package(Expat REQUIRED)
 find_package(Threads REQUIRED)
-
-
-# Hardware Dependency Logic
-if(WITH_RTLSDR OR WITH_AIRSPY OR WITH_AIRSPYHF OR WITH_HYDRASDR OR WITH_HACKRF OR WITH_BLADERF)
-    find_package(LibUSB REQUIRED)
-endif()
-
-if(WITH_RTLSDR)
-    find_package(RtlSdr REQUIRED)
-endif()
-
-if(WITH_AIRSPY)
-    find_package(Airspy REQUIRED)
-endif()
-
-if(WITH_AIRSPYHF)
-    find_package(AirspyHF REQUIRED)
-endif()
-
-if(WITH_HYDRASDR)
-    find_package(HydraSDR REQUIRED)
-endif()
-
-if(WITH_SDRPLAY)
-    find_package(SDRplay REQUIRED)
-endif()
-
-if(WITH_HACKRF)
-    find_package(HackRF REQUIRED)
-endif()
-
-if(WITH_BLADERF)
-    find_package(BladeRF REQUIRED)
-endif()
-
-if(WITH_NRSC5)
-    find_package(NRSC5 REQUIRED)
-endif()
 
 #=======================================================================
 # Sources
@@ -175,6 +179,7 @@ include_directories(${Expat_INCLUDE_DIRS})
 
 
 set(COMPILE_WITH_FFAST_MATH_SOURCES
+    ${MODULE_FFAST_MATH_SOURCES}
     src/agc.c
     src/filter.c
     src/iq_correction.c
@@ -193,6 +198,7 @@ set(NETWORK_SOURCES
 )
 
 set(OTHER_SOURCES
+    ${MODULE_SOURCES}
     external/argparse/argparse.c
     external/libredsea/block_sync.c
     external/libredsea/libredsea.c
@@ -237,40 +243,6 @@ set(OTHER_SOURCES
     src/wait_event.c
 )
 
-if(WITH_RTLSDR)
-    list(APPEND OTHER_SOURCES src/input_rtlsdr.c)
-    include_directories(${RtlSdr_INCLUDE_DIRS} ${LibUSB_INCLUDE_DIRS})
-endif()
-if(WITH_AIRSPY)
-    list(APPEND OTHER_SOURCES src/input_airspy.c)
-    include_directories(${Airspy_INCLUDE_DIRS} ${LibUSB_INCLUDE_DIRS})
-endif()
-if(WITH_AIRSPYHF)
-    list(APPEND OTHER_SOURCES src/input_airspyhf.c)
-    include_directories(${AirspyHF_INCLUDE_DIRS} ${LibUSB_INCLUDE_DIRS})
-endif()
-
-if(WITH_HYDRASDR)
-    list(APPEND OTHER_SOURCES src/input_hydrasdr.c)
-    include_directories(${HydraSDR_INCLUDE_DIRS} ${LibUSB_INCLUDE_DIRS})
-endif()
-if(WITH_SDRPLAY)
-    list(APPEND OTHER_SOURCES src/input_sdrplay.c)
-    include_directories(${SDRplay_INCLUDE_DIRS})
-endif()
-if(WITH_HACKRF)
-    list(APPEND OTHER_SOURCES src/input_hackrf.c)
-    include_directories(${HackRF_INCLUDE_DIRS} ${LibUSB_INCLUDE_DIRS})
-endif()
-if(WITH_BLADERF)
-    list(APPEND OTHER_SOURCES src/input_bladerf.c)
-    include_directories(${BladeRF_INCLUDE_DIRS} ${LibUSB_INCLUDE_DIRS})
-endif()
-if(WITH_NRSC5)
-    list(APPEND COMPILE_WITH_FFAST_MATH_SOURCES src/output_nrsc5.c)
-    include_directories(${NRSC5_INCLUDE_DIRS})
-endif()
-
 #=======================================================================
 # Target Creation
 #=======================================================================
@@ -286,38 +258,9 @@ if(MINGW)
 endif()
 
 
-if(WITH_RTLSDR)
-    target_compile_definitions(iq_tool PRIVATE WITH_RTLSDR)
+if(MODULE_DEFINITIONS)
+    target_compile_definitions(iq_tool PRIVATE ${MODULE_DEFINITIONS})
 endif()
-
-if(WITH_AIRSPY)
-    target_compile_definitions(iq_tool PRIVATE WITH_AIRSPY)
-endif()
-
-if(WITH_AIRSPYHF)
-    target_compile_definitions(iq_tool PRIVATE WITH_AIRSPYHF)
-endif()
-
-if(WITH_HYDRASDR)
-    target_compile_definitions(iq_tool PRIVATE WITH_HYDRASDR)
-endif()
-
-if(WITH_SDRPLAY)
-    target_compile_definitions(iq_tool PRIVATE WITH_SDRPLAY)
-endif()
-
-if(WITH_HACKRF)
-    target_compile_definitions(iq_tool PRIVATE WITH_HACKRF)
-endif()
-
-if(WITH_BLADERF)
-    target_compile_definitions(iq_tool PRIVATE WITH_BLADERF)
-endif()
-
-if(WITH_NRSC5)
-    target_compile_definitions(iq_tool PRIVATE WITH_NRSC5)
-endif()
-
 
 #=======================================================================
 # System Checks & Configuration
@@ -401,32 +344,10 @@ else()
     target_link_libraries(iq_tool PRIVATE m)
 endif()
 
-if(WITH_RTLSDR)
-    target_link_libraries(iq_tool PRIVATE ${RtlSdr_LIBRARIES} ${LibUSB_LIBRARIES})
-endif()
-if(WITH_AIRSPY)
-    target_link_libraries(iq_tool PRIVATE ${Airspy_LIBRARIES} ${LibUSB_LIBRARIES})
-endif()
-if(WITH_AIRSPYHF)
-    target_link_libraries(iq_tool PRIVATE ${AirspyHF_LIBRARIES} ${LibUSB_LIBRARIES})
+if(MODULE_LIBRARIES)
+    target_link_libraries(iq_tool PRIVATE ${MODULE_LIBRARIES})
 endif()
 
-if(WITH_HYDRASDR)
-    target_link_libraries(iq_tool PRIVATE ${HydraSDR_LIBRARIES} ${LibUSB_LIBRARIES})
-endif()
-if(WITH_SDRPLAY AND NOT WIN32)
-    target_link_libraries(iq_tool PRIVATE ${SDRplay_LIBRARIES})
-endif()
-if(WITH_HACKRF)
-    target_link_libraries(iq_tool PRIVATE ${HackRF_LIBRARIES} ${LibUSB_LIBRARIES})
-endif()
-if(WITH_BLADERF)
-    target_link_libraries(iq_tool PRIVATE ${BladeRF_LIBRARIES} ${LibUSB_LIBRARIES})
-endif()
-if(WITH_NRSC5)
-    target_link_libraries(iq_tool PRIVATE ${NRSC5_LIBRARIES})
-    target_link_libraries(iq_tool PRIVATE ${CMAKE_DL_LIBS})
-endif()
 
 #=======================================================================
 # Install & Config
@@ -477,45 +398,8 @@ message(STATUS "  liquid-dsp:          ${LiquidDSP_LIBRARIES}")
 message(STATUS "  Expat:               ${Expat_LIBRARIES}")
 message(STATUS "  Threads:             Threads::Threads")
 
-if(WITH_RTLSDR)
-    message(STATUS "  RTL-SDR Support:     ENABLED (${RtlSdr_LIBRARIES})")
-else()
-    message(STATUS "  RTL-SDR Support:     DISABLED (use -DWITH_RTLSDR=ON to enable)")
-endif()
-if(WITH_AIRSPY)
-    message(STATUS "  Airspy Support:      ENABLED (${Airspy_LIBRARIES})")
-else()
-    message(STATUS "  Airspy Support:      DISABLED (use -DWITH_AIRSPY=ON to enable)")
-endif()
-if(WITH_AIRSPYHF)
-    message(STATUS "  Airspy HF+ Support:  ENABLED (${AirspyHF_LIBRARIES})")
-else()
-    message(STATUS "  Airspy HF+ Support:  DISABLED (use -DWITH_AIRSPYHF=ON to enable)")
-endif()
+foreach(SUMMARY_MSG IN LISTS MODULE_SUMMARY_LIST)
+    message(STATUS "${SUMMARY_MSG}")
+endforeach()
 
-if(WITH_HYDRASDR)
-    message(STATUS "  HydraSDR Support:    ENABLED (${HydraSDR_LIBRARIES})")
-else()
-    message(STATUS "  HydraSDR Support:    DISABLED (use -DWITH_HYDRASDR=ON to enable)")
-endif()
-if(WITH_SDRPLAY)
-    message(STATUS "  SDRplay Support:     ENABLED (${SDRplay_LIBRARIES})")
-else()
-    message(STATUS "  SDRplay Support:     DISABLED (use -DWITH_SDRPLAY=ON to enable)")
-endif()
-if(WITH_HACKRF)
-    message(STATUS "  HackRF Support:      ENABLED (${HackRF_LIBRARIES})")
-else()
-    message(STATUS "  HackRF Support:      DISABLED (use -DWITH_HACKRF=ON to enable)")
-endif()
-if(WITH_BLADERF)
-    message(STATUS "  BladeRF Support:     ENABLED (${BladeRF_LIBRARIES})")
-else()
-    message(STATUS "  BladeRF Support:     DISABLED (use -DWITH_BLADERF=ON to enable)")
-endif()
-if(WITH_NRSC5)
-    message(STATUS "  NRSC5 Support:       ENABLED (${NRSC5_LIBRARIES})")
-else()
-    message(STATUS "  NRSC5 Support:       DISABLED (use -DWITH_NRSC5=ON to enable)")
-endif()
 message(STATUS "--------------------------------------------------")
