@@ -2,9 +2,9 @@
 
 A multi-threaded command-line tool for resampling, filtering, shifting, correcting, and demodulating I/Q data streams.
 
-I originally built this tool for a very specific need: processing I/Q files with NRSC-5 (HD Radio) captures for use with the awesome [NRSC5](https://github.com/theori-io/nrsc5) decoder. This means it's particularly good at handling the frequency shifts and metadata found in WAV files from SDR software, but it has grown into a more general-purpose utility. 
+I originally built this tool for a very specific need: processing I/Q files with NRSC-5 (HD Radio) captures for use with the [NRSC5](https://github.com/theori-io/nrsc5) decoder. This means it's particularly good at handling the frequency shifts and metadata found in WAV files from SDR software, but it has grown into a more general-purpose utility. 
 
-The goal of this tool is to provide an easy, fast, and lightweight command-line utility for converting I/Q data from files or SDRs to a specific sample rate and format, and then either piping it to other programs or writing it to a file. While it features several built-in demodulation modules (like FM, AM, and HD Radio) for quick listening and decoding, it is fundamentally an I/Q processor rather than a full replacement for a desktop GUI SDR application.
+The goal of this tool is to provide a command-line utility for converting I/Q data from files or SDRs to a specific sample rate and format, and then either piping it to other programs or writing it to a file. While it features several built-in demodulation modules (like FM, AM, and HD Radio) for quick listening and decoding, it is fundamentally an I/Q processor rather than a full replacement for a desktop GUI SDR application.
 
 ---
 
@@ -33,7 +33,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
     *   **Raw I/Q Files:** Just point it at a headerless file, but you have to tell it the sample rate and format.
     *   **SDR Hardware:** Streams directly from **RTL-SDR**, **SDRplay**, **HackRF**, **Airspy**, **Airspy HF+**, **BladeRF**, and **HydraSDR** devices.
     *   **SpyServer Support:** Connect to networked SpyServer instances.
-*   **WAV Metadata Parsing:** Automatically reads metadata from SDR I/Q captures to make your life easier, especially for frequency correction.
+*   **WAV Metadata Parsing:** Automatically reads metadata from SDR I/Q captures for automatic frequency correction.
     *   `auxi` chunks from **SDR Console, SDRconnect,** and **SDRuno**.
     *   SDR# style filenames (e.g., `..._20240520_181030Z_97300000Hz_...`).
 *   **Processing Features:**
@@ -45,12 +45,12 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
         *   **NOAAWX (SAME):** Demodulates NOAA Weather Radio signals and decodes SAME (Specific Area Message Encoding) alerts.
         *   **AM:** Demodulates AM signals using a Synchronous (PLL) detector, or standard Envelope detection.
         *   **NRSC5 (HD Radio):** Integrated support for demodulating and playing HD Radio streams (via `libnrsc5`).
-*   **Automatic Gain Control (AGC):** A universal Harris/LMS block-level tracker that provides smooth gain control for all signal types. It features a crucial **deadband** that allows strong, stable signals to pass through untouched—preserving Modulation Error Ratio (MER) for digital signals and audio transparency for analog ones—while still capable of automatically rescuing weak signals from deep fades.
+*   **Automatic Gain Control (AGC):** A Harris/LMS block-level tracker with a configurable deadband for digital (MER preservation) and analog signal leveling.
     *   **Filtering:**
         *   Apply low-pass, high-pass, band-pass, or notch FIR filters.
         *   Offers two processing methods: a `FIR` (time-domain) method and an `FFT` (frequency-domain) method and will attempt to automatically default to the most suitable method.
     *   **Automatic I/Q Correction:** Can optionally find and fix I/Q imbalance on the fly. *This is very experimental and possibly could make it worse.*
-    *   **DC Blocking:** A simple high-pass filter to remove the pesky DC offset.
+    *   **DC Blocking:** A simple high-pass filter to remove the DC offset.
 *   **Versatile Outputs:**
     *   **Container Formats:** `stdout` (for piping), `raw-file` (headerless files), standard `wav`, and `wav-rf64` (for files >4GB).
     *   **Sample Formats:** Supports a variety of complex sample formats including `cs16`, `cu8`, `cs8`, and more.
@@ -387,7 +387,7 @@ iq_tool --input airspy --sdr-rf-freq 433.92e6 --airspy-gain-mode linearity --air
 
 ### Configuration via Presets
 
-`iq_tool` supports presets to save you from repeatedly typing the same output formatting options. A default `iq_tool_presets.conf` is included in the repository, which you can use as a starting point for your own configurations. A preset bundles common settings like `target_rate`, `sample_format_name`, and `output_type` into a single flag (`--preset <name>`), which is perfect for common piping scenarios.
+`iq_tool` supports presets to save you from repeatedly typing the same output formatting options. A default `iq_tool_presets.conf` is included in the repository, which you can use as a starting point for your own configurations. A preset bundles common settings like `target_rate`, `sample_format_name`, and `output_type` into a single flag (`--preset <name>`), which is utilized for common piping configurations.
 
 **Pro Tip:** If the tool finds config files in multiple locations, it will print a warning and load **none** of them to avoid confusion. Just delete the duplicates to fix it.
 
@@ -428,12 +428,12 @@ This section provides a high-level overview of the tool's internal design for th
 
 #### The Data Flow Pipeline
 
-`iq_tool` processes data through a high-performance pipeline of concurrent, decoupled stages. Each major task runs in its own dedicated thread, using thread-safe blocking queues to hand off data from one stage to the next. To maximize throughput and minimize latency, the pipeline utilizes a pre-allocated memory pool of `SampleChunk` structures, allowing for high-speed data flow without the overhead of dynamic memory allocation.
+`iq_tool` processes data through a pipeline of concurrent, decoupled stages. Each major task runs in its own dedicated thread, using thread-safe blocking queues to hand off data from one stage to the next. To maximize throughput and minimize latency, the pipeline utilizes a pre-allocated memory pool of `SampleChunk` structures, allowing for high-speed data flow without the overhead of dynamic memory allocation.
 
 The sequence of threads and their responsibilities are as follows:
 
 1.  **Source Thread (Optional / Live Mode Only):**
-    This thread is active when using live inputs (SDR hardware, network streams, or OS pipes). Its sole responsibility is to acquire data from the hardware or protocol and write it into a high-capacity, lock-free ring buffer. It uses a structured packet format (Header + Payload) which allows it to communicate stream events, such as hardware overruns or resets, to the rest of the pipeline. This thread ensures that real-time data acquisition is never delayed by downstream DSP processing.
+    This thread is active when using live inputs (SDR hardware, network streams, or OS pipes). Its sole responsibility is to acquire data from the hardware or protocol and write it into a lock-free ring buffer. It uses a structured packet format (Header + Payload) which allows it to communicate stream events, such as hardware overruns or resets, to the rest of the pipeline. This thread separates real-time data acquisition from downstream DSP processing.
 
 2.  **Reader Thread:**
     The bridge between raw data and the DSP chain. 
@@ -449,7 +449,7 @@ The sequence of threads and their responsibilities are as follows:
     *   Performing pre-resample frequency shifting (NCO) and filtering.
 
 4.  **Resampler Thread:**
-    Handles sample rate conversion. It pulls processed CF32 buffers and uses a polyphase filter (via `liquid-dsp`) to transition the data to the user-specified target rate. It utilizes a "ping-pong" buffer strategy within the `SampleChunk` to ensure high-speed, zero-copy data flow.
+    Handles sample rate conversion. It pulls processed CF32 buffers and uses a polyphase filter (via `liquid-dsp`) to transition the data to the user-specified target rate. It utilizes a "ping-pong" buffer strategy within the `SampleChunk` to implement zero-copy data transfer.
 
 5.  **Post-Processor Thread:**
     The final DSP stage. It operates on the resampled complex float data to prepare it for the final output. Responsibilities include:
@@ -460,17 +460,17 @@ The sequence of threads and their responsibilities are as follows:
 6.  **Writer Thread:**
     The final stage in the pipeline. It dequeues formatted buffers and writes them to the destination.
     *   **Synchronous Output (File/Stdout):** It manages backpressure; if the destination is slow, the writer will block the pipeline to ensure no data is lost.
-    *   **Real-time Output (Audio/Live):** For audio modules (AM, NFM, WFM), the writer interacts with the OS sound driver. If the pipeline runs faster than real-time, the writer manages the timing to ensure perfectly paced playback.
+    *   **Real-time Output (Audio/Live):** For audio modules (AM, NFM, WFM), the writer interacts with the OS sound driver. If the pipeline runs faster than real-time, the writer manages the timing to synchronize output timing.
 
 #### The Modular I/O System
 
-The tool features a fully modular architecture designed for the rapid extension of both data sources and data sinks. By decoupling hardware and format-specific logic from the core DSP pipeline, `iq_tool` can easily be adapted to new SDR hardware, network protocols, or demodulation schemes.
+The tool features a fully modular architecture designed to support additional data sources and sinks. By decoupling hardware and format-specific logic from the core DSP pipeline, `iq_tool` can easily be adapted to new SDR hardware, network protocols, or demodulation schemes.
 
 *   **The Core Interfaces (`module.h`):** All modules are built upon two primary virtual method tables (v-tables) defined in `module.h`:
     *   **`InputModuleInterface`**: Standardizes how the pipeline initializes hardware, starts data acquisition, and cleans up resources for any data source.
-    *   **`OutputModuleInterface`**: Standardizes how data is delivered to a destination, allowing the tool to switch seamlessly between writing raw files, generating WAVs, or streaming real-time audio.
+    *   **`OutputModuleInterface`**: Standardizes how data is delivered to a destination, allowing the tool to switch between writing raw files, generating WAVs, or streaming real-time audio.
 *   **The Module Headers:** Every module provides its own header file (e.g., `input_rtlsdr.h` or `output_am.h`). These headers act as the bridge to the registry, exporting two critical functions: one to return the module's API v-table and another to provide its unique command-line options.
-*   **The Registry (`module_registry.c` / `module_registry.h`):** This serves as the system's central "factory." It maintains a comprehensive catalog of every compiled-in module. When a user selects a mode via the `--input` or `--output` arguments, the registry performs a lookup and injects the appropriate logic into the pipeline at runtime.
+*   **The Registry (`module_registry.c` / `module_registry.h`):** This serves as the system's central "factory." It maintains a catalog of every compiled-in module. When a user selects a mode via the `--input` or `--output` arguments, the registry performs a lookup and injects the appropriate logic into the pipeline at runtime.
 *   **Adding a New Module:**
     1.  **Define the Header:** Create a new header file (e.g., `input_new_sdr.h`) that declares the functions needed to retrieve the module's API and CLI options.
     2.  **Implement the Interface:** Create the corresponding implementation file (e.g., `input_new_sdr.c`) that fulfills the required function pointers in the `InputModuleInterface` or `OutputModuleInterface`.
@@ -478,7 +478,7 @@ The tool features a fully modular architecture designed for the rapid extension 
     4.  **Register the Module:** Include your new header in `module_registry.c` and add a new entry to the `temp_modules[]` array to make it visible to the command-line parser and the factory.
     5.  **Update the Build System:** Add the new source file to `CMakeLists.txt` and link any necessary external libraries.
 
-This design ensures that hardware-specific quirks and complex output formats remain isolated from the high-speed processing core, resulting in a codebase that is clean, maintainable, and highly portable.
+This design ensures that hardware-specific quirks and complex output formats remain isolated from the high-speed processing core, isolating hardware and format specific logic from the DSP core.
 
 ### Acknowledgements
 
@@ -486,6 +486,6 @@ A massive thank you to Benjamin of **[HydraSDR](https://hydrasdr.com/)** for gen
 
 ### Contributing
 
-Contributions are highly welcome! Whether you've found a bug or have a cool idea for a feature, feel free to open an issue or send a pull request.
+Contributions are welcome via pull requests and issues.
 
-Since an AI had a heavy hand in writing this tool, AI-assisted pull requests are totally fair game. Just a heads-up: all PRs, whether from a human or a bot, will be carefully reviewed to make sure they fit the project's goals and quality standards. I look forward to seeing what you come with.
+Since an AI had a heavy hand in writing this tool, AI-assisted contributions are accepted provided they meet project standards. All PRs will be carefully reviewed.
