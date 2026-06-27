@@ -79,8 +79,8 @@ bool queue_enqueue(Queue* queue, void* item) {
     queue->tail = (queue->tail + 1) % queue->capacity;
     queue->count++;
 
-    pthread_cond_signal(&queue->not_empty_cond);
     pthread_mutex_unlock(&queue->mutex);
+    pthread_cond_signal(&queue->not_empty_cond);
 
     return true;
 }
@@ -99,8 +99,8 @@ bool queue_enqueue_forced(Queue* queue, void* item) {
     queue->tail = (queue->tail + 1) % queue->capacity;
     queue->count++;
 
-    pthread_cond_signal(&queue->not_empty_cond);
     pthread_mutex_unlock(&queue->mutex);
+    pthread_cond_signal(&queue->not_empty_cond);
     return true;
 }
 
@@ -122,8 +122,8 @@ void* queue_dequeue(Queue* queue) {
     queue->head = (queue->head + 1) % queue->capacity;
     queue->count--;
 
-    pthread_cond_signal(&queue->not_full_cond);
     pthread_mutex_unlock(&queue->mutex);
+    pthread_cond_signal(&queue->not_full_cond);
 
     return item;
 }
@@ -142,8 +142,8 @@ void* queue_try_dequeue(Queue* queue) {
     queue->head = (queue->head + 1) % queue->capacity;
     queue->count--;
 
-    pthread_cond_signal(&queue->not_full_cond);
     pthread_mutex_unlock(&queue->mutex);
+    pthread_cond_signal(&queue->not_full_cond);
 
     return item;
 }
@@ -154,8 +154,7 @@ void queue_signal_shutdown(Queue* queue) {
     pthread_mutex_lock(&queue->mutex);
     queue->shutting_down = true;
 
+    pthread_mutex_unlock(&queue->mutex);
     pthread_cond_broadcast(&queue->not_empty_cond);
     pthread_cond_broadcast(&queue->not_full_cond);
-
-    pthread_mutex_unlock(&queue->mutex);
 }
