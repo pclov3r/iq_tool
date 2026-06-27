@@ -51,11 +51,6 @@ size_t audio_output_write(AudioOutputContext* context, const void* pcm_data, siz
 void audio_output_drain(AudioOutputContext* context);
 
 /**
- * @brief Flushes and quits fast.
- */
-void audio_output_flush(AudioOutputContext* context);
-
-/**
  * @brief Clears the audio buffer immediately without draining.
  */
 void audio_output_clear(AudioOutputContext* context);
