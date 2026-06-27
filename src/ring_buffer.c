@@ -36,6 +36,7 @@ struct RingBuffer {
     // Isolates the reader index from the flags and mutexes below.
     alignas(128) atomic_bool end_of_stream;
     atomic_bool shutting_down;
+    atomic_bool is_consumer_sleeping;
 
     // Synchronization for Backpressure (Producer Waiting)
     // These are NOT used by the lock-free writer (SDR hardware thread).
@@ -75,6 +76,7 @@ RingBuffer* ring_buffer_create(size_t capacity, MemoryArena* arena) {
     atomic_init(&iob->read_pos, 0);
     atomic_init(&iob->end_of_stream, false);
     atomic_init(&iob->shutting_down, false);
+    atomic_init(&iob->is_consumer_sleeping, false);
 
     pthread_mutex_init(&iob->sync_mutex, NULL);
     pthread_cond_init(&iob->space_free_cond, NULL);
@@ -149,15 +151,18 @@ size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes) {
 
     atomic_store_explicit(&iob->write_pos, (w + bytes) % cap, memory_order_release);
 
-    // Wake up the reader immediately (Non-blocking signal)
+    // Wake up the reader immediately (only if sleeping)
+    // seq_cst ensures we see the consumer's sleep flag if they didn't see our write_pos update
+    if (atomic_load_explicit(&iob->is_consumer_sleeping, memory_order_seq_cst)) {
 #ifdef _WIN32
-    SetEvent(iob->block_ready_event);
+        SetEvent(iob->block_ready_event);
 #else
-    pthread_mutex_lock(&iob->event_mutex);
-    iob->event_signaled = true; // Latch the signal
-    pthread_cond_signal(&iob->event_cond);
-    pthread_mutex_unlock(&iob->event_mutex);
+        pthread_mutex_lock(&iob->event_mutex);
+        iob->event_signaled = true; // Latch the signal
+        pthread_cond_signal(&iob->event_cond);
+        pthread_mutex_unlock(&iob->event_mutex);
 #endif
+    }
 
     return bytes;
 }
@@ -203,15 +208,18 @@ size_t ring_buffer_write_packet(RingBuffer* iob, const void* header, size_t h_le
     // 3. Update write_pos and signal ONCE
     atomic_store_explicit(&iob->write_pos, w, memory_order_release);
 
-    // Wake up the reader immediately (Non-blocking signal)
+    // Wake up the reader immediately (only if sleeping)
+    // seq_cst ensures we see the consumer's sleep flag if they didn't see our write_pos update
+    if (atomic_load_explicit(&iob->is_consumer_sleeping, memory_order_seq_cst)) {
 #ifdef _WIN32
-    SetEvent(iob->block_ready_event);
+        SetEvent(iob->block_ready_event);
 #else
-    pthread_mutex_lock(&iob->event_mutex);
-    iob->event_signaled = true; // Latch the signal
-    pthread_cond_signal(&iob->event_cond);
-    pthread_mutex_unlock(&iob->event_mutex);
+        pthread_mutex_lock(&iob->event_mutex);
+        iob->event_signaled = true; // Latch the signal
+        pthread_cond_signal(&iob->event_cond);
+        pthread_mutex_unlock(&iob->event_mutex);
 #endif
+    }
 
     return total_bytes;
 }
@@ -239,7 +247,18 @@ size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes) {
             return 0;
         }
 
-        // Buffer empty, wait efficiently for the producer signal
+        // 1. Announce intention to sleep (seq_cst prevents CPU reordering)
+        atomic_store_explicit(&iob->is_consumer_sleeping, true, memory_order_seq_cst);
+        
+        // 2. Double-check if data arrived while we were announcing
+        w = atomic_load_explicit(&iob->write_pos, memory_order_acquire);
+        available = (w >= r) ? (w - r) : (cap - (r - w));
+        if (available > 0) {
+            atomic_store_explicit(&iob->is_consumer_sleeping, false, memory_order_release);
+            break;
+        }
+
+        // Buffer still empty, wait efficiently for the producer signal
 #ifdef _WIN32
         WaitForSingleObject(iob->block_ready_event, 100);
 #else
@@ -268,6 +287,7 @@ size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes) {
 
         pthread_mutex_unlock(&iob->event_mutex);
 #endif
+        atomic_store_explicit(&iob->is_consumer_sleeping, false, memory_order_release);
     }
 
     size_t bytes_to_read = (max_bytes > available) ? available : max_bytes;
@@ -355,8 +375,9 @@ size_t ring_buffer_get_capacity(RingBuffer* iob) {
 
 void ring_buffer_clear(RingBuffer* iob) {
     if (!iob) return;
-    atomic_store_explicit(&iob->read_pos, 0, memory_order_release);
-    atomic_store_explicit(&iob->write_pos, 0, memory_order_release);
+    // Safe Lock-Free Clear: Advance read_pos to match write_pos
+    size_t w = atomic_load_explicit(&iob->write_pos, memory_order_acquire);
+    atomic_store_explicit(&iob->read_pos, w, memory_order_release);
 
     pthread_mutex_lock(&iob->sync_mutex);
     pthread_cond_broadcast(&iob->space_free_cond);
