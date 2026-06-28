@@ -233,17 +233,17 @@ static int input_hydrasdr_buffered_stream_callback(hydrasdr_transfer* transfer) 
         case HYDRASDR_SAMPLE_FLOAT32_REAL:
         case HYDRASDR_SAMPLE_UINT16_REAL:
             // Real (non-IQ) sample formats are not supported for this device.
-            handle_fatal_thread_error("HydraSDR real sample format not supported.", app);
+            request_forceful_shutdown("HydraSDR real sample format not supported.", app);
             return -1;
 
         case HYDRASDR_SAMPLE_RAW:
             // We force INT16_IQ mode during initialization, so we should not see RAW here.
             // If we do, it implies the library failed to unpack or configuration is wrong.
-            handle_fatal_thread_error("HydraSDR unexpected RAW sample type. Library unpacking config error?", app);
+            request_forceful_shutdown("HydraSDR unexpected RAW sample type. Library unpacking config error?", app);
             return -1;
 
         default:
-            handle_fatal_thread_error("HydraSDR unknown sample type received.", app);
+            request_forceful_shutdown("HydraSDR unknown sample type received.", app);
             return -1;
     }
 
@@ -451,7 +451,7 @@ static void* input_hydrasdr_push_samples_to_queue(ModuleContext* context, QueueS
     if (result != HYDRASDR_SUCCESS) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "hydrasdr_get_device_info() failed: %s (%d)", hydrasdr_error_name(result), result);
-        handle_fatal_thread_error(error_buf, app);
+        request_forceful_shutdown(error_buf, app);
         return NULL;
     }
 
@@ -467,7 +467,7 @@ static void* input_hydrasdr_push_samples_to_queue(ModuleContext* context, QueueS
     if (result != HYDRASDR_SUCCESS) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "hydrasdr_set_freq() failed: %s (%d)", hydrasdr_error_name(result), result);
-        handle_fatal_thread_error(error_buf, app);
+        request_forceful_shutdown(error_buf, app);
         return NULL;
     }
 
@@ -479,7 +479,7 @@ static void* input_hydrasdr_push_samples_to_queue(ModuleContext* context, QueueS
     if (result != HYDRASDR_SUCCESS) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "hydrasdr_set_samplerate() failed: %s (%d)", hydrasdr_error_name(result), result);
-        handle_fatal_thread_error(error_buf, app);
+        request_forceful_shutdown(error_buf, app);
         return NULL;
     }
 
@@ -487,7 +487,7 @@ static void* input_hydrasdr_push_samples_to_queue(ModuleContext* context, QueueS
     if (result != HYDRASDR_SUCCESS) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "hydrasdr_set_sample_type() failed: %s (%d)", hydrasdr_error_name(result), result);
-        handle_fatal_thread_error(error_buf, app);
+        request_forceful_shutdown(error_buf, app);
         return NULL;
     }
 
@@ -516,14 +516,14 @@ static void* input_hydrasdr_push_samples_to_queue(ModuleContext* context, QueueS
                 if (info.features & HYDRASDR_CAP_LINEARITY_GAIN) {
                     hydrasdr_set_gain(private_data->dev, HYDRASDR_GAIN_TYPE_LINEARITY, s_hydrasdr_config.gain_value);
                 } else {
-                    handle_fatal_thread_error("Linearity gain mode is not supported by this hardware.", app);
+                    request_forceful_shutdown("Linearity gain mode is not supported by this hardware.", app);
                     return NULL;
                 }
             } else if (strcasecmp(s_hydrasdr_config.gain_mode, "sensitivity") == 0) {
                 if (info.features & HYDRASDR_CAP_SENSITIVITY_GAIN) {
                     hydrasdr_set_gain(private_data->dev, HYDRASDR_GAIN_TYPE_SENSITIVITY, s_hydrasdr_config.gain_value);
                 } else {
-                    handle_fatal_thread_error("Sensitivity gain mode is not supported by this hardware.", app);
+                    request_forceful_shutdown("Sensitivity gain mode is not supported by this hardware.", app);
                     return NULL;
                 }
             } else if (strcasecmp(s_hydrasdr_config.gain_mode, "manual") == 0) {
@@ -539,7 +539,7 @@ static void* input_hydrasdr_push_samples_to_queue(ModuleContext* context, QueueS
     if (result != HYDRASDR_SUCCESS) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "hydrasdr_start_rx() failed: %s (%d)", hydrasdr_error_name(result), result);
-        handle_fatal_thread_error(error_buf, app);
+        request_forceful_shutdown(error_buf, app);
         return NULL;
     }
 

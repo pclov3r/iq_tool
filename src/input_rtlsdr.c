@@ -343,7 +343,7 @@ static void* input_rtlsdr_push_samples_to_queue(ModuleContext* context, QueueSam
     if (result < 0) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "rtlsdr_read_async() failed: %s", strerror(-result));
-        handle_fatal_thread_error(error_buf, app);
+        request_forceful_shutdown(error_buf, app);
         return NULL;
     }
 

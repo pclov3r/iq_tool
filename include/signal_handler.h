@@ -71,6 +71,6 @@ void request_shutdown(void);
  * @param context_msg A descriptive error message string.
  * @param app A pointer to the main AppContext struct.
  */
-void handle_fatal_thread_error(const char* context_msg, AppContext* app);
+void request_forceful_shutdown(const char* context_msg, AppContext* app);
 
 #endif // SIGNAL_HANDLER_H_

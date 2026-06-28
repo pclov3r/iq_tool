@@ -191,7 +191,7 @@ static size_t input_rawfile_read_chunk(ModuleContext* context, void* buffer, siz
 
         if (read_this_pass < 0) {
             log_error("libsndfile read error: %s", sf_strerror(p->infile));
-            handle_fatal_thread_error("Rawfile Reader: File read error.", app);
+            request_forceful_shutdown("Rawfile Reader: File read error.", app);
             return 0;
         }
 

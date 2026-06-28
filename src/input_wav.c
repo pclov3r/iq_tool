@@ -769,7 +769,7 @@ static size_t input_wav_read_chunk(ModuleContext* context, void* buffer, size_t 
 
         if (read_this_pass < 0) {
             log_error("libsndfile read error: %s", sf_strerror(wav_input->infile));
-            handle_fatal_thread_error("File read error.", app);
+            request_forceful_shutdown("File read error.", app);
             return 0;
         }
 
@@ -797,7 +797,7 @@ static size_t input_wav_read_chunk(ModuleContext* context, void* buffer, size_t 
 
                 if (!wav_input->infile) {
                     log_fatal("Failed to open next split file: %s", wav_input->file_list[wav_input->current_file_index]);
-                    handle_fatal_thread_error("Next split file failed to open.", app);
+                    request_forceful_shutdown("Next split file failed to open.", app);
                     return 0;
                 }
 
@@ -808,7 +808,7 @@ static size_t input_wav_read_chunk(ModuleContext* context, void* buffer, size_t 
                    (new_sfinfo.channels != 1 && new_sfinfo.channels != 2)) {
                     log_fatal("Next split file format mismatch! (Expected Rate: %d, Chans: %d)",
                               app->module.source_info.sample_rate, wav_input->is_real ? 1 : 2);
-                    handle_fatal_thread_error("Format mismatch during rollover.", app);
+                    request_forceful_shutdown("Format mismatch during rollover.", app);
                     return 0;
                 }
             } else if (wav_input->repeat_enabled) {
@@ -830,7 +830,7 @@ static size_t input_wav_read_chunk(ModuleContext* context, void* buffer, size_t 
 
                 if (!wav_input->infile) {
                     log_fatal("Failed to reopen first WAV file during loop.");
-                    handle_fatal_thread_error("WAV loop reopen failed.", app);
+                    request_forceful_shutdown("WAV loop reopen failed.", app);
                     return 0;
                 }
 
@@ -841,7 +841,7 @@ static size_t input_wav_read_chunk(ModuleContext* context, void* buffer, size_t 
                    (new_sfinfo.channels != 1 && new_sfinfo.channels != 2)) {
                     log_fatal("Format mismatch on loop reopen! (Expected Rate: %d, Chans: %d)",
                               app->module.source_info.sample_rate, wav_input->is_real ? 1 : 2);
-                    handle_fatal_thread_error("Format mismatch during loop.", app);
+                    request_forceful_shutdown("Format mismatch during loop.", app);
                     return 0;
                 }
             } else {

@@ -121,7 +121,7 @@ static void* input_stdin_push_samples_to_queue(ModuleContext* context, QueueSamp
 
         if (bytes_read == 0) {
             if (ferror(stdin)) {
-                handle_fatal_thread_error("Error reading from stdin pipe.", app);
+                request_forceful_shutdown("Error reading from stdin pipe.", app);
             }
             break;
         }
@@ -147,7 +147,7 @@ static size_t input_stdin_read_chunk(ModuleContext* context, void* buffer, size_
             total_read += bytes_read;
         } else {
             if (ferror(stdin)) {
-                handle_fatal_thread_error("Error reading from stdin pipe.", context->app);
+                request_forceful_shutdown("Error reading from stdin pipe.", context->app);
             }
             break; // EOF or Error
         }

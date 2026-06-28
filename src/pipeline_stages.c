@@ -103,7 +103,7 @@ void* pipeline_thread_reader(void* arg) {
                 );
 
                 if (frames_read < 0) {
-                    handle_fatal_thread_error("Reader: Fatal error parsing source buffer stream.", app);
+                    request_forceful_shutdown("Reader: Fatal error parsing source buffer stream.", app);
                     queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
                     break;
                 }
@@ -147,7 +147,7 @@ void* pipeline_thread_reader(void* arg) {
             InputModuleInterface* in_api = app->module.input_api;
 
             if (!in_api->read_chunk) {
-                handle_fatal_thread_error("Reader: File input module missing read_chunk.", app);
+                request_forceful_shutdown("Reader: File input module missing read_chunk.", app);
             } else {
                 while (!is_shutdown_requested() && !atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed)) {
                     SampleChunk* item = (SampleChunk*)queue_dequeue(app->pipeline.free_sample_chunk_queue);
@@ -340,7 +340,7 @@ void* pipeline_thread_resampler(void* arg) {
             // Estimate maximum output length mathematically prior to execution
             unsigned int estimated_out = (unsigned int)((item->frames_read + 32) * app->dsp.resample_ratio) + 64;
             if (estimated_out > item->complex_buffer_capacity_samples) {
-                handle_fatal_thread_error("Resampler input chunk is too large for ping-pong buffers!", app);
+                request_forceful_shutdown("Resampler input chunk is too large for ping-pong buffers!", app);
                 break;
             }
             resampler_execute(app->dsp.resampler,

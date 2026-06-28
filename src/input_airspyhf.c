@@ -424,7 +424,7 @@ static void* input_airspyhf_push_samples_to_queue(ModuleContext* context, QueueS
     if (result != AIRSPYHF_SUCCESS) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "airspyhf_start() failed: %d", result);
-        handle_fatal_thread_error(error_buf, app);
+        request_forceful_shutdown(error_buf, app);
         return NULL;
     }
 

@@ -592,7 +592,7 @@ static void* input_spyserver_client_producer_thread(void* arg) {
         // Block waiting for a protocol header
         if (!networking_recv_all(client->net_context, &header, sizeof(header))) {
             if (!is_shutdown_requested()) {
-                 handle_fatal_thread_error("Connection to spyserver lost (header recv failed).", app);
+                 request_forceful_shutdown("Connection to spyserver lost (header recv failed).", app);
             }
             break;
         }
@@ -620,7 +620,7 @@ static void* input_spyserver_client_producer_thread(void* arg) {
                     // We MUST consume these from the socket or the next header read will be desynchronized.
                     // We use bytes_remaining here because aligned_read is 0.
                     if (!networking_recv_all(client->net_context, client->rx_buffer, bytes_remaining)) {
-                        if (!is_shutdown_requested()) handle_fatal_thread_error("Connection lost draining leftovers.", app);
+                        if (!is_shutdown_requested()) request_forceful_shutdown("Connection lost draining leftovers.", app);
                         goto end_loop;
                     }
                     // Discard them (do nothing with rx_buffer) and exit inner loop
@@ -630,7 +630,7 @@ static void* input_spyserver_client_producer_thread(void* arg) {
 
                 // 1. Read Payload Chunk from Network
                 if (!networking_recv_all(client->net_context, client->rx_buffer, aligned_read)) {
-                    if (!is_shutdown_requested()) handle_fatal_thread_error("Connection lost reading payload.", app);
+                    if (!is_shutdown_requested()) request_forceful_shutdown("Connection lost reading payload.", app);
                     goto end_loop;
                 }
 
@@ -658,7 +658,7 @@ static void* input_spyserver_client_producer_thread(void* arg) {
             // We discard these packets to prevent them from entering the processing pipeline.
             if (body_size > 0) {
                 if (!discard_network_bytes(client->net_context, body_size)) {
-                    if (!is_shutdown_requested()) handle_fatal_thread_error("Connection lost discarding packet.", app);
+                    if (!is_shutdown_requested()) request_forceful_shutdown("Connection lost discarding packet.", app);
                     goto end_loop;
                 }
             }
@@ -678,13 +678,13 @@ static void* input_spyserver_client_push_samples_to_queue(ModuleContext* context
     SpyServerClientContext* client = (SpyServerClientContext*)app->module.input_private_data;
 
     if (!send_setting(client, SPYSERVER_SETTING_STREAMING_ENABLED, 1)) {
-        handle_fatal_thread_error("Failed to start spyserver stream.", app);
+        request_forceful_shutdown("Failed to start spyserver stream.", app);
         return NULL;
     }
 
     pthread_t producer_thread_id;
     if (pthread_create(&producer_thread_id, NULL, input_spyserver_client_producer_thread, context) != 0) {
-        handle_fatal_thread_error("Failed to create spyserver producer thread.", app);
+        request_forceful_shutdown("Failed to create spyserver producer thread.", app);
         return NULL;
     }
 
@@ -733,7 +733,7 @@ static void* input_spyserver_client_push_samples_to_queue(ModuleContext* context
         );
 
         if (frames_read < 0) {
-            handle_fatal_thread_error("SpyServer Client: Fatal error parsing internal buffer stream.", app);
+            request_forceful_shutdown("SpyServer Client: Fatal error parsing internal buffer stream.", app);
             queue_enqueue(app->pipeline.free_sample_chunk_queue, item);
             break;
         }

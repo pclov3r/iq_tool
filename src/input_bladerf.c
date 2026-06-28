@@ -626,7 +626,7 @@ static void* input_bladerf_push_samples_to_queue(ModuleContext* context, QueueSa
     if (status != 0) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "bladerf_init_stream() failed: %s", bladerf_strerror(status));
-        handle_fatal_thread_error(error_buf, app);
+        request_forceful_shutdown(error_buf, app);
         return NULL;
     }
 
@@ -634,7 +634,7 @@ static void* input_bladerf_push_samples_to_queue(ModuleContext* context, QueueSa
     if (status != 0) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "bladerf_enable_module() failed: %s", bladerf_strerror(status));
-        handle_fatal_thread_error(error_buf, app);
+        request_forceful_shutdown(error_buf, app);
         bladerf_deinit_stream(private_data->rx_stream);
         private_data->rx_stream = NULL;
         return NULL;
@@ -650,7 +650,7 @@ static void* input_bladerf_push_samples_to_queue(ModuleContext* context, QueueSa
     if (status != 0 && !is_shutdown_requested()) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "bladerf_stream() failed: %s", bladerf_strerror(status));
-        handle_fatal_thread_error(error_buf, app);
+        request_forceful_shutdown(error_buf, app);
     }
 
     input_bladerf_stop_sample_queue_push(context);

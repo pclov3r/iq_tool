@@ -161,7 +161,7 @@ void request_shutdown(void) {
     }
 }
 
-void handle_fatal_thread_error(const char* context_msg, AppContext* app) {
+void request_forceful_shutdown(const char* context_msg, AppContext* app) {
     bool expected = false;
     if (atomic_compare_exchange_strong(&app->stats.error_occurred, &expected, true)) {
         log_fatal("%s", context_msg);

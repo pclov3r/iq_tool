@@ -270,18 +270,18 @@ static int input_airspy_buffered_stream_callback(airspy_transfer* transfer) {
         case AIRSPY_SAMPLE_RAW:
             // We force INT16_IQ mode during initialization, so we should not see RAW here.
             // If we do, it implies the library failed to unpack or configuration is wrong.
-            handle_fatal_thread_error("Airspy unexpected RAW sample type. Library unpacking config error?", app);
+            request_forceful_shutdown("Airspy unexpected RAW sample type. Library unpacking config error?", app);
             return -1;
 
         case AIRSPY_SAMPLE_INT16_REAL:
         case AIRSPY_SAMPLE_FLOAT32_REAL:
         case AIRSPY_SAMPLE_UINT16_REAL:
             // Real (non-IQ) sample formats are not supported for this device.
-            handle_fatal_thread_error("Airspy real sample format not supported.", app);
+            request_forceful_shutdown("Airspy real sample format not supported.", app);
             return -1;
 
         default:
-            handle_fatal_thread_error("Airspy unknown sample type received.", app);
+            request_forceful_shutdown("Airspy unknown sample type received.", app);
             return -1;
     }
 
@@ -589,7 +589,7 @@ static void* input_airspy_push_samples_to_queue(ModuleContext* context, QueueSam
     if (result != AIRSPY_SUCCESS) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "airspy_start_rx() failed: %s (%d)", airspy_error_name(result), result);
-        handle_fatal_thread_error(error_buf, app);
+        request_forceful_shutdown(error_buf, app);
         return NULL;
     }
 

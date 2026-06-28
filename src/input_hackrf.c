@@ -255,7 +255,7 @@ static void* input_hackrf_push_samples_to_queue(ModuleContext* context, QueueSam
     if (result != HACKRF_SUCCESS) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "hackrf_start_rx() failed: %s (%d)", hackrf_error_name(result), result);
-        handle_fatal_thread_error(error_buf, app);
+        request_forceful_shutdown(error_buf, app);
         return NULL;
     }
 

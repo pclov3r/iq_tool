@@ -438,10 +438,10 @@ static void input_sdrplay_event_callback(sdrplay_api_EventT eventId, sdrplay_api
 
     switch (eventId) {
         case sdrplay_api_DeviceRemoved:
-            handle_fatal_thread_error("SDRplay device has been removed.", app);
+            request_forceful_shutdown("SDRplay device has been removed.", app);
             break;
         case sdrplay_api_DeviceFailure:
-            handle_fatal_thread_error("A generic SDRplay device failure has occurred.", app);
+            request_forceful_shutdown("A generic SDRplay device failure has occurred.", app);
             break;
         case sdrplay_api_PowerOverloadChange: {
             sdrplay_api_PowerOverloadCbEventIdT overload_state = params->powerOverloadParams.powerOverloadChangeType;
@@ -895,7 +895,7 @@ static void* input_sdrplay_push_samples_to_queue(ModuleContext* context, QueueSa
         if (errorInfo && strlen(errorInfo->message) > 0) {
             snprintf(error_buf + strlen(error_buf), sizeof(error_buf) - strlen(error_buf), " - API Message: %s", errorInfo->message);
         }
-        handle_fatal_thread_error(error_buf, app);
+        request_forceful_shutdown(error_buf, app);
     } else {
         // Wait for the shutdown signal (Event-driven)
         if (app->pipeline.shutdown_event) {
