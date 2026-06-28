@@ -301,6 +301,18 @@ static bool input_spyserver_client_validate_options(AppContext* app) {
     return true;
 }
 
+static bool discard_network_bytes(NetworkingContext* net_context, size_t bytes_to_discard) {
+    char discard_buffer[1024];
+    while (bytes_to_discard > 0) {
+        size_t to_read = (bytes_to_discard > sizeof(discard_buffer)) ? sizeof(discard_buffer) : bytes_to_discard;
+        if (!networking_recv_all(net_context, discard_buffer, to_read)) {
+            return false;
+        }
+        bytes_to_discard -= to_read;
+    }
+    return true;
+}
+
 static bool input_spyserver_client_initialize(ModuleContext* context) {
     AppConfig* config = (AppConfig*)context->config;
     AppContext* app = context->app;
@@ -337,9 +349,7 @@ static bool input_spyserver_client_initialize(ModuleContext* context) {
 
     unsigned char* payload_buffer = (unsigned char*)mem_arena_alloc(&app->pipeline.setup_arena, payload_size, false);
     if (!payload_buffer) {
-        networking_disconnect(client->net_context);
-        networking_cleanup();
-        return false;
+        goto error_cleanup;
     }
 
     uint32_t protocol_version = SPYSERVER_PROTOCOL_VERSION;
@@ -354,84 +364,75 @@ static bool input_spyserver_client_initialize(ModuleContext* context) {
                    networking_send_all(client->net_context, payload_buffer, payload_size);
 
     if (!send_ok) {
-        networking_disconnect(client->net_context);
-        networking_cleanup();
-        return false;
+        goto error_cleanup;
     }
 
     SpyServerMessageHeader response_header;
     if (!networking_recv_all(client->net_context, &response_header, sizeof(response_header))) {
-        networking_disconnect(client->net_context);
-        networking_cleanup();
-        return false;
+        goto error_cleanup;
     }
 
     if (response_header.MessageType != SPYSERVER_MSG_TYPE_DEVICE_INFO) {
         log_error("Did not receive DeviceInfo after handshake. Server may have rejected the connection (MessageType=%u).", response_header.MessageType);
-        networking_disconnect(client->net_context);
-        networking_cleanup();
-        return false;
+        goto error_cleanup;
     }
-    if (response_header.BodySize != sizeof(SpyServerDeviceInfo)) {
+    if (response_header.BodySize < sizeof(SpyServerDeviceInfo)) {
         log_error("Received DeviceInfo with unexpected size (%u vs %zu).", response_header.BodySize, sizeof(SpyServerDeviceInfo));
-        networking_disconnect(client->net_context);
-        networking_cleanup();
-        return false;
+        goto error_cleanup;
     }
     if (!networking_recv_all(client->net_context, &client->device_info, sizeof(SpyServerDeviceInfo))) {
-        networking_disconnect(client->net_context);
-        networking_cleanup();
-        return false;
+        goto error_cleanup;
+    }
+    size_t dev_extra_bytes = response_header.BodySize - sizeof(SpyServerDeviceInfo);
+    if (dev_extra_bytes > 0) {
+        if (!discard_network_bytes(client->net_context, dev_extra_bytes)) {
+            goto error_cleanup;
+        }
     }
     client->device_info_ok = true;
 
     log_info("Handshake complete. Waiting for client sync message...");
-    if (!networking_recv_all(client->net_context, &response_header, sizeof(response_header))) {
-        networking_disconnect(client->net_context);
-        networking_cleanup();
-        return false;
-    }
-
-    if (response_header.MessageType != SPYSERVER_MSG_TYPE_CLIENT_SYNC) {
-        log_error("Did not receive ClientSync message after handshake. Protocol error.");
-        networking_disconnect(client->net_context);
-        networking_cleanup();
-        return false;
-    }
-
+    bool got_sync = false;
+    int max_ignored = 5;
+    int ignored = 0;
     SpyServerClientSync sync_info;
-    if (response_header.BodySize < sizeof(SpyServerClientSync)) {
-        log_error("Received ClientSync with unexpected size (%u vs %zu). Protocol mismatch.", response_header.BodySize, sizeof(SpyServerClientSync));
-        networking_disconnect(client->net_context);
-        networking_cleanup();
-        return false;
-    }
-
-    if (!networking_recv_all(client->net_context, &sync_info, sizeof(SpyServerClientSync))) {
-        networking_disconnect(client->net_context);
-        networking_cleanup();
-        return false;
-    }
-
-    size_t extra_bytes_to_discard = response_header.BodySize - sizeof(SpyServerClientSync);
-    if (extra_bytes_to_discard > 0) {
-        char discard_buffer[256];
-        while (extra_bytes_to_discard > 0) {
-            size_t to_read = (extra_bytes_to_discard > sizeof(discard_buffer)) ? sizeof(discard_buffer) : extra_bytes_to_discard;
-            if (!networking_recv_all(client->net_context, discard_buffer, to_read)) {
-                networking_disconnect(client->net_context);
-                networking_cleanup();
-                return false;
-            }
-            extra_bytes_to_discard -= to_read;
+    while (!got_sync && ignored < max_ignored) {
+        if (!networking_recv_all(client->net_context, &response_header, sizeof(response_header))) {
+            goto error_cleanup;
         }
+        if (response_header.MessageType == SPYSERVER_MSG_TYPE_CLIENT_SYNC) {
+            if (response_header.BodySize < sizeof(SpyServerClientSync)) {
+                log_error("Received ClientSync with unexpected size (%u vs %zu). Protocol mismatch.", response_header.BodySize, sizeof(SpyServerClientSync));
+                goto error_cleanup;
+            }
+            if (!networking_recv_all(client->net_context, &sync_info, sizeof(SpyServerClientSync))) {
+                goto error_cleanup;
+            }
+            size_t sync_extra = response_header.BodySize - sizeof(SpyServerClientSync);
+            if (sync_extra > 0) {
+                if (!discard_network_bytes(client->net_context, sync_extra)) {
+                    goto error_cleanup;
+                }
+            }
+            got_sync = true;
+        } else {
+            size_t extra = response_header.BodySize;
+            if (extra > 0) {
+                if (!discard_network_bytes(client->net_context, extra)) {
+                    goto error_cleanup;
+                }
+            }
+            ignored++;
+        }
+    }
+    if (!got_sync) {
+        log_error("Did not receive ClientSync message.");
+        goto error_cleanup;
     }
 
     if (sync_info.CanControl == 0) {
         log_error("Cannot control the remote device. Another client has control.");
-        networking_disconnect(client->net_context);
-        networking_cleanup();
-        return false;
+        goto error_cleanup;
     }
 
     log_info("Client has control of the remote device. Negotiating stream parameters...");
@@ -497,9 +498,9 @@ static bool input_spyserver_client_initialize(ModuleContext* context) {
     int format_to_request_int = get_spyserver_enum_from_internal_format(final_format);
 
     log_info("Configuring remote device...");
-    if (!send_setting(client, SPYSERVER_SETTING_IQ_FREQUENCY, (uint32_t)config->sdr_general.rf_freq_hz)) return false;
-    if (!send_setting(client, SPYSERVER_SETTING_IQ_DECIMATION, dec_index_to_send)) return false;
-    if (!send_setting(client, SPYSERVER_SETTING_IQ_FORMAT, format_to_request_int)) return false;
+    if (!send_setting(client, SPYSERVER_SETTING_IQ_FREQUENCY, (uint32_t)config->sdr_general.rf_freq_hz)) goto error_cleanup;
+    if (!send_setting(client, SPYSERVER_SETTING_IQ_DECIMATION, dec_index_to_send)) goto error_cleanup;
+    if (!send_setting(client, SPYSERVER_SETTING_IQ_FORMAT, format_to_request_int)) goto error_cleanup;
 
     uint32_t effective_gain_index = 0;
 
@@ -513,15 +514,11 @@ static bool input_spyserver_client_initialize(ModuleContext* context) {
                 log_error("Requested gain value %u is out of range.", requested_gain);
                 log_error("Valid gain range for this server is 0 to %u.", client->device_info.MaximumGainIndex);
 
-                networking_disconnect(client->net_context);
-                networking_cleanup();
-                return false;
+                goto error_cleanup;
             }
 
             if (!send_setting(client, SPYSERVER_SETTING_GAIN, requested_gain)) {
-                networking_disconnect(client->net_context);
-                networking_cleanup();
-                return false;
+                goto error_cleanup;
             }
 
             // Store the successfully applied gain for the digital gain calculation below
@@ -545,9 +542,9 @@ static bool input_spyserver_client_initialize(ModuleContext* context) {
         digital_gain_float = (float)dec_index_to_send * 3.01f;
     }
 
-    if (!send_setting(client, SPYSERVER_SETTING_IQ_DIGITAL_GAIN, (uint32_t)digital_gain_float)) return false;
+    if (!send_setting(client, SPYSERVER_SETTING_IQ_DIGITAL_GAIN, (uint32_t)digital_gain_float)) goto error_cleanup;
 
-    if (!send_setting(client, SPYSERVER_SETTING_STREAMING_MODE, SPYSERVER_STREAM_MODE_IQ_ONLY)) return false;
+    if (!send_setting(client, SPYSERVER_SETTING_STREAMING_MODE, SPYSERVER_STREAM_MODE_IQ_ONLY)) goto error_cleanup;
 
     // Dynamic Ring Buffer Sizing
     double bytes_per_sec = (double)actual_rate * (double)app->module.input_bytes_per_iq_sample;
@@ -569,12 +566,17 @@ static bool input_spyserver_client_initialize(ModuleContext* context) {
 
     client->stream_buffer = ring_buffer_create(desired_buffer_size, &app->pipeline.setup_arena);
     if (!client->stream_buffer) {
-        networking_disconnect(client->net_context);
-        networking_cleanup();
-        return false;
+        goto error_cleanup;
     }
 
     return true;
+
+error_cleanup:
+    if (client && client->net_context) {
+        networking_disconnect(client->net_context);
+    }
+    networking_cleanup();
+    return false;
 }
 
 static void* input_spyserver_client_producer_thread(void* arg) {
@@ -654,16 +656,11 @@ static void* input_spyserver_client_producer_thread(void* arg) {
         else {
             // --- METADATA / INFO / SYNC ---
             // We discard these packets to prevent them from entering the processing pipeline.
-            size_t bytes_to_discard = body_size;
-            // Use a discard buffer on the stack for skipping unwanted packet bodies
-            unsigned char discard_buffer[4096];
-            while (bytes_to_discard > 0) {
-                size_t to_read = (bytes_to_discard > sizeof(discard_buffer)) ? sizeof(discard_buffer) : bytes_to_discard;
-                if (!networking_recv_all(client->net_context, discard_buffer, to_read)) {
+            if (body_size > 0) {
+                if (!discard_network_bytes(client->net_context, body_size)) {
                     if (!is_shutdown_requested()) handle_fatal_thread_error("Connection lost discarding packet.", app);
                     goto end_loop;
                 }
-                bytes_to_discard -= to_read;
             }
         }
     }
