@@ -172,11 +172,8 @@ static bool input_hydrasdr_validate_options(AppContext* app) {
     if (s_hydrasdr_config.sample_format) {
         s_hydrasdr_config.sample_format_provided = true;
         if (strcasecmp(s_hydrasdr_config.sample_format, "cf32") != 0 &&
-            strcasecmp(s_hydrasdr_config.sample_format, "cs16") != 0 &&
-            strcasecmp(s_hydrasdr_config.sample_format, "f32") != 0 &&
-            strcasecmp(s_hydrasdr_config.sample_format, "s16") != 0 &&
-            strcasecmp(s_hydrasdr_config.sample_format, "u16") != 0) {
-            log_error("Invalid --hydrasdr-sample-format '%s'. Must be 'cf32', 'cs16', 'f32', 's16', or 'u16'.", s_hydrasdr_config.sample_format);
+            strcasecmp(s_hydrasdr_config.sample_format, "cs16") != 0) {
+            log_error("Invalid --hydrasdr-sample-format '%s'. Must be 'cf32' or 'cs16'.", s_hydrasdr_config.sample_format);
             return false;
         }
     }
@@ -232,17 +229,12 @@ static int input_hydrasdr_buffered_stream_callback(hydrasdr_transfer* transfer) 
             if (!app->module.queue_samples(app->module.pipeline_context, transfer->samples, transfer->sample_count, CF32)) {}
             break;
 
-        case HYDRASDR_SAMPLE_FLOAT32_REAL:
-            if (!app->module.queue_samples(app->module.pipeline_context, transfer->samples, transfer->sample_count, F32)) {}
-            break;
-
         case HYDRASDR_SAMPLE_INT16_REAL:
-            if (!app->module.queue_samples(app->module.pipeline_context, transfer->samples, transfer->sample_count, S16)) {}
-            break;
-
+        case HYDRASDR_SAMPLE_FLOAT32_REAL:
         case HYDRASDR_SAMPLE_UINT16_REAL:
-            if (!app->module.queue_samples(app->module.pipeline_context, transfer->samples, transfer->sample_count, U16)) {}
-            break;
+            // Real (non-IQ) sample formats are not supported for this device.
+            handle_fatal_thread_error("HydraSDR real sample format not supported.", app);
+            return -1;
 
         case HYDRASDR_SAMPLE_RAW:
             // We force INT16_IQ mode during initialization, so we should not see RAW here.
@@ -418,17 +410,7 @@ static bool input_hydrasdr_initialize(ModuleContext* context) {
             private_data->sample_type = HYDRASDR_SAMPLE_INT16_IQ;
             app->module.input_format = CS16;
         }
-        // --- Real (IF) Formats ---
-        else if (strcasecmp(s_hydrasdr_config.sample_format, "f32") == 0) {
-            private_data->sample_type = HYDRASDR_SAMPLE_FLOAT32_REAL;
-            app->module.input_format = F32;
-        } else if (strcasecmp(s_hydrasdr_config.sample_format, "s16") == 0) {
-            private_data->sample_type = HYDRASDR_SAMPLE_INT16_REAL;
-            app->module.input_format = S16;
-        } else if (strcasecmp(s_hydrasdr_config.sample_format, "u16") == 0) {
-            private_data->sample_type = HYDRASDR_SAMPLE_UINT16_REAL;
-            app->module.input_format = U16;
-        }
+
     }
 
     // Set Bias-T if requested
