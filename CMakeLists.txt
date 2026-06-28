@@ -194,6 +194,7 @@ set(COMPILE_WITH_FFAST_MATH_SOURCES
 )
 
 set(NETWORK_SOURCES
+    src/networking.c
     src/input_spyserver_client.c
 )
 
@@ -219,7 +220,6 @@ set(OTHER_SOURCES
     src/mem_arena.c
     external/miniaudio/miniaudio.c
     src/module_registry.c
-    src/networking.c
     src/output_directpipe.c
     src/output_rawfile.c
     src/output_stdout.c

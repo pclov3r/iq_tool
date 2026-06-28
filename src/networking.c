@@ -202,7 +202,9 @@ bool networking_send_all(NetworkingContext* context, const void* data, size_t le
     if (!context || !data) return false;
     size_t total_sent = 0;
     while (total_sent < length) {
-        int sent = send(context->socket_fd, (const char*)data + total_sent, (int)(length - total_sent), 0);
+        size_t to_send = length - total_sent;
+        if (to_send > 1048576) to_send = 1048576; // Clamp to 1MB chunks to prevent 32-bit cast overflow
+        int sent = send(context->socket_fd, (const char*)data + total_sent, (int)to_send, 0);
         if (sent <= 0) {
 #ifdef _WIN32
             if (sent < 0 && WSAGetLastError() == WSAETIMEDOUT) {
@@ -227,7 +229,9 @@ bool networking_recv_all(NetworkingContext* context, void* data, size_t length) 
     if (!context || !data) return false;
     size_t total_recv = 0;
     while (total_recv < length) {
-        int recvd = recv(context->socket_fd, (char*)data + total_recv, (int)(length - total_recv), 0);
+        size_t to_recv = length - total_recv;
+        if (to_recv > 1048576) to_recv = 1048576; // Clamp to 1MB chunks to prevent 32-bit cast overflow
+        int recvd = recv(context->socket_fd, (char*)data + total_recv, (int)to_recv, 0);
         if (recvd <= 0) {
 #ifdef _WIN32
             if (recvd < 0 && WSAGetLastError() == WSAETIMEDOUT) {
