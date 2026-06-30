@@ -347,14 +347,13 @@ static bool input_hydrasdr_initialize(ModuleContext* context) {
         goto cleanup;
     }
 
-    uint32_t* rates = (uint32_t*)malloc(num_rates * sizeof(uint32_t));
+    uint32_t* rates = (uint32_t*)mem_arena_alloc(&app->pipeline.setup_arena, num_rates * sizeof(uint32_t), false);
     if (!rates) {
         goto cleanup;
     }
 
     result = hydrasdr_get_samplerates(private_data->dev, rates, num_rates);
     if (result != HYDRASDR_SUCCESS) {
-        free(rates);
         log_error("Failed to get supported sample rates: %s (%d)", hydrasdr_error_name(result), result);
         goto cleanup;
     }
@@ -374,10 +373,8 @@ static bool input_hydrasdr_initialize(ModuleContext* context) {
         for (uint32_t i = 0; i < num_rates; i++) {
             log_error("  %u Hz", rates[i]);
         }
-        free(rates);
         goto cleanup;
     }
-    free(rates);
 
     // Determine sample format and packing
     // Default assumption
@@ -457,10 +454,9 @@ static void* input_hydrasdr_push_samples_to_queue(ModuleContext* context, QueueS
 
     uint32_t sr_count = 0;
     hydrasdr_get_samplerates(private_data->dev, &sr_count, 0);
-    uint32_t* samplerates = (uint32_t*)malloc(sr_count * sizeof(uint32_t));
+    uint32_t* samplerates = (uint32_t*)mem_arena_alloc(&app->pipeline.setup_arena, sr_count * sizeof(uint32_t), false);
     if (samplerates) {
         hydrasdr_get_samplerates(private_data->dev, samplerates, sr_count);
-        free(samplerates);
     }
 
     result = hydrasdr_set_freq(private_data->dev, (uint64_t)app->config->sdr_general.rf_freq_hz);
