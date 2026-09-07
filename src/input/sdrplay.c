@@ -129,19 +129,10 @@ static wchar_t *get_sdrplay_dll_path(void) {
   return _wcsdup(api_path_buf);
 }
 
-#define LOAD_SDRPLAY_FUNC(func_name)                                           \
-  do {                                                                         \
-    FARPROC proc =                                                             \
-        GetProcAddress(sdrplay_api.dll_handle, "sdrplay_api_" #func_name);     \
-    if (!proc) {                                                               \
-      log_fatal("Failed to load SDRplay API function: %s",                     \
-                "sdrplay_api_" #func_name);                                    \
-      FreeLibrary(sdrplay_api.dll_handle);                                     \
-      sdrplay_api.dll_handle = NULL;                                           \
-      return false;                                                            \
-    }                                                                          \
-    memcpy(&sdrplay_api.func_name, &proc, sizeof(sdrplay_api.func_name));      \
-  } while (0)
+// clang-format off
+#define LOAD_SDRPLAY_FUNC(func_name) \
+  DLL_LOAD_FUNCTION(sdrplay_api.dll_handle, sdrplay_api, "sdrplay_api_", func_name)
+// clang-format on
 
 static bool sdrplay_load_api(void) {
   if (sdrplay_api.dll_handle) {
@@ -153,14 +144,14 @@ static bool sdrplay_load_api(void) {
     return false;
   }
   log_debug("Attempting to load SDRplay API from: %ls", dll_path);
-  sdrplay_api.dll_handle = LoadLibraryW(dll_path);
+  sdrplay_api.dll_handle = platform_dll_load_w(dll_path);
   free(dll_path);
   if (!sdrplay_api.dll_handle) {
-    print_win_error("LoadLibraryW for sdrplay_api.dll", GetLastError());
     return false;
   }
-  log_debug(
-      "SDRplay API DLL loaded successfully. Loading function pointers...");
+  // clang-format off
+  log_debug("SDRplay API DLL loaded successfully. Loading function pointers...");
+  // clang-format on
   LOAD_SDRPLAY_FUNC(Open);
   LOAD_SDRPLAY_FUNC(Close);
   LOAD_SDRPLAY_FUNC(ApiVersion);

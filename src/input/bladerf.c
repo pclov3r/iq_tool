@@ -83,27 +83,15 @@ typedef struct {
 static BladerfApiFunctionPointers bladerf_api;
 
 #define LOAD_BLADERF_FUNC(func_name)                                           \
-  do {                                                                         \
-    FARPROC proc =                                                             \
-        GetProcAddress(bladerf_api.dll_handle, "bladerf_" #func_name);         \
-    if (!proc) {                                                               \
-      log_fatal("Failed to load BladeRF API function: %s",                     \
-                "bladerf_" #func_name);                                        \
-      FreeLibrary(bladerf_api.dll_handle);                                     \
-      bladerf_api.dll_handle = NULL;                                           \
-      return false;                                                            \
-    }                                                                          \
-    memcpy(&bladerf_api.func_name, &proc, sizeof(bladerf_api.func_name));      \
-  } while (0)
+  DLL_LOAD_FUNCTION(bladerf_api.dll_handle, bladerf_api, "bladerf_", func_name)
 
 static bool bladerf_load_api(void) {
   if (bladerf_api.dll_handle) {
     return true;
   }
   log_debug("Attempting to load bladeRF.dll...");
-  bladerf_api.dll_handle = LoadLibraryA("bladeRF.dll");
+  bladerf_api.dll_handle = platform_dll_load("bladeRF.dll");
   if (!bladerf_api.dll_handle) {
-    print_win_error("LoadLibraryA for bladeRF.dll", GetLastError());
     log_error("Please ensure the BladeRF driver/library is installed and its "
               "directory is in the system PATH.");
     return false;

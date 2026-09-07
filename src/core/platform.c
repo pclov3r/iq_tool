@@ -23,6 +23,7 @@
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+#include <dlfcn.h>
 #endif
 
 void platform_set_thread_priority(ThreadPriority priority,
@@ -322,5 +323,52 @@ void platform_check_cpu_features(void) {
 #endif
 #endif
 
+#endif
+}
+
+// --- Dynamic Library Loading ---
+
+void *platform_dll_load(const char *dll_path) {
+#ifdef _WIN32
+  HMODULE handle = LoadLibraryA(dll_path);
+  if (!handle) {
+    print_win_error("LoadLibraryA", GetLastError());
+  }
+  return (void *)handle;
+#else
+  void *handle = dlopen(dll_path, RTLD_NOW | RTLD_LOCAL);
+  if (!handle) {
+    log_error("dlopen failed: %s", dlerror());
+  }
+  return handle;
+#endif
+}
+
+#ifdef _WIN32
+void *platform_dll_load_w(const wchar_t *dll_path) {
+  HMODULE handle = LoadLibraryW(dll_path);
+  if (!handle) {
+    print_win_error("LoadLibraryW", GetLastError());
+  }
+  return (void *)handle;
+}
+#endif
+
+void *platform_dll_get_symbol(void *handle, const char *symbol_name) {
+  if (!handle) return NULL;
+#ifdef _WIN32
+  /* Cast through size_t to silence ISO C -Wpedantic warnings about converting function pointers to object pointers */
+  return (void *)(size_t)GetProcAddress((HMODULE)handle, symbol_name);
+#else
+  return dlsym(handle, symbol_name);
+#endif
+}
+
+void platform_dll_unload(void *handle) {
+  if (!handle) return;
+#ifdef _WIN32
+  FreeLibrary((HMODULE)handle);
+#else
+  dlclose(handle);
 #endif
 }

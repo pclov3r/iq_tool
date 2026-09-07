@@ -76,7 +76,7 @@ static bool load_nrsc5_dll(void) {
     return true;
 
   log_debug("Attempting to dynamically load the NRSC5 library...");
-  nrsc5_api.dll_handle = LoadLibraryA("libnrsc5.dll");
+  nrsc5_api.dll_handle = platform_dll_load("libnrsc5.dll");
 
   if (!nrsc5_api.dll_handle) {
     log_error("NRSC5: 'libnrsc5.dll' is missing in the program folder.");
@@ -89,17 +89,8 @@ static bool load_nrsc5_dll(void) {
     return false;
   }
 
-#define BIND_FUNC(name)                                                        \
-  do {                                                                         \
-    FARPROC proc = GetProcAddress(nrsc5_api.dll_handle, "nrsc5_" #name);       \
-    if (!proc) {                                                               \
-      log_error("Failed to bind nrsc5_" #name " from DLL.");                   \
-      FreeLibrary(nrsc5_api.dll_handle);                                       \
-      nrsc5_api.dll_handle = NULL;                                             \
-      return false;                                                            \
-    }                                                                          \
-    memcpy(&nrsc5_api.name, &proc, sizeof(nrsc5_api.name));                    \
-  } while (0)
+#define BIND_FUNC(func_name)                                                   \
+  DLL_LOAD_FUNCTION(nrsc5_api.dll_handle, nrsc5_api, "nrsc5_", func_name)
 
   BIND_FUNC(get_version);
   BIND_FUNC(open_pipe);
