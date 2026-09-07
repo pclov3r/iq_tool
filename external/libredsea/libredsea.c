@@ -38,7 +38,7 @@
 #include "rds_demodulator.h"
 #include "block_sync.h"
 #include "group_types.h"
-#include "mem_arena.h"
+#include "core/mem_arena.h"
 #include <stdlib.h>
 #include <string.h>
 

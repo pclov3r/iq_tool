@@ -101,14 +101,14 @@ macro(register_module OPTION_FLAG DESCRIPTION SUMMARY_NAME PKG_NAME SRC_FILE REQ
 endmacro()
 
 # [CLI Flag]                     [Description]                          [Summary String]          [CMake Pkg]  [C Source File]     [LibUSB]   [FastMath]   [Extra Libs]
-register_module(WITH_RTLSDR      "Enable RTL-SDR device support"        "RTL-SDR Support:    "    RtlSdr       input_rtlsdr.c      TRUE       FALSE)       # NONE
-register_module(WITH_AIRSPY      "Enable Airspy device support"         "Airspy Support:     "    Airspy       input_airspy.c      TRUE       FALSE)       # NONE
-register_module(WITH_AIRSPYHF    "Enable Airspy HF+ device support"     "Airspy HF+ Support: "    AirspyHF     input_airspyhf.c    TRUE       FALSE)       # NONE
-register_module(WITH_HYDRASDR    "Enable HydraSDR device support"       "HydraSDR Support:   "    HydraSDR     input_hydrasdr.c    TRUE       FALSE)       # NONE
-register_module(WITH_SDRPLAY     "Enable SDRplay device support"        "SDRplay Support:    "    SDRplay      input_sdrplay.c     FALSE      FALSE)       # NONE
-register_module(WITH_HACKRF      "Enable HackRF device support"         "HackRF Support:     "    HackRF       input_hackrf.c      TRUE       FALSE)       # NONE
-register_module(WITH_BLADERF     "Enable BladeRF device support"        "BladeRF Support:    "    BladeRF      input_bladerf.c     TRUE       FALSE)       # NONE
-register_module(WITH_NRSC5       "Enable NRSC5 output support"          "NRSC5 Support:      "    NRSC5        output_nrsc5.c      FALSE      TRUE         "${CMAKE_DL_LIBS}")
+register_module(WITH_RTLSDR      "Enable RTL-SDR device support"        "RTL-SDR Support:    "    RtlSdr       input/rtlsdr.c      TRUE       FALSE)       # NONE
+register_module(WITH_AIRSPY      "Enable Airspy device support"         "Airspy Support:     "    Airspy       input/airspy.c      TRUE       FALSE)       # NONE
+register_module(WITH_AIRSPYHF    "Enable Airspy HF+ device support"     "Airspy HF+ Support: "    AirspyHF     input/airspyhf.c    TRUE       FALSE)       # NONE
+register_module(WITH_HYDRASDR    "Enable HydraSDR device support"       "HydraSDR Support:   "    HydraSDR     input/hydrasdr.c    TRUE       FALSE)       # NONE
+register_module(WITH_SDRPLAY     "Enable SDRplay device support"        "SDRplay Support:    "    SDRplay      input/sdrplay.c     FALSE      FALSE)       # NONE
+register_module(WITH_HACKRF      "Enable HackRF device support"         "HackRF Support:     "    HackRF       input/hackrf.c      TRUE       FALSE)       # NONE
+register_module(WITH_BLADERF     "Enable BladeRF device support"        "BladeRF Support:    "    BladeRF      input/bladerf.c     TRUE       FALSE)       # NONE
+register_module(WITH_NRSC5       "Enable NRSC5 output support"          "NRSC5 Support:      "    NRSC5        output/nrsc5.c      FALSE      TRUE         "${CMAKE_DL_LIBS}")
 
 if(ANY_MODULE_REQUIRES_LIBUSB)
     find_package(LibUSB REQUIRED)
@@ -169,6 +169,7 @@ find_package(Threads REQUIRED)
 # Sources
 #=======================================================================
 include_directories(include)
+include_directories(src)
 include_directories(external/log.c)
 include_directories(external/miniaudio)
 include_directories(external/argparse)
@@ -180,21 +181,21 @@ include_directories(${Expat_INCLUDE_DIRS})
 
 set(COMPILE_WITH_FFAST_MATH_SOURCES
     ${MODULE_FFAST_MATH_SOURCES}
-    src/dsp_agc.c
-    src/dsp_filter.c
-    src/dsp_iq_correct.c
-    src/output_am.c
-    src/output_nfm.c
-    src/output_noaawx.c
-    src/output_wfm.c
-    src/sample_conversion_functions.c
-    src/interleave_functions.c
+    src/dsp/agc.c
+    src/dsp/filter.c
+    src/dsp/iq_correct.c
+    src/output/am.c
+    src/output/nfm.c
+    src/output/noaawx.c
+    src/output/wfm.c
+    src/core/sample_conversion_functions.c
+    src/core/interleave_functions.c
     external/libredsea/rds_demodulator.c
 )
 
 set(NETWORK_SOURCES
-    src/networking.c
-    src/input_spyserver_client.c
+    src/core/networking.c
+    src/input/spyserver_client.c
 )
 
 set(OTHER_SOURCES
@@ -205,41 +206,41 @@ set(OTHER_SOURCES
     external/libredsea/libredsea_utilities.c
     external/libredsea/group_decoder.c
     external/libredsea/tmc_events.c
-    src/audio_output_functions.c
-    src/cli.c
-    src/keyboard_handler.c
-    src/config.c
-    src/dsp_dcblock.c
-    src/dsp_freq_shift.c
-    src/input_rawfile.c
-    src/input_stdin.c
-    src/input_wav.c
+    src/core/audio_output_functions.c
+    src/core/cli.c
+    src/core/keyboard_handler.c
+    src/core/config.c
+    src/dsp/dcblock.c
+    src/dsp/freq_shift.c
+    src/input/rawfile.c
+    src/input/stdin.c
+    src/input/wav.c
     external/log.c/log.c
-    src/main.c
-    src/mem_arena.c
+    src/core/main.c
+    src/core/mem_arena.c
     external/miniaudio/miniaudio.c
-    src/module_registry.c
-    src/output_directpipe.c
-    src/output_rawfile.c
-    src/output_stdout.c
-    src/output_wav.c
-    src/output_wav_common.c
-    src/output_wav_rf64.c
-    src/packet_serializer.c
-    src/process_chain_manager.c
-    src/process_chain_io.c
-    src/platform.c
-    src/presets_loader.c
-    src/queue.c
-    src/dsp_resampler.c
-    src/ring_buffer.c
-    src/packet_serializer.c
-    src/sample_format_table.c
-    src/signal_handler.c
-    src/thread_manager.c
-    src/utilities.c
-    src/utility_threads.c
-    src/wait_event.c
+    src/core/module_registry.c
+    src/output/directpipe.c
+    src/output/rawfile.c
+    src/output/stdout.c
+    src/output/wav.c
+    src/output/wav_common.c
+    src/output/wav_rf64.c
+    src/core/packet_serializer.c
+    src/core/process_chain_manager.c
+    src/core/process_chain_io.c
+    src/core/platform.c
+    src/core/presets_loader.c
+    src/core/queue.c
+    src/dsp/resampler.c
+    src/core/ring_buffer.c
+    src/core/packet_serializer.c
+    src/core/sample_format_table.c
+    src/core/signal_handler.c
+    src/core/thread_manager.c
+    src/core/utilities.c
+    src/core/utility_threads.c
+    src/core/wait_event.c
 )
 
 #=======================================================================

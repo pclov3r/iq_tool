@@ -1,0 +1,31 @@
+/**
+ * @file input_hackrf.h
+ */
+
+#ifndef INPUT_HACKRF_H_
+#define INPUT_HACKRF_H_
+
+#include "core/module.h"
+
+// --- Forward Declaration ---
+struct AppConfig;
+
+// --- Function Declarations ---
+
+/**
+ * @brief Returns a pointer to the InputModuleInterface struct that implements
+ *        the input source interface for HackRF device input.
+ */
+InputModuleInterface *input_hackrf_get_module_api(void);
+
+/**
+ * @brief Returns the command-line options specific to the HackRF module.
+ */
+const struct argparse_option *input_hackrf_get_cli_options(int *count);
+
+/**
+ * @brief Sets the default configuration values for the HackRF module.
+ */
+void input_hackrf_set_default_config(struct AppConfig *config);
+
+#endif // INPUT_HACKRF_H_
