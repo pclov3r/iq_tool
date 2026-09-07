@@ -34,10 +34,12 @@ static void output_wav_get_summary_info(const ModuleContext *context,
   utility_add_summary_item(info, "Output Type", "WAV");
 }
 
+// clang-format off
 static const struct argparse_option output_wav_cli_options[] = {
-    OPT_GROUP("WAV Output (wav)"),
-    OPT_GROUP("    (No module-specific options)"),
+        OPT_GROUP("WAV Output (wav)"),
+        OPT_GROUP(" (No module-specific options)"),
 };
+// clang-format on
 
 static const struct argparse_option *output_wav_get_cli_options(int *count) {
   *count = sizeof(output_wav_cli_options) / sizeof(output_wav_cli_options[0]);

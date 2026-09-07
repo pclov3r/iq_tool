@@ -33,10 +33,12 @@ static void output_wav_rf64_get_summary_info(const ModuleContext *context,
   utility_add_summary_item(info, "Output Type", "WAV-RF64");
 }
 
+// clang-format off
 static const struct argparse_option output_wav_rf64_cli_options[] = {
-    OPT_GROUP("WAV RF64 Output (wav-rf64)"),
-    OPT_GROUP("    (No module-specific options)"),
+        OPT_GROUP("WAV RF64 Output (wav-rf64)"),
+        OPT_GROUP(" (No module-specific options)"),
 };
+// clang-format on
 
 static const struct argparse_option *
 output_wav_rf64_get_cli_options(int *count) {

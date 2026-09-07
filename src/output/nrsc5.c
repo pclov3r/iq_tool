@@ -786,17 +786,14 @@ static void output_nrsc5_get_summary_info(const ModuleContext *context,
                            s_nrsc5_config.program_id + 1);
 }
 
+// clang-format off
 static const struct argparse_option output_nrsc5_cli_options[] = {
-    OPT_GROUP("NRSC5 Output (nrsc5)"),
-    OPT_STRING(0, "nrsc5-band", &s_nrsc5_config.band_str,
-               "Set radio band {fm|am}. (Default: auto-detected)", NULL, 0, 0),
-    OPT_INTEGER(0, "nrsc5-program", &s_nrsc5_config.program_id,
-                "Select initial HD program/subchannel (0-7). (Required) Press "
-                "keys 0-7 during playback to switch.",
-                NULL, 0, 0),
-    OPT_STRING(0, "nrsc5-aas-dir", &s_nrsc5_config.aas_dir_arg,
-               "Directory to dump AAS files (logos, maps, etc).", NULL, 0, 0),
+        OPT_GROUP("NRSC5 Output (nrsc5)"),
+        OPT_STRING(0, "nrsc5-band", &s_nrsc5_config.band_str, "Set radio band {fm|am}. (Default: auto-detected)", NULL, 0, 0),
+        OPT_INTEGER(0, "nrsc5-program", &s_nrsc5_config.program_id, "Select initial HD program/subchannel (0-7). (Required) Press " "keys 0-7 during playback to switch.", NULL, 0, 0),
+        OPT_STRING(0, "nrsc5-aas-dir", &s_nrsc5_config.aas_dir_arg, "Directory to dump AAS files (logos, maps, etc).", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *output_nrsc5_get_cli_options(int *count) {
   *count =

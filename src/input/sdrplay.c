@@ -252,38 +252,22 @@ static void input_sdrplay_set_default_config(AppConfig *config) {
   s_sdrplay_config.notch_am = false;
 }
 
+// clang-format off
 static const struct argparse_option input_sdrplay_cli_options[] = {
-    OPT_GROUP("SDRplay Input (sdrplay)"),
-    OPT_FLOAT(
-        0, "sdrplay-bandwidth", &s_sdrplay_config.sdrplay_bandwidth_hz_arg,
-        "Set analog bandwidth in Hz. (Optional, Default: 1.536e6)", NULL, 0, 0),
-    OPT_INTEGER(
-        0, "sdrplay-device-index", &s_sdrplay_config.device_index,
-        "Select specific SDRplay device by index (0-indexed). (Default: 0)",
-        NULL, 0, 0),
-    OPT_INTEGER(0, "sdrplay-lna-state", &s_sdrplay_config.sdrplay_lna_state_arg,
-                "Set LNA state (0=min gain). Disables AGC.", NULL, 0, 0),
-    OPT_INTEGER(0, "sdrplay-if-gain", &s_sdrplay_config.sdrplay_if_gain_db_arg,
-                "Set IF gain in dB (fine gain, e.g., -20, -35, -59). (Default: "
-                "-50 if a manual LNA state is specified.) Disables AGC.",
-                NULL, 0, 0),
-    OPT_FLOAT(0, "sdrplay-lna-state-target", &s_sdrplay_config.lna_state_target,
-              "Target a percentage (0-100) of the maximum LNA state. "
-              "Automatically rounds down to the nearest LNA state.",
-              NULL, 0, 0),
-    OPT_BOOLEAN(0, "sdrplay-lna-round-up", &s_sdrplay_config.lna_round_up,
-                "Force LNA state target to round UP instead of down.", NULL, 0,
-                0),
-    OPT_STRING(0, "sdrplay-antenna", &s_sdrplay_config.antenna_port_name,
-               "Select antenna port (device-specific).", NULL, 0, 0),
+        OPT_GROUP("SDRplay Input (sdrplay)"),
+        OPT_FLOAT( 0, "sdrplay-bandwidth", &s_sdrplay_config.sdrplay_bandwidth_hz_arg, "Set analog bandwidth in Hz. (Optional, Default: 1.536e6)", NULL, 0, 0),
+        OPT_INTEGER( 0, "sdrplay-device-index", &s_sdrplay_config.device_index, "Select specific SDRplay device by index (0-indexed). (Default: 0)", NULL, 0, 0),
+        OPT_INTEGER(0, "sdrplay-lna-state", &s_sdrplay_config.sdrplay_lna_state_arg, "Set LNA state (0=min gain). Disables AGC.", NULL, 0, 0),
+        OPT_INTEGER(0, "sdrplay-if-gain", &s_sdrplay_config.sdrplay_if_gain_db_arg, "Set IF gain in dB (fine gain, e.g., -20, -35, -59). (Default: " "-50 if a manual LNA state is specified.) Disables AGC.", NULL, 0, 0),
+        OPT_FLOAT(0, "sdrplay-lna-state-target", &s_sdrplay_config.lna_state_target, "Target a percentage (0-100) of the maximum LNA state. " "Automatically rounds down to the nearest LNA state.", NULL, 0, 0),
+        OPT_BOOLEAN(0, "sdrplay-lna-round-up", &s_sdrplay_config.lna_round_up, "Force LNA state target to round UP instead of down.", NULL, 0, 0),
+        OPT_STRING(0, "sdrplay-antenna", &s_sdrplay_config.antenna_port_name, "Select antenna port (device-specific).", NULL, 0, 0),
     // Notch Filter Options
-    OPT_BOOLEAN(0, "sdrplay-notch-fm", &s_sdrplay_config.notch_fm,
-                "Enable FM Broadcast Notch Filter.", NULL, 0, 0),
-    OPT_BOOLEAN(0, "sdrplay-notch-dab", &s_sdrplay_config.notch_dab,
-                "Enable DAB Broadcast Notch Filter.", NULL, 0, 0),
-    OPT_BOOLEAN(0, "sdrplay-notch-am", &s_sdrplay_config.notch_am,
-                "Enable MW/AM Notch Filter (RSPduo Tuner A only).", NULL, 0, 0),
+        OPT_BOOLEAN(0, "sdrplay-notch-fm", &s_sdrplay_config.notch_fm, "Enable FM Broadcast Notch Filter.", NULL, 0, 0),
+        OPT_BOOLEAN(0, "sdrplay-notch-dab", &s_sdrplay_config.notch_dab, "Enable DAB Broadcast Notch Filter.", NULL, 0, 0),
+        OPT_BOOLEAN(0, "sdrplay-notch-am", &s_sdrplay_config.notch_am, "Enable MW/AM Notch Filter (RSPduo Tuner A only).", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *input_sdrplay_get_cli_options(int *count) {
   *count =

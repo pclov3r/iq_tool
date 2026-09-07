@@ -685,16 +685,14 @@ static bool _probe_split_sequence(WavInputContext *wav_input,
   return true;
 }
 
+// clang-format off
 static const struct argparse_option wav_cli_options[] = {
-    OPT_GROUP("WAV Input (wav)"),
-    OPT_FLOAT(0, "wav-center-target-freq", &s_wav_config.center_target_hz_arg,
-              "Shift signal to a new target center frequency (e.g., 97.3e6)",
-              NULL, 0, 0),
-    OPT_BOOLEAN(0, "wav-read-split-files", &s_wav_config.wav_read_split,
-                "Enable sequential reading of split WAV files.", NULL, 0, 0),
-    OPT_BOOLEAN(0, "wav-repeat", &s_wav_config.wav_repeat,
-                "Loop the WAV input file or sequence.", NULL, 0, 0),
+        OPT_GROUP("WAV Input (wav)"),
+        OPT_FLOAT(0, "wav-center-target-freq", &s_wav_config.center_target_hz_arg, "Shift signal to a new target center frequency (e.g., 97.3e6)", NULL, 0, 0),
+        OPT_BOOLEAN(0, "wav-read-split-files", &s_wav_config.wav_read_split, "Enable sequential reading of split WAV files.", NULL, 0, 0),
+        OPT_BOOLEAN(0, "wav-repeat", &s_wav_config.wav_repeat, "Loop the WAV input file or sequence.", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *input_wav_get_cli_options(int *count) {
   *count = sizeof(wav_cli_options) / sizeof(wav_cli_options[0]);

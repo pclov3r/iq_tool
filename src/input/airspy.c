@@ -94,34 +94,19 @@ static void input_airspy_set_default_config(AppConfig *config) {
   s_airspy_config.airspy_vga_gain_arg = AIRSPY_DEFAULT_VGA_GAIN;
 }
 
+// clang-format off
 static const struct argparse_option input_airspy_cli_options[] = {
-    OPT_GROUP("Airspy Input (airspy)"),
-    OPT_STRING(
-        0, "airspy-gain-mode", &s_airspy_config.gain_mode,
-        "Gain mode: 'linearity', 'sensitivity', or 'manual'. (Default: AGC)",
-        NULL, 0, 0),
-    OPT_INTEGER(
-        0, "airspy-gain-value", &s_airspy_config.airspy_gain_value_arg,
-        "Gain value for linearity/sensitivity modes (0-21). (Default: 10)",
-        NULL, 0, 0),
-    OPT_INTEGER(0, "airspy-lna-gain", &s_airspy_config.airspy_lna_gain_arg,
-                "Manual LNA gain (0-14). Only with manual mode. (Default: 5)",
-                NULL, 0, 0),
-    OPT_INTEGER(0, "airspy-mixer-gain", &s_airspy_config.airspy_mixer_gain_arg,
-                "Manual Mixer gain (0-15). Only with manual mode. (Default: 5)",
-                NULL, 0, 0),
-    OPT_INTEGER(0, "airspy-vga-gain", &s_airspy_config.airspy_vga_gain_arg,
-                "Manual VGA gain (0-15). Only with manual mode. (Default: 5)",
-                NULL, 0, 0),
-    OPT_STRING(0, "airspy-sample-format", &s_airspy_config.sample_format,
-               "Sample format: 'cf32' or 'cs16'. (Default: cs16)", NULL, 0, 0),
-    OPT_INTEGER(
-        0, "airspy-serial", (int *)&s_airspy_config.serial_number,
-        "Select device by serial number (hex, e.g., 0x123456789ABCDEF0).", NULL,
-        0, 0),
-    OPT_BOOLEAN(0, "airspy-packing", &s_airspy_config.packing_enabled,
-                "Enable bit-packing mode (12-bit samples).", NULL, 0, 0),
+        OPT_GROUP("Airspy Input (airspy)"),
+        OPT_STRING( 0, "airspy-gain-mode", &s_airspy_config.gain_mode, "Gain mode: 'linearity', 'sensitivity', or 'manual'. (Default: AGC)", NULL, 0, 0),
+        OPT_INTEGER( 0, "airspy-gain-value", &s_airspy_config.airspy_gain_value_arg, "Gain value for linearity/sensitivity modes (0-21). (Default: 10)", NULL, 0, 0),
+        OPT_INTEGER(0, "airspy-lna-gain", &s_airspy_config.airspy_lna_gain_arg, "Manual LNA gain (0-14). Only with manual mode. (Default: 5)", NULL, 0, 0),
+        OPT_INTEGER(0, "airspy-mixer-gain", &s_airspy_config.airspy_mixer_gain_arg, "Manual Mixer gain (0-15). Only with manual mode. (Default: 5)", NULL, 0, 0),
+        OPT_INTEGER(0, "airspy-vga-gain", &s_airspy_config.airspy_vga_gain_arg, "Manual VGA gain (0-15). Only with manual mode. (Default: 5)", NULL, 0, 0),
+        OPT_STRING(0, "airspy-sample-format", &s_airspy_config.sample_format, "Sample format: 'cf32' or 'cs16'. (Default: cs16)", NULL, 0, 0),
+        OPT_INTEGER( 0, "airspy-serial", (int *)&s_airspy_config.serial_number, "Select device by serial number (hex, e.g., 0x123456789ABCDEF0).", NULL, 0, 0),
+        OPT_BOOLEAN(0, "airspy-packing", &s_airspy_config.packing_enabled, "Enable bit-packing mode (12-bit samples).", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *input_airspy_get_cli_options(int *count) {
   *count =

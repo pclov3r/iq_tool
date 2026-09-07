@@ -215,30 +215,17 @@ static void input_bladerf_set_default_config(AppConfig *config) {
   s_bladerf_config.bandwidth_hz = BLADERF_DEFAULT_BANDWIDTH_HZ;
 }
 
+// clang-format off
 static const struct argparse_option input_bladerf_cli_options[] = {
-    OPT_GROUP("BladeRF Input (bladerf)"),
-    OPT_INTEGER(
-        0, "bladerf-device-index", &s_bladerf_config.device_index,
-        "Select specific BladeRF device by index (0-indexed). (Default: 0)",
-        NULL, 0, 0),
-    OPT_STRING(0, "bladerf-load-fpga", &s_bladerf_config.fpga_file_path,
-               "Load an FPGA bitstream from the specified file.", NULL, 0, 0),
-    OPT_FLOAT(
-        0, "bladerf-bandwidth", &s_bladerf_config.bladerf_bandwidth_hz_arg,
-        "Set analog bandwidth in Hz. (Not applicable in 8-bit high-speed mode)",
-        NULL, 0, 0),
-    OPT_INTEGER(0, "bladerf-gain", &s_bladerf_config.bladerf_gain_arg,
-                "Set overall manual gain in dB. Disables AGC.", NULL, 0, 0),
-    OPT_INTEGER(
-        0, "bladerf-channel", &s_bladerf_config.channel,
-        "For BladeRF 2.0: Select RX channel 0 (RXA) or 1 (RXB). (Default: 0)",
-        NULL, 0, 0),
-    OPT_INTEGER(0, "bladerf-bit-depth", &s_bladerf_config.bit_depth_arg,
-                "Set capture bit depth {8|12}. 8-bit mode is for BladeRF 2.0 "
-                "only. (Default: 12, auto-switches to 8 for rates > 61.44 MHz "
-                "on BladeRF 2.0)",
-                NULL, 0, 0),
+        OPT_GROUP("BladeRF Input (bladerf)"),
+        OPT_INTEGER( 0, "bladerf-device-index", &s_bladerf_config.device_index, "Select specific BladeRF device by index (0-indexed). (Default: 0)", NULL, 0, 0),
+        OPT_STRING(0, "bladerf-load-fpga", &s_bladerf_config.fpga_file_path, "Load an FPGA bitstream from the specified file.", NULL, 0, 0),
+        OPT_FLOAT( 0, "bladerf-bandwidth", &s_bladerf_config.bladerf_bandwidth_hz_arg, "Set analog bandwidth in Hz. (Not applicable in 8-bit high-speed mode)", NULL, 0, 0),
+        OPT_INTEGER(0, "bladerf-gain", &s_bladerf_config.bladerf_gain_arg, "Set overall manual gain in dB. Disables AGC.", NULL, 0, 0),
+        OPT_INTEGER( 0, "bladerf-channel", &s_bladerf_config.channel, "For BladeRF 2.0: Select RX channel 0 (RXA) or 1 (RXB). (Default: 0)", NULL, 0, 0),
+        OPT_INTEGER(0, "bladerf-bit-depth", &s_bladerf_config.bit_depth_arg, "Set capture bit depth {8|12}. 8-bit mode is for BladeRF 2.0 " "only. (Default: 12, auto-switches to 8 for rates > 61.44 MHz " "on BladeRF 2.0)", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *input_bladerf_get_cli_options(int *count) {
   *count =

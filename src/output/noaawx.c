@@ -4180,20 +4180,15 @@ static void output_noaawx_get_summary_info(const ModuleContext *context,
   }
 }
 
+// clang-format off
 static const struct argparse_option output_noaawx_cli_options[] = {
-    OPT_GROUP("NOAAWX Output (noaawx)"),
-    OPT_FLOAT(0, "noaawx-gain", &s_noaawx_config.gain,
-              "Audio gain (default: 1.0)", NULL, 0, 0),
-    OPT_BOOLEAN(0, "noaawx-no-nfm", &s_noaawx_config.audio_in,
-                "Bypass FM Demodulator and process input as direct audio.",
-                NULL, 0, 0),
-    OPT_BOOLEAN(0, "noaawx-no-alert-tone", &s_noaawx_config.no_alert_tone,
-                "Disable the alert tone on SAME alert received.", NULL, 0, 0),
-    OPT_BOOLEAN(
-        0, "noaawx-standby", &s_noaawx_config.standby,
-        "Mute audio until a SAME alert is received, then mute again after EOM.",
-        NULL, 0, 0),
+        OPT_GROUP("NOAAWX Output (noaawx)"),
+        OPT_FLOAT(0, "noaawx-gain", &s_noaawx_config.gain, "Audio gain (default: 1.0)", NULL, 0, 0),
+        OPT_BOOLEAN(0, "noaawx-no-nfm", &s_noaawx_config.audio_in, "Bypass FM Demodulator and process input as direct audio.", NULL, 0, 0),
+        OPT_BOOLEAN(0, "noaawx-no-alert-tone", &s_noaawx_config.no_alert_tone, "Disable the alert tone on SAME alert received.", NULL, 0, 0),
+        OPT_BOOLEAN( 0, "noaawx-standby", &s_noaawx_config.standby, "Mute audio until a SAME alert is received, then mute again after EOM.", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *output_noaawx_get_cli_options(int *count) {
   *count =

@@ -220,15 +220,13 @@ static void dsp_freq_shift_reset_api(void *state) {
 static double s_frequency_shift_hz = 0.0;
 static bool s_shift_after_resample = false;
 
+// clang-format off
 static const struct argparse_option cli_options[] = {
-    OPT_GROUP("Frequency Shift Options"),
-    OPT_DOUBLE(0, "freq-shift", &s_frequency_shift_hz,
-               "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0,
-               0),
-    OPT_BOOLEAN(0, "shift-after-resample", &s_shift_after_resample,
-                "Apply frequency shift AFTER resampling (default is before)",
-                NULL, 0, 0),
+        OPT_GROUP("Frequency Shift Options"),
+        OPT_DOUBLE(0, "freq-shift", &s_frequency_shift_hz, "Apply a direct frequency shift in Hz (e.g., -100e3)", NULL, 0, 0),
+        OPT_BOOLEAN(0, "shift-after-resample", &s_shift_after_resample, "Apply frequency shift AFTER resampling (default is before)", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *
 dsp_freq_shift_get_cli_options(int *count) {

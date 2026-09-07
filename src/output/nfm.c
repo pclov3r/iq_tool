@@ -337,22 +337,16 @@ static void output_nfm_get_summary_info(const ModuleContext *context,
                            s_nfm_config.squelch_snr);
 }
 
+// clang-format off
 static const struct argparse_option output_nfm_cli_options[] = {
-    OPT_GROUP("NFM Output (nfm)"),
-    OPT_FLOAT(0, "nfm-gain", &s_nfm_config.gain, "Audio gain (default: 1.0)",
-              NULL, 0, 0),
-    OPT_FLOAT(0, "nfm-squelch", &s_nfm_config.squelch_snr,
-              "Squelch SNR threshold in dB (default: 10.0)", NULL, 0, 0),
-    OPT_BOOLEAN(
-        0, "nfm-narrow", &s_nfm_config.is_narrow,
-        "Enable Narrow mode (2.5kHz dev). Default is Standard (5kHz dev).",
-        NULL, 0, 0),
-    OPT_BOOLEAN(0, "nfm-no-squelch", &s_nfm_config.squelch_disabled,
-                "Disable squelch (force open audio)", NULL, 0, 0),
-    OPT_BOOLEAN(0, "nfm-no-discriminator-filter",
-                &s_nfm_config.disable_discriminator_filter,
-                "Disable the discriminator filter.", NULL, 0, 0),
+        OPT_GROUP("NFM Output (nfm)"),
+        OPT_FLOAT(0, "nfm-gain", &s_nfm_config.gain, "Audio gain (default: 1.0)", NULL, 0, 0),
+        OPT_FLOAT(0, "nfm-squelch", &s_nfm_config.squelch_snr, "Squelch SNR threshold in dB (default: 10.0)", NULL, 0, 0),
+        OPT_BOOLEAN( 0, "nfm-narrow", &s_nfm_config.is_narrow, "Enable Narrow mode (2.5kHz dev). Default is Standard (5kHz dev).", NULL, 0, 0),
+        OPT_BOOLEAN(0, "nfm-no-squelch", &s_nfm_config.squelch_disabled, "Disable squelch (force open audio)", NULL, 0, 0),
+        OPT_BOOLEAN(0, "nfm-no-discriminator-filter", &s_nfm_config.disable_discriminator_filter, "Disable the discriminator filter.", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *output_nfm_get_cli_options(int *count) {
   *count = sizeof(output_nfm_cli_options) / sizeof(output_nfm_cli_options[0]);

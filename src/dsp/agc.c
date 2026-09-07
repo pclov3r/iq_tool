@@ -282,21 +282,15 @@ static float s_baseband_agc_target = 0.0f;
 static bool s_output_agc = false;
 static float s_output_agc_target = 0.0f;
 
+// clang-format off
 static const struct argparse_option cli_options[] = {
-    OPT_GROUP("AGC Options"),
-    OPT_BOOLEAN(0, "baseband-agc", &s_baseband_agc,
-                "Enable automatic gain control on the baseband signal before "
-                "demodulation.",
-                NULL, 0, 0),
-    OPT_FLOAT(0, "baseband-agc-target", &s_baseband_agc_target,
-              "AGC target magnitude (0.0 - 1.0). (Default: 0.12)", NULL, 0, 0),
-    OPT_BOOLEAN(
-        0, "output-agc", &s_output_agc,
-        "Enable automatic gain control on the output signal before saving.",
-        NULL, 0, 0),
-    OPT_FLOAT(0, "output-agc-target", &s_output_agc_target,
-              "AGC target magnitude (0.0 - 1.0). (Default: 0.12)", NULL, 0, 0),
+        OPT_GROUP("AGC Options"),
+        OPT_BOOLEAN(0, "baseband-agc", &s_baseband_agc, "Enable automatic gain control on the baseband signal before " "demodulation.", NULL, 0, 0),
+        OPT_FLOAT(0, "baseband-agc-target", &s_baseband_agc_target, "AGC target magnitude (0.0 - 1.0). (Default: 0.12)", NULL, 0, 0),
+        OPT_BOOLEAN( 0, "output-agc", &s_output_agc, "Enable automatic gain control on the output signal before saving.", NULL, 0, 0),
+        OPT_FLOAT(0, "output-agc-target", &s_output_agc_target, "AGC target magnitude (0.0 - 1.0). (Default: 0.12)", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *dsp_agc_get_cli_options(int *count) {
   *count = sizeof(cli_options) / sizeof(cli_options[0]);

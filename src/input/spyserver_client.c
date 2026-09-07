@@ -200,23 +200,15 @@ typedef struct {
 } SpyServerClientContext;
 
 // --- CLI Options ---
+// clang-format off
 static const struct argparse_option input_spyserver_client_cli_options[] = {
-    OPT_GROUP("SpyServer Client Input (spyserver-client)"),
-    OPT_STRING(0, "spyserver-client-host", &s_spyserver_client_config.hostname,
-               "Hostname or IP of the spyserver instance (Required).", NULL, 0,
-               0),
-    OPT_INTEGER(0, "spyserver-client-port", &s_spyserver_client_config.port,
-                "Port number of the spyserver instance (Required).", NULL, 0,
-                0),
-    OPT_INTEGER(0, "spyserver-client-gain", &s_spyserver_client_config.gain,
-                "Set manual gain. Disables AGC. (Ignored on servers without "
-                "gain control)",
-                NULL, 0, 0),
-    OPT_STRING(0, "spyserver-client-sample-format",
-               &s_spyserver_client_config.sample_format_str,
-               "Select sample format {cu8|cs16|cs24|cf32}. Default is cu8.",
-               NULL, 0, 0),
+        OPT_GROUP("SpyServer Client Input (spyserver-client)"),
+        OPT_STRING(0, "spyserver-client-host", &s_spyserver_client_config.hostname, "Hostname or IP of the spyserver instance (Required).", NULL, 0, 0),
+        OPT_INTEGER(0, "spyserver-client-port", &s_spyserver_client_config.port, "Port number of the spyserver instance (Required).", NULL, 0, 0),
+        OPT_INTEGER(0, "spyserver-client-gain", &s_spyserver_client_config.gain, "Set manual gain. Disables AGC. (Ignored on servers without " "gain control)", NULL, 0, 0),
+        OPT_STRING(0, "spyserver-client-sample-format", &s_spyserver_client_config.sample_format_str, "Select sample format {cu8|cs16|cs24|cf32}. Default is cu8.", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *input_spyserver_client_get_cli_options(int *count) {
   *count = sizeof(input_spyserver_client_cli_options) /

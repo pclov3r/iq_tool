@@ -121,10 +121,12 @@ static void output_rawfile_get_summary_info(const ModuleContext *context,
   utility_add_summary_item(info, "Output Type", "RAW File");
 }
 
+// clang-format off
 static const struct argparse_option output_rawfile_cli_options[] = {
-    OPT_GROUP("RAW File Output (rawfile)"),
-    OPT_GROUP("    (No module-specific options)"),
+        OPT_GROUP("RAW File Output (rawfile)"),
+        OPT_GROUP(" (No module-specific options)"),
 };
+// clang-format on
 
 static const struct argparse_option *
 output_rawfile_get_cli_options(int *count) {

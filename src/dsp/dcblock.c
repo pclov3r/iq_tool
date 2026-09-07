@@ -99,12 +99,12 @@ static void dcblock_cleanup(void *state) { dc_block_destroy(state); }
 
 static bool s_enable_dc_block = false;
 
+// clang-format off
 static const struct argparse_option cli_options[] = {
-    OPT_GROUP("DC Block Options"),
-    OPT_BOOLEAN(0, "dc-block", &s_enable_dc_block,
-                "(Optional) Enable DC offset removal (high-pass filter).", NULL,
-                0, 0),
+        OPT_GROUP("DC Block Options"),
+        OPT_BOOLEAN(0, "dc-block", &s_enable_dc_block, "(Optional) Enable DC offset removal (high-pass filter).", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *dsp_dcblock_get_cli_options(int *count) {
   *count = sizeof(cli_options) / sizeof(cli_options[0]);

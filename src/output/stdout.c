@@ -81,10 +81,12 @@ static void output_stdout_get_summary_info(const ModuleContext *context,
   utility_add_summary_item(info, "Output Type", "stdout");
 }
 
+// clang-format off
 static const struct argparse_option output_stdout_cli_options[] = {
-    OPT_GROUP("Standard Output (stdout)"),
-    OPT_GROUP("    (No module-specific options)"),
+        OPT_GROUP("Standard Output (stdout)"),
+        OPT_GROUP(" (No module-specific options)"),
 };
+// clang-format on
 
 static const struct argparse_option *output_stdout_get_cli_options(int *count) {
   *count =

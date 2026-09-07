@@ -521,18 +521,14 @@ static void output_am_get_summary_info(const ModuleContext *context,
                            s_am_config.audio_cutoff);
 }
 
+// clang-format off
 static const struct argparse_option output_am_cli_options[] = {
-    OPT_GROUP("AM Output (am)"),
-    OPT_FLOAT(0, "am-gain", &s_am_config.gain_val,
-              "Set audio output gain (linear).", NULL, 0, 0),
-    OPT_FLOAT(0, "am-cutoff", &s_am_config.audio_cutoff,
-              "Set audio lowpass filter cutoff in Hz (default: 5000).", NULL, 0,
-              0),
-    OPT_BOOLEAN(
-        0, "am-envelope", &s_am_config.force_envelope,
-        "Disable Synchronous AM (PLL) and use Magnitude Envelope Detection.",
-        NULL, 0, 0),
+        OPT_GROUP("AM Output (am)"),
+        OPT_FLOAT(0, "am-gain", &s_am_config.gain_val, "Set audio output gain (linear).", NULL, 0, 0),
+        OPT_FLOAT(0, "am-cutoff", &s_am_config.audio_cutoff, "Set audio lowpass filter cutoff in Hz (default: 5000).", NULL, 0, 0),
+        OPT_BOOLEAN( 0, "am-envelope", &s_am_config.force_envelope, "Disable Synchronous AM (PLL) and use Magnitude Envelope Detection.", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *output_am_get_cli_options(int *count) {
   *count = sizeof(output_am_cli_options) / sizeof(output_am_cli_options[0]);

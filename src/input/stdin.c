@@ -39,15 +39,13 @@ typedef struct {
   size_t rx_buffer_size;
 } StdinContext;
 
+// clang-format off
 static const struct argparse_option input_stdin_cli_options[] = {
-    OPT_GROUP("Standard Input (stdin)"),
-    OPT_FLOAT(0, "stdin-input-sample-rate",
-              &s_stdin_config.input_stdin_sample_rate_hz_arg,
-              "(Required) The sample rate of the stdin stream in Hz.", NULL, 0,
-              0),
-    OPT_STRING(0, "stdin-input-sample-format", &s_stdin_config.format_str,
-               "(Required) The sample format of the stdin stream.", NULL, 0, 0),
+        OPT_GROUP("Standard Input (stdin)"),
+        OPT_FLOAT(0, "stdin-input-sample-rate", &s_stdin_config.input_stdin_sample_rate_hz_arg, "(Required) The sample rate of the stdin stream in Hz.", NULL, 0, 0),
+        OPT_STRING(0, "stdin-input-sample-format", &s_stdin_config.format_str, "(Required) The sample format of the stdin stream.", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *input_stdin_get_cli_options(int *count) {
   *count = sizeof(input_stdin_cli_options) / sizeof(input_stdin_cli_options[0]);

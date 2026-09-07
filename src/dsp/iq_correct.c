@@ -731,12 +731,12 @@ static void dsp_iq_correct_cleanup(void *state) {
 
 static bool s_enable_iq_correction = false;
 
+// clang-format off
 static const struct argparse_option cli_options[] = {
-    OPT_GROUP("I/Q Correction Options"),
-    OPT_BOOLEAN(0, "iq-correction", &s_enable_iq_correction,
-                "(Optional) Enable automatic I/Q imbalance correction.", NULL,
-                0, 0),
+        OPT_GROUP("I/Q Correction Options"),
+        OPT_BOOLEAN(0, "iq-correction", &s_enable_iq_correction, "(Optional) Enable automatic I/Q imbalance correction.", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *
 dsp_iq_correct_get_cli_options(int *count) {

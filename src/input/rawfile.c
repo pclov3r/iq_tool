@@ -52,17 +52,14 @@ typedef struct {
   bool repeat_enabled; // Loop state
 } RawfileInputContext;
 
+// clang-format off
 static const struct argparse_option input_rawfile_cli_options[] = {
-    OPT_GROUP("Raw File Input (rawfile)"),
-    OPT_FLOAT(0, "rawfile-input-sample-rate",
-              &s_rawfile_config.raw_file_sample_rate_hz_arg,
-              "(Required) The sample rate of the RAW input file.", NULL, 0, 0),
-    OPT_STRING(0, "rawfile-input-sample-format", &s_rawfile_config.format_str,
-               "(Required) The sample format of the RAW input file.", NULL, 0,
-               0),
-    OPT_BOOLEAN(0, "rawfile-repeat", &s_rawfile_config.repeat_enabled,
-                "Loop the RAW input file.", NULL, 0, 0),
+        OPT_GROUP("Raw File Input (rawfile)"),
+        OPT_FLOAT(0, "rawfile-input-sample-rate", &s_rawfile_config.raw_file_sample_rate_hz_arg, "(Required) The sample rate of the RAW input file.", NULL, 0, 0),
+        OPT_STRING(0, "rawfile-input-sample-format", &s_rawfile_config.format_str, "(Required) The sample format of the RAW input file.", NULL, 0, 0),
+        OPT_BOOLEAN(0, "rawfile-repeat", &s_rawfile_config.repeat_enabled, "Loop the RAW input file.", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *input_rawfile_get_cli_options(int *count) {
   *count =

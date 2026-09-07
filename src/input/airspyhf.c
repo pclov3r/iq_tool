@@ -57,24 +57,16 @@ static void input_airspyhf_set_default_config(AppConfig *config) {
   config->sdr_general.sample_rate_hz = AIRSPYHF_DEFAULT_SAMPLE_RATE;
 }
 
+// clang-format off
 static const struct argparse_option input_airspyhf_cli_options[] = {
-    OPT_GROUP("Airspy HF+ Input (airspyhf)"),
-    OPT_STRING(0, "airspyhf-agc", &s_airspyhf_config.agc_mode,
-               "AGC mode: 'off', 'low', or 'high'. (Default: high)", NULL, 0,
-               0),
-    OPT_FLOAT(0, "airspyhf-attn", &s_airspyhf_config.attenuation,
-              "Attenuation in dB (0.0 to 48.0). (Default: 0.0)", NULL, 0, 0),
-    OPT_BOOLEAN(0, "airspyhf-preamp", &s_airspyhf_config.preamp_enabled,
-                "Enable LNA/PreAmp.", NULL, 0, 0),
-    OPT_INTEGER(
-        0, "airspyhf-serial", (int *)&s_airspyhf_config.serial_number,
-        "Select device by serial number (hex, e.g., 0x123456789ABCDEF0).", NULL,
-        0, 0),
-    OPT_BOOLEAN(
-        0, "airspyhf-no-lib-dsp", &s_airspyhf_config.lib_dsp_disabled,
-        "Disable library DSP processing (IQ correction, DC removal, etc).",
-        NULL, 0, 0),
+        OPT_GROUP("Airspy HF+ Input (airspyhf)"),
+        OPT_STRING(0, "airspyhf-agc", &s_airspyhf_config.agc_mode, "AGC mode: 'off', 'low', or 'high'. (Default: high)", NULL, 0, 0),
+        OPT_FLOAT(0, "airspyhf-attn", &s_airspyhf_config.attenuation, "Attenuation in dB (0.0 to 48.0). (Default: 0.0)", NULL, 0, 0),
+        OPT_BOOLEAN(0, "airspyhf-preamp", &s_airspyhf_config.preamp_enabled, "Enable LNA/PreAmp.", NULL, 0, 0),
+        OPT_INTEGER( 0, "airspyhf-serial", (int *)&s_airspyhf_config.serial_number, "Select device by serial number (hex, e.g., 0x123456789ABCDEF0).", NULL, 0, 0),
+        OPT_BOOLEAN( 0, "airspyhf-no-lib-dsp", &s_airspyhf_config.lib_dsp_disabled, "Disable library DSP processing (IQ correction, DC removal, etc).", NULL, 0, 0),
 };
+// clang-format on
 
 static const struct argparse_option *
 input_airspyhf_get_cli_options(int *count) {
