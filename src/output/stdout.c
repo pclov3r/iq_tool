@@ -6,6 +6,8 @@
 #include "log.h"
 #include "mem_arena.h"
 #include "module.h"
+#include "module_defaults.h"
+#include "module_registry.h"
 #include "signal_handler.h"
 #include "utilities.h"
 #include <errno.h>
@@ -103,6 +105,18 @@ static OutputModuleInterface s_output_stdout_api = {
 };
 
 // --- Public Getter ---
-OutputModuleInterface *output_stdout_get_module_api(void) {
-  return &s_output_stdout_api;
+
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "stdout",
+      .type = MODULE_TYPE_OUTPUT,
+      .payload = PAYLOAD_IQ,
+      .api = (void *)&s_output_stdout_api,
+      .set_default_config = NULL,
+      .get_cli_options = output_stdout_get_cli_options,
+      .requires_input_path = false,
+      .requires_output_path = false,
+  };
+  module_registry_add(&m);
 }

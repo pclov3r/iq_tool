@@ -1,4 +1,6 @@
 #include "app_context.h"
+#include "module_defaults.h"
+#include "module_registry.h"
 #include <stdlib.h>
 /**
  * @file frequency_shift.c
@@ -268,6 +270,12 @@ static const DspModuleInterface dsp_freq_shift_api = {
     .get_cli_options = dsp_freq_shift_get_cli_options,
 };
 
-const struct DspModuleInterface *dsp_freq_shift_get_api(void) {
-  return &dsp_freq_shift_api;
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "freq_shift",
+      .type = MODULE_TYPE_DSP,
+      .api = (void *)&dsp_freq_shift_api,
+  };
+  module_registry_add(&m);
 }

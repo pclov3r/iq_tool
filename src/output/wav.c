@@ -8,6 +8,8 @@
  * size limit; for larger files, the 'wav-rf64' output module should be used.
  */
 
+#include "module_defaults.h"
+#include "module_registry.h"
 #include "output/wav_common.h" // Include the shared implementation
 #include "utilities.h"         // For utility_add_summary_item
 #include <sndfile.h>           // For the SF_FORMAT_WAV constant
@@ -65,6 +67,18 @@ static OutputModuleInterface s_output_wav_api = {
 /**
  * @brief Public getter for the WAV output module's interface.
  */
-OutputModuleInterface *output_wav_get_module_api(void) {
-  return &s_output_wav_api;
+
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "wav", // The command for the standard WAV format
+      .type = MODULE_TYPE_OUTPUT,
+      .payload = PAYLOAD_IQ,
+      .api = (void *)&s_output_wav_api,
+      .set_default_config = NULL,
+      .get_cli_options = output_wav_get_cli_options,
+      .requires_input_path = false,
+      .requires_output_path = true,
+  };
+  module_registry_add(&m);
 }

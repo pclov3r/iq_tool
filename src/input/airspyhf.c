@@ -10,6 +10,7 @@
 #include "mem_arena.h"
 #include "module.h"
 #include "module_defaults.h"
+#include "module_registry.h"
 #include "sample_format_table.h"
 #include "signal_handler.h"
 #include "utilities.h"
@@ -528,6 +529,19 @@ static InputModuleInterface s_input_airspyhf_api = {
     .validate_generic_options = input_airspyhf_validate_generic_options,
     .pre_stream_iq_correction = NULL};
 
-InputModuleInterface *input_airspyhf_get_module_api(void) {
-  return &s_input_airspyhf_api;
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "airspyhf",
+      .type = MODULE_TYPE_INPUT,
+      .default_filter_attenuation_db = AIRSPYHF_DEFAULT_FILTER_ATTENUATION_DB,
+      .api = (void *)&s_input_airspyhf_api,
+      .process_chain_mode = PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH,
+      .set_default_config = input_airspyhf_set_default_config,
+      .get_cli_options = input_airspyhf_get_cli_options,
+      .requires_input_path = false,
+      .requires_output_path = false,
+      .default_demod_audio_buffer_size = AIRSPYHF_DEMOD_AUDIO_BUFFER_SIZE,
+  };
+  module_registry_add(&m);
 }

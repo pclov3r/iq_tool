@@ -1,4 +1,6 @@
 #include "app_context.h"
+#include "module_defaults.h"
+#include "module_registry.h"
 #include <stdlib.h>
 /**
  * @file dsp/dcblock.c
@@ -133,4 +135,12 @@ static const DspModuleInterface dsp_dcblock_api = {
     .get_cli_options = dsp_dcblock_get_cli_options,
     .cleanup = dcblock_cleanup};
 
-const DspModuleInterface *dsp_dcblock_get_api(void) { return &dsp_dcblock_api; }
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "dc_block",
+      .type = MODULE_TYPE_DSP,
+      .api = (void *)&dsp_dcblock_api,
+  };
+  module_registry_add(&m);
+}

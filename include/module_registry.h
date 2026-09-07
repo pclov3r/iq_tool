@@ -65,6 +65,12 @@ const struct DspModuleInterface *get_dsp_module(const char *name,
                                                 struct MemoryArena *arena);
 
 /**
+ * @brief Registers a module dynamically at startup.
+ * @param m Pointer to a populated Module struct to copy into the registry.
+ */
+void module_registry_add(const Module *m);
+
+/**
  * @brief Finds a module by name and returns its full registration struct.
  * @param name The name of the module to find.
  * @param arena The memory arena, needed to initialize the module list on first

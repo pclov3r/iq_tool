@@ -1,4 +1,6 @@
 #include "app_context.h"
+#include "module_defaults.h"
+#include "module_registry.h"
 #include <stdlib.h>
 /**
  * @file iq_correction.c
@@ -57,10 +59,10 @@
 
 #include "app_context.h"
 #include "constants.h"
+#include "dsp/iq_correction.h"
 #include "log.h"
 #include "mem_arena.h"
 #include "module.h"
-#include "module_registry.h"
 #include "queue.h"
 #include "sample_conversion_functions.h"
 #include "utilities.h"
@@ -70,7 +72,6 @@
 #include <stdatomic.h> // Needed for byte size calculations
 #include <stdlib.h>
 #include <string.h>
-#include "dsp/iq_correction.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -773,6 +774,12 @@ static const DspModuleInterface dsp_iq_correct_api = {
     .get_cli_options = dsp_iq_correct_get_cli_options,
 };
 
-const struct DspModuleInterface *dsp_iq_correct_get_api(void) {
-  return &dsp_iq_correct_api;
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "iq_correct",
+      .type = MODULE_TYPE_DSP,
+      .api = (void *)&dsp_iq_correct_api,
+  };
+  module_registry_add(&m);
 }

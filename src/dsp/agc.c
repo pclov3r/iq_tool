@@ -1,4 +1,6 @@
 #include "app_context.h"
+#include "module_defaults.h"
+#include "module_registry.h"
 #include <stdlib.h>
 /**
  * @file agc.c
@@ -329,4 +331,12 @@ static const DspModuleInterface dsp_agc_api = {
     .get_cli_options = dsp_agc_get_cli_options,
 };
 
-const struct DspModuleInterface *dsp_agc_get_api(void) { return &dsp_agc_api; }
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "agc",
+      .type = MODULE_TYPE_DSP,
+      .api = (void *)&dsp_agc_api,
+  };
+  module_registry_add(&m);
+}

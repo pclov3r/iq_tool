@@ -26,6 +26,8 @@
 #include "constants.h"
 #include "log.h"
 #include "module.h"
+#include "module_defaults.h"
+#include "module_registry.h"
 #include "platform.h"
 #include "queue.h"
 #include "ring_buffer.h"
@@ -548,6 +550,18 @@ static OutputModuleInterface s_output_am_api = {
     .get_cli_options = output_am_get_cli_options,
 };
 
-OutputModuleInterface *output_am_get_module_api(void) {
-  return &s_output_am_api;
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "am",
+      .type = MODULE_TYPE_OUTPUT,
+      .payload = PAYLOAD_AUDIO,
+      .api = (void *)&s_output_am_api,
+      .set_default_config = NULL,
+      .get_cli_options = output_am_get_cli_options,
+      .requires_input_path = false,
+      .requires_output_path = false,
+      .module_defines_format = true,
+  };
+  module_registry_add(&m);
 }

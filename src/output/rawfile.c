@@ -5,6 +5,8 @@
 #include "app_context.h"
 #include "log.h"
 #include "module.h"
+#include "module_defaults.h"
+#include "module_registry.h"
 #include "platform.h"
 #include "signal_handler.h"
 #include "utilities.h"
@@ -143,6 +145,18 @@ static OutputModuleInterface s_output_rawfile_api = {
 };
 
 // --- Public Getter ---
-OutputModuleInterface *output_rawfile_get_module_api(void) {
-  return &s_output_rawfile_api;
+
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "rawfile",
+      .type = MODULE_TYPE_OUTPUT,
+      .payload = PAYLOAD_IQ,
+      .api = (void *)&s_output_rawfile_api,
+      .set_default_config = NULL,
+      .get_cli_options = output_rawfile_get_cli_options,
+      .requires_input_path = false,
+      .requires_output_path = true,
+  };
+  module_registry_add(&m);
 }

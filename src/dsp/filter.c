@@ -1,4 +1,6 @@
 #include "app_context.h"
+#include "module_defaults.h"
+#include "module_registry.h"
 #include <stdlib.h>
 /**
  * @file filter.c
@@ -10,7 +12,6 @@
 #include "log.h"
 #include "mem_arena.h"
 #include "module.h"
-#include "module_registry.h"
 #include "process_chain_types.h"
 #include "sample_format_table.h"
 #include "utilities.h"
@@ -946,4 +947,12 @@ static const DspModuleInterface dsp_filter_api = {
     .get_summary_info = filter_get_summary_info,
 };
 
-const DspModuleInterface *dsp_filter_get_api(void) { return &dsp_filter_api; }
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "filter",
+      .type = MODULE_TYPE_DSP,
+      .api = (void *)&dsp_filter_api,
+  };
+  module_registry_add(&m);
+}

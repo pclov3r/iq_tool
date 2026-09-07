@@ -3,6 +3,8 @@
  * @brief Implements the NRSC5 (HD Radio) output module using CF32 floats.
  */
 
+#include "module_defaults.h"
+#include "module_registry.h"
 #include <complex.h>
 #include <ctype.h>
 #include <errno.h>
@@ -841,6 +843,18 @@ static OutputModuleInterface s_output_nrsc5_api = {
     .on_keypress = output_nrsc5_on_keypress,
 };
 
-OutputModuleInterface *output_nrsc5_get_module_api(void) {
-  return &s_output_nrsc5_api;
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "nrsc5",
+      .type = MODULE_TYPE_OUTPUT,
+      .payload = PAYLOAD_AUDIO,
+      .api = (void *)&s_output_nrsc5_api,
+      .set_default_config = NULL,
+      .get_cli_options = output_nrsc5_get_cli_options,
+      .requires_input_path = false,
+      .requires_output_path = false,
+      .module_defines_format = true,
+  };
+  module_registry_add(&m);
 }

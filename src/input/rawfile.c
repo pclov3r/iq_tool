@@ -8,6 +8,8 @@
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
+#include "module_defaults.h"
+#include "module_registry.h"
 #include "platform.h"
 #include "queue.h"
 #include "ring_buffer.h"
@@ -25,8 +27,8 @@
 #ifdef _WIN32
 #define strcasecmp _stricmp
 #else
-#include <strings.h>
 #include "dsp/iq_correction.h"
+#include <strings.h>
 #endif
 
 static struct {
@@ -361,6 +363,19 @@ static InputModuleInterface s_input_rawfile_api = {
     .pre_stream_iq_correction = input_rawfile_pre_stream_iq_correction,
 };
 
-InputModuleInterface *input_rawfile_get_module_api(void) {
-  return &s_input_rawfile_api;
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "rawfile",
+      .type = MODULE_TYPE_INPUT,
+      .default_filter_attenuation_db = 0.0f,
+      .api = (void *)&s_input_rawfile_api,
+      .process_chain_mode = PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL,
+      .set_default_config = NULL,
+      .get_cli_options = input_rawfile_get_cli_options,
+      .requires_input_path = true,
+      .requires_output_path = false,
+      .default_demod_audio_buffer_size = RAWFILE_DEMOD_AUDIO_BUFFER_SIZE,
+  };
+  module_registry_add(&m);
 }

@@ -1,4 +1,6 @@
 #include "app_context.h"
+#include "module_defaults.h"
+#include "module_registry.h"
 #include <stdlib.h>
 /**
  * @file resampler.c
@@ -105,6 +107,12 @@ static const DspModuleInterface dsp_resampler_api = {
     .reset = dsp_resampler_reset_api,
     .cleanup = dsp_resampler_cleanup};
 
-const DspModuleInterface *dsp_resampler_get_api(void) {
-  return &dsp_resampler_api;
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "resampler",
+      .type = MODULE_TYPE_DSP,
+      .api = (void *)&dsp_resampler_api,
+  };
+  module_registry_add(&m);
 }

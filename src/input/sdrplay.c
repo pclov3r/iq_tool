@@ -11,6 +11,7 @@
 #include "mem_arena.h"
 #include "module.h"
 #include "module_defaults.h"
+#include "module_registry.h"
 #include "packet_serializer.h"
 #include "queue.h"
 #include "ring_buffer.h"
@@ -1149,6 +1150,19 @@ static InputModuleInterface s_input_sdrplay_api = {
     .validate_generic_options = input_sdrplay_validate_generic_options,
     .pre_stream_iq_correction = NULL};
 
-InputModuleInterface *input_sdrplay_get_module_api(void) {
-  return &s_input_sdrplay_api;
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "sdrplay",
+      .type = MODULE_TYPE_INPUT,
+      .default_filter_attenuation_db = SDRPLAY_DEFAULT_FILTER_ATTENUATION_DB,
+      .api = (void *)&s_input_sdrplay_api,
+      .process_chain_mode = PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH,
+      .set_default_config = input_sdrplay_set_default_config,
+      .get_cli_options = input_sdrplay_get_cli_options,
+      .requires_input_path = false,
+      .requires_output_path = false,
+      .default_demod_audio_buffer_size = SDRPLAY_DEMOD_AUDIO_BUFFER_SIZE,
+  };
+  module_registry_add(&m);
 }

@@ -8,6 +8,8 @@
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
+#include "module_defaults.h"
+#include "module_registry.h"
 #include "platform.h"
 #include "sample_format_table.h"
 #include "signal_handler.h"
@@ -203,6 +205,19 @@ static InputModuleInterface s_input_stdin_api = {
     .pre_stream_iq_correction = NULL,
 };
 
-InputModuleInterface *input_stdin_get_module_api(void) {
-  return &s_input_stdin_api;
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "stdin",
+      .type = MODULE_TYPE_INPUT,
+      .default_filter_attenuation_db = 0.0f,
+      .api = (void *)&s_input_stdin_api,
+      .process_chain_mode = PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL,
+      .set_default_config = NULL,
+      .get_cli_options = input_stdin_get_cli_options,
+      .requires_input_path = false,
+      .requires_output_path = false,
+      .default_demod_audio_buffer_size = STDIN_DEMOD_AUDIO_BUFFER_SIZE,
+  };
+  module_registry_add(&m);
 }

@@ -6,6 +6,8 @@
 #include "log.h"
 #include "mem_arena.h"
 #include "module.h"
+#include "module_defaults.h"
+#include "module_registry.h"
 #include "utilities.h"
 #include <errno.h>
 #include <stdbool.h>
@@ -138,6 +140,17 @@ static OutputModuleInterface s_directpipe_api = {
     .get_summary_info = output_directpipe_get_summary_info,
 };
 
-OutputModuleInterface *output_directpipe_get_module_api(void) {
-  return &s_directpipe_api;
+// --- Auto-Registration ---
+static void __attribute__((constructor)) register_module(void) {
+  Module m = {
+      .name = "directpipe",
+      .type = MODULE_TYPE_OUTPUT,
+      .payload = PAYLOAD_IQ,
+      .api = (void *)&s_directpipe_api,
+      .set_default_config = NULL,
+      .get_cli_options = output_directpipe_get_cli_options,
+      .requires_input_path = false,
+      .requires_output_path = false,
+  };
+  module_registry_add(&m);
 }
