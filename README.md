@@ -419,8 +419,8 @@ This tool is a work in progress.
     *   [ ] Improve I/Q correction algorithm stability.
     *   [ ] Refine and standardize log levels throughout the application.
     *   [ ] Add unit tests. 
-    *   [ ] General code cleanup and comment refactoring.
-    *   [ ] Improve the README.
+    *   [x] General code cleanup and comment refactoring.
+    *   [x] Improve the README.
 
 ### For Developers: Architecture & Design
 
@@ -428,7 +428,7 @@ This section provides a high-level overview of the tool's internal design for th
 
 #### The Data Flow Pipeline
 
-`iq_tool` processes data through a pipeline of concurrent, decoupled stages. Each major task runs in its own dedicated thread, using thread-safe blocking queues to hand off data from one stage to the next. To maximize throughput and minimize latency, the pipeline utilizes a pre-allocated memory pool of `SampleChunk` structures, allowing for high-speed data flow without the overhead of dynamic memory allocation.
+`iq_tool` processes data through a pipeline of concurrent, decoupled stages. Each major task runs in its own dedicated thread, using thread-safe lock-free ring buffers to hand off data from one stage to the next. To maximize throughput and minimize latency, the pipeline utilizes a pre-allocated memory arena of `SampleChunk` structures, allowing for high-speed data flow without the overhead of dynamic memory allocation.
 
 The sequence of threads and their responsibilities are as follows:
 
@@ -439,46 +439,34 @@ The sequence of threads and their responsibilities are as follows:
     The bridge between raw data and the DSP chain. 
     *   **In Live Mode:** It "sips" data from the Source Ring Buffer, parses the packet headers, and populates `SampleChunk` structures.
     *   **In File Mode:** It reads raw data directly from the disk.
-    Once a `SampleChunk` is filled with raw bytes, the Reader thread pushes it into the Pre-Processor queue.
+    Once a `SampleChunk` is filled with raw bytes, the Reader thread pushes it into the DSP queue.
 
-3.  **Pre-Processor Thread:**
-    The first DSP stage. It dequeues `SampleChunk` structures and performs operations on the raw data before it is resampled. This includes:
-    *   Converting raw integer samples into 32-bit complex floats (CF32).
-    *   Applying initial input gain.
-    *   Executing DC-offset removal and automatic I/Q imbalance correction.
-    *   Performing pre-resample frequency shifting (NCO) and filtering.
+3.  **Dynamic DSP Thread(s):**
+    The core mathematical engine. Rather than a hardcoded pipeline, `iq_tool` uses a Dynamic DSP Process Chain. During initialization, the orchestrator evaluates the user's config and constructs an array of active `DspModuleInterface` blocks (e.g. AGC, DC Block, Resampler, Filter). The DSP thread rapidly passes the `SampleChunk` through this chain. Disabled modules are physically excluded from the chain, resulting in zero-overhead routing.
 
-4.  **Resampler Thread:**
-    Handles sample rate conversion. It pulls processed CF32 buffers and uses a polyphase filter (via `liquid-dsp`) to transition the data to the user-specified target rate. It utilizes a "ping-pong" buffer strategy within the `SampleChunk` to implement zero-copy data transfer.
-
-5.  **Post-Processor Thread:**
-    The final DSP stage. It operates on the resampled complex float data to prepare it for the final output. Responsibilities include:
-    *   Applying secondary filtering or Automatic Gain Control (AGC).
-    *   Performing post-resample frequency shifting.
-    *   Converting the internal CF32 data into the final user-selected byte format (e.g., `cs16`, `cu8`).
-
-6.  **Writer Thread:**
+4.  **Writer Thread:**
     The final stage in the pipeline. It dequeues formatted buffers and writes them to the destination.
     *   **Synchronous Output (File/Stdout):** It manages backpressure; if the destination is slow, the writer will block the pipeline to ensure no data is lost.
     *   **Real-time Output (Audio/Live):** For audio modules (AM, NFM, WFM), the writer interacts with the OS sound driver. If the pipeline runs faster than real-time, the writer manages the timing to synchronize output timing.
 
-#### The Modular I/O System
+#### The Modular System
 
-The tool features a fully modular architecture designed to support additional data sources and sinks. By decoupling hardware and format-specific logic from the core DSP pipeline, `iq_tool` can easily be adapted to new SDR hardware, network protocols, or demodulation schemes.
+The tool features a fully modular architecture designed to support additional data sources, DSP algorithms, and sinks. By strictly enforcing the Open-Closed Principle, hardware and format-specific logic is entirely decoupled from the core pipeline.
 
-*   **The Core Interfaces (`module.h`):** All modules are built upon two primary virtual method tables (v-tables) defined in `module.h`:
-    *   **`InputModuleInterface`**: Standardizes how the pipeline initializes hardware, starts data acquisition, and cleans up resources for any data source.
-    *   **`OutputModuleInterface`**: Standardizes how data is delivered to a destination, allowing the tool to switch between writing raw files, generating WAVs, or streaming real-time audio.
-*   **The Module Headers:** Every module provides its own header file (e.g., `input_rtlsdr.h` or `output_am.h`). These headers act as the bridge to the registry, exporting two critical functions: one to return the module's API v-table and another to provide its unique command-line options.
-*   **The Registry (`module_registry.c` / `module_registry.h`):** This serves as the system's central "factory." It maintains a catalog of every compiled-in module. When a user selects a mode via the `--input` or `--output` arguments, the registry performs a lookup and injects the appropriate logic into the pipeline at runtime.
+*   **The Core Interfaces (`module.h`):** All modules are built upon three primary virtual method tables (v-tables) defined in `include/core/module.h`:
+    *   **`InputModuleInterface`**: Standardizes how the pipeline initializes hardware and starts data acquisition.
+    *   **`DspModuleInterface`**: Standardizes how mathematical algorithms process chunks of samples, ensuring they maintain their own private memory states (encapsulated via `void*`).
+    *   **`OutputModuleInterface`**: Standardizes how data is delivered to a destination.
+*   **The Module Headers:** Every module provides its own public header file (e.g., `src/input/rtlsdr.h` or `src/dsp/agc.h`). These headers act as the bridge to the registry, exporting functions to return the module's API and its unique CLI options.
+*   **The Registry (`module_registry.c`):** This serves as the system's central factory. It maintains a catalog of every compiled-in module. 
 *   **Adding a New Module:**
-    1.  **Define the Header:** Create a new header file (e.g., `input_new_sdr.h`) that declares the functions needed to retrieve the module's API and CLI options.
-    2.  **Implement the Interface:** Create the corresponding implementation file (e.g., `input_new_sdr.c`) that fulfills the required function pointers in the `InputModuleInterface` or `OutputModuleInterface`.
-    3.  **Define CLI Options:** Use the built-in `argparse` integration within your module to define any unique command-line flags (e.g., gain settings for a specific SDR or cutoff frequencies for a demodulator).
-    4.  **Register the Module:** Include your new header in `module_registry.c` and add a new entry to the `temp_modules[]` array to make it visible to the command-line parser and the factory.
+    1.  **Define the Header:** Create a new header file in the appropriate directory (`src/input/`, `src/dsp/`, `src/output/`).
+    2.  **Implement the Interface:** Fulfill the required function pointers in the matching `*ModuleInterface` struct.
+    3.  **Define CLI Options:** Use the built-in `argparse` integration within your module's `get_cli_options()` to define any unique command-line flags.
+    4.  **Register the Module:** Add a new entry to the `temp_modules[]` array in `src/core/module_registry.c`.
     5.  **Update the Build System:** Add the new source file to `CMakeLists.txt` and link any necessary external libraries.
 
-This design ensures that hardware-specific quirks and complex output formats remain isolated from the high-speed processing core, isolating hardware and format specific logic from the DSP core.
+This design ensures that hardware-specific quirks and complex output formats remain isolated from the high-speed processing core.
 
 ### Acknowledgements
 
