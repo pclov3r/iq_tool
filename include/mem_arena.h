@@ -5,23 +5,24 @@
 #ifndef MEM_ARENA_H_
 #define MEM_ARENA_H_
 
-#include <stddef.h>
-#include <stdbool.h>
 #include <stdatomic.h>
+#include <stdbool.h>
+#include <stddef.h>
 
 // --- Struct Definition ---
 
 /**
  * @struct MemoryArena
- * @brief Manages a single large block of memory for fast, contiguous allocations.
+ * @brief Manages a single large block of memory for fast, contiguous
+ * allocations.
  *
  * This struct should be treated as an opaque handle by client code and only
  * manipulated through the mem_arena_* functions.
  */
 typedef struct MemoryArena {
-    void*  memory;      ///< Pointer to the start of the large allocated memory block.
-    size_t capacity;    ///< The total size in bytes of the memory block.
-    atomic_size_t offset;      ///< C11 Atomic offset for wait-free allocations.
+  void *memory; ///< Pointer to the start of the large allocated memory block.
+  size_t capacity;      ///< The total size in bytes of the memory block.
+  atomic_size_t offset; ///< C11 Atomic offset for wait-free allocations.
 } MemoryArena;
 
 // --- Function Declarations ---
@@ -32,7 +33,7 @@ typedef struct MemoryArena {
  * @param capacity The total size of the memory block to allocate.
  * @return true on success, false on memory allocation failure.
  */
-bool mem_arena_init(MemoryArena* arena, size_t capacity);
+bool mem_arena_init(MemoryArena *arena, size_t capacity);
 
 /**
  * @brief Allocates a block of memory from the arena.
@@ -45,12 +46,12 @@ bool mem_arena_init(MemoryArena* arena, size_t capacity);
  * @param zero_memory If true, the allocated memory will be zero-initialized.
  * @return A void pointer to the allocated memory, or NULL if the arena is full.
  */
-void* mem_arena_alloc(MemoryArena* arena, size_t size, bool zero_memory);
+void *mem_arena_alloc(MemoryArena *arena, size_t size, bool zero_memory);
 
 /**
  * @brief Destroys a memory arena, freeing its main memory block.
  * @param arena Pointer to the MemoryArena to destroy.
  */
-void mem_arena_destroy(MemoryArena* arena);
+void mem_arena_destroy(MemoryArena *arena);
 
 #endif // MEM_ARENA_H_

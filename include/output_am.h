@@ -8,9 +8,9 @@
 #include "module.h"
 
 // API Getter
-OutputModuleInterface* output_am_get_module_api(void);
+OutputModuleInterface *output_am_get_module_api(void);
 
 // CLI Options Getter (Needed for module registration)
-const struct argparse_option* output_am_get_cli_options(int* count);
+const struct argparse_option *output_am_get_cli_options(int *count);
 
 #endif // OUTPUT_AM_H_

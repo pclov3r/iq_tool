@@ -3,74 +3,81 @@
  */
 
 #include "output_stdout.h"
-#include "module.h"
 #include "app_context.h"
 #include "log.h"
+#include "mem_arena.h"
+#include "module.h"
 #include "signal_handler.h"
 #include "utilities.h"
-#include "mem_arena.h"
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
-#include <errno.h>
 
 // --- Windows Specifics for Binary Mode ---
 #ifdef _WIN32
-#include <io.h>
 #include <fcntl.h>
+#include <io.h>
 #endif
 
 // --- Private Data ---
 typedef struct {
-    long long total_bytes_written;
+  long long total_bytes_written;
 } StdoutContext;
 
 // --- Module Implementation ---
 
-static bool output_stdout_initialize(ModuleContext* context) {
-    AppContext* app = context->app;
+static bool output_stdout_initialize(ModuleContext *context) {
+  AppContext *app = context->app;
 
-    StdoutContext* data = (StdoutContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(StdoutContext), true);
-    if (!data) {
-        return false;
-    }
+  StdoutContext *data = (StdoutContext *)mem_arena_alloc(
+      &app->process_chain.setup_arena, sizeof(StdoutContext), true);
+  if (!data) {
+    return false;
+  }
 
 #ifdef _WIN32
-    // Windows: stdout defaults to text mode (\n -> \r\n), which corrupts binary I/Q data.
-    // We must forcefully set it to binary.
-    if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
-        log_error("Writer (stdout): Failed to set binary mode: %s", strerror(errno));
-        return false;
-    }
+  // Windows: stdout defaults to text mode (\n -> \r\n), which corrupts binary
+  // I/Q data. We must forcefully set it to binary.
+  if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
+    log_error("Writer (stdout): Failed to set binary mode: %s",
+              strerror(errno));
+    return false;
+  }
 #endif
 
-    app->module.output_private_data = data;
-    return true;
+  app->module.output_private_data = data;
+  return true;
 }
 
-static size_t output_stdout_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write) {
-    AppContext* app = context->app;
-    StdoutContext* data = (StdoutContext*)app->module.output_private_data;
-    if (!data) return 0;
+static size_t output_stdout_write_chunk(ModuleContext *context,
+                                        const void *buffer,
+                                        size_t bytes_to_write) {
+  AppContext *app = context->app;
+  StdoutContext *data = (StdoutContext *)app->module.output_private_data;
+  if (!data)
+    return 0;
 
-    size_t written = fwrite(buffer, 1, bytes_to_write, stdout);
-    if (written > 0) {
-        data->total_bytes_written += written;
-    }
-    return written;
+  size_t written = fwrite(buffer, 1, bytes_to_write, stdout);
+  if (written > 0) {
+    data->total_bytes_written += written;
+  }
+  return written;
 }
 
-static void output_stdout_cleanup(ModuleContext* context) {
-    AppContext* app = context->app;
-    if (!app->module.output_private_data) return;
-    StdoutContext* data = (StdoutContext*)app->module.output_private_data;
+static void output_stdout_cleanup(ModuleContext *context) {
+  AppContext *app = context->app;
+  if (!app->module.output_private_data)
+    return;
+  StdoutContext *data = (StdoutContext *)app->module.output_private_data;
 
-    fflush(stdout);
-    app->stats.final_output_size_bytes = data->total_bytes_written;
+  fflush(stdout);
+  app->stats.final_output_size_bytes = data->total_bytes_written;
 }
 
-static void output_stdout_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
-    (void)context;
-    utility_add_summary_item(info, "Output Type", "stdout");
+static void output_stdout_get_summary_info(const ModuleContext *context,
+                                           OutputSummaryInfo *info) {
+  (void)context;
+  utility_add_summary_item(info, "Output Type", "stdout");
 }
 
 static const struct argparse_option output_stdout_cli_options[] = {
@@ -78,9 +85,10 @@ static const struct argparse_option output_stdout_cli_options[] = {
     OPT_GROUP("    (No module-specific options)"),
 };
 
-const struct argparse_option* output_stdout_get_cli_options(int* count) {
-    *count = sizeof(output_stdout_cli_options) / sizeof(output_stdout_cli_options[0]);
-    return output_stdout_cli_options;
+const struct argparse_option *output_stdout_get_cli_options(int *count) {
+  *count =
+      sizeof(output_stdout_cli_options) / sizeof(output_stdout_cli_options[0]);
+  return output_stdout_cli_options;
 }
 
 // --- The V-Table ---
@@ -96,6 +104,6 @@ static OutputModuleInterface s_output_stdout_api = {
 };
 
 // --- Public Getter ---
-OutputModuleInterface* output_stdout_get_module_api(void) {
-    return &s_output_stdout_api;
+OutputModuleInterface *output_stdout_get_module_api(void) {
+  return &s_output_stdout_api;
 }

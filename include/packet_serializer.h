@@ -1,17 +1,22 @@
 /**
  * @file packet_serializer.h
- * @brief Defines the data protocol for the ring buffer between Source and Reader threads.
+ * @brief Defines the data protocol for the ring buffer between Source and
+ * Reader threads.
  *
  * This module provides a standardized binary protocol for transmitting I/Q data
- * from hardware drivers (Producers) to the processing pipeline (Consumer) via
- * a lock-free Ring Buffer.
+ * from hardware drivers (Producers) to the processing process_chain (Consumer)
+ * via a lock-free Ring Buffer.
  *
  * Key Features:
- * 1. **Atomic Writes:** Packets are either written entirely or dropped to preserve stream integrity.
- * 2. **Alignment:** The 16-byte header ensures the payload is aligned for SIMD operations.
- * 3. **Stateful Reading:** The reader can "sip" small chunks of data from a large
- *    packet in the buffer, decoupling the hardware transfer size from the DSP block size.
- * 4. **Self-Healing:** Uses a Magic Number to resynchronize if the stream is corrupted.
+ * 1. **Atomic Writes:** Packets are either written entirely or dropped to
+ * preserve stream integrity.
+ * 2. **Alignment:** The 16-byte header ensures the payload is aligned for SIMD
+ * operations.
+ * 3. **Stateful Reading:** The reader can "sip" small chunks of data from a
+ * large packet in the buffer, decoupling the hardware transfer size from the
+ * DSP block size.
+ * 4. **Self-Healing:** Uses a Magic Number to resynchronize if the stream is
+ * corrupted.
  *
  * Data Invariant:
  * All data payloads written to this stream MUST be Interleaved (I, Q, I, Q...).
@@ -22,10 +27,10 @@
 #ifndef PACKET_SERIALIZER_H_
 #define PACKET_SERIALIZER_H_
 
-#include <stdbool.h>
-#include <stdint.h>
-#include <stddef.h>
 #include "common_types.h"
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 // --- Forward Declarations ---
 struct RingBuffer;
@@ -34,7 +39,8 @@ struct SampleChunk;
 // --- Protocol Constants ---
 
 /**
- * @brief The synchronization marker ("IQPK") used to identify the start of a packet.
+ * @brief The synchronization marker ("IQPK") used to identify the start of a
+ * packet.
  */
 #define IQPK_MAGIC 0x4B505149
 
@@ -49,34 +55,38 @@ struct SampleChunk;
 /**
  * @brief The packet header placed before every data payload in the ring buffer.
  *
- * We use explicit padding to ensure the total size is 32 bytes. This guarantees that
- * the payload immediately following this header starts on a 32-byte aligned boundary
- * (assuming the ring buffer itself is aligned), which is critical for SIMD/AVX performance.
+ * We use explicit padding to ensure the total size is 32 bytes. This guarantees
+ * that the payload immediately following this header starts on a 32-byte
+ * aligned boundary (assuming the ring buffer itself is aligned), which is
+ * critical for SIMD/AVX performance.
  */
 #include <assert.h>
 
 #pragma pack(push, 1)
 typedef struct {
-    uint32_t magic;        ///< Synchronization marker (IQPK_MAGIC).
-    uint32_t num_samples;  ///< The number of I/Q pairs in the following payload.
-    uint8_t  flags;        ///< Bitmask of stream status flags (e.g. RESET).
-    uint8_t  format_id;    ///< The SampleFormat enum value of the sample data.
-    uint8_t  reserved[22];
+  uint32_t magic;       ///< Synchronization marker (IQPK_MAGIC).
+  uint32_t num_samples; ///< The number of I/Q pairs in the following payload.
+  uint8_t flags;        ///< Bitmask of stream status flags (e.g. RESET).
+  uint8_t format_id;    ///< The SampleFormat enum value of the sample data.
+  uint8_t reserved[22];
 } PacketHeader;
 #pragma pack(pop)
 
-static_assert(sizeof(PacketHeader) == 32, "PacketHeader MUST be exactly 32 bytes for SIMD alignment");
+static_assert(sizeof(PacketHeader) == 32,
+              "PacketHeader MUST be exactly 32 bytes for SIMD alignment");
 
 /**
  * @brief Tracks the state of the current packet being read by the consumer.
  *
  * Since the Reader thread may request data in smaller chunks than the hardware
- * provides, this struct tracks how much of the current packet in the ring buffer
- * remains to be read.
+ * provides, this struct tracks how much of the current packet in the ring
+ * buffer remains to be read.
  */
 typedef struct {
-    uint32_t samples_remaining_in_packet; ///< How many samples are left in the current ring buffer packet.
-    SampleFormat current_packet_format;       ///< The sample format of the current packet.
+  uint32_t samples_remaining_in_packet; ///< How many samples are left in the
+                                        ///< current ring buffer packet.
+  SampleFormat
+      current_packet_format; ///< The sample format of the current packet.
 } SerializerState;
 
 // --- Serialization Functions (Writing to the Stream) ---
@@ -86,7 +96,8 @@ typedef struct {
  *
  * This function creates the header and writes it, followed immediately
  * by the raw sample data. The operation is atomic: if the buffer cannot hold
- * both the header and the full payload, nothing is written, and false is returned.
+ * both the header and the full payload, nothing is written, and false is
+ * returned.
  *
  * @param buffer The target ring buffer.
  * @param num_samples The number of I/Q pairs to write.
@@ -94,18 +105,22 @@ typedef struct {
  * @param format The format of the samples (e.g., CU8, CS16).
  * @return true if written successfully, false if dropped due to lack of space.
  */
-bool packet_serializer_write_packet(struct RingBuffer* buffer, uint32_t num_samples, const void* sample_data, SampleFormat format);
+bool packet_serializer_write_packet(struct RingBuffer *buffer,
+                                    uint32_t num_samples,
+                                    const void *sample_data,
+                                    SampleFormat format);
 
 /**
  * @brief Writes a "Stream Reset" event packet to the buffer.
  *
  * This packet has 0 payload bytes and the PACKET_FLAG_STREAM_RESET flag set.
- * It tells the downstream pipeline to clear filters/buffers to avoid smearing glitches.
+ * It tells the downstream process_chain to clear filters/buffers to avoid
+ * smearing glitches.
  *
  * @param buffer The target ring buffer.
  * @return true if written, false if buffer full.
  */
-bool packet_serializer_write_reset_event(struct RingBuffer* buffer);
+bool packet_serializer_write_reset_event(struct RingBuffer *buffer);
 
 // --- Deserialization Function (Reading from the Stream) ---
 
@@ -116,18 +131,22 @@ bool packet_serializer_write_reset_event(struct RingBuffer* buffer);
  * and sipping the Payload in chunks.
  *
  * @param buffer The source ring buffer.
- * @param target_chunk The SampleChunk to fill with data. The `packet_sample_format` field will be updated.
+ * @param target_chunk The SampleChunk to fill with data. The
+ * `packet_sample_format` field will be updated.
  * @param state Pointer to the persistent state tracker for this stream.
- * @param[out] is_reset_event Set to true if a Reset Event packet was encountered.
- * @param request_size_samples The maximum number of samples to read into the chunk.
+ * @param[out] is_reset_event Set to true if a Reset Event packet was
+ * encountered.
+ * @param request_size_samples The maximum number of samples to read into the
+ * chunk.
  *
  * @return The actual number of samples read (may be less than requested if the
- *         packet ends), 0 if end-of-stream or reset event, or -1 on fatal error.
+ *         packet ends), 0 if end-of-stream or reset event, or -1 on fatal
+ * error.
  */
-int64_t packet_serializer_read_packet(struct RingBuffer* buffer,
-                                          struct SampleChunk* target_chunk,
-                                          SerializerState* state,
-                                          bool* is_reset_event,
-                                          size_t request_size_samples);
+int64_t packet_serializer_read_packet(struct RingBuffer *buffer,
+                                      struct SampleChunk *target_chunk,
+                                      SerializerState *state,
+                                      bool *is_reset_event,
+                                      size_t request_size_samples);
 
 #endif // PACKET_SERIALIZER_H_

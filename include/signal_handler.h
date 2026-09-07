@@ -1,6 +1,7 @@
 /**
  * @file signal_handler.h
- * @brief Defines the interface for handling process signals (e.g., Ctrl+C) gracefully.
+ * @brief Defines the interface for handling process signals (e.g., Ctrl+C)
+ * gracefully.
  *
  * This module provides a platform-independent way to catch signals like SIGINT
  * and SIGTERM. When a signal is caught, it initiates a graceful shutdown of the
@@ -11,8 +12,8 @@
 #ifndef SIGNAL_HANDLER_H_
 #define SIGNAL_HANDLER_H_
 
-#include <stdbool.h>
 #include "app_context.h" // Provides the full definition for AppContext
+#include <stdbool.h>
 
 // --- Function Declarations ---
 
@@ -23,20 +24,21 @@
  * (SetConsoleCtrlHandler on Windows, sigwait in a dedicated thread on POSIX).
  *
  * @param app A pointer to the main AppContext struct, which is needed
- *                  by the handler to perform shutdown actions on queues and buffers.
+ *                  by the handler to perform shutdown actions on queues and
+ * buffers.
  */
-void setup_signal_handlers(AppContext* app);
+void setup_signal_handlers(AppContext *app);
 
 /**
  * @brief The dedicated signal handling thread function (POSIX-only).
  *
- * This function should be run in its own detached thread on Linux/POSIX systems.
- * It blocks waiting for a signal and then initiates the shutdown.
+ * This function should be run in its own detached thread on Linux/POSIX
+ * systems. It blocks waiting for a signal and then initiates the shutdown.
  *
  * @param arg A void pointer (unused, but required by pthread_create).
  * @return NULL.
  */
-void* signal_handler_thread(void *arg);
+void *signal_handler_thread(void *arg);
 
 /**
  * @brief Checks if a shutdown has been requested via a signal.
@@ -71,6 +73,6 @@ void request_shutdown(void);
  * @param context_msg A descriptive error message string.
  * @param app A pointer to the main AppContext struct.
  */
-void request_forceful_shutdown(const char* context_msg, AppContext* app);
+void request_forceful_shutdown(const char *context_msg, AppContext *app);
 
 #endif // SIGNAL_HANDLER_H_

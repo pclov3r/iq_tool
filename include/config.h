@@ -1,12 +1,13 @@
 /**
  * @file config.h
- * @brief Defines the interface for post-parsing validation of the AppConfig structure.
+ * @brief Defines the interface for post-parsing validation of the AppConfig
+ * structure.
  *
  * This module contains a series of validation functions that are called after
  * the initial command-line parsing is complete. These functions are responsible
  * for checking for logical inconsistencies between options, resolving presets,
  * and ensuring the final configuration is valid and ready for use by the
- * processing pipeline.
+ * processing process_chain.
  */
 
 #ifndef CONFIG_H_
@@ -22,7 +23,8 @@ struct AppConfig;
 // --- Function Declarations ---
 
 /**
- * @brief Validates that the user has not specified conflicting output destinations.
+ * @brief Validates that the user has not specified conflicting output
+ * destinations.
  * @param config The application configuration struct.
  * @return true if valid, false otherwise.
  */
@@ -50,7 +52,8 @@ bool validate_filter_options(struct AppConfig *config);
 bool validate_iq_correction_options(struct AppConfig *config);
 
 /**
- * @brief Performs high-level validation, checking for logical conflicts between different options.
+ * @brief Performs high-level validation, checking for logical conflicts between
+ * different options.
  * @param config The application configuration struct.
  * @return true if the configuration is logically consistent, false otherwise.
  */

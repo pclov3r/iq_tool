@@ -21,13 +21,13 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #else
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
-#include <netdb.h>
-#include <unistd.h>
 #include <errno.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <sys/time.h> // Added for struct timeval
+#include <unistd.h>
 #endif
 
 // --- Private State ---
@@ -37,217 +37,244 @@ static int g_networking_ref_count = 0;
 // The private, internal definition of our opaque handle.
 struct NetworkingContext {
 #ifdef _WIN32
-    SOCKET socket_fd;
+  SOCKET socket_fd;
 #else
-    int socket_fd;
+  int socket_fd;
 #endif
 };
 
 // --- Public API Implementation ---
 
 bool networking_init(void) {
-    if (g_networking_ref_count > 0) {
-        g_networking_ref_count++;
-        log_debug("Networking subsystem reference count increased to %d.", g_networking_ref_count);
-        return true; // Already initialized, just increment count.
-    }
+  if (g_networking_ref_count > 0) {
+    g_networking_ref_count++;
+    log_debug("Networking subsystem reference count increased to %d.",
+              g_networking_ref_count);
+    return true; // Already initialized, just increment count.
+  }
 
 #ifdef _WIN32
-    WSADATA wsa_data;
-    int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
-    if (result != 0) {
-        log_fatal("WSAStartup failed with error: %d", result);
-        return false;
-    }
+  WSADATA wsa_data;
+  int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
+  if (result != 0) {
+    log_fatal("WSAStartup failed with error: %d", result);
+    return false;
+  }
 #endif
 
-    log_debug("Networking subsystem initialized for the first time.");
-    g_networking_ref_count = 1;
-    return true;
+  log_debug("Networking subsystem initialized for the first time.");
+  g_networking_ref_count = 1;
+  return true;
 }
 
 void networking_cleanup(void) {
-    if (g_networking_ref_count <= 0) {
-        return; // Nothing to clean up or already cleaned up.
-    }
+  if (g_networking_ref_count <= 0) {
+    return; // Nothing to clean up or already cleaned up.
+  }
 
-    g_networking_ref_count--;
-    log_debug("Networking subsystem reference count decreased to %d.", g_networking_ref_count);
+  g_networking_ref_count--;
+  log_debug("Networking subsystem reference count decreased to %d.",
+            g_networking_ref_count);
 
-    if (g_networking_ref_count == 0) {
+  if (g_networking_ref_count == 0) {
 #ifdef _WIN32
-        WSACleanup();
+    WSACleanup();
 #endif
-        log_debug("Networking subsystem cleaned up as last reference was released.");
-    }
+    log_debug(
+        "Networking subsystem cleaned up as last reference was released.");
+  }
 }
 
-NetworkingContext* networking_connect(const char* hostname, int port, struct MemoryArena* arena) {
-    if (!arena) {
-        log_fatal("networking_connect called with a NULL memory arena.");
-        return NULL;
-    }
+NetworkingContext *networking_connect(const char *hostname, int port,
+                                      struct MemoryArena *arena) {
+  if (!arena) {
+    log_fatal("networking_connect called with a NULL memory arena.");
+    return NULL;
+  }
 
-    // This function acts as the gatekeeper, ensuring the subsystem is ready.
-    if (!networking_init()) {
-        log_error("Cannot connect because networking subsystem failed to initialize.");
-        return NULL;
-    }
+  // This function acts as the gatekeeper, ensuring the subsystem is ready.
+  if (!networking_init()) {
+    log_error(
+        "Cannot connect because networking subsystem failed to initialize.");
+    return NULL;
+  }
 
-    struct addrinfo hints, *res, *p;
-    int status;
-    char port_str[6];
-    snprintf(port_str, sizeof(port_str), "%d", port);
+  struct addrinfo hints, *res, *p;
+  int status;
+  char port_str[6];
+  snprintf(port_str, sizeof(port_str), "%d", port);
 
-    log_info("Opening network connection to %s:%d...", hostname, port);
+  log_info("Opening network connection to %s:%d...", hostname, port);
 
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
 
-    if ((status = getaddrinfo(hostname, port_str, &hints, &res)) != 0) {
-        log_error("getaddrinfo for '%s' failed: %s", hostname, gai_strerror(status));
-        networking_cleanup(); // Decrement ref count on failure.
-        return NULL;
-    }
+  if ((status = getaddrinfo(hostname, port_str, &hints, &res)) != 0) {
+    log_error("getaddrinfo for '%s' failed: %s", hostname,
+              gai_strerror(status));
+    networking_cleanup(); // Decrement ref count on failure.
+    return NULL;
+  }
 
-    NetworkingContext* context = (NetworkingContext*)mem_arena_alloc(arena, sizeof(NetworkingContext), true);
-    if (!context) {
-        // mem_arena_alloc already logged the fatal error.
-        freeaddrinfo(res);
-        networking_cleanup(); // Decrement ref count on failure.
-        return NULL;
-    }
-
-#ifdef _WIN32
-    context->socket_fd = INVALID_SOCKET;
-#else
-    context->socket_fd = -1;
-#endif
-
-    for (p = res; p != NULL; p = p->ai_next) {
-        context->socket_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-#ifdef _WIN32
-        if (context->socket_fd == INVALID_SOCKET) continue;
-
-        // --- Apply Timeouts (Windows) ---
-        // Windows setsockopt takes DWORD in milliseconds.
-        DWORD timeout = NETWORK_SOCKET_TIMEOUT_MS;
-        setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
-        setsockopt(context->socket_fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout));
-        int rcvbuf = 2 * 1024 * 1024;
-        setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVBUF, (const char*)&rcvbuf, sizeof(rcvbuf));
-
-        if (connect(context->socket_fd, p->ai_addr, (int)p->ai_addrlen) == SOCKET_ERROR) {
-            closesocket(context->socket_fd);
-            context->socket_fd = INVALID_SOCKET;
-            continue;
-        }
-#else
-        if (context->socket_fd < 0) continue;
-
-        // --- Apply Timeouts (POSIX) ---
-        // POSIX setsockopt takes struct timeval (seconds + microseconds).
-        struct timeval timeout;
-        timeout.tv_sec = NETWORK_SOCKET_TIMEOUT_MS / 1000;
-        timeout.tv_usec = (NETWORK_SOCKET_TIMEOUT_MS % 1000) * 1000;
-        setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-        setsockopt(context->socket_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-        int rcvbuf = 2 * 1024 * 1024;
-        setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVBUF, (const char*)&rcvbuf, sizeof(rcvbuf));
-
-        if (connect(context->socket_fd, p->ai_addr, p->ai_addrlen) < 0) {
-            close(context->socket_fd);
-            context->socket_fd = -1;
-            continue;
-        }
-#endif
-        break; // Successfully connected
-    }
-
-    if (p == NULL) {
-        log_error("Failed to connect to %s:%d", hostname, port);
-        freeaddrinfo(res);
-        networking_cleanup(); // Decrement ref count on failure.
-        return NULL;
-    }
-
+  NetworkingContext *context = (NetworkingContext *)mem_arena_alloc(
+      arena, sizeof(NetworkingContext), true);
+  if (!context) {
+    // mem_arena_alloc already logged the fatal error.
     freeaddrinfo(res);
-    log_info("Network connection established.");
-    return context;
-}
+    networking_cleanup(); // Decrement ref count on failure.
+    return NULL;
+  }
 
-void networking_disconnect(NetworkingContext* context) {
-    if (!context) return;
-
-    // We explicitly log this so that if the application hangs here, the user knows it's a socket timeout/deadlock issue.
-    log_info("Closing network connection...");
 #ifdef _WIN32
-    if (context->socket_fd != INVALID_SOCKET) {
-        shutdown(context->socket_fd, SD_BOTH);
-        closesocket(context->socket_fd);
-        context->socket_fd = INVALID_SOCKET; // Mark as closed
+  context->socket_fd = INVALID_SOCKET;
+#else
+  context->socket_fd = -1;
+#endif
+
+  for (p = res; p != NULL; p = p->ai_next) {
+    context->socket_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+#ifdef _WIN32
+    if (context->socket_fd == INVALID_SOCKET)
+      continue;
+
+    // --- Apply Timeouts (Windows) ---
+    // Windows setsockopt takes DWORD in milliseconds.
+    DWORD timeout = NETWORK_SOCKET_TIMEOUT_MS;
+    setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVTIMEO,
+               (const char *)&timeout, sizeof(timeout));
+    setsockopt(context->socket_fd, SOL_SOCKET, SO_SNDTIMEO,
+               (const char *)&timeout, sizeof(timeout));
+    int rcvbuf = 2 * 1024 * 1024;
+    setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf,
+               sizeof(rcvbuf));
+
+    if (connect(context->socket_fd, p->ai_addr, (int)p->ai_addrlen) ==
+        SOCKET_ERROR) {
+      closesocket(context->socket_fd);
+      context->socket_fd = INVALID_SOCKET;
+      continue;
     }
 #else
-    if (context->socket_fd >= 0) {
-        shutdown(context->socket_fd, SHUT_RDWR);
-        close(context->socket_fd);
-        context->socket_fd = -1; // Mark as closed
+    if (context->socket_fd < 0)
+      continue;
+
+    // --- Apply Timeouts (POSIX) ---
+    // POSIX setsockopt takes struct timeval (seconds + microseconds).
+    struct timeval timeout;
+    timeout.tv_sec = NETWORK_SOCKET_TIMEOUT_MS / 1000;
+    timeout.tv_usec = (NETWORK_SOCKET_TIMEOUT_MS % 1000) * 1000;
+    setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+               sizeof(timeout));
+    setsockopt(context->socket_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout,
+               sizeof(timeout));
+    int rcvbuf = 2 * 1024 * 1024;
+    setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf,
+               sizeof(rcvbuf));
+
+    if (connect(context->socket_fd, p->ai_addr, p->ai_addrlen) < 0) {
+      close(context->socket_fd);
+      context->socket_fd = -1;
+      continue;
     }
 #endif
-    // No free(context), as the memory is managed by the arena.
+    break; // Successfully connected
+  }
+
+  if (p == NULL) {
+    log_error("Failed to connect to %s:%d", hostname, port);
+    freeaddrinfo(res);
+    networking_cleanup(); // Decrement ref count on failure.
+    return NULL;
+  }
+
+  freeaddrinfo(res);
+  log_info("Network connection established.");
+  return context;
 }
 
-bool networking_send_all(NetworkingContext* context, const void* data, size_t length) {
-    if (!context || !data) return false;
-    size_t total_sent = 0;
-    while (total_sent < length) {
-        size_t to_send = length - total_sent;
-        if (to_send > 1048576) to_send = 1048576; // Clamp to 1MB chunks to prevent 32-bit cast overflow
-        int sent = send(context->socket_fd, (const char*)data + total_sent, (int)to_send, 0);
-        if (sent <= 0) {
+void networking_disconnect(NetworkingContext *context) {
+  if (!context)
+    return;
+
+  // We explicitly log this so that if the application hangs here, the user
+  // knows it's a socket timeout/deadlock issue.
+  log_info("Closing network connection...");
 #ifdef _WIN32
-            if (sent < 0 && WSAGetLastError() == WSAETIMEDOUT) {
-                log_error("Network send timed out.");
-            } else
+  if (context->socket_fd != INVALID_SOCKET) {
+    shutdown(context->socket_fd, SD_BOTH);
+    closesocket(context->socket_fd);
+    context->socket_fd = INVALID_SOCKET; // Mark as closed
+  }
 #else
-            if (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-                log_error("Network send timed out.");
-            } else
+  if (context->socket_fd >= 0) {
+    shutdown(context->socket_fd, SHUT_RDWR);
+    close(context->socket_fd);
+    context->socket_fd = -1; // Mark as closed
+  }
 #endif
-            {
-                log_error("Failed to send data to remote host.");
-            }
-            return false;
-        }
-        total_sent += sent;
-    }
-    return true;
+  // No free(context), as the memory is managed by the arena.
 }
 
-bool networking_recv_all(NetworkingContext* context, void* data, size_t length) {
-    if (!context || !data) return false;
-    size_t total_recv = 0;
-    while (total_recv < length) {
-        size_t to_recv = length - total_recv;
-        if (to_recv > 1048576) to_recv = 1048576; // Clamp to 1MB chunks to prevent 32-bit cast overflow
-        int recvd = recv(context->socket_fd, (char*)data + total_recv, (int)to_recv, 0);
-        if (recvd <= 0) {
+bool networking_send_all(NetworkingContext *context, const void *data,
+                         size_t length) {
+  if (!context || !data)
+    return false;
+  size_t total_sent = 0;
+  while (total_sent < length) {
+    size_t to_send = length - total_sent;
+    if (to_send > 1048576)
+      to_send = 1048576; // Clamp to 1MB chunks to prevent 32-bit cast overflow
+    int sent = send(context->socket_fd, (const char *)data + total_sent,
+                    (int)to_send, 0);
+    if (sent <= 0) {
 #ifdef _WIN32
-            if (recvd < 0 && WSAGetLastError() == WSAETIMEDOUT) {
-                log_error("Network receive timed out.");
-            } else
+      if (sent < 0 && WSAGetLastError() == WSAETIMEDOUT) {
+        log_error("Network send timed out.");
+      } else
 #else
-            if (recvd < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-                log_error("Network receive timed out.");
-            } else
+      if (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        log_error("Network send timed out.");
+      } else
 #endif
-            {
-                log_error("Failed to receive data from remote host (connection closed or error).");
-            }
-            return false;
-        }
-        total_recv += recvd;
+      {
+        log_error("Failed to send data to remote host.");
+      }
+      return false;
     }
-    return true;
+    total_sent += sent;
+  }
+  return true;
+}
+
+bool networking_recv_all(NetworkingContext *context, void *data,
+                         size_t length) {
+  if (!context || !data)
+    return false;
+  size_t total_recv = 0;
+  while (total_recv < length) {
+    size_t to_recv = length - total_recv;
+    if (to_recv > 1048576)
+      to_recv = 1048576; // Clamp to 1MB chunks to prevent 32-bit cast overflow
+    int recvd =
+        recv(context->socket_fd, (char *)data + total_recv, (int)to_recv, 0);
+    if (recvd <= 0) {
+#ifdef _WIN32
+      if (recvd < 0 && WSAGetLastError() == WSAETIMEDOUT) {
+        log_error("Network receive timed out.");
+      } else
+#else
+      if (recvd < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        log_error("Network receive timed out.");
+      } else
+#endif
+      {
+        log_error("Failed to receive data from remote host (connection closed "
+                  "or error).");
+      }
+      return false;
+    }
+    total_recv += recvd;
+  }
+  return true;
 }

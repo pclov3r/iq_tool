@@ -3,34 +3,37 @@
  * @brief Defines the functional interface for a thread-safe, blocking queue.
  *
  * This module provides the functions to initialize, destroy, enqueue, and
- * dequeue items from the `Queue` structure defined in `pipeline_types.h`.
+ * dequeue items from the `Queue` structure defined in `process_chain_types.h`.
  * It is the primary mechanism for passing data between threads in the
- * processing pipeline.
+ * processing process_chain.
  */
 
 #ifndef QUEUE_H_
 #define QUEUE_H_
 
+#include "mem_arena.h" // Provides the full definition for the MemoryArena struct
+#include "process_chain_types.h" // Provides the full definition for the Queue struct
 #include <stdbool.h>
 #include <stddef.h>
-#include "pipeline_types.h" // Provides the full definition for the Queue struct
-#include "mem_arena.h"   // Provides the full definition for the MemoryArena struct
 
 // --- Function Declarations ---
 
 /**
  * @brief Initializes a thread-safe queue structure.
  *
- * This function takes a pointer to a pre-allocated Queue struct and initializes it.
- * It allocates the internal buffer for storing items from the provided memory arena.
+ * This function takes a pointer to a pre-allocated Queue struct and initializes
+ it.
+ * It allocates the internal buffer for storing items from the provided memory
+ arena.
  *
 
  * @param queue Pointer to the Queue struct to initialize.
  * @param capacity The maximum number of items the queue can hold.
- * @param arena Pointer to the memory arena from which to allocate the internal buffer.
+ * @param arena Pointer to the memory arena from which to allocate the internal
+ buffer.
  * @return true on success, false on failure.
  */
-bool queue_init(Queue* queue, size_t capacity, MemoryArena* arena);
+bool queue_init(Queue *queue, size_t capacity, MemoryArena *arena);
 
 /**
  * @brief Destroys the synchronization primitives of a queue.
@@ -40,7 +43,7 @@ bool queue_init(Queue* queue, size_t capacity, MemoryArena* arena);
  *
  * @param queue Pointer to the queue to destroy.
  */
-void queue_destroy(Queue* queue);
+void queue_destroy(Queue *queue);
 
 /**
  * @brief Enqueues an item into the queue.
@@ -52,7 +55,7 @@ void queue_destroy(Queue* queue);
  * @param item The void pointer item to add to the queue.
  * @return true on success, false if a shutdown was signaled while waiting.
  */
-bool queue_enqueue(Queue* queue, void* item);
+bool queue_enqueue(Queue *queue, void *item);
 
 /**
  * @brief Enqueues an item regardless of the shutdown state.
@@ -60,7 +63,7 @@ bool queue_enqueue(Queue* queue, void* item);
  * Unlike queue_enqueue(), this function does not check the shutdown flag.
  * It is specifically designed for returning items to a memory pool (like
  * free_sample_chunk_queue) during application termination. This ensures that
- * resources are not leaked even when the rest of the pipeline has stopped.
+ * resources are not leaked even when the rest of the process_chain has stopped.
  *
  * This is a blocking call if the queue is physically full, though this
  * typically should not happen in a closed-loop memory pool during shutdown.
@@ -69,7 +72,7 @@ bool queue_enqueue(Queue* queue, void* item);
  * @param item The void pointer item to add to the queue.
  * @return true if the item was enqueued, false if the queue pointer was NULL.
  */
-bool queue_enqueue_forced(Queue* queue, void* item);
+bool queue_enqueue_forced(Queue *queue, void *item);
 
 /**
  * @brief Dequeues an item from the queue.
@@ -78,25 +81,27 @@ bool queue_enqueue_forced(Queue* queue, void* item);
  * until an item becomes available or a shutdown is signaled.
  *
  * @param queue Pointer to the queue.
- * @return The void pointer item from the queue, or NULL if a shutdown was signaled.
+ * @return The void pointer item from the queue, or NULL if a shutdown was
+ * signaled.
  */
-void* queue_dequeue(Queue* queue);
+void *queue_dequeue(Queue *queue);
 
 /**
  * @brief Attempts to dequeue an item from the queue without blocking.
  * @param queue Pointer to the queue.
  * @return The void pointer item from the queue, or NULL if the queue is empty.
  */
-void* queue_try_dequeue(Queue* queue);
+void *queue_try_dequeue(Queue *queue);
 
 /**
  * @brief Signals all threads waiting on the queue to wake up for a shutdown.
  *
- * This sets an internal flag and broadcasts to all condition variables, ensuring
- * that no threads remain blocked on `queue_enqueue` or `queue_dequeue`.
+ * This sets an internal flag and broadcasts to all condition variables,
+ * ensuring that no threads remain blocked on `queue_enqueue` or
+ * `queue_dequeue`.
  *
  * @param queue Pointer to the queue to signal.
  */
-void queue_signal_shutdown(Queue* queue);
+void queue_signal_shutdown(Queue *queue);
 
 #endif // QUEUE_H_

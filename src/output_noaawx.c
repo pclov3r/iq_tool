@@ -3,23 +3,22 @@
  */
 
 #include "output_noaawx.h"
-#include "constants.h"
-#include "audio_output_functions.h"
-#include "module.h"
 #include "app_context.h"
-#include "log.h"
-#include "signal_handler.h"
-#include "ring_buffer.h"
-#include "utilities.h"
-#include "signal_handler.h"
+#include "audio_output_functions.h"
+#include "constants.h"
 #include "interleave_functions.h"
+#include "log.h"
+#include "module.h"
 #include "queue.h"
+#include "ring_buffer.h"
+#include "signal_handler.h"
+#include "utilities.h"
+#include <complex.h>
+#include <liquid.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
-#include <complex.h>
-#include <liquid.h>
 #include <time.h>
 
 #ifdef _WIN32
@@ -29,22 +28,25 @@
 #endif
 
 // --- Constants ---
-#define NOAAWX_SAMPLE_RATE         24000
-#define NOAAWX_AUDIO_CHANNELS      1 // Output is Mono (OS mixer handles duplicating to L/R speakers)
+#define NOAAWX_SAMPLE_RATE 24000
+#define NOAAWX_AUDIO_CHANNELS                                                  \
+  1 // Output is Mono (OS mixer handles duplicating to L/R speakers)
 
 // Standard NOAA Weather Radio FM deviation = 5kHz
-#define NOAAWX_FM_DEVIATION        5000.0f
+#define NOAAWX_FM_DEVIATION 5000.0f
 
 // De-emphasis Time Constant (75us)
-#define NOAAWX_DEEMPH_FREQ         2122.0f
+#define NOAAWX_DEEMPH_FREQ 2122.0f
 
 // Brickwall Audio LPF (Voice Band cutoff)
-#define NOAAWX_AUDIO_CUTOFF        4000.0f
+#define NOAAWX_AUDIO_CUTOFF 4000.0f
 
 // --- Alert Printing Configuration ---
 // Total Prints = 1 (Initial Decode) + SAME_ALERT_EXTRA_REPEATS
-static int SAME_ALERT_EXTRA_REPEATS = 4;       // How many ADDITIONAL times to print the alert
-static int SAME_ALERT_REPEAT_DELAY_SEC = 10;   // Delay between extra prints in seconds
+static int SAME_ALERT_EXTRA_REPEATS =
+    4; // How many ADDITIONAL times to print the alert
+static int SAME_ALERT_REPEAT_DELAY_SEC =
+    10; // Delay between extra prints in seconds
 
 static char same_alert_saved_header[256] = {0};
 static int same_alert_repeat_counter = 0;
@@ -53,53 +55,53 @@ static bool same_alert_is_repeat = false;
 
 // --- Context ---
 typedef struct {
-    // Pipeline
-    AudioOutputContext* audio_out;
+  // ProcessChain
+  AudioOutputContext *audio_out;
 
-    // DSP
-    freqdem fm_demod;           // Liquid FM Demodulator
-    iirfilt_rrrf deemph_filter; // De-emphasis (The "Voice Filter")
-    iirfilt_rrrf audio_lpf;     // Brickwall Audio LPF (4th Order)
-    msresamp_rrrf resampler;    // Resampler (Input Rate -> 48kHz)
+  // DSP
+  freqdem fm_demod;           // Liquid FM Demodulator
+  iirfilt_rrrf deemph_filter; // De-emphasis (The "Voice Filter")
+  iirfilt_rrrf audio_lpf;     // Brickwall Audio LPF (4th Order)
+  msresamp_rrrf resampler;    // Resampler (Input Rate -> 48kHz)
 
-    // AFSK SAME Decoder
-    nco_crcf afsk_nco;          // 1822.91Hz shift to baseband
-    iirfilt_crcf afsk_lpf;      // Complex lowpass to remove image
-    freqdem afsk_fm;            // FSK to Real discriminator
-    symsync_rrrf afsk_sync;     // Symbol synchronizer
-    uint8_t shift_register;     // 8-bit shift register for SAME bytes
-    bool is_locked;             // True if locked to 0xAB sync sequence
-    int bit_count;              // Counts 0 to 7 after lock
-    char same_msg[256];         // Buffer for the ASCII message
-    int same_msg_len;           // Length of the current message
+  // AFSK SAME Decoder
+  nco_crcf afsk_nco;      // 1822.91Hz shift to baseband
+  iirfilt_crcf afsk_lpf;  // Complex lowpass to remove image
+  freqdem afsk_fm;        // FSK to Real discriminator
+  symsync_rrrf afsk_sync; // Symbol synchronizer
+  uint8_t shift_register; // 8-bit shift register for SAME bytes
+  bool is_locked;         // True if locked to 0xAB sync sequence
+  int bit_count;          // Counts 0 to 7 after lock
+  char same_msg[256];     // Buffer for the ASCII message
+  int same_msg_len;       // Length of the current message
 
-    // Voting State
-    char same_bursts[3][256];
-    int num_bursts;
-    size_t samples_since_last_burst;
+  // Voting State
+  char same_bursts[3][256];
+  int num_bursts;
+  size_t samples_since_last_burst;
 
-    // State
-    float input_samplerate;
+  // State
+  float input_samplerate;
 
-    // Buffers
-    float* mono_buffer;         // Temp buffer for demodulated audio
-    int16_t* pcm_out;           // Final Mono PCM
+  // Buffers
+  float *mono_buffer; // Temp buffer for demodulated audio
+  int16_t *pcm_out;   // Final Mono PCM
 
-    // Alert Tone
-    int alert_tone_delay_samples;
-    int alert_tone_samples_remaining;
-    float alert_tone_phase_1;
-    float alert_tone_phase_2;
-    bool is_unmuted;
-    int num_eom_bursts;
+  // Alert Tone
+  int alert_tone_delay_samples;
+  int alert_tone_samples_remaining;
+  float alert_tone_phase_1;
+  float alert_tone_phase_2;
+  bool is_unmuted;
+  int num_eom_bursts;
 } NoaawxContext;
 
 // --- Config ---
 static struct {
-    float gain;
-    bool audio_in;
-    bool no_alert_tone;
-    bool standby;
+  float gain;
+  bool audio_in;
+  bool no_alert_tone;
+  bool standby;
 } s_noaawx_config = {
     .gain = 1.0f,
     .audio_in = 0,
@@ -109,92 +111,107 @@ static struct {
 
 // --- Module Interface ---
 
-static bool output_noaawx_validate_options(AppContext* app) {
-    AppConfig* config = app ? (AppConfig*)app->config : NULL;
-    config->baseband_sample_format.format = CF32;
+static bool output_noaawx_validate_options(AppContext *app) {
+  AppConfig *config = app ? (AppConfig *)app->config : NULL;
+  config->baseband_sample_format.format = CF32;
 
-    if (config->baseband_sample_rate.rate_hz != 0.0 && config->baseband_sample_rate.rate_hz != 24000.0) {
-        log_warn("NOAAWX: Requested baseband rate %.0f Hz ignored. Using 24000 Hz.", config->baseband_sample_rate.rate_hz);
-    }
-    config->baseband_sample_rate.rate_hz = 24000.0;
-    return true;
+  if (config->baseband_sample_rate.rate_hz != 0.0 &&
+      config->baseband_sample_rate.rate_hz != 24000.0) {
+    log_warn("NOAAWX: Requested baseband rate %.0f Hz ignored. Using 24000 Hz.",
+             config->baseband_sample_rate.rate_hz);
+  }
+  config->baseband_sample_rate.rate_hz = 24000.0;
+  return true;
 }
 
-static bool output_noaawx_initialize(ModuleContext* context) {
-    AppContext* res = context->app;
-    NoaawxContext* decoder = (NoaawxContext*)mem_arena_alloc(&res->pipeline.setup_arena, sizeof(NoaawxContext), true);
-    res->module.output_private_data = decoder;
+static bool output_noaawx_initialize(ModuleContext *context) {
+  AppContext *res = context->app;
+  NoaawxContext *decoder = (NoaawxContext *)mem_arena_alloc(
+      &res->process_chain.setup_arena, sizeof(NoaawxContext), true);
+  res->module.output_private_data = decoder;
 
-    decoder->audio_out = audio_output_create(res, NOAAWX_SAMPLE_RATE, NOAAWX_AUDIO_CHANNELS, res->module.source_info.demod_audio_buffer_size);
-    if (!decoder->audio_out) return false;
+  decoder->audio_out =
+      audio_output_create(res, NOAAWX_SAMPLE_RATE, NOAAWX_AUDIO_CHANNELS,
+                          res->module.source_info.demod_audio_buffer_size);
+  if (!decoder->audio_out)
+    return false;
 
-    // 3. DSP Setup
-    decoder->input_samplerate = (float)context->config->baseband_sample_rate.rate_hz;
+  // 3. DSP Setup
+  decoder->input_samplerate =
+      (float)context->config->baseband_sample_rate.rate_hz;
 
-    // A. Determine Deviation (Modulation Index)
-    if (!s_noaawx_config.audio_in) {
-        float kf = NOAAWX_FM_DEVIATION / decoder->input_samplerate;
-        decoder->fm_demod = freqdem_create(kf);
-    } else {
-        decoder->fm_demod = NULL;
-    }
+  // A. Determine Deviation (Modulation Index)
+  if (!s_noaawx_config.audio_in) {
+    float kf = NOAAWX_FM_DEVIATION / decoder->input_samplerate;
+    decoder->fm_demod = freqdem_create(kf);
+  } else {
+    decoder->fm_demod = NULL;
+  }
 
-    // B. De-emphasis Filter (75us -> approx 2122 Hz cutoff)
-    decoder->deemph_filter = iirfilt_rrrf_create_lowpass(1, 2122.0f / decoder->input_samplerate);
+  // B. De-emphasis Filter (75us -> approx 2122 Hz cutoff)
+  decoder->deemph_filter =
+      iirfilt_rrrf_create_lowpass(1, 2122.0f / decoder->input_samplerate);
 
-    // C. Audio Lowpass Filter (3 kHz)
-    decoder->audio_lpf = iirfilt_rrrf_create_lowpass(4, 3000.0f / decoder->input_samplerate);
+  // C. Audio Lowpass Filter (3 kHz)
+  decoder->audio_lpf =
+      iirfilt_rrrf_create_lowpass(4, 3000.0f / decoder->input_samplerate);
 
-    // D. AFSK Decoder Setup (SAME at 520.83 baud on 24000 Hz Audio)
-    // 1. NCO to shift positive 1822.91Hz down to Baseband (0Hz)
-    decoder->afsk_nco = nco_crcf_create(LIQUID_VCO);
-    nco_crcf_set_frequency(decoder->afsk_nco, 1822.916667f * 2.0f * M_PI / (float)NOAAWX_SAMPLE_RATE);
+  // D. AFSK Decoder Setup (SAME at 520.83 baud on 24000 Hz Audio)
+  // 1. NCO to shift positive 1822.91Hz down to Baseband (0Hz)
+  decoder->afsk_nco = nco_crcf_create(LIQUID_VCO);
+  nco_crcf_set_frequency(decoder->afsk_nco, 1822.916667f * 2.0f * M_PI /
+                                                (float)NOAAWX_SAMPLE_RATE);
 
-    // 2. Complex Lowpass to remove the image (-3645.8 Hz)
-    decoder->afsk_lpf = iirfilt_crcf_create_lowpass(4, 600.0f / (float)NOAAWX_SAMPLE_RATE);
+  // 2. Complex Lowpass to remove the image (-3645.8 Hz)
+  decoder->afsk_lpf =
+      iirfilt_crcf_create_lowpass(4, 600.0f / (float)NOAAWX_SAMPLE_RATE);
 
-    // 3. FM Discriminator for the FSK Baseband
-    // Modulation index h=1.0, kf = deviation / samplerate = 260.416667 / 24000
-    decoder->afsk_fm = freqdem_create(260.416667f / (float)NOAAWX_SAMPLE_RATE);
+  // 3. FM Discriminator for the FSK Baseband
+  // Modulation index h=1.0, kf = deviation / samplerate = 260.416667 / 24000
+  decoder->afsk_fm = freqdem_create(260.416667f / (float)NOAAWX_SAMPLE_RATE);
 
-    // 4. Symbol Synchronizer (k=46 samples/sym, roughly 24000/520.83)
-    decoder->afsk_sync = symsync_rrrf_create_kaiser(46, 3, 0.5f, 32);
-    symsync_rrrf_set_lf_bw(decoder->afsk_sync, 0.05f);
+  // 4. Symbol Synchronizer (k=46 samples/sym, roughly 24000/520.83)
+  decoder->afsk_sync = symsync_rrrf_create_kaiser(46, 3, 0.5f, 32);
+  symsync_rrrf_set_lf_bw(decoder->afsk_sync, 0.05f);
 
-    decoder->shift_register = 0;
-    decoder->is_locked = false;
-    decoder->is_unmuted = !s_noaawx_config.standby;
-    decoder->num_eom_bursts = 0;
-    decoder->bit_count = 0;
-    decoder->same_msg_len = 0;
-    memset(decoder->same_msg, 0, sizeof(decoder->same_msg));
+  decoder->shift_register = 0;
+  decoder->is_locked = false;
+  decoder->is_unmuted = !s_noaawx_config.standby;
+  decoder->num_eom_bursts = 0;
+  decoder->bit_count = 0;
+  decoder->same_msg_len = 0;
+  memset(decoder->same_msg, 0, sizeof(decoder->same_msg));
 
-    decoder->num_bursts = 0;
-    decoder->num_eom_bursts = 0;
-    decoder->samples_since_last_burst = 0;
-    memset(decoder->same_bursts, 0, sizeof(decoder->same_bursts));
+  decoder->num_bursts = 0;
+  decoder->num_eom_bursts = 0;
+  decoder->samples_since_last_burst = 0;
+  memset(decoder->same_bursts, 0, sizeof(decoder->same_bursts));
 
-    if (s_noaawx_config.audio_in) {
-        log_info("NOAAWX: Baseband %.15g Hz | Mode: Audio Input", decoder->input_samplerate);
-    } else {
-        log_info("NOAAWX: Baseband %.15g Hz | Mode: NFM", decoder->input_samplerate);
-    }
+  if (s_noaawx_config.audio_in) {
+    log_info("NOAAWX: Baseband %.15g Hz | Mode: Audio Input",
+             decoder->input_samplerate);
+  } else {
+    log_info("NOAAWX: Baseband %.15g Hz | Mode: NFM",
+             decoder->input_samplerate);
+  }
 
-    // 4. Buffers
-    size_t in_samples = res->pipeline.alloc_size_samples;
-    decoder->mono_buffer = mem_arena_alloc(&res->pipeline.setup_arena, in_samples * sizeof(float), false);
-    decoder->pcm_out     = mem_arena_alloc(&res->pipeline.setup_arena, in_samples * sizeof(int16_t), false);
+  // 4. Buffers
+  size_t in_samples = res->process_chain.alloc_size_samples;
+  decoder->mono_buffer = mem_arena_alloc(&res->process_chain.setup_arena,
+                                         in_samples * sizeof(float), false);
+  decoder->pcm_out = mem_arena_alloc(&res->process_chain.setup_arena,
+                                     in_samples * sizeof(int16_t), false);
 
-    return true;
+  return true;
 }
 
 // --- SAME Decoder Lookup Tables ---
 
 // Auto-generated FIPS codes
 typedef struct {
-    int code;
-    const char* state;
-    const char* county;
+  int code;
+  const char *state;
+  const char *county;
 } FipsCode;
 
 static const FipsCode fips_table[] = {
@@ -3491,10 +3508,12 @@ static const FipsCode fips_table[] = {
     {78010, "VI", "St. Croix Island"},
     {78020, "VI", "St. John Island"},
     {78030, "VI", "St. Thomas Island"},
-    {0, NULL, NULL}
-};
+    {0, NULL, NULL}};
 
-typedef struct { const char* code; const char* desc; } SameEvent;
+typedef struct {
+  const char *code;
+  const char *desc;
+} SameEvent;
 static const SameEvent event_table[] = {
     {"ADR", "Administrative Message"},
     {"AVA", "Avalanche Watch"},
@@ -3559,544 +3578,626 @@ static const SameEvent event_table[] = {
     {"VOW", "Volcano Warning"},
     {"WSA", "Winter Storm Watch"},
     {"WSW", "Winter Storm Warning"},
-    {NULL, NULL}
-};
+    {NULL, NULL}};
 
-static void parse_same_header(const char* header) {
-    if (strncmp(header, "ZCZC-", 5) != 0) return;
+static void parse_same_header(const char *header) {
+  if (strncmp(header, "ZCZC-", 5) != 0)
+    return;
 
-    char buf[256];
-    strncpy(buf, header + 5, sizeof(buf)-1);
-    buf[255] = '\0';
+  char buf[256];
+  strncpy(buf, header + 5, sizeof(buf) - 1);
+  buf[255] = '\0';
 
-    char* org = strtok(buf, "-");
-    char* event = strtok(NULL, "-");
-    if (!org || !event) return;
+  char *org = strtok(buf, "-");
+  char *event = strtok(NULL, "-");
+  if (!org || !event)
+    return;
 
-    char* fips_list[32];
-    int num_fips = 0;
+  char *fips_list[32];
+  int num_fips = 0;
 
-    char* dur_str = NULL;
-    char* tok;
-    while ((tok = strtok(NULL, "-")) != NULL) {
-        char* plus = strchr(tok, '+');
-        if (plus) {
-            *plus = '\0';
-            fips_list[num_fips++] = tok;
-            dur_str = plus + 1; // points to "0100"
-            break;
-        } else {
-            fips_list[num_fips++] = tok;
-        }
-    }
-
-    char* julian_time = strtok(NULL, "-");
-    char* station = strtok(NULL, "-");
-    if (!dur_str || !julian_time || !station) return;
-
-    const char* org_str = "Unknown Originator";
-    if (strcmp(org, "WXR") == 0) org_str = "The National Weather Service";
-    else if (strcmp(org, "CIV") == 0) org_str = "Civil Authorities";
-    else if (strcmp(org, "EAS") == 0) org_str = "EAS Participant";
-    else if (strcmp(org, "PEP") == 0) org_str = "Primary Entry Point System";
-
-    const char* event_str = event; // Default to raw code if unknown
-    bool found = false;
-    for (int i = 0; event_table[i].code != NULL; i++) {
-        if (strcmp(event_table[i].code, event) == 0) {
-            event_str = event_table[i].desc;
-            found = true;
-            break;
-        }
-    }
-
-    // Fallbacks for unrecognized codes ending in A, E, S, or W
-    if (!found && strlen(event) == 3) {
-        if (event[2] == 'A') event_str = "Unrecognized Watch";
-        else if (event[2] == 'E') event_str = "Unrecognized Emergency";
-        else if (event[2] == 'S') event_str = "Unrecognized Statement";
-        else if (event[2] == 'W') event_str = "Unrecognized Warning";
-    }
-
-    log_info("================ *SAME ALERT!* ===============");
-    log_info("%s has issued a %s", org_str, event_str);
-
-    char for_str[1024] = {0};
-    bool first_line = true;
-    for (int i = 0; i < num_fips; i++) {
-        const char* fips = fips_list[i];
-        char current[128];
-        if (strlen(fips) == 6) {
-            int part = fips[0] - '0';
-            int state_county = atoi(fips + 1);
-
-            const char* state_abbr = "??";
-            const char* county_name = "Unknown Area";
-
-            for (int j = 0; fips_table[j].state != NULL; j++) {
-                if (fips_table[j].code == state_county) {
-                    state_abbr = fips_table[j].state;
-                    county_name = fips_table[j].county;
-                    break;
-                }
-            }
-
-            if (part == 0) {
-                snprintf(current, sizeof(current), "%s, %s", county_name, state_abbr);
-            } else {
-                snprintf(current, sizeof(current), "%s, %s (Part %d)", county_name, state_abbr, part);
-            }
-        } else {
-            snprintf(current, sizeof(current), "FIPS %s", fips);
-        }
-
-        // Chunking logic: print and reset every 7 items
-        if (i > 0 && i % 7 == 0) {
-            if (first_line) {
-                log_info("For:                 %s", for_str);
-                first_line = false;
-            } else {
-                log_info("                     %s", for_str);
-            }
-            for_str[0] = '\0';
-        }
-
-        if (for_str[0] == '\0') {
-            snprintf(for_str, sizeof(for_str), "%s", current);
-        } else {
-            snprintf(for_str + strlen(for_str), sizeof(for_str) - strlen(for_str), " | %s", current);
-        }
-    }
-    
-    // Print the final chunk
-    if (for_str[0] != '\0') {
-        if (first_line) {
-            log_info("For:                 %s", for_str);
-        } else {
-            log_info("                     %s", for_str);
-        }
-    }
-
-    if (strlen(dur_str) >= 4) {
-        int hr = (dur_str[0]-'0')*10 + (dur_str[1]-'0');
-        int mn = (dur_str[2]-'0')*10 + (dur_str[3]-'0');
-        log_info("Valid for:           %d %s, %d %s", hr, hr == 1 ? "hour" : "hours", mn, mn == 1 ? "minute" : "minutes");
-    }
-
-    if (strlen(julian_time) >= 7) {
-        int julian_day = (julian_time[0]-'0')*100 + (julian_time[1]-'0')*10 + (julian_time[2]-'0');
-        int hr = (julian_time[3]-'0')*10 + (julian_time[4]-'0');
-        int mn = (julian_time[5]-'0')*10 + (julian_time[6]-'0');
-
-        time_t t = time(NULL);
-        struct tm* tm_info = gmtime(&t);
-        int year = tm_info->tm_year + 1900;
-
-        // Handle New Year's edge case (e.g. warning issued Dec 31, received Jan 1)
-        if (tm_info->tm_yday < 30 && julian_day > 330) {
-            year -= 1;
-        }
-
-        int days_in_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-        if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) {
-            days_in_month[1] = 29;
-        }
-
-        int day = julian_day;
-        int month = 0;
-        while (month < 12 && day > days_in_month[month]) {
-            day -= days_in_month[month];
-            month++;
-        }
-
-        const char* months[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
-
-        log_info("Issued on:           %s %d at %02d:%02d UTC", months[month], day, hr, mn);
-        log_info("Originating Station: %s", station);
-    }
-
-    log_info("==============================================");
-}
-
-static void output_noaawx_reset(ModuleContext* context) { (void)context; }
-static void output_noaawx_flush(ModuleContext* context) {
-    NoaawxContext* decoder = (NoaawxContext*)context->app->module.output_private_data;
-    if (is_shutdown_requested()) {
-        audio_output_clear(decoder->audio_out);
+  char *dur_str = NULL;
+  char *tok;
+  while ((tok = strtok(NULL, "-")) != NULL) {
+    char *plus = strchr(tok, '+');
+    if (plus) {
+      *plus = '\0';
+      fips_list[num_fips++] = tok;
+      dur_str = plus + 1; // points to "0100"
+      break;
     } else {
-        audio_output_drain(decoder->audio_out);
+      fips_list[num_fips++] = tok;
     }
-}
-static void run_bit_wise_voting(NoaawxContext* decoder) {
-    if (decoder->num_bursts == 0) return;
+  }
 
-    char final_msg[256];
-    memset(final_msg, 0, sizeof(final_msg));
+  char *julian_time = strtok(NULL, "-");
+  char *station = strtok(NULL, "-");
+  if (!dur_str || !julian_time || !station)
+    return;
 
-    if (decoder->num_bursts == 1) {
-        strncpy(final_msg, decoder->same_bursts[0], 255);
-    } else if (decoder->num_bursts == 2) {
-        strncpy(final_msg, decoder->same_bursts[0], 255); // Fallback to burst 1 if only 2 received
+  const char *org_str = "Unknown Originator";
+  if (strcmp(org, "WXR") == 0)
+    org_str = "The National Weather Service";
+  else if (strcmp(org, "CIV") == 0)
+    org_str = "Civil Authorities";
+  else if (strcmp(org, "EAS") == 0)
+    org_str = "EAS Participant";
+  else if (strcmp(org, "PEP") == 0)
+    org_str = "Primary Entry Point System";
+
+  const char *event_str = event; // Default to raw code if unknown
+  bool found = false;
+  for (int i = 0; event_table[i].code != NULL; i++) {
+    if (strcmp(event_table[i].code, event) == 0) {
+      event_str = event_table[i].desc;
+      found = true;
+      break;
+    }
+  }
+
+  // Fallbacks for unrecognized codes ending in A, E, S, or W
+  if (!found && strlen(event) == 3) {
+    if (event[2] == 'A')
+      event_str = "Unrecognized Watch";
+    else if (event[2] == 'E')
+      event_str = "Unrecognized Emergency";
+    else if (event[2] == 'S')
+      event_str = "Unrecognized Statement";
+    else if (event[2] == 'W')
+      event_str = "Unrecognized Warning";
+  }
+
+  log_info("================ *SAME ALERT!* ===============");
+  log_info("%s has issued a %s", org_str, event_str);
+
+  char for_str[1024] = {0};
+  bool first_line = true;
+  for (int i = 0; i < num_fips; i++) {
+    const char *fips = fips_list[i];
+    char current[128];
+    if (strlen(fips) == 6) {
+      int part = fips[0] - '0';
+      int state_county = atoi(fips + 1);
+
+      const char *state_abbr = "??";
+      const char *county_name = "Unknown Area";
+
+      for (int j = 0; fips_table[j].state != NULL; j++) {
+        if (fips_table[j].code == state_county) {
+          state_abbr = fips_table[j].state;
+          county_name = fips_table[j].county;
+          break;
+        }
+      }
+
+      if (part == 0) {
+        snprintf(current, sizeof(current), "%s, %s", county_name, state_abbr);
+      } else {
+        snprintf(current, sizeof(current), "%s, %s (Part %d)", county_name,
+                 state_abbr, part);
+      }
     } else {
-        // 3 bursts received, Bit-Wise Voting!
-        for (int i = 0; i < 255; i++) {
-            char c1 = decoder->same_bursts[0][i];
-            char c2 = decoder->same_bursts[1][i];
-            char c3 = decoder->same_bursts[2][i];
-
-            if (c1 == '\0' && c2 == '\0' && c3 == '\0') break;
-
-            char voted_char = 0;
-            for (int b = 0; b < 8; b++) {
-                int bit1 = (c1 >> b) & 1;
-                int bit2 = (c2 >> b) & 1;
-                int bit3 = (c3 >> b) & 1;
-                
-                int sum = 0;
-                int active = 0;
-                int tiebreaker = 0;
-
-                // Only count the bit if the burst actually has a valid character
-                if (c1 != '\0') { sum += bit1; active++; tiebreaker = bit1; }
-                if (c2 != '\0') { sum += bit2; active++; tiebreaker = bit2; }
-                if (c3 != '\0') { sum += bit3; active++; tiebreaker = bit3; }
-
-                if (active == 3) {
-                    if (sum >= 2) voted_char |= (1 << b);
-                } else if (active == 2) {
-                    if (sum == 2) voted_char |= (1 << b);
-                    else if (sum == 1) voted_char |= (tiebreaker << b); // Tiebreaker
-                } else if (active == 1) {
-                    if (sum == 1) voted_char |= (1 << b);
-                }
-            }
-            final_msg[i] = voted_char;
-        }
+      snprintf(current, sizeof(current), "FIPS %s", fips);
     }
 
-    log_info("Error corrected SAME Header: %s", final_msg);
-    if (!same_alert_is_repeat) {
-        strncpy(same_alert_saved_header, final_msg, sizeof(same_alert_saved_header)-1);
-        same_alert_saved_header[255] = '\0';
-        same_alert_repeat_counter = SAME_ALERT_EXTRA_REPEATS;
-        same_alert_samples_until_next_print = SAME_ALERT_REPEAT_DELAY_SEC * NOAAWX_SAMPLE_RATE;
-    }
-    parse_same_header(final_msg);
-
-    if (!s_noaawx_config.no_alert_tone) {
-        log_info("Playing alert tone...");
-        // Delay for 1.0 second, then trigger a 6.0-second alert tone signal
-        decoder->alert_tone_delay_samples = 1 * 24000;
-        decoder->alert_tone_samples_remaining = (int)(6.00f * 24000);
-        decoder->alert_tone_phase_1 = 0.0f;
-        decoder->alert_tone_phase_2 = 0.0f;
+    // Chunking logic: print and reset every 7 items
+    if (i > 0 && i % 7 == 0) {
+      if (first_line) {
+        log_info("For:                 %s", for_str);
+        first_line = false;
+      } else {
+        log_info("                     %s", for_str);
+      }
+      for_str[0] = '\0';
     }
 
-    if (s_noaawx_config.standby) {
-        decoder->is_unmuted = true;
-        log_info("Standby Mode: Alert received!, audio unmuted.");
+    if (for_str[0] == '\0') {
+      snprintf(for_str, sizeof(for_str), "%s", current);
+    } else {
+      snprintf(for_str + strlen(for_str), sizeof(for_str) - strlen(for_str),
+               " | %s", current);
+    }
+  }
+
+  // Print the final chunk
+  if (for_str[0] != '\0') {
+    if (first_line) {
+      log_info("For:                 %s", for_str);
+    } else {
+      log_info("                     %s", for_str);
+    }
+  }
+
+  if (strlen(dur_str) >= 4) {
+    int hr = (dur_str[0] - '0') * 10 + (dur_str[1] - '0');
+    int mn = (dur_str[2] - '0') * 10 + (dur_str[3] - '0');
+    log_info("Valid for:           %d %s, %d %s", hr,
+             hr == 1 ? "hour" : "hours", mn, mn == 1 ? "minute" : "minutes");
+  }
+
+  if (strlen(julian_time) >= 7) {
+    int julian_day = (julian_time[0] - '0') * 100 +
+                     (julian_time[1] - '0') * 10 + (julian_time[2] - '0');
+    int hr = (julian_time[3] - '0') * 10 + (julian_time[4] - '0');
+    int mn = (julian_time[5] - '0') * 10 + (julian_time[6] - '0');
+
+    time_t t = time(NULL);
+    struct tm *tm_info = gmtime(&t);
+    int year = tm_info->tm_year + 1900;
+
+    // Handle New Year's edge case (e.g. warning issued Dec 31, received Jan 1)
+    if (tm_info->tm_yday < 30 && julian_day > 330) {
+      year -= 1;
     }
 
-    // Reset
-    decoder->num_bursts = 0;
-    decoder->num_eom_bursts = 0;
-    decoder->samples_since_last_burst = 0;
-    memset(decoder->same_bursts, 0, sizeof(decoder->same_bursts));
+    int days_in_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) {
+      days_in_month[1] = 29;
+    }
+
+    int day = julian_day;
+    int month = 0;
+    while (month < 12 && day > days_in_month[month]) {
+      day -= days_in_month[month];
+      month++;
+    }
+
+    const char *months[] = {"January",   "February", "March",    "April",
+                            "May",       "June",     "July",     "August",
+                            "September", "October",  "November", "December"};
+
+    log_info("Issued on:           %s %d at %02d:%02d UTC", months[month], day,
+             hr, mn);
+    log_info("Originating Station: %s", station);
+  }
+
+  log_info("==============================================");
 }
 
-static size_t output_noaawx_write_chunk(ModuleContext* context, const void* buffer, size_t input_bytes) {
-    AppContext* res = context->app;
-    NoaawxContext* decoder = (NoaawxContext*)res->module.output_private_data;
+static void output_noaawx_reset(ModuleContext *context) { (void)context; }
+static void output_noaawx_flush(ModuleContext *context) {
+  NoaawxContext *decoder =
+      (NoaawxContext *)context->app->module.output_private_data;
+  if (is_shutdown_requested()) {
+    audio_output_clear(decoder->audio_out);
+  } else {
+    audio_output_drain(decoder->audio_out);
+  }
+}
+static void run_bit_wise_voting(NoaawxContext *decoder) {
+  if (decoder->num_bursts == 0)
+    return;
 
-    static size_t stat_counter = 0;
-    static double accum_mag_sum = 0.0, accum_mag_sq_sum = 0.0;
-    static size_t stat_rate_threshold = 0;
-    static bool _first_run = true;
-    if (_first_run) {
-        stat_rate_threshold = (size_t)(decoder->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC);
-        _first_run = false;
-    }
-    if (input_bytes == 0) return 0;
+  char final_msg[256];
+  memset(final_msg, 0, sizeof(final_msg));
 
-    int n = input_bytes / sizeof(liquid_float_complex);
-    liquid_float_complex* iq = (liquid_float_complex*)buffer;
+  if (decoder->num_bursts == 1) {
+    strncpy(final_msg, decoder->same_bursts[0], 255);
+  } else if (decoder->num_bursts == 2) {
+    strncpy(final_msg, decoder->same_bursts[0],
+            255); // Fallback to burst 1 if only 2 received
+  } else {
+    // 3 bursts received, Bit-Wise Voting!
+    for (int i = 0; i < 255; i++) {
+      char c1 = decoder->same_bursts[0][i];
+      char c2 = decoder->same_bursts[1][i];
+      char c3 = decoder->same_bursts[2][i];
 
-    // Timeout logic for byte-wise voting
-    decoder->samples_since_last_burst += n;
-    if (decoder->num_bursts > 0 && decoder->samples_since_last_burst > (size_t)(decoder->input_samplerate * 5.0f)) {
-        run_bit_wise_voting(decoder);
-    }
+      if (c1 == '\0' && c2 == '\0' && c3 == '\0')
+        break;
 
-    // 1. Calculate block-level sum of magnitudes and sum of squares
-    float block_mag_sum = 0.0f;
-    float block_mag_sq_sum = 0.0f;
-    for (int i = 0; i < n; i++) {
-        float mag2 = crealf(iq[i])*crealf(iq[i]) + cimagf(iq[i])*cimagf(iq[i]);
-        block_mag_sq_sum += mag2;
-        block_mag_sum += sqrtf(mag2);
-    }
+      char voted_char = 0;
+      for (int b = 0; b < 8; b++) {
+        int bit1 = (c1 >> b) & 1;
+        int bit2 = (c2 >> b) & 1;
+        int bit3 = (c3 >> b) & 1;
 
-    // Accumulate for periodic status logging
-    accum_mag_sum += block_mag_sum;
-    accum_mag_sq_sum += block_mag_sq_sum;
-    stat_counter += n;
+        int sum = 0;
+        int active = 0;
+        int tiebreaker = 0;
 
-    // 4. Periodic console logging (unchanged, rates aligned to CONSOLE_UPDATE_INTERVAL)
-    if (stat_counter >= stat_rate_threshold) {
-        double avg_power = accum_mag_sq_sum / (double)stat_counter;
-        double mean_mag = accum_mag_sum / (double)stat_counter;
-        double variance = avg_power - (mean_mag * mean_mag);
-
-        float snr_db = 0.0f;
-        if (variance > 1e-12) {
-            snr_db = (float)(10.0 * log10((mean_mag * mean_mag) / variance));
-        } else {
-            snr_db = 100.0f;
+        // Only count the bit if the burst actually has a valid character
+        if (c1 != '\0') {
+          sum += bit1;
+          active++;
+          tiebreaker = bit1;
+        }
+        if (c2 != '\0') {
+          sum += bit2;
+          active++;
+          tiebreaker = bit2;
+        }
+        if (c3 != '\0') {
+          sum += bit3;
+          active++;
+          tiebreaker = bit3;
         }
 
-        float dbfs = utility_calculate_dbfs((float)avg_power);
-
-        if (s_noaawx_config.audio_in) {
-            log_info("dBFS: %5.1f", dbfs);
-        } else {
-            log_info("dBFS: %.1f | SNR: %.1f dB", dbfs, snr_db);
+        if (active == 3) {
+          if (sum >= 2)
+            voted_char |= (1 << b);
+        } else if (active == 2) {
+          if (sum == 2)
+            voted_char |= (1 << b);
+          else if (sum == 1)
+            voted_char |= (tiebreaker << b); // Tiebreaker
+        } else if (active == 1) {
+          if (sum == 1)
+            voted_char |= (1 << b);
         }
-
-        stat_counter = 0; accum_mag_sum = 0.0; accum_mag_sq_sum = 0.0;
+      }
+      final_msg[i] = voted_char;
     }
+  }
+
+  log_info("Error corrected SAME Header: %s", final_msg);
+  if (!same_alert_is_repeat) {
+    strncpy(same_alert_saved_header, final_msg,
+            sizeof(same_alert_saved_header) - 1);
+    same_alert_saved_header[255] = '\0';
+    same_alert_repeat_counter = SAME_ALERT_EXTRA_REPEATS;
+    same_alert_samples_until_next_print =
+        SAME_ALERT_REPEAT_DELAY_SEC * NOAAWX_SAMPLE_RATE;
+  }
+  parse_same_header(final_msg);
+
+  if (!s_noaawx_config.no_alert_tone) {
+    log_info("Playing alert tone...");
+    // Delay for 1.0 second, then trigger a 6.0-second alert tone signal
+    decoder->alert_tone_delay_samples = 1 * 24000;
+    decoder->alert_tone_samples_remaining = (int)(6.00f * 24000);
+    decoder->alert_tone_phase_1 = 0.0f;
+    decoder->alert_tone_phase_2 = 0.0f;
+  }
+
+  if (s_noaawx_config.standby) {
+    decoder->is_unmuted = true;
+    log_info("Standby Mode: Alert received!, audio unmuted.");
+  }
+
+  // Reset
+  decoder->num_bursts = 0;
+  decoder->num_eom_bursts = 0;
+  decoder->samples_since_last_burst = 0;
+  memset(decoder->same_bursts, 0, sizeof(decoder->same_bursts));
+}
+
+static size_t output_noaawx_write_chunk(ModuleContext *context,
+                                        const void *buffer,
+                                        size_t input_bytes) {
+  AppContext *res = context->app;
+  NoaawxContext *decoder = (NoaawxContext *)res->module.output_private_data;
+
+  static size_t stat_counter = 0;
+  static double accum_mag_sum = 0.0, accum_mag_sq_sum = 0.0;
+  static size_t stat_rate_threshold = 0;
+  static bool _first_run = true;
+  if (_first_run) {
+    stat_rate_threshold =
+        (size_t)(decoder->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC);
+    _first_run = false;
+  }
+  if (input_bytes == 0)
+    return 0;
+
+  int n = input_bytes / sizeof(liquid_float_complex);
+  liquid_float_complex *iq = (liquid_float_complex *)buffer;
+
+  // Timeout logic for byte-wise voting
+  decoder->samples_since_last_burst += n;
+  if (decoder->num_bursts > 0 &&
+      decoder->samples_since_last_burst >
+          (size_t)(decoder->input_samplerate * 5.0f)) {
+    run_bit_wise_voting(decoder);
+  }
+
+  // 1. Calculate block-level sum of magnitudes and sum of squares
+  float block_mag_sum = 0.0f;
+  float block_mag_sq_sum = 0.0f;
+  for (int i = 0; i < n; i++) {
+    float mag2 = crealf(iq[i]) * crealf(iq[i]) + cimagf(iq[i]) * cimagf(iq[i]);
+    block_mag_sq_sum += mag2;
+    block_mag_sum += sqrtf(mag2);
+  }
+
+  // Accumulate for periodic status logging
+  accum_mag_sum += block_mag_sum;
+  accum_mag_sq_sum += block_mag_sq_sum;
+  stat_counter += n;
+
+  // 4. Periodic console logging (unchanged, rates aligned to
+  // CONSOLE_UPDATE_INTERVAL)
+  if (stat_counter >= stat_rate_threshold) {
+    double avg_power = accum_mag_sq_sum / (double)stat_counter;
+    double mean_mag = accum_mag_sum / (double)stat_counter;
+    double variance = avg_power - (mean_mag * mean_mag);
+
+    float snr_db = 0.0f;
+    if (variance > 1e-12) {
+      snr_db = (float)(10.0 * log10((mean_mag * mean_mag) / variance));
+    } else {
+      snr_db = 100.0f;
+    }
+
+    float dbfs = utility_calculate_dbfs((float)avg_power);
 
     if (s_noaawx_config.audio_in) {
-        // Pure Audio Mode: Bypass FM Demodulator. Mix Left (I) and Right (Q) channels.
-        for (int i = 0; i < n; i++) {
-            decoder->mono_buffer[i] = 0.5f * (crealf(iq[i]) + cimagf(iq[i]));
-        }
+      log_info("dBFS: %5.1f", dbfs);
     } else {
-        // SDR Mode: FM Demodulator
-        freqdem_demodulate_block(decoder->fm_demod, iq, n, decoder->mono_buffer);
+      log_info("dBFS: %.1f | SNR: %.1f dB", dbfs, snr_db);
     }
 
+    stat_counter = 0;
+    accum_mag_sum = 0.0;
+    accum_mag_sq_sum = 0.0;
+  }
+
+  if (s_noaawx_config.audio_in) {
+    // Pure Audio Mode: Bypass FM Demodulator. Mix Left (I) and Right (Q)
+    // channels.
     for (int i = 0; i < n; i++) {
-        float sample = decoder->mono_buffer[i];
-
-        if (!s_noaawx_config.audio_in) {
-            iirfilt_rrrf_execute(decoder->deemph_filter, sample, &sample);
-        }
-        iirfilt_rrrf_execute(decoder->audio_lpf, sample, &sample);
-
-        sample *= s_noaawx_config.gain;
-        decoder->mono_buffer[i] = sample;
+      decoder->mono_buffer[i] = 0.5f * (crealf(iq[i]) + cimagf(iq[i]));
     }
+  } else {
+    // SDR Mode: FM Demodulator
+    freqdem_demodulate_block(decoder->fm_demod, iq, n, decoder->mono_buffer);
+  }
 
-    // --- AFSK SAME Decoder Pipeline (Runs at 24kHz) ---
+  for (int i = 0; i < n; i++) {
+    float sample = decoder->mono_buffer[i];
+
+    if (!s_noaawx_config.audio_in) {
+      iirfilt_rrrf_execute(decoder->deemph_filter, sample, &sample);
+    }
+    iirfilt_rrrf_execute(decoder->audio_lpf, sample, &sample);
+
+    sample *= s_noaawx_config.gain;
+    decoder->mono_buffer[i] = sample;
+  }
+
+  // --- AFSK SAME Decoder ProcessChain (Runs at 24kHz) ---
+  for (int i = 0; i < n; i++) {
+    float unmuted_sample = decoder->mono_buffer[i];
+
+    // 1. Mix to Baseband
+    float complex x;
+    nco_crcf_mix_down(decoder->afsk_nco, unmuted_sample, &x);
+    nco_crcf_step(decoder->afsk_nco);
+
+    // 2. Lowpass Filter to remove the high-frequency image
+    iirfilt_crcf_execute(decoder->afsk_lpf, x, &x);
+
+    // 3. FM Discriminator
+    float inst_freq = 0.0f;
+    freqdem_demodulate(decoder->afsk_fm, x, &inst_freq);
+
+    // 4. Symbol Synchronizer
+    float sync_out[4];
+    unsigned int num_sync;
+    symsync_rrrf_execute(decoder->afsk_sync, &inst_freq, 1, sync_out,
+                         &num_sync);
+
+    // 5. Decode Bits (SAME is LSB-first)
+    for (unsigned int s = 0; s < num_sync; s++) {
+      uint8_t bit = (sync_out[s] > 0.0f) ? 1 : 0;
+      decoder->shift_register = (decoder->shift_register >> 1) | (bit << 7);
+
+      if (!decoder->is_locked) {
+        // Hunt for sync byte 0xAB (10101011)
+        if (decoder->shift_register == 0xAB) {
+          decoder->is_locked = true;
+          decoder->bit_count = 0;
+          decoder->same_msg_len = 0;
+          memset(decoder->same_msg, 0, sizeof(decoder->same_msg));
+        }
+      } else {
+        decoder->bit_count++;
+        if (decoder->bit_count == 8) {
+          decoder->bit_count = 0;
+          uint8_t byte = decoder->shift_register;
+
+          if (byte == 0xAB) {
+            // Still in preamble, keep waiting
+            decoder->same_msg_len = 0;
+          } else if (byte >= 32 && byte <= 126) {
+            // Printable ASCII character
+            if (decoder->same_msg_len < (int)sizeof(decoder->same_msg) - 1) {
+              decoder->same_msg[decoder->same_msg_len++] = (char)byte;
+              decoder->same_msg[decoder->same_msg_len] = '\0';
+            }
+          } else {
+            // Non-printable character means the AFSK burst is over (or noise)
+            if (decoder->same_msg_len > 0) {
+              if (strncmp(decoder->same_msg, "ZCZC", 4) == 0) {
+                log_info("SAME Decoder: %s", decoder->same_msg);
+
+                if (decoder->num_bursts == 0) {
+                  decoder->num_eom_bursts =
+                      0; // Reset EOM counter for new message
+                }
+
+                if (decoder->num_bursts < 3) {
+                  strncpy(decoder->same_bursts[decoder->num_bursts],
+                          decoder->same_msg, 255);
+                  decoder->same_bursts[decoder->num_bursts][255] = '\0';
+                  decoder->num_bursts++;
+                  decoder->samples_since_last_burst = 0;
+                }
+
+                // If we've successfully collected all 3 bursts, vote
+                // immediately!
+                if (decoder->num_bursts == 3) {
+                  run_bit_wise_voting(decoder);
+                }
+              } else if (strncmp(decoder->same_msg, "NNNN", 4) == 0) {
+                log_info("SAME Decoder: %s", decoder->same_msg);
+                decoder->num_eom_bursts++;
+                if (s_noaawx_config.standby && decoder->is_unmuted) {
+                  decoder->is_unmuted = false;
+                  log_info("Standby Mode: EOM received, audio muted.");
+                }
+              }
+            }
+            decoder->is_locked = false;
+          }
+        }
+      }
+    }
+    // Apply standby muting before mixing the alert tone
+    if (!decoder->is_unmuted) {
+      decoder->mono_buffer[i] = 0.0f;
+    }
+  }
+
+  // --- SAME Alert Repetition Logic ---
+  if (same_alert_repeat_counter > 0) {
+    same_alert_samples_until_next_print -= n;
+    if (same_alert_samples_until_next_print <= 0) {
+      same_alert_is_repeat = true;
+      parse_same_header(same_alert_saved_header);
+      same_alert_is_repeat = false;
+
+      same_alert_repeat_counter--;
+      same_alert_samples_until_next_print =
+          SAME_ALERT_REPEAT_DELAY_SEC * NOAAWX_SAMPLE_RATE;
+    }
+  }
+
+  // Mix in Alert Tone if active
+  if (decoder->alert_tone_delay_samples > 0 ||
+      decoder->alert_tone_samples_remaining > 0) {
     for (int i = 0; i < n; i++) {
-        float unmuted_sample = decoder->mono_buffer[i];
+      if (decoder->alert_tone_delay_samples > 0) {
+        decoder->alert_tone_delay_samples--;
+        continue;
+      }
 
-        // 1. Mix to Baseband
-        float complex x;
-        nco_crcf_mix_down(decoder->afsk_nco, unmuted_sample, &x);
-        nco_crcf_step(decoder->afsk_nco);
+      if (decoder->alert_tone_samples_remaining > 0) {
+        float total_sec = 6.00f;
+        float time_sec =
+            (total_sec * 24000 - decoder->alert_tone_samples_remaining) /
+            24000.0f;
+        bool is_on = false;
+        float current_freq = 0.0f;
 
-        // 2. Lowpass Filter to remove the high-frequency image
-        iirfilt_crcf_execute(decoder->afsk_lpf, x, &x);
-
-        // 3. FM Discriminator
-        float inst_freq = 0.0f;
-        freqdem_demodulate(decoder->afsk_fm, x, &inst_freq);
-
-        // 4. Symbol Synchronizer
-        float sync_out[4];
-        unsigned int num_sync;
-        symsync_rrrf_execute(decoder->afsk_sync, &inst_freq, 1, sync_out, &num_sync);
-
-        // 5. Decode Bits (SAME is LSB-first)
-        for(unsigned int s = 0; s < num_sync; s++) {
-            uint8_t bit = (sync_out[s] > 0.0f) ? 1 : 0;
-            decoder->shift_register = (decoder->shift_register >> 1) | (bit << 7);
-
-            if (!decoder->is_locked) {
-                // Hunt for sync byte 0xAB (10101011)
-                if (decoder->shift_register == 0xAB) {
-                    decoder->is_locked = true;
-                    decoder->bit_count = 0;
-                    decoder->same_msg_len = 0;
-                    memset(decoder->same_msg, 0, sizeof(decoder->same_msg));
-                }
-            } else {
-                decoder->bit_count++;
-                if (decoder->bit_count == 8) {
-                    decoder->bit_count = 0;
-                    uint8_t byte = decoder->shift_register;
-
-                    if (byte == 0xAB) {
-                        // Still in preamble, keep waiting
-                        decoder->same_msg_len = 0;
-                    } else if (byte >= 32 && byte <= 126) {
-                        // Printable ASCII character
-                        if (decoder->same_msg_len < (int)sizeof(decoder->same_msg) - 1) {
-                            decoder->same_msg[decoder->same_msg_len++] = (char)byte;
-                            decoder->same_msg[decoder->same_msg_len] = '\0';
-                        }
-                    } else {
-                        // Non-printable character means the AFSK burst is over (or noise)
-                        if (decoder->same_msg_len > 0) {
-                            if (strncmp(decoder->same_msg, "ZCZC", 4) == 0) {
-                                log_info("SAME Decoder: %s", decoder->same_msg);
-
-                                if (decoder->num_bursts == 0) {
-                                    decoder->num_eom_bursts = 0; // Reset EOM counter for new message
-                                }
-
-                                if (decoder->num_bursts < 3) {
-                                    strncpy(decoder->same_bursts[decoder->num_bursts], decoder->same_msg, 255);
-                                    decoder->same_bursts[decoder->num_bursts][255] = '\0';
-                                    decoder->num_bursts++;
-                                    decoder->samples_since_last_burst = 0;
-                                }
-
-                                // If we've successfully collected all 3 bursts, vote immediately!
-                                if (decoder->num_bursts == 3) {
-                                    run_bit_wise_voting(decoder);
-                                }
-                            } else if (strncmp(decoder->same_msg, "NNNN", 4) == 0) {
-                                log_info("SAME Decoder: %s", decoder->same_msg);
-                                decoder->num_eom_bursts++;
-                                if (s_noaawx_config.standby && decoder->is_unmuted) {
-                                    decoder->is_unmuted = false;
-                                    log_info("Standby Mode: EOM received, audio muted.");
-                                }
-                            }
-                        }
-                        decoder->is_locked = false;
-                    }
-                }
-            }
+        // Attempt to emulate Uniden warning siren for NOAA weather radio alert
+        // Uses a digital staircase sweep (2.0s cycle)
+        float cycle_time = fmodf(time_sec, 2.00f);
+        if (cycle_time < 1.20f) {
+          // Step 17.5 Hz every 42ms to complete the 1.20s sweep from 100 Hz to
+          // 600 Hz.
+          int step = (int)(cycle_time / 0.042f);
+          current_freq = 100.0f + (step * 17.5f);
+          if (current_freq > 600.0f)
+            current_freq = 600.0f;
+          is_on = true;
+        } else if (cycle_time < 1.80f) {
+          // Hold at the peak frequency (600 Hz) for 0.60 seconds
+          current_freq = 600.0f;
+          is_on = true;
+        } else {
+          // Silence for 0.20 seconds between sweeps
+          is_on = false;
         }
-        // Apply standby muting before mixing the alert tone
-        if (!decoder->is_unmuted) {
-            decoder->mono_buffer[i] = 0.0f;
+
+        if (is_on) {
+          // To simulate a cheap 8-bit microcontroller,
+          // we DO NOT use a floating-point NCO phase accumulator.
+          // Microcontrollers use integer countdown timers to toggle GPIO pins,
+          // which creates massive period quantization (e.g. it can generate
+          // 600Hz or 571Hz, but nothing in between). We simulate this by
+          // casting the period to an integer number of samples!
+          int half_period_samples = (int)(24000.0f / (2.0f * current_freq));
+          int counter = (int)decoder->alert_tone_phase_1;
+
+          if (counter <= 0) {
+            counter = half_period_samples; // Reload the hardware timer
+            decoder->alert_tone_phase_2 = (decoder->alert_tone_phase_2 > 0.0f)
+                                              ? -1.0f
+                                              : 1.0f; // Toggle GPIO pin
+          }
+          counter--;
+          decoder->alert_tone_phase_1 = (float)counter;
+
+          // The 8-bit MCU generates a raw square wave (GPIO high/low)
+          decoder->mono_buffer[i] = decoder->alert_tone_phase_2 * 0.3f;
+        } else {
+          decoder->mono_buffer[i] = 0.0f;
         }
+        decoder->alert_tone_samples_remaining--;
+      }
     }
+  }
 
-    // --- SAME Alert Repetition Logic ---
-    if (same_alert_repeat_counter > 0) {
-        same_alert_samples_until_next_print -= n;
-        if (same_alert_samples_until_next_print <= 0) {
-            same_alert_is_repeat = true;
-            parse_same_header(same_alert_saved_header);
-            same_alert_is_repeat = false;
+  for (int i = 0; i < n; i++) {
+    float val = decoder->mono_buffer[i] * 32767.0f;
+    if (val > 32767.0f)
+      val = 32767.0f;
+    else if (val < -32768.0f)
+      val = -32768.0f;
+    decoder->pcm_out[i] = (int16_t)val;
+  }
 
-            same_alert_repeat_counter--;
-            same_alert_samples_until_next_print = SAME_ALERT_REPEAT_DELAY_SEC * NOAAWX_SAMPLE_RATE;
-        }
-    }
+  audio_output_write(decoder->audio_out, decoder->pcm_out, n * sizeof(int16_t),
+                     res->process_chain_mode);
 
-    // Mix in Alert Tone if active
-    if (decoder->alert_tone_delay_samples > 0 || decoder->alert_tone_samples_remaining > 0) {
-        for (int i = 0; i < n; i++) {
-            if (decoder->alert_tone_delay_samples > 0) {
-                decoder->alert_tone_delay_samples--;
-                continue;
-            }
-
-            if (decoder->alert_tone_samples_remaining > 0) {
-                float total_sec = 6.00f;
-                float time_sec = (total_sec * 24000 - decoder->alert_tone_samples_remaining) / 24000.0f;
-                bool is_on = false;
-                float current_freq = 0.0f;
-
-                // Attempt to emulate Uniden warning siren for NOAA weather radio alert
-                // Uses a digital staircase sweep (2.0s cycle)
-                float cycle_time = fmodf(time_sec, 2.00f);
-                if (cycle_time < 1.20f) {
-                    // Step 17.5 Hz every 42ms to complete the 1.20s sweep from 100 Hz to 600 Hz.
-                    int step = (int)(cycle_time / 0.042f);
-                    current_freq = 100.0f + (step * 17.5f);
-                    if (current_freq > 600.0f) current_freq = 600.0f;
-                    is_on = true;
-                } else if (cycle_time < 1.80f) {
-                    // Hold at the peak frequency (600 Hz) for 0.60 seconds
-                    current_freq = 600.0f;
-                    is_on = true;
-                } else {
-                    // Silence for 0.20 seconds between sweeps
-                    is_on = false;
-                }
-
-                if (is_on) {
-                    // To simulate a cheap 8-bit microcontroller,
-                    // we DO NOT use a floating-point NCO phase accumulator. Microcontrollers use
-                    // integer countdown timers to toggle GPIO pins, which creates massive period
-                    // quantization (e.g. it can generate 600Hz or 571Hz, but nothing in between).
-                    // We simulate this by casting the period to an integer number of samples!
-                    int half_period_samples = (int)(24000.0f / (2.0f * current_freq));
-                    int counter = (int)decoder->alert_tone_phase_1;
-
-                    if (counter <= 0) {
-                        counter = half_period_samples; // Reload the hardware timer
-                        decoder->alert_tone_phase_2 = (decoder->alert_tone_phase_2 > 0.0f) ? -1.0f : 1.0f; // Toggle GPIO pin
-                    }
-                    counter--;
-                    decoder->alert_tone_phase_1 = (float)counter;
-
-                    // The 8-bit MCU generates a raw square wave (GPIO high/low)
-                    decoder->mono_buffer[i] = decoder->alert_tone_phase_2 * 0.3f;
-                } else {
-                    decoder->mono_buffer[i] = 0.0f;
-                }
-                decoder->alert_tone_samples_remaining--;
-            }
-        }
-    }
-
-    for (int i = 0; i < n; i++) {
-        float val = decoder->mono_buffer[i] * 32767.0f;
-        if (val > 32767.0f) val = 32767.0f;
-        else if (val < -32768.0f) val = -32768.0f;
-        decoder->pcm_out[i] = (int16_t)val;
-    }
-
-    audio_output_write(decoder->audio_out, decoder->pcm_out, n * sizeof(int16_t), res->pipeline_mode);
-
-    return input_bytes;
+  return input_bytes;
 }
 
-static void output_noaawx_cleanup(ModuleContext* context) {
-    AppContext* res = context->app;
-    if (!res->module.output_private_data) return;
-    NoaawxContext* decoder = (NoaawxContext*)res->module.output_private_data;
+static void output_noaawx_cleanup(ModuleContext *context) {
+  AppContext *res = context->app;
+  if (!res->module.output_private_data)
+    return;
+  NoaawxContext *decoder = (NoaawxContext *)res->module.output_private_data;
 
-    audio_output_destroy(decoder->audio_out);
-    if (decoder->fm_demod) freqdem_destroy(decoder->fm_demod);
-    if (decoder->deemph_filter) iirfilt_rrrf_destroy(decoder->deemph_filter);
-    if (decoder->audio_lpf) iirfilt_rrrf_destroy(decoder->audio_lpf);
+  audio_output_destroy(decoder->audio_out);
+  if (decoder->fm_demod)
+    freqdem_destroy(decoder->fm_demod);
+  if (decoder->deemph_filter)
+    iirfilt_rrrf_destroy(decoder->deemph_filter);
+  if (decoder->audio_lpf)
+    iirfilt_rrrf_destroy(decoder->audio_lpf);
 
-    if (decoder->afsk_nco) nco_crcf_destroy(decoder->afsk_nco);
-    if (decoder->afsk_lpf) iirfilt_crcf_destroy(decoder->afsk_lpf);
-    if (decoder->afsk_fm) freqdem_destroy(decoder->afsk_fm);
-    if (decoder->afsk_sync) symsync_rrrf_destroy(decoder->afsk_sync);
+  if (decoder->afsk_nco)
+    nco_crcf_destroy(decoder->afsk_nco);
+  if (decoder->afsk_lpf)
+    iirfilt_crcf_destroy(decoder->afsk_lpf);
+  if (decoder->afsk_fm)
+    freqdem_destroy(decoder->afsk_fm);
+  if (decoder->afsk_sync)
+    symsync_rrrf_destroy(decoder->afsk_sync);
 }
 
-static void output_noaawx_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
-    (void)context;
-    utility_add_summary_item(info, "Output Type", "NOAAWX");
-    if (s_noaawx_config.audio_in) {
-        utility_add_summary_item(info, "Mode", "Audio Input");
-    } else {
-        utility_add_summary_item(info, "Mode", "NFM");
-    }
+static void output_noaawx_get_summary_info(const ModuleContext *context,
+                                           OutputSummaryInfo *info) {
+  (void)context;
+  utility_add_summary_item(info, "Output Type", "NOAAWX");
+  if (s_noaawx_config.audio_in) {
+    utility_add_summary_item(info, "Mode", "Audio Input");
+  } else {
+    utility_add_summary_item(info, "Mode", "NFM");
+  }
 }
 
 static const struct argparse_option output_noaawx_cli_options[] = {
     OPT_GROUP("NOAAWX Output (noaawx)"),
-    OPT_FLOAT(0, "noaawx-gain", &s_noaawx_config.gain, "Audio gain (default: 1.0)", NULL, 0, 0),
-    OPT_BOOLEAN(0, "noaawx-no-nfm", &s_noaawx_config.audio_in, "Bypass FM Demodulator and process input as direct audio.", NULL, 0, 0),
-    OPT_BOOLEAN(0, "noaawx-no-alert-tone", &s_noaawx_config.no_alert_tone, "Disable the alert tone on SAME alert received.", NULL, 0, 0),
-    OPT_BOOLEAN(0, "noaawx-standby", &s_noaawx_config.standby, "Mute audio until a SAME alert is received, then mute again after EOM.", NULL, 0, 0),
+    OPT_FLOAT(0, "noaawx-gain", &s_noaawx_config.gain,
+              "Audio gain (default: 1.0)", NULL, 0, 0),
+    OPT_BOOLEAN(0, "noaawx-no-nfm", &s_noaawx_config.audio_in,
+                "Bypass FM Demodulator and process input as direct audio.",
+                NULL, 0, 0),
+    OPT_BOOLEAN(0, "noaawx-no-alert-tone", &s_noaawx_config.no_alert_tone,
+                "Disable the alert tone on SAME alert received.", NULL, 0, 0),
+    OPT_BOOLEAN(
+        0, "noaawx-standby", &s_noaawx_config.standby,
+        "Mute audio until a SAME alert is received, then mute again after EOM.",
+        NULL, 0, 0),
 };
 
-const struct argparse_option* output_noaawx_get_cli_options(int* count) {
-    *count = sizeof(output_noaawx_cli_options) / sizeof(output_noaawx_cli_options[0]);
-    return output_noaawx_cli_options;
+const struct argparse_option *output_noaawx_get_cli_options(int *count) {
+  *count =
+      sizeof(output_noaawx_cli_options) / sizeof(output_noaawx_cli_options[0]);
+  return output_noaawx_cli_options;
 }
 
 static OutputModuleInterface s_output_noaawx_api = {
@@ -4110,6 +4211,6 @@ static OutputModuleInterface s_output_noaawx_api = {
     .get_cli_options = output_noaawx_get_cli_options,
 };
 
-OutputModuleInterface* output_noaawx_get_module_api(void) {
-    return &s_output_noaawx_api;
+OutputModuleInterface *output_noaawx_get_module_api(void) {
+  return &s_output_noaawx_api;
 }

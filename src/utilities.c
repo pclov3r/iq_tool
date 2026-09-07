@@ -3,248 +3,271 @@
  */
 
 #include "utilities.h"
+#include "app_context.h"
 #include "log.h"
 #include "mem_arena.h"
-#include "app_context.h"
-#include "signal_handler.h"
 #include "ring_buffer.h"
-#include <stdio.h>
-#include <math.h>
-#include <string.h>
-#include <stdarg.h>
+#include "signal_handler.h"
 #include <ctype.h>
-#include <time.h>
+#include <math.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <time.h>
 
 #ifdef _WIN32
-#include <windows.h>
 #include <shlwapi.h>
+#include <windows.h>
 #define strcasecmp _stricmp
 #else
 #include <libgen.h>
-#include <sys/stat.h>
 #include <strings.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
 double utility_get_time(void) {
 #ifdef _WIN32
-    LARGE_INTEGER freq, count;
-    if (QueryPerformanceFrequency(&freq) && QueryPerformanceCounter(&count)) {
-        return (double)count.QuadPart / (double)freq.QuadPart;
-    }
-    // Fallback to a lower-resolution timer if QPC fails
-    return (double)GetTickCount64() / 1000.0;
+  LARGE_INTEGER freq, count;
+  if (QueryPerformanceFrequency(&freq) && QueryPerformanceCounter(&count)) {
+    return (double)count.QuadPart / (double)freq.QuadPart;
+  }
+  // Fallback to a lower-resolution timer if QPC fails
+  return (double)GetTickCount64() / 1000.0;
 #else
-    struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
-        return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
-    }
-    // Fallback for systems without clock_gettime
-    return (double)time(NULL);
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+  }
+  // Fallback for systems without clock_gettime
+  return (double)time(NULL);
 #endif
 }
 
 void utility_clear_stdin(void) {
-    int c;
-    while ((c = getchar()) != '\n' && c != EOF);
+  int c;
+  while ((c = getchar()) != '\n' && c != EOF)
+    ;
 }
 
-const char* utility_format_size(long long size_bytes, char* buffer, size_t buffer_size) {
-    static const char* error_msg = "(N/A)";
-    if (!buffer || buffer_size == 0) return error_msg;
-    if (size_bytes < 0) {
-        snprintf(buffer, buffer_size, "%s", error_msg);
-        return buffer;
-    }
-    double size_d = (double)size_bytes;
-    const long long kilo = 1000;
-    const long long mega = 1000 * 1000;
-    const long long giga = 1000 * 1000 * 1000;
-    if (size_bytes < kilo) {
-        snprintf(buffer, buffer_size, "%lld B", size_bytes);
-    } else if (size_bytes < mega) {
-        snprintf(buffer, buffer_size, "%.2f KB", size_d / kilo);
-    } else if (size_bytes < giga) {
-        snprintf(buffer, buffer_size, "%.2f MB", size_d / mega);
-    } else {
-        snprintf(buffer, buffer_size, "%.2f GB", size_d / giga);
-    }
+const char *utility_format_size(long long size_bytes, char *buffer,
+                                size_t buffer_size) {
+  static const char *error_msg = "(N/A)";
+  if (!buffer || buffer_size == 0)
+    return error_msg;
+  if (size_bytes < 0) {
+    snprintf(buffer, buffer_size, "%s", error_msg);
     return buffer;
+  }
+  double size_d = (double)size_bytes;
+  const long long kilo = 1000;
+  const long long mega = 1000 * 1000;
+  const long long giga = 1000 * 1000 * 1000;
+  if (size_bytes < kilo) {
+    snprintf(buffer, buffer_size, "%lld B", size_bytes);
+  } else if (size_bytes < mega) {
+    snprintf(buffer, buffer_size, "%.2f KB", size_d / kilo);
+  } else if (size_bytes < giga) {
+    snprintf(buffer, buffer_size, "%.2f MB", size_d / mega);
+  } else {
+    snprintf(buffer, buffer_size, "%.2f GB", size_d / giga);
+  }
+  return buffer;
 }
 
-const char* utility_get_basename_for_parsing(const AppConfig *config, char* buffer, size_t buffer_size, MemoryArena* arena) {
+const char *utility_get_basename_for_parsing(const AppConfig *config,
+                                             char *buffer, size_t buffer_size,
+                                             MemoryArena *arena) {
 #ifdef _WIN32
-    (void)arena; // arena is unused on Windows, this silences the warning.
-    if (config->input.effective_path_w[0] != L'\0') {
-        const wchar_t* base_w = PathFindFileNameW(config->input.effective_path_w);
-        if (WideCharToMultiByte(CP_UTF8, 0, base_w, -1, buffer, buffer_size, NULL, NULL) > 0) {
-            return buffer;
-        }
+  (void)arena; // arena is unused on Windows, this silences the warning.
+  if (config->input.effective_path_w[0] != L'\0') {
+    const wchar_t *base_w = PathFindFileNameW(config->input.effective_path_w);
+    if (WideCharToMultiByte(CP_UTF8, 0, base_w, -1, buffer, buffer_size, NULL,
+                            NULL) > 0) {
+      return buffer;
     }
+  }
 #else
-    if (config->input.effective_path) {
-        size_t length = strlen(config->input.effective_path) + 1;
-        char* temp_copy = (char*)mem_arena_alloc(arena, length, false);
-        if (temp_copy) {
-            strcpy(temp_copy, config->input.effective_path);
-            char* base = basename(temp_copy);
-            strncpy(buffer, base, buffer_size - 1);
-            buffer[buffer_size - 1] = '\0';
-            return buffer;
-        }
+  if (config->input.effective_path) {
+    size_t length = strlen(config->input.effective_path) + 1;
+    char *temp_copy = (char *)mem_arena_alloc(arena, length, false);
+    if (temp_copy) {
+      strcpy(temp_copy, config->input.effective_path);
+      char *base = basename(temp_copy);
+      strncpy(buffer, base, buffer_size - 1);
+      buffer[buffer_size - 1] = '\0';
+      return buffer;
     }
+  }
 #endif
+  return NULL;
+}
+
+void utility_add_summary_item(InputSummaryInfo *info, const char *label,
+                              const char *value_fmt, ...) {
+  if (info->count >= APP_MAX_SUMMARY_ITEMS) {
+    return;
+  }
+  SummaryItem *item = &info->items[info->count];
+  strncpy(item->label, label, sizeof(item->label) - 1);
+  item->label[sizeof(item->label) - 1] = '\0';
+  va_list args;
+  va_start(args, value_fmt);
+  vsnprintf(item->value, sizeof(item->value), value_fmt, args);
+  va_end(args);
+  item->value[sizeof(item->value) - 1] = '\0';
+  info->count++;
+}
+
+char *utility_trim_whitespace(char *input_string) {
+  if (!input_string)
     return NULL;
-}
-
-void utility_add_summary_item(InputSummaryInfo* info, const char* label, const char* value_fmt, ...) {
-    if (info->count >= APP_MAX_SUMMARY_ITEMS) {
-        return;
-    }
-    SummaryItem* item = &info->items[info->count];
-    strncpy(item->label, label, sizeof(item->label) - 1);
-    item->label[sizeof(item->label) - 1] = '\0';
-    va_list args;
-    va_start(args, value_fmt);
-    vsnprintf(item->value, sizeof(item->value), value_fmt, args);
-    va_end(args);
-    item->value[sizeof(item->value) - 1] = '\0';
-    info->count++;
-}
-
-char* utility_trim_whitespace(char* input_string) {
-    if (!input_string) return NULL;
-    char* end;
-    while (isspace((unsigned char)*input_string)) input_string++;
-    if (*input_string == 0) {
-        return input_string;
-    }
-    end = input_string + strlen(input_string) - 1;
-    while (end > input_string && isspace((unsigned char)*end)) end--;
-    end[1] = '\0';
+  char *end;
+  while (isspace((unsigned char)*input_string))
+    input_string++;
+  if (*input_string == 0) {
     return input_string;
+  }
+  end = input_string + strlen(input_string) - 1;
+  while (end > input_string && isspace((unsigned char)*end))
+    end--;
+  end[1] = '\0';
+  return input_string;
 }
 
-void utility_format_duration(double total_seconds, char* buffer, size_t buffer_size) {
-    if (!isfinite(total_seconds) || total_seconds < 0) {
-        snprintf(buffer, buffer_size, "N/A");
-        return;
-    }
-    if (total_seconds > 0 && total_seconds < 1.0) {
-        total_seconds = 1.0;
-    }
-    int hours = (int)(total_seconds / 3600);
-    total_seconds -= hours * 3600;
-    int minutes = (int)(total_seconds / 60);
-    total_seconds -= minutes * 60;
-    int seconds = (int)round(total_seconds);
-    if (seconds >= 60) { minutes++; seconds = 0; }
-    if (minutes >= 60) { hours++; minutes = 0; }
-    snprintf(buffer, buffer_size, "%02d:%02d:%02d", hours, minutes, seconds);
+void utility_format_duration(double total_seconds, char *buffer,
+                             size_t buffer_size) {
+  if (!isfinite(total_seconds) || total_seconds < 0) {
+    snprintf(buffer, buffer_size, "N/A");
+    return;
+  }
+  if (total_seconds > 0 && total_seconds < 1.0) {
+    total_seconds = 1.0;
+  }
+  int hours = (int)(total_seconds / 3600);
+  total_seconds -= hours * 3600;
+  int minutes = (int)(total_seconds / 60);
+  total_seconds -= minutes * 60;
+  int seconds = (int)round(total_seconds);
+  if (seconds >= 60) {
+    minutes++;
+    seconds = 0;
+  }
+  if (minutes >= 60) {
+    hours++;
+    minutes = 0;
+  }
+  snprintf(buffer, buffer_size, "%02d:%02d:%02d", hours, minutes, seconds);
 }
 
-bool utility_check_nyquist_warning(double freq_to_check_hz, double sample_rate_hz, const char* context_str) {
-    if (!context_str || sample_rate_hz <= 0) {
-        return true; // Cannot perform check, so allow continuation.
-    }
+bool utility_check_nyquist_warning(double freq_to_check_hz,
+                                   double sample_rate_hz,
+                                   const char *context_str) {
+  if (!context_str || sample_rate_hz <= 0) {
+    return true; // Cannot perform check, so allow continuation.
+  }
 
-    double nyquist_freq = sample_rate_hz / 2.0;
+  double nyquist_freq = sample_rate_hz / 2.0;
 
-    if (fabs(freq_to_check_hz) > nyquist_freq) {
-        log_warn("The '%s' of %.15g Hz exceeds the Nyquist frequency of %.15g Hz for the current sample rate.",
-                 context_str, freq_to_check_hz, nyquist_freq);
-        log_warn("This may cause aliasing and corrupt the signal.");
+  if (fabs(freq_to_check_hz) > nyquist_freq) {
+    log_warn("The '%s' of %.15g Hz exceeds the Nyquist frequency of %.15g Hz "
+             "for the current sample rate.",
+             context_str, freq_to_check_hz, nyquist_freq);
+    log_warn("This may cause aliasing and corrupt the signal.");
 
-        int response;
-        do {
-            fprintf(stderr, "Continue anyway? (y/n): ");
-            response = getchar();
-            if (response == EOF) {
-                fprintf(stderr, "\nEOF detected. Cancelling.\n");
-                return false;
-            }
-            utility_clear_stdin();
-            response = tolower(response);
-            if (response == 'n') {
-                log_info("Operation cancelled by user.");
-                return false;
-            }
-        } while (response != 'y');
-    }
-    return true;
+    int response;
+    do {
+      fprintf(stderr, "Continue anyway? (y/n): ");
+      response = getchar();
+      if (response == EOF) {
+        fprintf(stderr, "\nEOF detected. Cancelling.\n");
+        return false;
+      }
+      utility_clear_stdin();
+      response = tolower(response);
+      if (response == 'n') {
+        log_info("Operation cancelled by user.");
+        return false;
+      }
+    } while (response != 'y');
+  }
+  return true;
 }
 
-bool utility_check_file_exists(const char* full_path) {
+bool utility_check_file_exists(const char *full_path) {
 #ifdef _WIN32
-    wchar_t w_path[MAX_PATH];
-    MultiByteToWideChar(CP_UTF8, 0, full_path, -1, w_path, MAX_PATH);
-    FILE* fp = _wfopen(w_path, L"r");
+  wchar_t w_path[MAX_PATH];
+  MultiByteToWideChar(CP_UTF8, 0, full_path, -1, w_path, MAX_PATH);
+  FILE *fp = _wfopen(w_path, L"r");
 #else
-    FILE* fp = fopen(full_path, "r");
+  FILE *fp = fopen(full_path, "r");
 #endif
-    if (fp) {
-        fclose(fp);
-        return true;
+  if (fp) {
+    fclose(fp);
+    return true;
+  }
+  return false;
+}
+
+bool utility_prompt_for_overwrite(const char *path_for_messages) {
+  fprintf(stderr,
+          "\nOutput file %s exists.\nOverwrite? (y/n): ", path_for_messages);
+  int response = getchar();
+  if (response != '\n' && response != EOF) {
+    utility_clear_stdin();
+  }
+  response = tolower(response);
+  if (response != 'y') {
+    if (response != '\n' && response != EOF) {
+      log_info("Operation cancelled by user.");
     }
     return false;
+  }
+  return true;
 }
 
-bool utility_prompt_for_overwrite(const char* path_for_messages) {
-    fprintf(stderr, "\nOutput file %s exists.\nOverwrite? (y/n): ", path_for_messages);
-    int response = getchar();
-    if (response != '\n' && response != EOF) {
-        utility_clear_stdin();
-    }
-    response = tolower(response);
-    if (response != 'y') {
-        if (response != '\n' && response != EOF) {
-            log_info("Operation cancelled by user.");
-        }
-        return false;
-    }
-    return true;
-}
-
-bool utility_verify_output_path(const AppConfig* config, const char* out_path_utf8) {
+bool utility_verify_output_path(const AppConfig *config,
+                                const char *out_path_utf8) {
 #ifdef _WIN32
-    DWORD attrs;
-    if (config && config->output.effective_path_w[0] != L'\0') {
-        attrs = GetFileAttributesW(config->output.effective_path_w);
-    } else {
-        wchar_t wide_path[MAX_PATH];
-        MultiByteToWideChar(CP_UTF8, 0, out_path_utf8, -1, wide_path, MAX_PATH);
-        attrs = GetFileAttributesW(wide_path);
-    }
+  DWORD attrs;
+  if (config && config->output.effective_path_w[0] != L'\0') {
+    attrs = GetFileAttributesW(config->output.effective_path_w);
+  } else {
+    wchar_t wide_path[MAX_PATH];
+    MultiByteToWideChar(CP_UTF8, 0, out_path_utf8, -1, wide_path, MAX_PATH);
+    attrs = GetFileAttributesW(wide_path);
+  }
 
-    if (attrs != INVALID_FILE_ATTRIBUTES) {
-        if (attrs & FILE_ATTRIBUTE_DIRECTORY) {
-            log_error("Output path '%s' is a directory. Aborting.", out_path_utf8);
-            return false;
-        }
-        // Windows doesn't have FIFOs or S_ISCHR in the same way, prompt for any existing file
-        if (!utility_prompt_for_overwrite(out_path_utf8)) {
-            return false;
-        }
+  if (attrs != INVALID_FILE_ATTRIBUTES) {
+    if (attrs & FILE_ATTRIBUTE_DIRECTORY) {
+      log_error("Output path '%s' is a directory. Aborting.", out_path_utf8);
+      return false;
     }
+    // Windows doesn't have FIFOs or S_ISCHR in the same way, prompt for any
+    // existing file
+    if (!utility_prompt_for_overwrite(out_path_utf8)) {
+      return false;
+    }
+  }
 #else
-    (void)config; // Not needed on Linux where we use out_path_utf8
-    struct stat stat_buf;
-    if (lstat(out_path_utf8, &stat_buf) == 0) {
-        // Explicitly reject directories
-        if (S_ISDIR(stat_buf.st_mode)) {
-            log_error("Output path '%s' is a directory. Aborting.", out_path_utf8);
-            return false;
-        }
-
-        // Only trigger the interactive overwrite prompt if it's a regular file.
-        // This allows /dev/null (S_ISCHR) and FIFOs (S_ISFIFO) to stream seamlessly
-        if (S_ISREG(stat_buf.st_mode)) {
-            if (!utility_prompt_for_overwrite(out_path_utf8)) {
-                return false;
-            }
-        }
+  (void)config; // Not needed on Linux where we use out_path_utf8
+  struct stat stat_buf;
+  if (lstat(out_path_utf8, &stat_buf) == 0) {
+    // Explicitly reject directories
+    if (S_ISDIR(stat_buf.st_mode)) {
+      log_error("Output path '%s' is a directory. Aborting.", out_path_utf8);
+      return false;
     }
+
+    // Only trigger the interactive overwrite prompt if it's a regular file.
+    // This allows /dev/null (S_ISCHR) and FIFOs (S_ISFIFO) to stream seamlessly
+    if (S_ISREG(stat_buf.st_mode)) {
+      if (!utility_prompt_for_overwrite(out_path_utf8)) {
+        return false;
+      }
+    }
+  }
 #endif
-    return true;
+  return true;
 }

@@ -1,0 +1,35 @@
+/**
+ * @file process_chain_context.h
+ * @brief Defines the context structure passed to all process_chain thread
+ * functions.
+ *
+ * This is a simple container struct that bundles pointers to the main
+ * application configuration (`AppConfig`) and app (`AppContext`). It provides a
+ * clean and consistent way to pass the entire application state to the entry
+ * point of each processing thread.
+ */
+
+#ifndef PROCESS_CHAIN_CONTEXT_H_
+#define PROCESS_CHAIN_CONTEXT_H_
+
+// --- Forward Declarations ---
+// We use forward declarations here to avoid including the full, large headers
+// for AppConfig and AppContext. This keeps this header lightweight and
+// dependency-free.
+struct AppConfig;
+struct AppContext;
+
+// --- Struct Definition ---
+
+/**
+ * @struct ProcessChainContext
+ * @brief A container for passing the application's primary state objects to
+ * threads.
+ */
+typedef struct ProcessChainContext {
+  struct AppConfig
+      *config; ///< Pointer to the application's configuration settings.
+  struct AppContext *app; ///< Pointer to the application's allocated app.
+} ProcessChainContext;
+
+#endif // PROCESS_CHAIN_CONTEXT_H_

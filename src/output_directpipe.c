@@ -3,23 +3,23 @@
  */
 
 #include "output_directpipe.h"
-#include "module.h"
 #include "app_context.h"
 #include "log.h"
 #include "mem_arena.h"
+#include "module.h"
 #include "utilities.h"
-#include <string.h>
-#include <stdbool.h>
 #include <errno.h>
+#include <stdbool.h>
+#include <string.h>
 
 #ifdef _WIN32
-#include <io.h>
 #include <fcntl.h>
+#include <io.h>
 #define WRITE _write
 #else
-#include <unistd.h>
-#include <sys/types.h>
 #include <fcntl.h>
+#include <sys/types.h>
+#include <unistd.h>
 #define WRITE write
 #endif
 
@@ -27,85 +27,93 @@
 #define TARGET_FD 10
 
 typedef struct {
-    long long total_bytes_written;
+  long long total_bytes_written;
 } DirectPipeContext;
 
-static bool output_directpipe_initialize(ModuleContext* context) {
-    DirectPipeContext* data = (DirectPipeContext*)mem_arena_alloc(&context->app->pipeline.setup_arena, sizeof(DirectPipeContext), true);
-    if (!data) return false;
+static bool output_directpipe_initialize(ModuleContext *context) {
+  DirectPipeContext *data = (DirectPipeContext *)mem_arena_alloc(
+      &context->app->process_chain.setup_arena, sizeof(DirectPipeContext),
+      true);
+  if (!data)
+    return false;
 
 #ifndef _WIN32
-    /*
-     * Check if the user routed FD 10 in their shell.
-     * Prevents the app from silently throwing data into a void.
-     */
-    if (fcntl(TARGET_FD, F_GETFD) == -1 && errno == EBADF) {
-        log_error("DirectPipe: File Descriptor %d is not open!", TARGET_FD);
-        log_error("Please route it in your shell.");
-        return false;
-    }
+  /*
+   * Check if the user routed FD 10 in their shell.
+   * Prevents the app from silently throwing data into a void.
+   */
+  if (fcntl(TARGET_FD, F_GETFD) == -1 && errno == EBADF) {
+    log_error("DirectPipe: File Descriptor %d is not open!", TARGET_FD);
+    log_error("Please route it in your shell.");
+    return false;
+  }
 #else
-    /* Windows: Force binary mode to prevent \n -> \r\n corruption */
-    _setmode(TARGET_FD, _O_BINARY);
+  /* Windows: Force binary mode to prevent \n -> \r\n corruption */
+  _setmode(TARGET_FD, _O_BINARY);
 #endif
 
-    context->app->module.output_private_data = data;
-    return true;
+  context->app->module.output_private_data = data;
+  return true;
 }
 
-static size_t output_directpipe_write_chunk(ModuleContext* context, const void* buffer, size_t bytes_to_write) {
-    DirectPipeContext* data = (DirectPipeContext*)context->app->module.output_private_data;
-    if (!data || bytes_to_write == 0) return 0;
+static size_t output_directpipe_write_chunk(ModuleContext *context,
+                                            const void *buffer,
+                                            size_t bytes_to_write) {
+  DirectPipeContext *data =
+      (DirectPipeContext *)context->app->module.output_private_data;
+  if (!data || bytes_to_write == 0)
+    return 0;
 
-    const char* output_bytes = (const char*)buffer;
-    size_t bytes_left = bytes_to_write;
+  const char *output_bytes = (const char *)buffer;
+  size_t bytes_left = bytes_to_write;
 
-    /*
-     * Directly writes to the kernel pipe.
-     * Handles partial writes, signals, and full pipes seamlessly.
-     */
-    while (bytes_left > 0) {
-        ssize_t written = WRITE(TARGET_FD, output_bytes, bytes_left);
+  /*
+   * Directly writes to the kernel pipe.
+   * Handles partial writes, signals, and full pipes seamlessly.
+   */
+  while (bytes_left > 0) {
+    ssize_t written = WRITE(TARGET_FD, output_bytes, bytes_left);
 
-        if (written > 0) {
-            output_bytes += written;
-            bytes_left -= written;
-            data->total_bytes_written += written;
-        }
-        else if (written == 0) {
-            /* Limit reached (disk full) or stream closed. Break to prevent infinite loop. */
-            break;
-        }
-        else { // written < 0
-            if (errno == EINTR) {
-                // OS interrupted by a signal. Try again.
-                continue;
-            }
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                // Pipe is temporarily full. Yield CPU briefly.
+    if (written > 0) {
+      output_bytes += written;
+      bytes_left -= written;
+      data->total_bytes_written += written;
+    } else if (written == 0) {
+      /* Limit reached (disk full) or stream closed. Break to prevent infinite
+       * loop. */
+      break;
+    } else { // written < 0
+      if (errno == EINTR) {
+        // OS interrupted by a signal. Try again.
+        continue;
+      }
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // Pipe is temporarily full. Yield CPU briefly.
 #ifndef _WIN32
-                usleep(100);
+        usleep(100);
 #endif
-                continue;
-            }
-            // Fatal error (EPIPE, EBADF). Break the loop.
-            break;
-        }
+        continue;
+      }
+      // Fatal error (EPIPE, EBADF). Break the loop.
+      break;
     }
+  }
 
-    return (bytes_to_write - bytes_left);
+  return (bytes_to_write - bytes_left);
 }
 
-static void output_directpipe_cleanup(ModuleContext* context) {
-    DirectPipeContext* data = (DirectPipeContext*)context->app->module.output_private_data;
-    if (data) {
-        context->app->stats.final_output_size_bytes = data->total_bytes_written;
-    }
+static void output_directpipe_cleanup(ModuleContext *context) {
+  DirectPipeContext *data =
+      (DirectPipeContext *)context->app->module.output_private_data;
+  if (data) {
+    context->app->stats.final_output_size_bytes = data->total_bytes_written;
+  }
 }
 
-static void output_directpipe_get_summary_info(const ModuleContext* context, OutputSummaryInfo* info) {
-    (void)context;
-    utility_add_summary_item(info, "Output Type", "directpipe");
+static void output_directpipe_get_summary_info(const ModuleContext *context,
+                                               OutputSummaryInfo *info) {
+  (void)context;
+  utility_add_summary_item(info, "Output Type", "directpipe");
 }
 
 static const struct argparse_option directpipe_cli_options[] = {
@@ -115,9 +123,9 @@ static const struct argparse_option directpipe_cli_options[] = {
     OPT_GROUP("    (No module-specific options)"),
 };
 
-const struct argparse_option* output_directpipe_get_cli_options(int* count) {
-    *count = sizeof(directpipe_cli_options) / sizeof(directpipe_cli_options[0]);
-    return directpipe_cli_options;
+const struct argparse_option *output_directpipe_get_cli_options(int *count) {
+  *count = sizeof(directpipe_cli_options) / sizeof(directpipe_cli_options[0]);
+  return directpipe_cli_options;
 }
 
 static OutputModuleInterface s_directpipe_api = {
@@ -131,6 +139,6 @@ static OutputModuleInterface s_directpipe_api = {
     .get_summary_info = output_directpipe_get_summary_info,
 };
 
-OutputModuleInterface* output_directpipe_get_module_api(void) {
-    return &s_directpipe_api;
+OutputModuleInterface *output_directpipe_get_module_api(void) {
+  return &s_directpipe_api;
 }

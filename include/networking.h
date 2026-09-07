@@ -34,7 +34,8 @@ void networking_cleanup(void);
  * @param arena The memory arena to use for allocating the context handle.
  * @return A valid NetworkingContext handle on success, or NULL on failure.
  */
-NetworkingContext* networking_connect(const char* hostname, int port, struct MemoryArena* arena);
+NetworkingContext *networking_connect(const char *hostname, int port,
+                                      struct MemoryArena *arena);
 
 /**
  * @brief Disconnects a network connection.
@@ -42,16 +43,17 @@ NetworkingContext* networking_connect(const char* hostname, int port, struct Mem
  * as its memory is managed by the memory arena.
  * @param context The context handle to disconnect.
  */
-void networking_disconnect(NetworkingContext* context);
+void networking_disconnect(NetworkingContext *context);
 
 /**
  * @brief Reliably sends a block of bytes over the connection.
  */
-bool networking_send_all(NetworkingContext* context, const void* data, size_t length);
+bool networking_send_all(NetworkingContext *context, const void *data,
+                         size_t length);
 
 /**
  * @brief Reliably receives a block of bytes from the connection.
  */
-bool networking_recv_all(NetworkingContext* context, void* data, size_t length);
+bool networking_recv_all(NetworkingContext *context, void *data, size_t length);
 
 #endif // NETWORKING_H_

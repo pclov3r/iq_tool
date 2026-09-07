@@ -1,6 +1,7 @@
 /**
  * @file filter.h
- * @brief Defines the interface for creating and managing the user-defined FIR filter chain.
+ * @brief Defines the interface for creating and managing the user-defined FIR
+ * filter chain.
  *
  * This module is responsible for designing the FIR filter based on the user's
  * command-line specifications (e.g., lowpass, highpass, passband). It handles
@@ -13,12 +14,11 @@
 #ifndef FILTER_H_
 #define FILTER_H_
 
-#include <stdbool.h>
 #include "app_context.h"
 #include "mem_arena.h"
-#include "pipeline_types.h" // For SampleChunk
-#include "utilities.h" // For OutputSummaryInfo
-
+#include "process_chain_types.h" // For SampleChunk
+#include "utilities.h"           // For OutputSummaryInfo
+#include <stdbool.h>
 
 // --- Function Declarations ---
 
@@ -30,30 +30,34 @@
  * taps) is allocated from the provided memory arena. The final, combined filter
  * object is stored in the AppContext struct.
  *
- * @param config The application configuration struct containing filter requests.
- * @param app The application app struct where the final filter object will be stored.
- * @param arena The memory arena to use for all temporary allocations during design.
+ * @param config The application configuration struct containing filter
+ * requests.
+ * @param app The application app struct where the final filter object will be
+ * stored.
+ * @param arena The memory arena to use for all temporary allocations during
+ * design.
  * @return true on success, false on failure.
  */
-bool filter_create(AppConfig* config, AppContext* app, MemoryArena* arena);
+bool filter_create(AppConfig *config, AppContext *app, MemoryArena *arena);
 
 /**
  * @brief Resets the internal state of the user-defined filter object.
  *
- * This should be called upon a stream discontinuity (e.g., a hardware source overrun)
- * to clear any old data from the filter's internal buffers. This prevents
- * stale samples from corrupting the new, incoming signal.
+ * This should be called upon a stream discontinuity (e.g., a hardware source
+ * overrun) to clear any old data from the filter's internal buffers. This
+ * prevents stale samples from corrupting the new, incoming signal.
  *
  * @param app The application app struct containing the filter object to reset.
  */
-void filter_reset(DspContext* dsp);
+void filter_reset(DspContext *dsp);
 
 /**
  * @brief Destroys the user-defined filter object and frees associated memory.
  *
- * @param app The application app struct containing the filter object to destroy.
+ * @param app The application app struct containing the filter object to
+ * destroy.
  */
-void filter_destroy(AppContext* app);
+void filter_destroy(AppContext *app);
 
 /**
  * @brief Applies the configured filter to a chunk of samples.
@@ -65,10 +69,12 @@ void filter_destroy(AppContext* app);
  *
  * @param app The application app, containing filter objects and state.
  * @param item The SampleChunk containing the data to be processed.
- * @param is_post_resample A flag indicating if this is being called from the post-processor.
+ * @param is_post_resample A flag indicating if this is being called from the
+ * post-processor.
  * @return The number of valid output frames produced by the filter.
  */
-unsigned int filter_apply(DspContext* dsp, SampleChunk* item, bool is_post_resample);
+unsigned int filter_apply(DspContext *dsp, SampleChunk *item,
+                          bool is_post_resample);
 
 /**
  * @brief Populates the CLI options specific to the Filter module.
@@ -77,15 +83,18 @@ unsigned int filter_apply(DspContext* dsp, SampleChunk* item, bool is_post_resam
  * @param config The application configuration struct to bind options to.
  * @return The number of options added.
  */
-int filter_populate_cli_options(struct argparse_option* buffer, struct AppConfig* config);
+int filter_populate_cli_options(struct argparse_option *buffer,
+                                struct AppConfig *config);
 
 /**
- * @brief Adds filter summary information to the provided OutputSummaryInfo object.
+ * @brief Adds filter summary information to the provided OutputSummaryInfo
+ * object.
  *
  * @param config The application configuration struct.
  * @param app The application context.
  * @param info The OutputSummaryInfo struct to add items to.
  */
-void filter_get_summary_info(const AppConfig* config, const AppContext* app, OutputSummaryInfo* info);
+void filter_get_summary_info(const AppConfig *config, const AppContext *app,
+                             OutputSummaryInfo *info);
 
 #endif // FILTER_H_

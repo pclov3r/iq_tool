@@ -17,21 +17,22 @@ struct AppConfig;
  * @brief Returns a pointer to the InputModuleInterface struct that implements
  *        the input source interface for SDRplay device input.
  */
-InputModuleInterface* input_sdrplay_get_module_api(void);
+InputModuleInterface *input_sdrplay_get_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the SDRplay module.
  */
-const struct argparse_option* input_sdrplay_get_cli_options(int* count);
+const struct argparse_option *input_sdrplay_get_cli_options(int *count);
 
 /**
  * @brief Sets the default configuration values for the SDRplay module.
  */
-void input_sdrplay_set_default_config(struct AppConfig* config);
+void input_sdrplay_set_default_config(struct AppConfig *config);
 
 /**
- * @brief Helper function to get a human-readable device name from its hardware version ID.
+ * @brief Helper function to get a human-readable device name from its hardware
+ * version ID.
  */
-const char* get_sdrplay_device_name(uint8_t hwVer);
+const char *get_sdrplay_device_name(uint8_t hwVer);
 
 #endif // INPUT_SDRPLAY_H_

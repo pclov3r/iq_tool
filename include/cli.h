@@ -29,7 +29,8 @@ struct AppContext;
  * @param argv Argument vector from main.
  * @param config Pointer to the AppConfig struct to populate.
  * @param arena Pointer to the memory arena for setup-time allocations.
- * @return true on successful parsing, false on a syntax error or an invalid value format.
+ * @return true on successful parsing, false on a syntax error or an invalid
+ * value format.
  */
 bool cli_parse(int argc, char *argv[], struct AppContext *app);
 
@@ -38,8 +39,10 @@ bool cli_parse(int argc, char *argv[], struct AppContext *app);
  *
  * @param prog_name The name of the program (typically argv[0]).
  * @param config A pointer to the AppConfig struct (needed for presets).
- * @param arena A pointer to an initialized memory arena (needed for module list).
+ * @param arena A pointer to an initialized memory arena (needed for module
+ * list).
  */
-void cli_print_usage(const char *prog_name, struct AppConfig *config, struct MemoryArena* arena);
+void cli_print_usage(const char *prog_name, struct AppConfig *config,
+                     struct MemoryArena *arena);
 
 #endif // CLI_H_

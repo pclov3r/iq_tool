@@ -19,23 +19,24 @@ typedef struct RingBuffer RingBuffer;
  */
 struct MemoryArena;
 
-RingBuffer* ring_buffer_create(size_t capacity, struct MemoryArena* arena);
+RingBuffer *ring_buffer_create(size_t capacity, struct MemoryArena *arena);
 
 /**
  * @brief Destroys an I/O buffer and frees all associated memory.
  */
-void ring_buffer_destroy(RingBuffer* iob);
+void ring_buffer_destroy(RingBuffer *iob);
 
 /**
  * @brief Writes data to the I/O buffer. (Producer-side Function)
  *
  * This is a LOCK-FREE, NON-BLOCKING call.
  * It will NEVER sleep or lock a mutex. Ideally suited for hardware callbacks.
- * If the buffer is full, it returns 0 (drops data) to maintain real-time timing.
+ * If the buffer is full, it returns 0 (drops data) to maintain real-time
+ * timing.
  *
  * @return The number of bytes successfully written.
  */
-size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes);
+size_t ring_buffer_write(RingBuffer *iob, const void *data, size_t bytes);
 
 /**
  * @brief Scatter-Gather write for lock-free atomicity.
@@ -45,7 +46,9 @@ size_t ring_buffer_write(RingBuffer* iob, const void* data, size_t bytes);
  *
  * @return The total number of bytes successfully written, or 0 if dropped.
  */
-size_t ring_buffer_write_packet(RingBuffer* iob, const void* header, size_t h_length, const void* payload, size_t p_length);
+size_t ring_buffer_write_packet(RingBuffer *iob, const void *header,
+                                size_t h_length, const void *payload,
+                                size_t p_length);
 
 /**
  * @brief Reads data from the I/O buffer. (Consumer-side Function)
@@ -56,7 +59,7 @@ size_t ring_buffer_write_packet(RingBuffer* iob, const void* header, size_t h_le
  *
  * @return The number of bytes actually read.
  */
-size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes);
+size_t ring_buffer_read(RingBuffer *iob, void *buffer, size_t max_bytes);
 
 /**
  * @brief Blocks the calling thread until the buffer usage drops below a target.
@@ -65,33 +68,34 @@ size_t ring_buffer_read(RingBuffer* iob, void* buffer, size_t max_bytes);
  * on a condition variable until the Consumer clears enough space.
  *
  * @param iob The I/O buffer.
- * @param target_size The size (in bytes) to wait for. Returns when current_size <= target_size.
+ * @param target_size The size (in bytes) to wait for. Returns when current_size
+ * <= target_size.
  */
-void ring_buffer_wait_for_threshold(RingBuffer* iob, size_t target_size);
+void ring_buffer_wait_for_threshold(RingBuffer *iob, size_t target_size);
 
 /**
  * @brief Signals that no more data will be written to the buffer.
  */
-void ring_buffer_signal_end_of_stream(RingBuffer* iob);
+void ring_buffer_signal_end_of_stream(RingBuffer *iob);
 
 /**
  * @brief Signals an immediate shutdown of the buffer.
  */
-void ring_buffer_signal_shutdown(RingBuffer* iob);
+void ring_buffer_signal_shutdown(RingBuffer *iob);
 
 /**
  * @brief Gets the current number of bytes waiting to be read.
  */
-size_t ring_buffer_get_size(RingBuffer* iob);
+size_t ring_buffer_get_size(RingBuffer *iob);
 
 /**
  * @brief Gets the total capacity of the buffer.
  */
-size_t ring_buffer_get_capacity(RingBuffer* iob);
+size_t ring_buffer_get_capacity(RingBuffer *iob);
 
 /**
  * @brief Clears the ring buffer.
  */
-void ring_buffer_clear(RingBuffer* iob);
+void ring_buffer_clear(RingBuffer *iob);
 
 #endif // RING_BUFFER_H_

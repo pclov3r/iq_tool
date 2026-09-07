@@ -3,24 +3,24 @@
  */
 
 #include "input_airspyhf.h"
-#include "module.h"
-#include "constants.h"
-#include "module_defaults.h"
 #include "app_context.h"
-#include "signal_handler.h"
-#include "log.h"
-#include "frequency_shift.h"
-#include "utilities.h"
-#include "sample_format_table.h"
-#include "input_common.h"
-#include "mem_arena.h"
 #include "argparse.h"
+#include "constants.h"
+#include "frequency_shift.h"
+#include "input_common.h"
+#include "log.h"
+#include "mem_arena.h"
+#include "module.h"
+#include "module_defaults.h"
+#include "sample_format_table.h"
+#include "signal_handler.h"
+#include "utilities.h"
 #include "wait_event.h"
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 // Module-specific includes
 #include <airspyhf.h>
@@ -28,447 +28,495 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
-#include <unistd.h>
-#include <time.h>
 #include <strings.h>
+#include <time.h>
+#include <unistd.h>
 #endif
 
 extern pthread_mutex_t g_console_mutex;
 
 // --- Private Module Configuration ---
 static struct {
-    char* agc_mode;
-    bool agc_mode_provided;
-    float attenuation;
-    bool attenuation_provided;
-    bool preamp_enabled;
-    bool preamp_provided;
-    uint64_t serial_number;
-    bool serial_provided;
-    bool lib_dsp_disabled;
+  char *agc_mode;
+  bool agc_mode_provided;
+  float attenuation;
+  bool attenuation_provided;
+  bool preamp_enabled;
+  bool preamp_provided;
+  uint64_t serial_number;
+  bool serial_provided;
+  bool lib_dsp_disabled;
 } s_airspyhf_config;
 
 // --- Private Module State ---
 typedef struct {
-    struct airspyhf_device* dev;
-    pthread_mutex_t driver_mutex;
+  struct airspyhf_device *dev;
+  pthread_mutex_t driver_mutex;
 } AirspyHFContext;
 
-void input_airspyhf_set_default_config(AppConfig* config) {
-    config->sdr_general.sample_rate_hz = AIRSPYHF_DEFAULT_SAMPLE_RATE;
+void input_airspyhf_set_default_config(AppConfig *config) {
+  config->sdr_general.sample_rate_hz = AIRSPYHF_DEFAULT_SAMPLE_RATE;
 }
 
 static const struct argparse_option input_airspyhf_cli_options[] = {
     OPT_GROUP("Airspy HF+ Input (airspyhf)"),
-    OPT_STRING(0, "airspyhf-agc", &s_airspyhf_config.agc_mode, "AGC mode: 'off', 'low', or 'high'. (Default: high)", NULL, 0, 0),
-    OPT_FLOAT(0, "airspyhf-attn", &s_airspyhf_config.attenuation, "Attenuation in dB (0.0 to 48.0). (Default: 0.0)", NULL, 0, 0),
-    OPT_BOOLEAN(0, "airspyhf-preamp", &s_airspyhf_config.preamp_enabled, "Enable LNA/PreAmp.", NULL, 0, 0),
-    OPT_INTEGER(0, "airspyhf-serial", (int*)&s_airspyhf_config.serial_number, "Select device by serial number (hex, e.g., 0x123456789ABCDEF0).", NULL, 0, 0),
-    OPT_BOOLEAN(0, "airspyhf-no-lib-dsp", &s_airspyhf_config.lib_dsp_disabled, "Disable library DSP processing (IQ correction, DC removal, etc).", NULL, 0, 0),
+    OPT_STRING(0, "airspyhf-agc", &s_airspyhf_config.agc_mode,
+               "AGC mode: 'off', 'low', or 'high'. (Default: high)", NULL, 0,
+               0),
+    OPT_FLOAT(0, "airspyhf-attn", &s_airspyhf_config.attenuation,
+              "Attenuation in dB (0.0 to 48.0). (Default: 0.0)", NULL, 0, 0),
+    OPT_BOOLEAN(0, "airspyhf-preamp", &s_airspyhf_config.preamp_enabled,
+                "Enable LNA/PreAmp.", NULL, 0, 0),
+    OPT_INTEGER(
+        0, "airspyhf-serial", (int *)&s_airspyhf_config.serial_number,
+        "Select device by serial number (hex, e.g., 0x123456789ABCDEF0).", NULL,
+        0, 0),
+    OPT_BOOLEAN(
+        0, "airspyhf-no-lib-dsp", &s_airspyhf_config.lib_dsp_disabled,
+        "Disable library DSP processing (IQ correction, DC removal, etc).",
+        NULL, 0, 0),
 };
 
-const struct argparse_option* input_airspyhf_get_cli_options(int* count) {
-    *count = sizeof(input_airspyhf_cli_options) / sizeof(input_airspyhf_cli_options[0]);
-    return input_airspyhf_cli_options;
+const struct argparse_option *input_airspyhf_get_cli_options(int *count) {
+  *count = sizeof(input_airspyhf_cli_options) /
+           sizeof(input_airspyhf_cli_options[0]);
+  return input_airspyhf_cli_options;
 }
 
-static void input_airspyhf_get_summary_info(const ModuleContext* context, InputSummaryInfo* info);
-static bool input_airspyhf_validate_options(AppContext* app);
-static bool input_airspyhf_validate_generic_options(const AppConfig* config);
+static void input_airspyhf_get_summary_info(const ModuleContext *context,
+                                            InputSummaryInfo *info);
+static bool input_airspyhf_validate_options(AppContext *app);
+static bool input_airspyhf_validate_generic_options(const AppConfig *config);
 
-static int input_airspyhf_buffered_stream_callback(airspyhf_transfer_t* transfer);
+static int
+input_airspyhf_buffered_stream_callback(airspyhf_transfer_t *transfer);
 
-static bool input_airspyhf_validate_generic_options(const AppConfig* config) {
-    if (!config->sdr_general.rf_freq_provided) {
-        log_error("Airspy HF+ input requires the --sdr-rf-freq option.");
-        return false;
-    }
-    return true;
+static bool input_airspyhf_validate_generic_options(const AppConfig *config) {
+  if (!config->sdr_general.rf_freq_provided) {
+    log_error("Airspy HF+ input requires the --sdr-rf-freq option.");
+    return false;
+  }
+  return true;
 }
 
-static bool input_airspyhf_validate_options(AppContext* app) {
-    AppConfig* config = app ? (AppConfig*)app->config : NULL;
-    // AGC Mode Validation
-    if (s_airspyhf_config.agc_mode) {
-        s_airspyhf_config.agc_mode_provided = true;
-        if (strcasecmp(s_airspyhf_config.agc_mode, "off") != 0 &&
-            strcasecmp(s_airspyhf_config.agc_mode, "low") != 0 &&
-            strcasecmp(s_airspyhf_config.agc_mode, "high") != 0) {
-            log_error("Invalid --airspyhf-agc '%s'. Must be 'off', 'low', or 'high'.", s_airspyhf_config.agc_mode);
-            return false;
-        }
+static bool input_airspyhf_validate_options(AppContext *app) {
+  AppConfig *config = app ? (AppConfig *)app->config : NULL;
+  // AGC Mode Validation
+  if (s_airspyhf_config.agc_mode) {
+    s_airspyhf_config.agc_mode_provided = true;
+    if (strcasecmp(s_airspyhf_config.agc_mode, "off") != 0 &&
+        strcasecmp(s_airspyhf_config.agc_mode, "low") != 0 &&
+        strcasecmp(s_airspyhf_config.agc_mode, "high") != 0) {
+      log_error("Invalid --airspyhf-agc '%s'. Must be 'off', 'low', or 'high'.",
+                s_airspyhf_config.agc_mode);
+      return false;
+    }
+  }
+
+  // Attenuation Validation
+  if (s_airspyhf_config.attenuation != 0.0f) {
+    s_airspyhf_config.attenuation_provided = true;
+    if (s_airspyhf_config.attenuation < 0.0f ||
+        s_airspyhf_config.attenuation > 48.0f) {
+      log_error("Invalid --airspyhf-attn %.1f. Must be between 0.0 and 48.0.",
+                s_airspyhf_config.attenuation);
+      return false;
+    }
+  }
+
+  // Preamp Validation
+  if (s_airspyhf_config.preamp_enabled) {
+    s_airspyhf_config.preamp_provided = true;
+  }
+
+  // Serial Number Validation
+  if (s_airspyhf_config.serial_number != 0) {
+    s_airspyhf_config.serial_provided = true;
+  }
+
+  // Sample Rate Validation
+  if (config->sdr_general.sample_rate_provided) {
+    // Common Airspy HF+ sample rates
+    static const uint32_t VALID_AIRSPYHF_RATES[] = {
+        192000, // 192 kHz
+        228000, // 228 kHz
+        384000, // 384 kHz
+        456000, // 456 kHz
+        768000, // 768 kHz
+        912000  // 912 kHz
+    };
+    const size_t NUM_RATES =
+        sizeof(VALID_AIRSPYHF_RATES) / sizeof(VALID_AIRSPYHF_RATES[0]);
+
+    bool rate_found = false;
+    uint32_t requested = (uint32_t)config->sdr_general.sample_rate_hz;
+
+    for (size_t i = 0; i < NUM_RATES; i++) {
+      if (requested == VALID_AIRSPYHF_RATES[i]) {
+        rate_found = true;
+        break;
+      }
     }
 
-    // Attenuation Validation
-    if (s_airspyhf_config.attenuation != 0.0f) {
-        s_airspyhf_config.attenuation_provided = true;
-        if (s_airspyhf_config.attenuation < 0.0f || s_airspyhf_config.attenuation > 48.0f) {
-            log_error("Invalid --airspyhf-attn %.1f. Must be between 0.0 and 48.0.", s_airspyhf_config.attenuation);
-            return false;
-        }
+    if (!rate_found) {
+      log_error("Invalid Airspy HF+ sample rate %u Hz.", requested);
+      log_error("Common sample rates: 192000, 228000, 384000, 456000, 768000, "
+                "912000");
+      log_error("Note: Supported rates vary by device model. The device will "
+                "report actual supported rates during initialization.");
+      return false;
     }
+  }
 
-    // Preamp Validation
-    if (s_airspyhf_config.preamp_enabled) {
-        s_airspyhf_config.preamp_provided = true;
-    }
+  // Warn if both AGC and manual attenuation are specified
+  if (s_airspyhf_config.agc_mode_provided &&
+      strcasecmp(s_airspyhf_config.agc_mode, "off") != 0 &&
+      s_airspyhf_config.attenuation_provided) {
+    log_warn("Both AGC and manual attenuation specified. Manual attenuation "
+             "will be ignored when AGC is active.");
+  }
 
-    // Serial Number Validation
-    if (s_airspyhf_config.serial_number != 0) {
-        s_airspyhf_config.serial_provided = true;
-    }
-
-    // Sample Rate Validation
-    if (config->sdr_general.sample_rate_provided) {
-        // Common Airspy HF+ sample rates
-        static const uint32_t VALID_AIRSPYHF_RATES[] = {
-            192000,   // 192 kHz
-            228000,   // 228 kHz
-            384000,   // 384 kHz
-            456000,   // 456 kHz
-            768000,   // 768 kHz
-            912000    // 912 kHz
-        };
-        const size_t NUM_RATES = sizeof(VALID_AIRSPYHF_RATES) / sizeof(VALID_AIRSPYHF_RATES[0]);
-
-        bool rate_found = false;
-        uint32_t requested = (uint32_t)config->sdr_general.sample_rate_hz;
-
-        for (size_t i = 0; i < NUM_RATES; i++) {
-            if (requested == VALID_AIRSPYHF_RATES[i]) {
-                rate_found = true;
-                break;
-            }
-        }
-
-        if (!rate_found) {
-            log_error("Invalid Airspy HF+ sample rate %u Hz.", requested);
-            log_error("Common sample rates: 192000, 228000, 384000, 456000, 768000, 912000");
-            log_error("Note: Supported rates vary by device model. The device will report actual supported rates during initialization.");
-            return false;
-        }
-    }
-
-    // Warn if both AGC and manual attenuation are specified
-    if (s_airspyhf_config.agc_mode_provided &&
-        strcasecmp(s_airspyhf_config.agc_mode, "off") != 0 &&
-        s_airspyhf_config.attenuation_provided) {
-        log_warn("Both AGC and manual attenuation specified. Manual attenuation will be ignored when AGC is active.");
-    }
-
-    return true;
+  return true;
 }
 
-static int input_airspyhf_buffered_stream_callback(airspyhf_transfer_t* transfer) {
-    AppContext* app = (AppContext*)transfer->ctx;
+static int
+input_airspyhf_buffered_stream_callback(airspyhf_transfer_t *transfer) {
+  AppContext *app = (AppContext *)transfer->ctx;
 
-    // --- HEARTBEAT ---
+  // --- HEARTBEAT ---
 
-    if (is_shutdown_requested() || app->stats.error_occurred) {
-        return -1;
-    }
+  if (is_shutdown_requested() || app->stats.error_occurred) {
+    return -1;
+  }
 
-    if (transfer->sample_count == 0) {
-        return 0;
-    }
-
-    // Airspy HF+ always outputs CF32
-    if (!app->module.queue_samples(app->module.pipeline_context, transfer->samples, transfer->sample_count, CF32)) {
-        /* Warning handled internally by pipeline */
-    }
-
+  if (transfer->sample_count == 0) {
     return 0;
+  }
+
+  // Airspy HF+ always outputs CF32
+  if (!app->module.queue_samples(app->module.process_chain_context,
+                                 transfer->samples, transfer->sample_count,
+                                 CF32)) {
+    /* Warning handled internally by process_chain */
+  }
+
+  return 0;
 }
 
-static void input_airspyhf_get_summary_info(const ModuleContext* context, InputSummaryInfo* info) {
-    const AppConfig *config = context->config;
-    const AppContext* app = context->app;
+static void input_airspyhf_get_summary_info(const ModuleContext *context,
+                                            InputSummaryInfo *info) {
+  const AppConfig *config = context->config;
+  const AppContext *app = context->app;
 
-    utility_add_summary_item(info, "Input Source", "Airspy HF+");
-    utility_add_summary_item(info, "Input Format", "32-bit Float Complex (cf32)");
-    utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz", (double)app->module.source_info.sample_rate);
+  utility_add_summary_item(info, "Input Source", "Airspy HF+");
+  utility_add_summary_item(info, "Input Format", "32-bit Float Complex (cf32)");
+  utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
+                           (double)app->module.source_info.sample_rate);
 
-    // Gain reporting
-    if (s_airspyhf_config.agc_mode_provided) {
-        if (strcasecmp(s_airspyhf_config.agc_mode, "off") == 0) {
-            utility_add_summary_item(info, "AGC", "Off");
-            utility_add_summary_item(info, "Attenuation", "%.1f dB", s_airspyhf_config.attenuation);
-        } else if (strcasecmp(s_airspyhf_config.agc_mode, "low") == 0) {
-            utility_add_summary_item(info, "AGC", "Low Threshold");
-        } else if (strcasecmp(s_airspyhf_config.agc_mode, "high") == 0) {
-            utility_add_summary_item(info, "AGC", "High Threshold");
-        }
-    } else {
-        utility_add_summary_item(info, "AGC", "High Threshold (Default)");
+  // Gain reporting
+  if (s_airspyhf_config.agc_mode_provided) {
+    if (strcasecmp(s_airspyhf_config.agc_mode, "off") == 0) {
+      utility_add_summary_item(info, "AGC", "Off");
+      utility_add_summary_item(info, "Attenuation", "%.1f dB",
+                               s_airspyhf_config.attenuation);
+    } else if (strcasecmp(s_airspyhf_config.agc_mode, "low") == 0) {
+      utility_add_summary_item(info, "AGC", "Low Threshold");
+    } else if (strcasecmp(s_airspyhf_config.agc_mode, "high") == 0) {
+      utility_add_summary_item(info, "AGC", "High Threshold");
     }
+  } else {
+    utility_add_summary_item(info, "AGC", "High Threshold (Default)");
+  }
 
-    if (s_airspyhf_config.preamp_provided && s_airspyhf_config.preamp_enabled) {
-        utility_add_summary_item(info, "LNA/PreAmp", "Enabled");
-    }
+  if (s_airspyhf_config.preamp_provided && s_airspyhf_config.preamp_enabled) {
+    utility_add_summary_item(info, "LNA/PreAmp", "Enabled");
+  }
 
-    if (s_airspyhf_config.lib_dsp_disabled) {
-        utility_add_summary_item(info, "Library DSP", "Disabled");
-    }
+  if (s_airspyhf_config.lib_dsp_disabled) {
+    utility_add_summary_item(info, "Library DSP", "Disabled");
+  }
 
-    utility_add_summary_item(info, "Bias-T", "%s", config->sdr_general.bias_t_enable ? "Enabled" : "Disabled");
+  utility_add_summary_item(info, "Bias-T", "%s",
+                           config->sdr_general.bias_t_enable ? "Enabled"
+                                                             : "Disabled");
 }
 
-static bool input_airspyhf_initialize(ModuleContext* context) {
-    const AppConfig *config = context->config;
-    AppContext* app = context->app;
-    int result;
-    bool success = false;
+static bool input_airspyhf_initialize(ModuleContext *context) {
+  const AppConfig *config = context->config;
+  AppContext *app = context->app;
+  int result;
+  bool success = false;
 
-    AirspyHFContext* private_data = (AirspyHFContext*)mem_arena_alloc(&app->pipeline.setup_arena, sizeof(AirspyHFContext), true);
-    if (!private_data) {
-        return false;
-    }
+  AirspyHFContext *private_data = (AirspyHFContext *)mem_arena_alloc(
+      &app->process_chain.setup_arena, sizeof(AirspyHFContext), true);
+  if (!private_data) {
+    return false;
+  }
+  private_data->dev = NULL;
+
+  if (pthread_mutex_init(&private_data->driver_mutex, NULL) != 0) {
+    log_error("Failed to init driver mutex.");
+    return false;
+  }
+
+  app->module.input_private_data = private_data;
+
+  // Open device
+  if (s_airspyhf_config.serial_provided) {
+    result =
+        airspyhf_open_sn(&private_data->dev, s_airspyhf_config.serial_number);
+  } else {
+    result = airspyhf_open(&private_data->dev);
+  }
+
+  if (result != AIRSPYHF_SUCCESS) {
+    log_error("airspyhf_open() failed: %d", result);
     private_data->dev = NULL;
+    goto cleanup;
+  }
 
-    if (pthread_mutex_init(&private_data->driver_mutex, NULL) != 0) {
-        log_error("Failed to init driver mutex.");
-        return false;
+  // Read 128-bit Serial Number (4 chunks of 32-bits)
+  airspyhf_read_partid_serialno_t s = {0};
+  airspyhf_board_partid_serialno_read(private_data->dev, &s);
+
+  log_info("Using Airspy HF+ device (S/N: 0x%08X%08X%08X%08X)", s.serial_no[0],
+           s.serial_no[1], s.serial_no[2], s.serial_no[3]);
+
+  // Get and validate supported sample rates
+  uint32_t num_rates = 0;
+  result = airspyhf_get_samplerates(private_data->dev, &num_rates, 0);
+  if (result != AIRSPYHF_SUCCESS) {
+    log_error("Failed to get number of supported sample rates: %d", result);
+    goto cleanup;
+  }
+
+  uint32_t *rates = (uint32_t *)mem_arena_alloc(
+      &app->process_chain.setup_arena, num_rates * sizeof(uint32_t), false);
+  if (!rates) {
+    goto cleanup;
+  }
+
+  result = airspyhf_get_samplerates(private_data->dev, rates, num_rates);
+  if (result != AIRSPYHF_SUCCESS) {
+    log_error("Failed to get supported sample rates: %d", result);
+    goto cleanup;
+  }
+
+  // Find if requested rate is supported
+  bool rate_supported = false;
+  uint32_t requested_rate = (uint32_t)config->sdr_general.sample_rate_hz;
+  for (uint32_t i = 0; i < num_rates; i++) {
+    if (rates[i] == requested_rate) {
+      rate_supported = true;
+      break;
     }
+  }
 
-    app->module.input_private_data = private_data;
-
-    // Open device
-    if (s_airspyhf_config.serial_provided) {
-        result = airspyhf_open_sn(&private_data->dev, s_airspyhf_config.serial_number);
-    } else {
-        result = airspyhf_open(&private_data->dev);
-    }
-
-    if (result != AIRSPYHF_SUCCESS) {
-        log_error("airspyhf_open() failed: %d", result);
-        private_data->dev = NULL;
-        goto cleanup;
-    }
-
-    // Read 128-bit Serial Number (4 chunks of 32-bits)
-    airspyhf_read_partid_serialno_t s = {0};
-    airspyhf_board_partid_serialno_read(private_data->dev, &s);
-
-    log_info("Using Airspy HF+ device (S/N: 0x%08X%08X%08X%08X)",
-             s.serial_no[0], s.serial_no[1], s.serial_no[2], s.serial_no[3]);
-
-    // Get and validate supported sample rates
-    uint32_t num_rates = 0;
-    result = airspyhf_get_samplerates(private_data->dev, &num_rates, 0);
-    if (result != AIRSPYHF_SUCCESS) {
-        log_error("Failed to get number of supported sample rates: %d", result);
-        goto cleanup;
-    }
-
-    uint32_t* rates = (uint32_t*)mem_arena_alloc(&app->pipeline.setup_arena, num_rates * sizeof(uint32_t), false);
-    if (!rates) {
-        goto cleanup;
-    }
-
-    result = airspyhf_get_samplerates(private_data->dev, rates, num_rates);
-    if (result != AIRSPYHF_SUCCESS) {
-        log_error("Failed to get supported sample rates: %d", result);
-        goto cleanup;
-    }
-
-    // Find if requested rate is supported
-    bool rate_supported = false;
-    uint32_t requested_rate = (uint32_t)config->sdr_general.sample_rate_hz;
+  if (!rate_supported) {
+    log_error("Requested sample rate %.15g Hz is not supported by this Airspy "
+              "HF+ device.",
+              config->sdr_general.sample_rate_hz);
+    log_error("Supported rates are:");
     for (uint32_t i = 0; i < num_rates; i++) {
-        if (rates[i] == requested_rate) {
-            rate_supported = true;
-            break;
-        }
+      log_error("  %u Hz", rates[i]);
     }
+    goto cleanup;
+  }
 
-    if (!rate_supported) {
-        log_error("Requested sample rate %.15g Hz is not supported by this Airspy HF+ device.", config->sdr_general.sample_rate_hz);
-        log_error("Supported rates are:");
-        for (uint32_t i = 0; i < num_rates; i++) {
-            log_error("  %u Hz", rates[i]);
-        }
+  // Set sample rate
+  result = airspyhf_set_samplerate(private_data->dev, requested_rate);
+  if (result != AIRSPYHF_SUCCESS) {
+    log_error("airspyhf_set_samplerate() failed: %d", result);
+    goto cleanup;
+  }
+
+  // Set frequency
+  result = airspyhf_set_freq(private_data->dev,
+                             (uint32_t)config->sdr_general.rf_freq_hz);
+  if (result != AIRSPYHF_SUCCESS) {
+    log_error("airspyhf_set_freq() failed: %d", result);
+    goto cleanup;
+  }
+
+  // Airspy HF+ always outputs CF32
+  app->module.input_format = CF32;
+
+  // Configure AGC
+  if (s_airspyhf_config.agc_mode_provided) {
+    if (strcasecmp(s_airspyhf_config.agc_mode, "off") == 0) {
+      log_info("Disabling AGC (manual attenuation control)...");
+      result = airspyhf_set_hf_agc(private_data->dev, 0);
+      if (result != AIRSPYHF_SUCCESS) {
+        log_error("airspyhf_set_hf_agc() failed: %d", result);
         goto cleanup;
-    }
+      }
+      // Set manual attenuation
+      result = airspyhf_set_hf_att(
+          private_data->dev, (uint8_t)(s_airspyhf_config.attenuation / 6.0f));
+      if (result != AIRSPYHF_SUCCESS) {
+        log_error("airspyhf_set_hf_att() failed: %d", result);
+        goto cleanup;
+      }
+    } else {
+      // Enable AGC
+      const char *mode_desc =
+          (strcasecmp(s_airspyhf_config.agc_mode, "high") == 0) ? "High"
+                                                                : "Low";
+      log_info("Enabling AGC (%s Threshold)...", mode_desc);
 
-    // Set sample rate
-    result = airspyhf_set_samplerate(private_data->dev, requested_rate);
+      result = airspyhf_set_hf_agc(private_data->dev, 1);
+      if (result != AIRSPYHF_SUCCESS) {
+        log_error("airspyhf_set_hf_agc() failed: %d", result);
+        goto cleanup;
+      }
+      // Set AGC threshold
+      uint8_t threshold =
+          (strcasecmp(s_airspyhf_config.agc_mode, "high") == 0) ? 1 : 0;
+      result = airspyhf_set_hf_agc_threshold(private_data->dev, threshold);
+      if (result != AIRSPYHF_SUCCESS) {
+        log_error("airspyhf_set_hf_agc_threshold() failed: %d", result);
+        goto cleanup;
+      }
+    }
+  } else {
+    // Default: Enable AGC with high threshold
+    log_info("Enabling AGC (default: high threshold)...");
+    result = airspyhf_set_hf_agc(private_data->dev, 1);
     if (result != AIRSPYHF_SUCCESS) {
-        log_error("airspyhf_set_samplerate() failed: %d", result);
-        goto cleanup;
+      log_error("airspyhf_set_hf_agc() failed: %d", result);
+      goto cleanup;
     }
-
-    // Set frequency
-    result = airspyhf_set_freq(private_data->dev, (uint32_t)config->sdr_general.rf_freq_hz);
+    result = airspyhf_set_hf_agc_threshold(private_data->dev, 1);
     if (result != AIRSPYHF_SUCCESS) {
-        log_error("airspyhf_set_freq() failed: %d", result);
-        goto cleanup;
+      log_error("airspyhf_set_hf_agc_threshold() failed: %d", result);
+      goto cleanup;
     }
+  }
 
-    // Airspy HF+ always outputs CF32
-    app->module.input_format = CF32;
-
-    // Configure AGC
-    if (s_airspyhf_config.agc_mode_provided) {
-        if (strcasecmp(s_airspyhf_config.agc_mode, "off") == 0) {
-            log_info("Disabling AGC (manual attenuation control)...");
-            result = airspyhf_set_hf_agc(private_data->dev, 0);
-            if (result != AIRSPYHF_SUCCESS) {
-                log_error("airspyhf_set_hf_agc() failed: %d", result);
-                goto cleanup;
-            }
-            // Set manual attenuation
-            result = airspyhf_set_hf_att(private_data->dev, (uint8_t)(s_airspyhf_config.attenuation / 6.0f));
-            if (result != AIRSPYHF_SUCCESS) {
-                log_error("airspyhf_set_hf_att() failed: %d", result);
-                goto cleanup;
-            }
-        } else {
-            // Enable AGC
-            const char* mode_desc = (strcasecmp(s_airspyhf_config.agc_mode, "high") == 0) ? "High" : "Low";
-            log_info("Enabling AGC (%s Threshold)...", mode_desc);
-
-            result = airspyhf_set_hf_agc(private_data->dev, 1);
-            if (result != AIRSPYHF_SUCCESS) {
-                log_error("airspyhf_set_hf_agc() failed: %d", result);
-                goto cleanup;
-            }
-            // Set AGC threshold
-            uint8_t threshold = (strcasecmp(s_airspyhf_config.agc_mode, "high") == 0) ? 1 : 0;
-            result = airspyhf_set_hf_agc_threshold(private_data->dev, threshold);
-            if (result != AIRSPYHF_SUCCESS) {
-                log_error("airspyhf_set_hf_agc_threshold() failed: %d", result);
-                goto cleanup;
-            }
-        }
-    } else {
-        // Default: Enable AGC with high threshold
-        log_info("Enabling AGC (default: high threshold)...");
-        result = airspyhf_set_hf_agc(private_data->dev, 1);
-        if (result != AIRSPYHF_SUCCESS) {
-            log_error("airspyhf_set_hf_agc() failed: %d", result);
-            goto cleanup;
-        }
-        result = airspyhf_set_hf_agc_threshold(private_data->dev, 1);
-        if (result != AIRSPYHF_SUCCESS) {
-            log_error("airspyhf_set_hf_agc_threshold() failed: %d", result);
-            goto cleanup;
-        }
+  // Configure LNA/PreAmp
+  if (s_airspyhf_config.preamp_provided && s_airspyhf_config.preamp_enabled) {
+    log_info("Enabling LNA/PreAmp...");
+    result = airspyhf_set_hf_lna(private_data->dev, 1);
+    if (result != AIRSPYHF_SUCCESS) {
+      log_error("airspyhf_set_hf_lna() failed: %d", result);
+      goto cleanup;
     }
-
-    // Configure LNA/PreAmp
-    if (s_airspyhf_config.preamp_provided && s_airspyhf_config.preamp_enabled) {
-        log_info("Enabling LNA/PreAmp...");
-        result = airspyhf_set_hf_lna(private_data->dev, 1);
-        if (result != AIRSPYHF_SUCCESS) {
-            log_error("airspyhf_set_hf_lna() failed: %d", result);
-            goto cleanup;
-        }
-    } else {
-        result = airspyhf_set_hf_lna(private_data->dev, 0);
-        if (result != AIRSPYHF_SUCCESS) {
-            log_error("airspyhf_set_hf_lna() failed: %d", result);
-            goto cleanup;
-        }
+  } else {
+    result = airspyhf_set_hf_lna(private_data->dev, 0);
+    if (result != AIRSPYHF_SUCCESS) {
+      log_error("airspyhf_set_hf_lna() failed: %d", result);
+      goto cleanup;
     }
+  }
 
-    // Configure Library DSP
-    if (s_airspyhf_config.lib_dsp_disabled) {
-        log_info("Disabling library DSP processing...");
-        result = airspyhf_set_lib_dsp(private_data->dev, 0);
-        if (result != AIRSPYHF_SUCCESS) {
-            log_error("airspyhf_set_lib_dsp() failed: %d", result);
-            goto cleanup;
-        }
-    } else {
-        result = airspyhf_set_lib_dsp(private_data->dev, 1);
-        if (result != AIRSPYHF_SUCCESS) {
-            log_error("airspyhf_set_lib_dsp() failed: %d", result);
-            goto cleanup;
-        }
+  // Configure Library DSP
+  if (s_airspyhf_config.lib_dsp_disabled) {
+    log_info("Disabling library DSP processing...");
+    result = airspyhf_set_lib_dsp(private_data->dev, 0);
+    if (result != AIRSPYHF_SUCCESS) {
+      log_error("airspyhf_set_lib_dsp() failed: %d", result);
+      goto cleanup;
     }
-
-    // Set Bias-T if requested
-    if (config->sdr_general.bias_t_enable) {
-        log_info("Enabling Bias-T...");
-        result = airspyhf_set_user_output(private_data->dev, AIRSPYHF_USER_OUTPUT_0, AIRSPYHF_USER_OUTPUT_HIGH);
-        if (result != AIRSPYHF_SUCCESS) {
-            log_warn("Failed to enable Bias-T: %d (this device may not support bias-T)", result);
-        }
+  } else {
+    result = airspyhf_set_lib_dsp(private_data->dev, 1);
+    if (result != AIRSPYHF_SUCCESS) {
+      log_error("airspyhf_set_lib_dsp() failed: %d", result);
+      goto cleanup;
     }
+  }
 
-    app->module.input_bytes_per_iq_sample = (get_bytes_per_iq_sample(CF32));
-    app->module.source_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
-    app->module.source_info.frames = -1;
+  // Set Bias-T if requested
+  if (config->sdr_general.bias_t_enable) {
+    log_info("Enabling Bias-T...");
+    result = airspyhf_set_user_output(private_data->dev, AIRSPYHF_USER_OUTPUT_0,
+                                      AIRSPYHF_USER_OUTPUT_HIGH);
+    if (result != AIRSPYHF_SUCCESS) {
+      log_warn(
+          "Failed to enable Bias-T: %d (this device may not support bias-T)",
+          result);
+    }
+  }
 
-    success = true;
+  app->module.input_bytes_per_iq_sample = (get_bytes_per_iq_sample(CF32));
+  app->module.source_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
+  app->module.source_info.frames = -1;
+
+  success = true;
 
 cleanup:
-    if (!success) {
-        // Cleanup will be handled by input_airspyhf_cleanup()
-    }
-    return success;
+  if (!success) {
+    // Cleanup will be handled by input_airspyhf_cleanup()
+  }
+  return success;
 }
 
-static void input_airspyhf_stop_sample_queue_push(ModuleContext* context);
+static void input_airspyhf_stop_sample_queue_push(ModuleContext *context);
 
-static void* input_airspyhf_push_samples_to_queue(ModuleContext* context, QueueSamples queue_samples, void* pipeline_context) {
-    context->app->module.queue_samples = queue_samples;
-    context->app->module.pipeline_context = pipeline_context;
-    AppContext* app = context->app;
-    AirspyHFContext* private_data = (AirspyHFContext*)app->module.input_private_data;
-    int result;
-    airspyhf_sample_block_cb_fn callback_fn;
-    callback_fn = input_airspyhf_buffered_stream_callback;
+static void *input_airspyhf_push_samples_to_queue(ModuleContext *context,
+                                                  QueueSamples queue_samples,
+                                                  void *process_chain_context) {
+  context->app->module.queue_samples = queue_samples;
+  context->app->module.process_chain_context = process_chain_context;
+  AppContext *app = context->app;
+  AirspyHFContext *private_data =
+      (AirspyHFContext *)app->module.input_private_data;
+  int result;
+  airspyhf_sample_block_cb_fn callback_fn;
+  callback_fn = input_airspyhf_buffered_stream_callback;
 
-    result = airspyhf_start(private_data->dev, callback_fn, app);
-    if (result != AIRSPYHF_SUCCESS) {
-        char error_buf[256];
-        snprintf(error_buf, sizeof(error_buf), "airspyhf_start() failed: %d", result);
-        request_forceful_shutdown(error_buf, app);
-        return NULL;
-    }
-
-    // Wait for the shutdown signal (Event-driven)
-    if (app->pipeline.shutdown_event) {
-        wait_event_wait(app->pipeline.shutdown_event);
-    }
-
-    if (!is_shutdown_requested()) {
-        input_airspyhf_stop_sample_queue_push(context);
-    }
-
+  result = airspyhf_start(private_data->dev, callback_fn, app);
+  if (result != AIRSPYHF_SUCCESS) {
+    char error_buf[256];
+    snprintf(error_buf, sizeof(error_buf), "airspyhf_start() failed: %d",
+             result);
+    request_forceful_shutdown(error_buf, app);
     return NULL;
+  }
+
+  // Wait for the shutdown signal (Event-driven)
+  if (app->process_chain.shutdown_event) {
+    wait_event_wait(app->process_chain.shutdown_event);
+  }
+
+  if (!is_shutdown_requested()) {
+    input_airspyhf_stop_sample_queue_push(context);
+  }
+
+  return NULL;
 }
 
-static void input_airspyhf_stop_sample_queue_push(ModuleContext* context) {
-    AppContext* app = context->app;
-    AirspyHFContext* private_data = (AirspyHFContext*)app->module.input_private_data;
-    if (private_data) {
+static void input_airspyhf_stop_sample_queue_push(ModuleContext *context) {
+  AppContext *app = context->app;
+  AirspyHFContext *private_data =
+      (AirspyHFContext *)app->module.input_private_data;
+  if (private_data) {
     pthread_mutex_lock(&private_data->driver_mutex);
-    if (private_data && private_data->dev && airspyhf_is_streaming(private_data->dev)) {
-        log_debug("Stopping Airspy HF+ stream...");
-        int result = airspyhf_stop(private_data->dev);
-        if (result != AIRSPYHF_SUCCESS) {
-            log_error("Failed to stop Airspy HF+ RX: %d", result);
-        }
+    if (private_data && private_data->dev &&
+        airspyhf_is_streaming(private_data->dev)) {
+      log_debug("Stopping Airspy HF+ stream...");
+      int result = airspyhf_stop(private_data->dev);
+      if (result != AIRSPYHF_SUCCESS) {
+        log_error("Failed to stop Airspy HF+ RX: %d", result);
+      }
     }
     pthread_mutex_unlock(&private_data->driver_mutex);
-}
+  }
 }
 
-static void input_airspyhf_cleanup(ModuleContext* context) {
-    AppContext* app = context->app;
-    if (app->module.input_private_data) {
-        AirspyHFContext* private_data = (AirspyHFContext*)app->module.input_private_data;
-        pthread_mutex_lock(&private_data->driver_mutex);
-        if (private_data->dev) {
-            airspyhf_close(private_data->dev);
-            private_data->dev = NULL;
-        }
-        pthread_mutex_unlock(&private_data->driver_mutex);
-        pthread_mutex_destroy(&private_data->driver_mutex);
-        app->module.input_private_data = NULL;
+static void input_airspyhf_cleanup(ModuleContext *context) {
+  AppContext *app = context->app;
+  if (app->module.input_private_data) {
+    AirspyHFContext *private_data =
+        (AirspyHFContext *)app->module.input_private_data;
+    pthread_mutex_lock(&private_data->driver_mutex);
+    if (private_data->dev) {
+      airspyhf_close(private_data->dev);
+      private_data->dev = NULL;
     }
+    pthread_mutex_unlock(&private_data->driver_mutex);
+    pthread_mutex_destroy(&private_data->driver_mutex);
+    app->module.input_private_data = NULL;
+  }
 }
 
 // --- The InputModuleInterface V-Table ---
@@ -480,9 +528,8 @@ static InputModuleInterface s_input_airspyhf_api = {
     .get_summary_info = input_airspyhf_get_summary_info,
     .validate_options = input_airspyhf_validate_options,
     .validate_generic_options = input_airspyhf_validate_generic_options,
-    .pre_stream_iq_correction = NULL
-};
+    .pre_stream_iq_correction = NULL};
 
-InputModuleInterface* input_airspyhf_get_module_api(void) {
-    return &s_input_airspyhf_api;
+InputModuleInterface *input_airspyhf_get_module_api(void) {
+  return &s_input_airspyhf_api;
 }

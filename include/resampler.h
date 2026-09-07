@@ -28,17 +28,18 @@ typedef struct resampler_s Resampler;
 /**
  * @brief Creates and initializes a resampler object.
  */
-Resampler* resampler_create(const struct AppConfig *config, struct AppContext* app, float resample_ratio);
+Resampler *resampler_create(const struct AppConfig *config,
+                            struct AppContext *app, float resample_ratio);
 
 /**
  * @brief Destroys a resampler object and frees all associated memory.
  */
-void resampler_destroy(Resampler* resampler);
+void resampler_destroy(Resampler *resampler);
 
 /**
  * @brief Resets the internal state of the resampler object.
  */
-void resampler_reset(Resampler* resampler);
+void resampler_reset(Resampler *resampler);
 
 /**
  * @brief Executes the resampler on a block of samples.
@@ -47,9 +48,13 @@ void resampler_reset(Resampler* resampler);
  * @param input Pointer to input buffer.
  * @param num_input_frames Number of frames in input.
  * @param output Pointer to output buffer.
- * @param max_output_capacity The maximum number of samples the output buffer can hold (Guard Rail).
- * @param num_output_frames Pointer to store the actual number of frames produced.
+ * @param max_output_capacity The maximum number of samples the output buffer
+ * can hold (Guard Rail).
+ * @param num_output_frames Pointer to store the actual number of frames
+ * produced.
  */
-void resampler_execute(Resampler* resampler, ComplexFloat* input, unsigned int num_input_frames, ComplexFloat* output, unsigned int* num_output_frames);
+void resampler_execute(Resampler *resampler, ComplexFloat *input,
+                       unsigned int num_input_frames, ComplexFloat *output,
+                       unsigned int *num_output_frames);
 
 #endif // RESAMPLER_H_

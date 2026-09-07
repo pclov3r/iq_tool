@@ -11,8 +11,8 @@
 #ifndef DC_BLOCK_H_
 #define DC_BLOCK_H_
 
-#include <stdbool.h>
 #include "app_context.h" // Provides AppConfig, AppContext, and ComplexFloat
+#include <stdbool.h>
 
 // --- Function Declarations ---
 
@@ -24,12 +24,13 @@
  *
  * @param config Pointer to the application configuration.
  * @param app Pointer to the application app where the filter will be stored.
- * @return true on success or if disabled, false on failure (e.g., filter creation).
+ * @return true on success or if disabled, false on failure (e.g., filter
+ * creation).
  */
 struct dc_blocker_s;
 typedef struct dc_blocker_s DcBlocker;
 
-bool dc_block_create(AppConfig* config, AppContext* app);
+bool dc_block_create(AppConfig *config, AppContext *app);
 
 /**
  * @brief Resets the internal state of the DC block filter.
@@ -39,7 +40,7 @@ bool dc_block_create(AppConfig* config, AppContext* app);
  *
  * @param app Pointer to the application app containing the filter object.
  */
-void dc_block_reset(DspContext* dsp);
+void dc_block_reset(DspContext *dsp);
 
 /**
  * @brief Applies the DC block filter to a block of samples.
@@ -51,7 +52,7 @@ void dc_block_reset(DspContext* dsp);
  * @param samples Pointer to the complex float samples (modified in-place).
  * @param num_samples The number of complex samples in the block.
  */
-void dc_block_apply(DspContext* dsp, ComplexFloat* samples, int num_samples);
+void dc_block_apply(DspContext *dsp, ComplexFloat *samples, int num_samples);
 
 /**
  * @brief Cleans up app allocated by the DC block module.
@@ -60,6 +61,6 @@ void dc_block_apply(DspContext* dsp, ComplexFloat* samples, int num_samples);
  *
  * @param app Pointer to the application app.
  */
-void dc_block_destroy(AppContext* app);
+void dc_block_destroy(AppContext *app);
 
 #endif // DC_BLOCK_H_

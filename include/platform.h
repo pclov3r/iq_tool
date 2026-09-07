@@ -9,12 +9,13 @@
 
 #ifdef _WIN32
 // Includes required for Windows-specific function signatures below
-#include <windows.h>
 #include <malloc.h>
+#include <windows.h>
 // Windows implementation
 #define SLEEP_MS(x) Sleep(x)
 // MinGW doesn't expose aligned_alloc - provide a compatibility shim via macro.
-// Note: _aligned_malloc argument order is (size, alignment), opposite of aligned_alloc.
+// Note: _aligned_malloc argument order is (size, alignment), opposite of
+// aligned_alloc.
 #define aligned_alloc(alignment, size) _aligned_malloc((size), (alignment))
 #define aligned_free(ptr) _aligned_free((ptr))
 #elif defined(__GNUC__) || defined(__clang__)
@@ -33,42 +34,46 @@
  * @brief Abstract priority levels to map to OS-specific scheduling policies.
  */
 typedef enum {
-    PRIORITY_NORMAL,       // Default scheduling (e.g., Reader thread)
-    PRIORITY_HIGH,         // Latency-sensitive DSP (e.g., Pre/Post Processor)
-    PRIORITY_HIGHEST,      // Critical I/O (e.g., Disk Writer)
-    PRIORITY_REALTIME      // Hardware Timing (e.g., Source)
+  PRIORITY_NORMAL,  // Default scheduling (e.g., Reader thread)
+  PRIORITY_HIGH,    // Latency-sensitive DSP (e.g., Pre/Post Processor)
+  PRIORITY_HIGHEST, // Critical I/O (e.g., Disk Writer)
+  PRIORITY_REALTIME // Hardware Timing (e.g., Source)
 } ThreadPriority;
 
 /**
  * @brief Sets the priority of the calling thread.
  *
- * This function attempts to set the OS-specific priority for the current thread.
- * On Linux, it attempts Real-Time (SCHED_FIFO) scheduling first, falling back to
- * 'nice' values if permissions are missing.
+ * This function attempts to set the OS-specific priority for the current
+ * thread. On Linux, it attempts Real-Time (SCHED_FIFO) scheduling first,
+ * falling back to 'nice' values if permissions are missing.
  *
  * @param priority The abstract priority level to apply.
- * @param thread_name A human-readable name for the thread, used for logging warnings.
+ * @param thread_name A human-readable name for the thread, used for logging
+ * warnings.
  */
-void platform_set_thread_priority(ThreadPriority priority, const char* thread_name);
+void platform_set_thread_priority(ThreadPriority priority,
+                                  const char *thread_name);
 
 /**
- * @brief Safely checks if the host CPU meets the binary's compiler-enforced requirements.
+ * @brief Safely checks if the host CPU meets the binary's compiler-enforced
+ * requirements.
  *
- * If the binary was compiled for AVX or AVX2, this validates that both the hardware
- * and OS support the required instruction sets at runtime to prevent Illegal Instruction crashes.
+ * If the binary was compiled for AVX or AVX2, this validates that both the
+ * hardware and OS support the required instruction sets at runtime to prevent
+ * Illegal Instruction crashes.
  */
 void platform_check_cpu_features(void);
 
 // --- Platform Specific Helpers ---
 
 #ifdef _WIN32
-void print_win_error(const char* context, DWORD error_code);
+void print_win_error(const char *context, DWORD error_code);
 
-bool get_absolute_path_windows(const char* path_arg_mbcs,
-                               wchar_t* out_path_w, size_t out_path_w_size,
-                               char* out_path_utf8, size_t out_path_utf8_size);
+bool get_absolute_path_windows(const char *path_arg_mbcs, wchar_t *out_path_w,
+                               size_t out_path_w_size, char *out_path_utf8,
+                               size_t out_path_utf8_size);
 
-bool platform_get_executable_dir(char* buffer, size_t buffer_size);
+bool platform_get_executable_dir(char *buffer, size_t buffer_size);
 #endif // _WIN32
 
 #endif // PLATFORM_H_

@@ -16,16 +16,16 @@ struct AppConfig;
  * @brief Returns a pointer to the InputModuleInterface struct that implements
  *        the input source interface for Airspy HF+ device input.
  */
-InputModuleInterface* input_airspyhf_get_module_api(void);
+InputModuleInterface *input_airspyhf_get_module_api(void);
 
 /**
  * @brief Returns the command-line options specific to the Airspy HF+ module.
  */
-const struct argparse_option* input_airspyhf_get_cli_options(int* count);
+const struct argparse_option *input_airspyhf_get_cli_options(int *count);
 
 /**
  * @brief Sets the default configuration values for the Airspy HF+ module.
  */
-void input_airspyhf_set_default_config(struct AppConfig* config);
+void input_airspyhf_set_default_config(struct AppConfig *config);
 
 #endif // INPUT_AIRSPYHF_H_
