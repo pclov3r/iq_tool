@@ -42,14 +42,12 @@ bool validate_output_type_and_sample_format(struct AppConfig *config);
  * @param config The application configuration struct.
  * @return true if valid, false otherwise.
  */
-bool validate_filter_options(struct AppConfig *config);
 
 /**
  * @brief Validates I/Q correction dependencies.
  * @param config The application configuration struct.
  * @return true if valid, false otherwise.
  */
-bool validate_iq_correction_options(struct AppConfig *config);
 
 /**
  * @brief Performs high-level validation, checking for logical conflicts between

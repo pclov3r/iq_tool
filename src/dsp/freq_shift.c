@@ -40,7 +40,7 @@ static void *frequency_shift_create(AppConfig *config, AppContext *app) {
   if (!config || !app)
     return NULL;
 
-  FreqShiftState *state = (FreqShiftState *)mem_arena_alloc(&ctx->app->process_chain.setup_arena, sizeof(FreqShiftState), true);
+  FreqShiftState *state = (FreqShiftState *)mem_arena_alloc(&app->process_chain.setup_arena, sizeof(FreqShiftState), true);
   if (!state)
     return NULL;
 

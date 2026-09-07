@@ -568,10 +568,6 @@ static bool validate_and_process_args(AppContext *app, int non_opt_argc,
     }
   }
 
-  if (!validate_filter_options(config))
-    return false;
-  if (!validate_iq_correction_options(config))
-    return false;
   if (!validate_option_combinations(config))
     return false;
 

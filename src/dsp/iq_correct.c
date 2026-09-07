@@ -746,8 +746,14 @@ dsp_iq_correct_get_cli_options(int *count) {
 
 static bool dsp_iq_correct_validate_options(struct AppContext *app) {
   if (app && app->config) {
-    ((AppConfig *)app->config)->dsp.iq_correction.enable =
-        s_enable_iq_correction;
+    AppConfig *config = (AppConfig *)app->config;
+    config->dsp.iq_correction.enable = s_enable_iq_correction;
+
+    if (config->dsp.iq_correction.enable && !config->dsp.dc_block.enable) {
+      log_error("--iq-correction requires --dc-block to be enabled for optimal "
+                "performance.");
+      return false;
+    }
   }
   return true;
 }

@@ -176,7 +176,7 @@ static HarrisAgc *agc_create(AppConfig *config, AppContext *app) {
     return NULL;
   }
 
-  HarrisAgc *h = (HarrisAgc *)mem_arena_alloc(&ctx->app->process_chain.setup_arena, sizeof(HarrisAgc), true);
+  HarrisAgc *h = (HarrisAgc *)mem_arena_alloc(&app->process_chain.setup_arena, sizeof(HarrisAgc), true);
   if (!h) {
     log_fatal("AGC: Failed to allocate Harris AGC state.");
     return NULL;
