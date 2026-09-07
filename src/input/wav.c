@@ -855,6 +855,12 @@ static bool input_wav_initialize(ModuleContext *context) {
   }
 
   if (s_wav_config.center_target_hz_arg != 0.0f) {
+    if (private_data->is_real) {
+      log_error("--wav-center-target-freq can only be used with I/Q (complex) WAV files.");
+      sf_close(private_data->infile);
+      return false;
+    }
+
     if (config->dsp.frequency_shift_hz != 0.0f) {
       log_error("Conflicting frequency shift options provided. Cannot use "
                 "--freq-shift and --wav-center-target-freq at the same time.");

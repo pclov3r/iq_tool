@@ -245,7 +245,7 @@ static bool dsp_freq_shift_validate_options(struct AppContext *app) {
 
 static bool dsp_freq_shift_is_active(AppContext *app, const char *stage_tag) {
   AppConfig *config = (AppConfig *)app->config;
-  if (config->dsp.frequency_shift_hz == 0.0f) {
+  if (config->dsp.frequency_shift_hz == 0.0f && app->dsp.nco_shift_hz == 0.0) {
     return false;
   }
   if (stage_tag && strcmp(stage_tag, "pre") == 0) {
