@@ -40,7 +40,7 @@ static void *frequency_shift_create(AppConfig *config, AppContext *app) {
   if (!config || !app)
     return NULL;
 
-  FreqShiftState *state = (FreqShiftState *)malloc(sizeof(FreqShiftState));
+  FreqShiftState *state = (FreqShiftState *)mem_arena_alloc(&ctx->app->process_chain.setup_arena, sizeof(FreqShiftState), true);
   if (!state)
     return NULL;
 
@@ -56,13 +56,13 @@ static void *frequency_shift_create(AppConfig *config, AppContext *app) {
   if (config->dsp.shift_after_resample && fabs(state->nco_shift_hz) < 1e-9) {
     log_error("Option --shift-after-resample was used, but no effective "
               "frequency shift was requested or calculated.");
-    free(state);
+    // free(state); // Memory arena handles this
     return NULL;
   }
 
   // If no shift is needed, we're done.
   if (fabs(state->nco_shift_hz) < 1e-9) {
-    free(state);
+    // free(state); // Memory arena handles this
     return NULL;
   }
 
@@ -75,14 +75,14 @@ static void *frequency_shift_create(AppConfig *config, AppContext *app) {
                 "of %.1f Hz for the input sample rate of %.1f Hz.",
                 state->nco_shift_hz, nyquist_limit, rate_for_nco);
       log_error("This will cause aliasing and images.");
-      free(state);
+      // free(state); // Memory arena handles this
       return NULL;
     }
     state->pre_resample_nco =
         (struct freq_shifter_s *)nco_crcf_create(LIQUID_NCO);
     if (!state->pre_resample_nco) {
       log_error("Failed to create pre-resample NCO (frequency shifter).");
-      free(state);
+      // free(state); // Memory arena handles this
       return NULL;
     }
     float nco_freq_rad_per_sample =
@@ -166,7 +166,7 @@ static void frequency_shift_destroy_ncos(FreqShiftState *state) {
       nco_crcf_destroy((nco_crcf)state->post_resample_nco);
       state->post_resample_nco = NULL;
     }
-    free(state);
+    // free(state); // Memory arena handles this
   }
 }
 
