@@ -99,7 +99,7 @@ typedef struct {
 
 static void *dsp_chain_thread_func(void *arg) {
   ChainThreadContext *ctx = (ChainThreadContext *)arg;
-  ProcessChainContext *pctx = (ProcessChainContext *)ctx->thread_context;
+
 
   while (1) {
     SampleChunk *chunk = (SampleChunk *)queue_dequeue(ctx->in_q);
