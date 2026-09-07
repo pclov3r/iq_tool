@@ -11,8 +11,8 @@
 #ifndef QUEUE_H_
 #define QUEUE_H_
 
-#include "core/mem_arena.h" // Provides the full definition for the MemoryArena struct
-#include "core/process_chain_types.h" // Provides the full definition for the Queue struct
+#include "mem_arena.h" // Provides the full definition for the MemoryArena struct
+#include "process_chain_types.h" // Provides the full definition for the Queue struct
 #include <stdbool.h>
 #include <stddef.h>
 

@@ -1,14 +1,13 @@
-#include "core/app_context.h"
+#include "app_context.h"
 #include <stdlib.h>
 /**
  * @file resampler.c
  */
 
-#include "core/app_context.h"
-#include "core/module.h"
-#include "core/process_chain_types.h"
-#include "dsp/resampler.h"
+#include "app_context.h"
 #include "log.h"
+#include "module.h"
+#include "process_chain_types.h"
 #include <liquid.h>
 #include <stdlib.h> // For exit()
 

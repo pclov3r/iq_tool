@@ -1,25 +1,23 @@
 /**
- * @file input_sdrplay.c
+ * @file input/sdrplay.c
  */
 
-#include "input/sdrplay.h"
+#include "app_context.h"
 #include "argparse.h"
-#include "core/app_context.h"
-#include "core/constants.h"
-#include "core/interleave_functions.h"
-#include "core/mem_arena.h"
-#include "core/module.h"
-#include "core/module_defaults.h"
-#include "core/packet_serializer.h"
-#include "core/queue.h"
-#include "core/ring_buffer.h"
-#include "core/sample_format_table.h"
-#include "core/signal_handler.h"
-#include "core/utilities.h"
-#include "core/wait_event.h"
-#include "dsp/frequency_shift.h"
+#include "constants.h"
 #include "input/common.h"
+#include "interleave_functions.h"
 #include "log.h"
+#include "mem_arena.h"
+#include "module.h"
+#include "module_defaults.h"
+#include "packet_serializer.h"
+#include "queue.h"
+#include "ring_buffer.h"
+#include "sample_format_table.h"
+#include "signal_handler.h"
+#include "utilities.h"
+#include "wait_event.h"
 #include <errno.h>
 #include <math.h>
 #include <stdarg.h>
@@ -43,7 +41,7 @@
 #define SDRPLAY_TARGET_VERSION 3.15f
 
 #if defined(_WIN32)
-#include "core/platform.h"
+#include "platform.h"
 #include <io.h>
 #include <shlwapi.h> // For PathAppendW
 #include <windows.h>

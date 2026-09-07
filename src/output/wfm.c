@@ -1,5 +1,5 @@
 /**
- * @file output_wfm.c
+ * @file output/wfm.c
  */
 
 /*
@@ -44,18 +44,17 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "output/wfm.h"
-#include "core/app_context.h"
-#include "core/audio_output_functions.h"
-#include "core/constants.h"
-#include "core/interleave_functions.h"
-#include "core/module.h"
-#include "core/platform.h"
-#include "core/queue.h"
-#include "core/ring_buffer.h"
-#include "core/signal_handler.h"
-#include "core/utilities.h"
+#include "app_context.h"
+#include "audio_output_functions.h"
+#include "constants.h"
+#include "interleave_functions.h"
 #include "log.h"
+#include "module.h"
+#include "platform.h"
+#include "queue.h"
+#include "ring_buffer.h"
+#include "signal_handler.h"
+#include "utilities.h"
 #include <complex.h>
 #include <libredsea.h>
 #include <liquid.h>

@@ -15,9 +15,9 @@
 #ifndef MODULE_H_
 #define MODULE_H_
 
-#include "argparse.h"          // For argparse_option struct
-#include "core/common_types.h" // For SampleFormat
-#include "core/constants.h"    // For APP_MAX_SUMMARY_ITEMS
+#include "argparse.h"     // For argparse_option struct
+#include "common_types.h" // For SampleFormat
+#include "constants.h"    // For APP_MAX_SUMMARY_ITEMS
 #include <stdbool.h>
 #include <stdint.h>
 #include <time.h>
@@ -218,4 +218,7 @@ typedef struct DspModuleInterface {
   // Frees all allocated memory
   void (*cleanup)(void *state);
 } DspModuleInterface;
+
+
 #endif // MODULE_H_
+

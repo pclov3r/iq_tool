@@ -7,8 +7,8 @@
 #ifndef AUDIO_OUTPUT_FUNCTIONS_H_
 #define AUDIO_OUTPUT_FUNCTIONS_H_
 
-#include "core/app_context.h"
-#include "core/common_types.h" // For ProcessChainMode
+#include "app_context.h"
+#include "common_types.h" // For ProcessChainMode
 #include <stdbool.h>
 #include <stddef.h>
 

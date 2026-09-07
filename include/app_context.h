@@ -7,14 +7,13 @@
 #ifndef APP_CONTEXT_H_
 #define APP_CONTEXT_H_
 
-#include "core/common_types.h"
-#include "core/constants.h"
-#include "core/mem_arena.h"
-#include "core/module.h"
-#include "core/presets_loader.h"
-#include "core/process_chain_types.h"
-#include "core/wait_event.h"
-#include "dsp/resampler.h"
+#include "common_types.h"
+#include "constants.h"
+#include "mem_arena.h"
+#include "module.h"
+#include "presets_loader.h"
+#include "process_chain_types.h"
+#include "wait_event.h"
 #include <stdatomic.h>
 
 // --- Forward Declarations ---

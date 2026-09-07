@@ -2,8 +2,8 @@
  * @file platform.c
  */
 
-#include "core/platform.h"
-#include "core/constants.h"
+#include "platform.h"
+#include "constants.h"
 #include "log.h"
 #include <errno.h>
 #include <stdio.h>

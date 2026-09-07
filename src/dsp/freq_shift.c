@@ -1,14 +1,13 @@
-#include "core/app_context.h"
+#include "app_context.h"
 #include <stdlib.h>
 /**
  * @file frequency_shift.c
  */
 
-#include "core/app_context.h"
-#include "core/module.h"
-#include "core/process_chain_types.h"
-#include "dsp/frequency_shift.h"
+#include "app_context.h"
 #include "log.h"
+#include "module.h"
+#include "process_chain_types.h"
 #include <liquid.h>
 #include <math.h>
 #include <stdio.h>
@@ -40,7 +39,8 @@ static void *frequency_shift_create(AppConfig *config, AppContext *app) {
   if (!config || !app)
     return NULL;
 
-  FreqShiftState *state = (FreqShiftState *)mem_arena_alloc(&app->process_chain.setup_arena, sizeof(FreqShiftState), true);
+  FreqShiftState *state = (FreqShiftState *)mem_arena_alloc(
+      &app->process_chain.setup_arena, sizeof(FreqShiftState), true);
   if (!state)
     return NULL;
 

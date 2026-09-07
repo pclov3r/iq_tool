@@ -2,62 +2,78 @@
  * @file module_registry.c
  */
 
-#include "core/module_registry.h"
-#include "core/app_context.h"
-#include "core/mem_arena.h"
-#include "core/module_defaults.h"
+#include "module_registry.h"
+#include "app_context.h"
 #include "log.h"
+#include "mem_arena.h"
+#include "module_defaults.h"
 #include <stdlib.h>
 #include <string.h>
 
-// --- Include the headers for ALL concrete input source implementations ---
-#include "input/rawfile.h"
-#include "input/spyserver_client.h"
-#include "input/stdin.h"
-#include "input/wav.h"
+// --- Module Declarations Macros ---
+// These macros replace the need for dozens of individual header files.
+// By defining them here, a developer only needs to edit THIS file to add a new
+// module.
+#define DECLARE_INPUT_MODULE(name)                                             \
+  InputModuleInterface *input_##name##_get_module_api(void);                   \
+  const struct argparse_option *input_##name##_get_cli_options(int *count);    \
+  void input_##name##_set_default_config(struct AppConfig *config)
+
+#define DECLARE_OUTPUT_MODULE(name)                                            \
+  OutputModuleInterface *output_##name##_get_module_api(void);                 \
+  const struct argparse_option *output_##name##_get_cli_options(int *count)
+
+#define DECLARE_DSP_MODULE(name)                                               \
+  const struct DspModuleInterface *dsp_##name##_get_api(void)
+
+// --- Input Modules ---
+DECLARE_INPUT_MODULE(wav);
+DECLARE_INPUT_MODULE(rawfile);
+DECLARE_INPUT_MODULE(stdin);
 #if defined(WITH_RTLSDR)
-#include "input/rtlsdr.h"
+DECLARE_INPUT_MODULE(rtlsdr);
 #endif
 #if defined(WITH_SDRPLAY)
-#include "input/sdrplay.h"
+DECLARE_INPUT_MODULE(sdrplay);
 #endif
 #if defined(WITH_HACKRF)
-#include "input/hackrf.h"
+DECLARE_INPUT_MODULE(hackrf);
 #endif
 #if defined(WITH_AIRSPY)
-#include "input/airspy.h"
+DECLARE_INPUT_MODULE(airspy);
 #endif
 #if defined(WITH_AIRSPYHF)
-#include "input/airspyhf.h"
+DECLARE_INPUT_MODULE(airspyhf);
 #endif
 #if defined(WITH_HYDRASDR)
-#include "input/hydrasdr.h"
+DECLARE_INPUT_MODULE(hydrasdr);
 #endif
 #if defined(WITH_BLADERF)
-#include "input/bladerf.h"
+DECLARE_INPUT_MODULE(bladerf);
 #endif
+DECLARE_INPUT_MODULE(spyserver_client);
 
-// --- Include the headers for ALL concrete output source implementations ---
-#include "output/directpipe.h"
-#include "output/rawfile.h"
-#include "output/stdout.h"
-#include "output/wav.h"
-#include "output/wav_rf64.h"
+// --- Output Modules ---
+DECLARE_OUTPUT_MODULE(rawfile);
+DECLARE_OUTPUT_MODULE(wav);
+DECLARE_OUTPUT_MODULE(wav_rf64);
+DECLARE_OUTPUT_MODULE(stdout);
+DECLARE_OUTPUT_MODULE(directpipe);
 #if defined(WITH_NRSC5)
-#include "output/nrsc5.h"
+DECLARE_OUTPUT_MODULE(nrsc5);
 #endif
-#include "output/am.h"
-#include "output/nfm.h"
-#include "output/noaawx.h"
-#include "output/wfm.h"
+DECLARE_OUTPUT_MODULE(wfm);
+DECLARE_OUTPUT_MODULE(nfm);
+DECLARE_OUTPUT_MODULE(noaawx);
+DECLARE_OUTPUT_MODULE(am);
 
-// --- Include the headers for ALL DSP processing implementations ---
-#include "dsp/agc.h"
-#include "dsp/dc_block.h"
-#include "dsp/filter.h"
-#include "dsp/frequency_shift.h"
-#include "dsp/iq_correction.h"
-#include "dsp/resampler.h"
+// --- DSP Modules ---
+DECLARE_DSP_MODULE(filter);
+DECLARE_DSP_MODULE(iq_correct);
+DECLARE_DSP_MODULE(dcblock);
+DECLARE_DSP_MODULE(freq_shift);
+DECLARE_DSP_MODULE(agc);
+DECLARE_DSP_MODULE(resampler);
 
 #ifdef _WIN32
 #define strcasecmp _stricmp

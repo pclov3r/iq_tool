@@ -3,9 +3,9 @@
  * @brief Implements the cross-platform manual-reset event.
  */
 
-#include "core/wait_event.h"
-#include "core/mem_arena.h"
+#include "wait_event.h"
 #include "log.h"
+#include "mem_arena.h"
 #include <stdlib.h>
 
 #ifdef _WIN32

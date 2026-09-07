@@ -12,13 +12,13 @@
 #ifndef UTILITIES_H_
 #define UTILITIES_H_
 
-#include "core/app_context.h"
-#include "core/mem_arena.h"
-#include "core/module.h"
+#include "app_context.h"
+#include "mem_arena.h"
+#include "module.h"
 #include <math.h>
 #include <stddef.h>
 
-#include "core/constants.h" // For APP_MAX_SUMMARY_ITEMS
+#include "constants.h" // For APP_MAX_SUMMARY_ITEMS
 
 /**
  * @struct SummaryItem

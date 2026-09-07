@@ -1,5 +1,5 @@
 /**
- * @file output_wav_rf64.c
+ * @file output/wav_rf64.c
  * @brief Implements the WAV/RF64 file output module for large file support.
  *
  * This file is a lightweight wrapper around the common WAV writing logic.
@@ -7,9 +7,8 @@
  * and provide the correct summary information.
  */
 
-#include "output/wav_rf64.h"
-#include "core/utilities.h"    // For utility_add_summary_item
 #include "output/wav_common.h" // Include the shared implementation
+#include "utilities.h"         // For utility_add_summary_item
 #include <sndfile.h>           // For the SF_FORMAT_RF64 constant
 
 /**

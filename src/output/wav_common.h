@@ -1,5 +1,5 @@
 /**
- * @file output_wav_common.h
+ * @file output/wav_common.h
  * @brief PRIVATE: Declares the shared interface for WAV and RF64 output
  * modules.
  *
@@ -11,8 +11,8 @@
 #ifndef OUTPUT_WAV_COMMON_H_
 #define OUTPUT_WAV_COMMON_H_
 
-#include "core/module.h" // For ModuleContext
-#include <sndfile.h>     // For SNDFILE*
+#include "module.h"  // For ModuleContext
+#include <sndfile.h> // For SNDFILE*
 
 // --- Forward Declaration ---
 // This tells the compiler that a struct named AppConfig exists, allowing us

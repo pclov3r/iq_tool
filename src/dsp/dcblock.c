@@ -1,15 +1,14 @@
-#include "core/app_context.h"
+#include "app_context.h"
 #include <stdlib.h>
 /**
- * @file dsp_dcblock.c
+ * @file dsp/dcblock.c
  */
 
-#include "core/app_context.h"
-#include "core/constants.h"
-#include "core/module.h"
-#include "core/process_chain_types.h"
-#include "dsp/dc_block.h"
+#include "app_context.h"
+#include "constants.h"
 #include "log.h"
+#include "module.h"
+#include "process_chain_types.h"
 #include <liquid.h>
 #include <math.h>
 #include <stdlib.h>

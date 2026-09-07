@@ -6,7 +6,7 @@
 #ifndef KEYBOARD_HANDLER_H_
 #define KEYBOARD_HANDLER_H_
 
-#include "core/app_context.h"
+#include "app_context.h"
 
 /**
  * @brief Initializes the background keyboard listener thread.

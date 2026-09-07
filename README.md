@@ -167,28 +167,36 @@ Audio Output Options
 
 Input Processing Options
     --input-gain-multiplier=<flt>             Apply a linear gain multiplier to INPUT samples (before processing).
-    --iq-correction                           (Optional) Enable automatic I/Q imbalance correction.
-    --dc-block                                (Optional) Enable DC offset removal (high-pass filter).
 
 Baseband Processing Options
     --baseband-sample-rate=<flt>              Baseband sample rate feeding into a demodulator in Hz.
     --baseband-sample-format=<str>            Baseband sample format feeding into a demodulator {cf32|cs16|...}.
     --baseband-gain-multiplier=<flt>          Apply a linear gain multiplier to baseband samples before demodulation.
-    --baseband-agc                            Enable automatic gain control on the baseband signal before demodulation.
-    --baseband-agc-target=<flt>               AGC target magnitude (0.0 - 1.0). (Default: 0.12)
 
 I/Q Output Options
     --output-sample-rate=<flt>                Output sample rate in Hz.
     --output-sample-format=<str>              Sample format for output data {cs8|cu8|cs16|...}.
     --output-gain-multiplier=<flt>            Apply a linear gain multiplier to OUTPUT samples before saving.
-    --output-agc                              Enable automatic gain control on the output signal before saving.
-    --output-agc-target=<flt>                 AGC target magnitude (0.0 - 1.0). (Default: 0.12)
 
-General Pipeline Options
-    --freq-shift=<flt>                        Apply a direct frequency shift in Hz (e.g., -100e3)
-    --shift-after-resample                    Apply frequency shift AFTER resampling (default is before)
+General ProcessChain Options
     --raw-passthrough                         Bypass all processing. Copies raw input bytes directly to output.
     --preset=<str>                            Use a preset for a common target.
+
+SDR General Options
+    --sdr-rf-freq=<flt>                       (Required for SDR) Tuner center frequency in Hz
+    --sdr-freq-offset=<flt>                   Frequency offset in Hz (e.g. 125e6 for HamItUp).
+    --sdr-sample-rate=<flt>                   Set sample rate in Hz. (Device-specific default)
+    --sdr-bias-t                              (Optional) Enable Bias-T power.
+
+DC Block Options
+    --dc-block                                (Optional) Enable DC offset removal (high-pass filter).
+
+I/Q Correction Options
+    --iq-correction                           (Optional) Enable automatic I/Q imbalance correction.
+
+Frequency Shift Options
+    --freq-shift=<flt>                        Apply a direct frequency shift in Hz (e.g., -100e3)
+    --shift-after-resample                    Apply frequency shift AFTER resampling (default is before)
 
 Filtering Options (Chain up to 5 by combining options or adding suffixes -2, -3, etc. e.g., --lowpass --stopband --lowpass-2 --pass-range --pass-range-2)
     --lowpass=<flt>                           Isolate signal at DC. Keeps freqs from -<hz> to +<hz>.
@@ -205,11 +213,11 @@ Filter Implementation Options
     --filter-type=<str>                       Set filter implementation {fir|fft}. (Default: auto).
     --filter-fft-size=<int>                   Set FFT size for 'fft' filter type. Must be a power of 2.
 
-SDR General Options
-    --sdr-rf-freq=<flt>                       (Required for SDR) Tuner center frequency in Hz
-    --sdr-freq-offset=<flt>                   Frequency offset in Hz (e.g. 125e6 for HamItUp).
-    --sdr-sample-rate=<flt>                   Set sample rate in Hz. (Device-specific default)
-    --sdr-bias-t                              (Optional) Enable Bias-T power.
+AGC Options
+    --baseband-agc                            Enable automatic gain control on the baseband signal before demodulation.
+    --baseband-agc-target=<flt>               AGC target magnitude (0.0 - 1.0). (Default: 0.12)
+    --output-agc                              Enable automatic gain control on the output signal before saving.
+    --output-agc-target=<flt>                 AGC target magnitude (0.0 - 1.0). (Default: 0.12)
 
 WAV Input (wav)
     --wav-center-target-freq=<flt>            Shift signal to a new target center frequency (e.g., 97.3e6)

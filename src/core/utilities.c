@@ -2,12 +2,12 @@
  * @file utilities.c
  */
 
-#include "core/utilities.h"
-#include "core/app_context.h"
-#include "core/mem_arena.h"
-#include "core/ring_buffer.h"
-#include "core/signal_handler.h"
+#include "utilities.h"
+#include "app_context.h"
 #include "log.h"
+#include "mem_arena.h"
+#include "ring_buffer.h"
+#include "signal_handler.h"
 #include <ctype.h>
 #include <math.h>
 #include <stdarg.h>

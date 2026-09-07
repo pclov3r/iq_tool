@@ -2,8 +2,8 @@
  * @file sample_format_table.c
  */
 
-#include "core/sample_format_table.h"
-#include "core/constants.h"
+#include "sample_format_table.h"
+#include "constants.h"
 #include <string.h>
 
 #ifdef _WIN32

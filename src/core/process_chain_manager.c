@@ -9,30 +9,25 @@
  * utility threads.
  */
 
-#include "core/process_chain_manager.h"
-#include "core/app_context.h"
-#include "core/constants.h"
-#include "core/module_registry.h"
-#include "core/packet_serializer.h"
-#include "core/platform.h" // Added for thread priority abstraction
-#include "core/process_chain_context.h"
-#include "core/process_chain_default.h"
-#include "core/process_chain_io.h"
-#include "core/queue.h"
-#include "core/ring_buffer.h"
-#include "core/sample_format_table.h"
-#include "core/signal_handler.h"
-#include "core/thread_manager.h"
-#include "core/utilities.h"
-#include "core/utility_threads.h"
-#include "core/wait_event.h"
-#include "dsp/agc.h" // Added for Output AGC
-#include "dsp/dc_block.h"
-#include "dsp/filter.h"
-#include "dsp/frequency_shift.h"
-#include "dsp/iq_correction.h"
+#include "process_chain_manager.h"
+#include "app_context.h"
+#include "constants.h"
 #include "input/common.h"
 #include "log.h"
+#include "module_registry.h"
+#include "packet_serializer.h"
+#include "platform.h" // Added for thread priority abstraction
+#include "process_chain_context.h"
+#include "process_chain_default.h"
+#include "process_chain_io.h"
+#include "queue.h"
+#include "ring_buffer.h"
+#include "sample_format_table.h"
+#include "signal_handler.h"
+#include "thread_manager.h"
+#include "utilities.h"
+#include "utility_threads.h"
+#include "wait_event.h"
 #include <errno.h>
 #include <math.h>
 #include <stdatomic.h>

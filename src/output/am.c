@@ -1,5 +1,5 @@
 /**
- * @file output_am.c
+ * @file output/am.c
  * @brief AM Audio Demodulation and Output Module
  *
  * This module implements a robust AM demodulator with two modes:
@@ -21,17 +21,16 @@
  * volume at all SNRs.
  */
 
-#include "output/am.h"
-#include "core/app_context.h"
-#include "core/audio_output_functions.h"
-#include "core/constants.h"
-#include "core/module.h"
-#include "core/platform.h"
-#include "core/queue.h"
-#include "core/ring_buffer.h"
-#include "core/signal_handler.h"
-#include "core/utilities.h"
+#include "app_context.h"
+#include "audio_output_functions.h"
+#include "constants.h"
 #include "log.h"
+#include "module.h"
+#include "platform.h"
+#include "queue.h"
+#include "ring_buffer.h"
+#include "signal_handler.h"
+#include "utilities.h"
 #include <complex.h>
 #include <liquid.h>
 #include <math.h>

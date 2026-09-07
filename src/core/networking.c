@@ -8,10 +8,10 @@
  * connection contexts is allocated from a user-provided memory arena.
  */
 
-#include "core/networking.h"
-#include "core/constants.h" // Added for NETWORK_SOCKET_TIMEOUT_MS
-#include "core/mem_arena.h"
+#include "networking.h"
+#include "constants.h" // Added for NETWORK_SOCKET_TIMEOUT_MS
 #include "log.h"
+#include "mem_arena.h"
 #include <stdlib.h>
 #include <string.h>
 

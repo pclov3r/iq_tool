@@ -1,5 +1,5 @@
 /**
- * @file output_wav.c
+ * @file output/wav.c
  * @brief Implements the standard WAV file output module.
  *
  * This file is a lightweight wrapper around the common WAV writing logic.
@@ -8,9 +8,8 @@
  * size limit; for larger files, the 'wav-rf64' output module should be used.
  */
 
-#include "output/wav.h"
-#include "core/utilities.h"    // For utility_add_summary_item
 #include "output/wav_common.h" // Include the shared implementation
+#include "utilities.h"         // For utility_add_summary_item
 #include <sndfile.h>           // For the SF_FORMAT_WAV constant
 
 /**

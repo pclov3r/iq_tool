@@ -2,13 +2,13 @@
  * @file presets_loader.c
  */
 
-#include "core/presets_loader.h"
-#include "core/app_context.h"
-#include "core/constants.h"
-#include "core/mem_arena.h"
-#include "core/platform.h"
-#include "core/utilities.h"
+#include "presets_loader.h"
+#include "app_context.h"
+#include "constants.h"
 #include "log.h"
+#include "mem_arena.h"
+#include "platform.h"
+#include "utilities.h"
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>

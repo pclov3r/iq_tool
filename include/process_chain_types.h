@@ -1,4 +1,4 @@
-#include "core/constants.h"
+#include "constants.h"
 /**
  * @file process_chain_types.h
  * @brief Defines data structures used for communication within the processing
@@ -17,7 +17,7 @@
 #ifndef PROCESS_CHAIN_TYPES_H_
 #define PROCESS_CHAIN_TYPES_H_
 
-#include "core/common_types.h" // For ComplexFloat, etc.
+#include "common_types.h" // For ComplexFloat, etc.
 #include <pthread.h>
 #include <stdalign.h>
 #include <stddef.h>

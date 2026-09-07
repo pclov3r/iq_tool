@@ -4,7 +4,7 @@
  * threads.
  */
 
-#include "core/thread_manager.h"
+#include "thread_manager.h"
 #include "log.h"
 #include <string.h>
 
@@ -83,9 +83,9 @@ void thread_manager_join_all(ThreadManager *manager) {
   manager->num_threads_started = 0;
 }
 
-#include "core/module.h"
-#include "core/process_chain_context.h"
-#include "core/queue.h"
+#include "module.h"
+#include "process_chain_context.h"
+#include "queue.h"
 #include <stdlib.h>
 
 typedef struct {
@@ -99,7 +99,6 @@ typedef struct {
 
 static void *dsp_chain_thread_func(void *arg) {
   ChainThreadContext *ctx = (ChainThreadContext *)arg;
-
 
   while (1) {
     SampleChunk *chunk = (SampleChunk *)queue_dequeue(ctx->in_q);

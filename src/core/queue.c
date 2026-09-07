@@ -2,9 +2,9 @@
  * @file queue.c
  */
 
-#include "core/queue.h"
-#include "core/mem_arena.h" // For mem_arena_alloc
+#include "queue.h"
 #include "log.h"
+#include "mem_arena.h" // For mem_arena_alloc
 #include <string.h>
 
 bool queue_init(Queue *queue, size_t capacity, MemoryArena *arena) {

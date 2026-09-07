@@ -1,13 +1,12 @@
 /**
- * @file output_directpipe.c
+ * @file output/directpipe.c
  */
 
-#include "output/directpipe.h"
-#include "core/app_context.h"
-#include "core/mem_arena.h"
-#include "core/module.h"
-#include "core/utilities.h"
+#include "app_context.h"
 #include "log.h"
+#include "mem_arena.h"
+#include "module.h"
+#include "utilities.h"
 #include <errno.h>
 #include <stdbool.h>
 #include <string.h>

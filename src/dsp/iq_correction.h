@@ -1,8 +1,8 @@
 #ifndef DSP_IQ_CORRECTION_H
 #define DSP_IQ_CORRECTION_H
 
-#include "core/app_context.h"
-#include "core/module.h"
+#include "app_context.h"
+#include "module.h"
 
 const struct DspModuleInterface *dsp_iq_correct_get_api(void);
 

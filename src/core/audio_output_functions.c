@@ -3,13 +3,13 @@
  * @brief Implements the unified audio output using a lock-free RingBuffer.
  */
 
-#include "core/audio_output_functions.h"
-#include "core/mem_arena.h"
-#include "core/ring_buffer.h"
-#include "core/signal_handler.h"
-#include "core/utilities.h"
+#include "audio_output_functions.h"
 #include "log.h"
+#include "mem_arena.h"
 #include "miniaudio.h"
+#include "ring_buffer.h"
+#include "signal_handler.h"
+#include "utilities.h"
 #include <sndfile.h>
 #include <string.h>
 

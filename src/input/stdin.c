@@ -1,18 +1,17 @@
 /**
- * @file input_stdin.c
+ * @file input/stdin.c
  */
 
-#include "input/stdin.h"
+#include "app_context.h"
 #include "argparse.h"
-#include "core/app_context.h"
-#include "core/constants.h"
-#include "core/mem_arena.h"
-#include "core/platform.h"
-#include "core/sample_format_table.h"
-#include "core/signal_handler.h"
-#include "core/utilities.h"
+#include "constants.h"
 #include "input/common.h"
 #include "log.h"
+#include "mem_arena.h"
+#include "platform.h"
+#include "sample_format_table.h"
+#include "signal_handler.h"
+#include "utilities.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

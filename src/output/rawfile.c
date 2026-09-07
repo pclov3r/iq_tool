@@ -1,14 +1,13 @@
 /**
- * @file output_rawfile.c
+ * @file output/rawfile.c
  */
 
-#include "output/rawfile.h"
-#include "core/app_context.h"
-#include "core/module.h"
-#include "core/platform.h"
-#include "core/signal_handler.h"
-#include "core/utilities.h"
+#include "app_context.h"
 #include "log.h"
+#include "module.h"
+#include "platform.h"
+#include "signal_handler.h"
+#include "utilities.h"
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>

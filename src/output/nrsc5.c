@@ -1,5 +1,5 @@
 /**
- * @file output_nrsc5.c
+ * @file output/nrsc5.c
  * @brief Implements the NRSC5 (HD Radio) output module using CF32 floats.
  */
 
@@ -13,18 +13,17 @@
 #include <sys/stat.h>
 #include <time.h>
 
-#include "core/app_context.h"
-#include "core/audio_output_functions.h"
-#include "core/constants.h"
-#include "core/module.h"
-#include "core/platform.h"
-#include "core/queue.h"
-#include "core/ring_buffer.h"
-#include "core/sample_format_table.h"
-#include "core/signal_handler.h"
-#include "core/utilities.h"
+#include "app_context.h"
+#include "audio_output_functions.h"
+#include "constants.h"
 #include "log.h"
-#include "output/nrsc5.h"
+#include "module.h"
+#include "platform.h"
+#include "queue.h"
+#include "ring_buffer.h"
+#include "sample_format_table.h"
+#include "signal_handler.h"
+#include "utilities.h"
 #include <nrsc5.h>
 
 #define NRSC5_AUDIO_CHANNELS 2

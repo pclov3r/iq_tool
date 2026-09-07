@@ -1,14 +1,14 @@
 /**
- * @file input_common.h
+ * @file input/common.h
  */
 
-// input_common.h
+// input/common.h
 
 #ifndef INPUT_COMMON_H_
 #define INPUT_COMMON_H_
 
-#include "core/app_context.h" // Needed for AppContext
-#include "core/utilities.h"
+#include "app_context.h" // Needed for AppContext
+#include "utilities.h"
 #include <stdatomic.h> // Needed for utility_get_time
 #include <stdbool.h>
 

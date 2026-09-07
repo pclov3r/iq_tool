@@ -1,5 +1,5 @@
 /**
- * @file input_spyserver_client.c
+ * @file input/spyserver_client.c
  * @brief Implements the input source for connecting to a SpyServer over the
  * network.
  *
@@ -34,24 +34,23 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "input/spyserver_client.h"
+#include "app_context.h"
 #include "argparse.h"
-#include "core/app_context.h"
-#include "core/constants.h"
-#include "core/mem_arena.h"
-#include "core/module.h"
-#include "core/module_defaults.h"
-#include "core/networking.h"
-#include "core/packet_serializer.h"
-#include "core/platform.h"
-#include "core/queue.h"
-#include "core/ring_buffer.h"
-#include "core/sample_format_table.h"
-#include "core/sample_format_table.h" // Required for standardized packet format
-#include "core/signal_handler.h"
-#include "core/utilities.h"
+#include "constants.h"
 #include "input/common.h"
 #include "log.h"
+#include "mem_arena.h"
+#include "module.h"
+#include "module_defaults.h"
+#include "networking.h"
+#include "packet_serializer.h"
+#include "platform.h"
+#include "queue.h"
+#include "ring_buffer.h"
+#include "sample_format_table.h"
+#include "sample_format_table.h" // Required for standardized packet format
+#include "signal_handler.h"
+#include "utilities.h"
 #include <math.h>
 #include <pthread.h>
 #include <stdatomic.h>

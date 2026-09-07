@@ -1,19 +1,18 @@
 /**
- * @file input_rtlsdr.c
+ * @file input/rtlsdr.c
  */
 
-#include "input/rtlsdr.h"
+#include "app_context.h"
 #include "argparse.h"
-#include "core/app_context.h"
-#include "core/constants.h"
-#include "core/mem_arena.h"
-#include "core/module.h"
-#include "core/module_defaults.h"
-#include "core/sample_format_table.h"
-#include "core/signal_handler.h"
-#include "core/utilities.h"
+#include "constants.h"
 #include "input/common.h"
 #include "log.h"
+#include "mem_arena.h"
+#include "module.h"
+#include "module_defaults.h"
+#include "sample_format_table.h"
+#include "signal_handler.h"
+#include "utilities.h"
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>

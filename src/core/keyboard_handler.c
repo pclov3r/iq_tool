@@ -3,10 +3,10 @@
  * @brief Implements interactive, non-blocking keyboard input handling.
  */
 
-#include "core/keyboard_handler.h"
-#include "core/module.h"
-#include "core/signal_handler.h"
+#include "keyboard_handler.h"
 #include "log.h"
+#include "module.h"
+#include "signal_handler.h"
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>

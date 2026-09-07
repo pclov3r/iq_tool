@@ -1,20 +1,19 @@
-#include "core/app_context.h"
+#include "app_context.h"
 #include <stdlib.h>
 /**
  * @file filter.c
  * @brief Implements the user-defined FIR/FFT filter chain.
  */
 
-#include "core/app_context.h"
-#include "core/constants.h"
-#include "core/mem_arena.h"
-#include "core/module.h"
-#include "core/module_registry.h"
-#include "core/process_chain_types.h"
-#include "core/sample_format_table.h"
-#include "core/utilities.h"
-#include "dsp/filter.h"
+#include "app_context.h"
+#include "constants.h"
 #include "log.h"
+#include "mem_arena.h"
+#include "module.h"
+#include "module_registry.h"
+#include "process_chain_types.h"
+#include "sample_format_table.h"
+#include "utilities.h"
 #include <ctype.h>
 #include <liquid.h>
 #include <math.h>

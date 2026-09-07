@@ -2,11 +2,11 @@
  * @file packet_serializer.c
  */
 
-#include "core/packet_serializer.h"
-#include "core/process_chain_types.h"
-#include "core/ring_buffer.h"
-#include "core/sample_format_table.h"
+#include "packet_serializer.h"
 #include "log.h"
+#include "process_chain_types.h"
+#include "ring_buffer.h"
+#include "sample_format_table.h"
 #include <string.h>
 
 // --- INTERNAL HELPER ---

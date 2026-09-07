@@ -2,11 +2,11 @@
  * @file ring_buffer.c
  */
 
-#include "core/ring_buffer.h"
-#include "core/constants.h"
-#include "core/mem_arena.h"
-#include "core/platform.h"
+#include "ring_buffer.h"
+#include "constants.h"
 #include "log.h"
+#include "mem_arena.h"
+#include "platform.h"
 #include <pthread.h>
 #include <stdalign.h>  // C11 Alignment
 #include <stdatomic.h> // C11 Atomics

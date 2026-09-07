@@ -1,15 +1,15 @@
 /**
- * @file output_wav_common.c
+ * @file output/wav_common.c
  * @brief Implements the shared logic for WAV and RF64 output modules.
  */
 
 #include "output/wav_common.h"
-#include "core/app_context.h"
-#include "core/platform.h"
-#include "core/ring_buffer.h"
-#include "core/signal_handler.h"
-#include "core/utilities.h"
+#include "app_context.h"
 #include "log.h"
+#include "platform.h"
+#include "ring_buffer.h"
+#include "signal_handler.h"
+#include "utilities.h"
 #include <ctype.h>
 #include <errno.h>
 #include <sndfile.h>

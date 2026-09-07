@@ -4,22 +4,20 @@
  * process_chain.
  */
 
-#include "core/process_chain_io.h"
-#include "core/app_context.h"
-#include "core/constants.h"
-#include "core/module_registry.h"
-#include "core/packet_serializer.h"
-#include "core/platform.h"
-#include "core/process_chain_context.h"
-#include "core/queue.h"
-#include "core/ring_buffer.h"
-#include "core/sample_conversion_functions.h"
-#include "core/signal_handler.h"
-#include "core/utilities.h"
-#include "dsp/iq_correction.h"
-#include "dsp/resampler.h"
+#include "process_chain_io.h"
+#include "app_context.h"
+#include "constants.h"
 #include "input/common.h"
 #include "log.h"
+#include "module_registry.h"
+#include "packet_serializer.h"
+#include "platform.h"
+#include "process_chain_context.h"
+#include "queue.h"
+#include "ring_buffer.h"
+#include "sample_conversion_functions.h"
+#include "signal_handler.h"
+#include "utilities.h"
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>

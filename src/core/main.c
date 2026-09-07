@@ -19,23 +19,21 @@
 #include <windows.h>
 #endif
 
-#include "core/app_context.h"
-#include "core/cli.h"
-#include "core/constants.h"
-#include "core/keyboard_handler.h"
-#include "core/mem_arena.h"
-#include "core/module.h"
-#include "core/module_registry.h"
-#include "core/platform.h"
-#include "core/presets_loader.h"
-#include "core/process_chain_context.h"
-#include "core/process_chain_manager.h"
-#include "core/sample_format_table.h"
-#include "core/signal_handler.h"
-#include "core/utilities.h"
-#include "dsp/agc.h"
-#include "dsp/filter.h"
+#include "app_context.h"
+#include "cli.h"
+#include "constants.h"
+#include "keyboard_handler.h"
 #include "log.h"
+#include "mem_arena.h"
+#include "module.h"
+#include "module_registry.h"
+#include "platform.h"
+#include "presets_loader.h"
+#include "process_chain_context.h"
+#include "process_chain_manager.h"
+#include "sample_format_table.h"
+#include "signal_handler.h"
+#include "utilities.h"
 #include <errno.h>
 #include <locale.h>
 #include <math.h>

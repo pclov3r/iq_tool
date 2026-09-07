@@ -11,8 +11,8 @@
 #ifndef MODULE_REGISTRY_H_
 #define MODULE_REGISTRY_H_
 
-#include "core/common_types.h"
-#include "core/module.h" // Provides the core InputModuleInterface interface definition
+#include "common_types.h"
+#include "module.h" // Provides the core InputModuleInterface interface definition
 
 // --- Forward Declarations ---
 // We only use pointers to these structs, so we don't need their full

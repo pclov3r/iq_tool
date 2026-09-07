@@ -3,10 +3,10 @@
  */
 
 // memory_arena.c
-#include "core/mem_arena.h"
-#include "core/constants.h"
-#include "core/platform.h"
+#include "mem_arena.h"
+#include "constants.h"
 #include "log.h"
+#include "platform.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>

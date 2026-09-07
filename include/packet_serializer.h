@@ -27,7 +27,7 @@
 #ifndef PACKET_SERIALIZER_H_
 #define PACKET_SERIALIZER_H_
 
-#include "core/common_types.h"
+#include "common_types.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

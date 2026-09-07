@@ -12,7 +12,7 @@
 #ifndef SIGNAL_HANDLER_H_
 #define SIGNAL_HANDLER_H_
 
-#include "core/app_context.h" // Provides the full definition for AppContext
+#include "app_context.h" // Provides the full definition for AppContext
 #include <stdbool.h>
 
 // --- Function Declarations ---

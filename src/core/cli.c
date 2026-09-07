@@ -2,22 +2,20 @@
  * @file cli.c
  */
 
-#include "core/cli.h"
-#include "core/app_context.h"
-#include "core/config.h"
-#include "core/constants.h"
-#include "core/platform.h"
-#include "core/utilities.h"
+#include "cli.h"
+#include "app_context.h"
+#include "config.h"
+#include "constants.h"
 #include "log.h"
+#include "platform.h"
+#include "utilities.h"
 #ifndef _WIN32
 #include <libgen.h>
 #include <limits.h>
 #endif
 #include "argparse.h"
-#include "core/module_registry.h"
-#include "core/sample_format_table.h"
-#include "dsp/agc.h"
-#include "dsp/filter.h"
+#include "module_registry.h"
+#include "sample_format_table.h"
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>

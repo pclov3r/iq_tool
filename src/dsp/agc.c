@@ -1,4 +1,4 @@
-#include "core/app_context.h"
+#include "app_context.h"
 #include <stdlib.h>
 /**
  * @file agc.c
@@ -49,11 +49,10 @@
  *   output samples
  */
 
-#include "core/constants.h"
-#include "core/module.h"
-#include "core/process_chain_types.h"
-#include "dsp/agc.h"
+#include "constants.h"
 #include "log.h"
+#include "module.h"
+#include "process_chain_types.h"
 #include <math.h>
 #include <stdio.h>
 
@@ -176,7 +175,8 @@ static HarrisAgc *agc_create(AppConfig *config, AppContext *app) {
     return NULL;
   }
 
-  HarrisAgc *h = (HarrisAgc *)mem_arena_alloc(&app->process_chain.setup_arena, sizeof(HarrisAgc), true);
+  HarrisAgc *h = (HarrisAgc *)mem_arena_alloc(&app->process_chain.setup_arena,
+                                              sizeof(HarrisAgc), true);
   if (!h) {
     log_fatal("AGC: Failed to allocate Harris AGC state.");
     return NULL;

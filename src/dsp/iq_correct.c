@@ -1,4 +1,4 @@
-#include "core/app_context.h"
+#include "app_context.h"
 #include <stdlib.h>
 /**
  * @file iq_correction.c
@@ -55,23 +55,22 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "core/app_context.h"
-#include "core/constants.h"
-#include "core/mem_arena.h"
-#include "core/module.h"
-#include "core/module_registry.h"
-#include "core/queue.h"
-#include "core/sample_conversion_functions.h"
-#include "core/utilities.h"
-#include "dsp/dc_block.h"
-#include "dsp/iq_correction.h"
+#include "app_context.h"
+#include "constants.h"
 #include "log.h"
+#include "mem_arena.h"
+#include "module.h"
+#include "module_registry.h"
+#include "queue.h"
+#include "sample_conversion_functions.h"
+#include "utilities.h"
 #include <complex.h>
 #include <liquid.h>
 #include <math.h>
 #include <stdatomic.h> // Needed for byte size calculations
 #include <stdlib.h>
 #include <string.h>
+#include "dsp/iq_correction.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846

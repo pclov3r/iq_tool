@@ -29,8 +29,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "core/sample_conversion_functions.h"
-#include "core/common_types.h" // Provides SampleFormat, ComplexFloat
+#include "sample_conversion_functions.h"
+#include "common_types.h" // Provides SampleFormat, ComplexFloat
 #include "log.h"
 #include <assert.h> // Added for robust error checking in debug builds
 #include <limits.h>

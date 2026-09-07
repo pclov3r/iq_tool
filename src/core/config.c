@@ -2,14 +2,13 @@
  * @file config.c
  */
 
-#include "core/config.h"
-#include "core/app_context.h"
-#include "core/constants.h"
-#include "core/module_registry.h"
-#include "core/sample_format_table.h"
-#include "core/utilities.h"
-#include "dsp/agc.h"
+#include "config.h"
+#include "app_context.h"
+#include "constants.h"
 #include "log.h"
+#include "module_registry.h"
+#include "sample_format_table.h"
+#include "utilities.h"
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>

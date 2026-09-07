@@ -3,7 +3,7 @@
  * @brief Functions for interleaving left/right planes or I/Q arrays.
  */
 
-#include "core/interleave_functions.h"
+#include "interleave_functions.h"
 #include <math.h>
 
 // --- Interleaving Helpers Implementation ---

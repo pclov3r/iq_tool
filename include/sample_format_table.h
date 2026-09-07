@@ -12,7 +12,7 @@
 #ifndef SAMPLE_FORMAT_TABLE_H_
 #define SAMPLE_FORMAT_TABLE_H_
 
-#include "core/common_types.h"
+#include "common_types.h"
 #include <stddef.h>
 
 /**

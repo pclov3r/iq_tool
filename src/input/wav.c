@@ -1,21 +1,19 @@
 /**
- * @file input_wav.c
+ * @file input/wav.c
  */
 
-#include "input/wav.h"
+#include "app_context.h"
 #include "argparse.h"
-#include "core/app_context.h"
-#include "core/constants.h"
-#include "core/mem_arena.h"
-#include "core/platform.h"
-#include "core/queue.h"
-#include "core/ring_buffer.h"
-#include "core/sample_format_table.h"
-#include "core/signal_handler.h"
-#include "core/utilities.h"
-#include "dsp/iq_correction.h"
+#include "constants.h"
 #include "input/common.h"
 #include "log.h"
+#include "mem_arena.h"
+#include "platform.h"
+#include "queue.h"
+#include "ring_buffer.h"
+#include "sample_format_table.h"
+#include "signal_handler.h"
+#include "utilities.h"
 #include <ctype.h>
 #include <errno.h>
 #include <expat.h>
@@ -36,6 +34,7 @@
 #define strcasecmp _stricmp
 #else
 #include <strings.h>
+#include "dsp/iq_correction.h"
 #endif
 
 #define SDRC_AUXI_CHUNK_ID_STR "auxi"

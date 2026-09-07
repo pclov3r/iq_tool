@@ -10,15 +10,14 @@
 #include <unistd.h>
 #endif
 
-#include "core/app_context.h"
-#include "core/constants.h"
-#include "core/process_chain_context.h"
-#include "core/queue.h"
-#include "core/signal_handler.h"
-#include "core/utilities.h"
-#include "core/utility_threads.h"
-#include "dsp/iq_correction.h"
+#include "app_context.h"
+#include "constants.h"
 #include "log.h"
+#include "process_chain_context.h"
+#include "queue.h"
+#include "signal_handler.h"
+#include "utilities.h"
+#include "utility_threads.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -31,7 +30,8 @@
  * @param arg A void pointer to the ProcessChainContext struct.
  * @return NULL.
  */
-#include "core/process_chain_manager.h" // For process_chain_get_module_state
+#include "process_chain_manager.h" // For process_chain_get_module_state
+#include "dsp/iq_correction.h"
 
 void *process_chain_thread_iq_estimator(void *arg) {
   ProcessChainContext *args = (ProcessChainContext *)arg;

@@ -2,13 +2,13 @@
  * @file signal_handler.c
  */
 
-#include "core/signal_handler.h"
-#include "core/app_context.h" // Provides AppContext
-#include "core/module.h"      // Provides ModuleContext
-#include "core/queue.h"       // Provides queue_signal_shutdown
-#include "core/ring_buffer.h" // Provides ring_buffer_signal_shutdown
-#include "core/wait_event.h"
+#include "signal_handler.h"
+#include "app_context.h" // Provides AppContext
 #include "log.h"
+#include "module.h"      // Provides ModuleContext
+#include "queue.h"       // Provides queue_signal_shutdown
+#include "ring_buffer.h" // Provides ring_buffer_signal_shutdown
+#include "wait_event.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
