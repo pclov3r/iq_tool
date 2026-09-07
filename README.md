@@ -465,16 +465,14 @@ The tool features a fully modular architecture designed to support additional da
     *   **`InputModuleInterface`**: Standardizes how the pipeline initializes hardware and starts data acquisition.
     *   **`DspModuleInterface`**: Standardizes how mathematical algorithms process chunks of samples, ensuring they maintain their own private memory states (encapsulated via `void*`).
     *   **`OutputModuleInterface`**: Standardizes how data is delivered to a destination.
-*   **The Module Headers:** Every module provides its own public header file (e.g., `src/input/rtlsdr.h` or `src/dsp/agc.h`). These headers act as the bridge to the registry, exporting functions to return the module's API and its unique CLI options.
-*   **The Registry (`module_registry.c`):** This serves as the system's central factory. It maintains a catalog of every compiled-in module. 
+*   **Encapsulation:** Modules do not expose public header files. Module implementations, including state structures and function definitions, must remain strictly `static` to their respective translation units.
+*   **The Registry (`module_registry.c`):** Serves as a dynamic factory and catalog of compiled-in modules, maintaining strict decoupling from module implementations.
 *   **Adding a New Module:**
-    1.  **Define the Header:** Create a new header file in the appropriate directory (`src/input/`, `src/dsp/`, `src/output/`).
-    2.  **Implement the Interface:** Fulfill the required function pointers in the matching `*ModuleInterface` struct.
-    3.  **Define CLI Options:** Use the built-in `argparse` integration within your module's `get_cli_options()` to define any unique command-line flags.
-    4.  **Register the Module:** Add a new entry to the `temp_modules[]` array in `src/core/module_registry.c`.
-    5.  **Update the Build System:** Add the new source file to `CMakeLists.txt` and link any necessary external libraries.
-
-This design ensures that hardware-specific quirks and complex output formats remain isolated from the high-speed processing core.
+    1.  **Create the Source File:** Add a `.c` file to the appropriate directory (`src/input/`, `src/dsp/`, `src/output/`).
+    2.  **Implement the Interface:** Fulfill the required function pointers in the matching `*ModuleInterface` struct (e.g., `InputModuleInterface`).
+    3.  **Define CLI Options:** Define any unique command-line flags within a `static const struct argparse_option` array and expose it via the `get_cli_options` interface method.
+    4.  **Register the Module:** Use the `__attribute__((constructor))` compiler directive to dynamically register the module API with the registry during program initialization (e.g., via `module_register_input()`).
+    5.  **Update the Build System:** Append the source file to `CMakeLists.txt` using the `register_module` macro to handle optional dependencies and linking.
 
 ### Acknowledgements
 
