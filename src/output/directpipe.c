@@ -3,10 +3,10 @@
  */
 
 #include "app_context.h"
+#include "config/module_defaults.h"
 #include "log.h"
 #include "mem_arena.h"
 #include "module.h"
-#include "module_defaults.h"
 #include "module_registry.h"
 #include "utilities.h"
 #include <errno.h>
@@ -124,7 +124,8 @@ static const struct argparse_option directpipe_cli_options[] = {
     OPT_GROUP("    (No module-specific options)"),
 };
 
-const struct argparse_option *output_directpipe_get_cli_options(int *count) {
+static const struct argparse_option *
+output_directpipe_get_cli_options(int *count) {
   *count = sizeof(directpipe_cli_options) / sizeof(directpipe_cli_options[0]);
   return directpipe_cli_options;
 }

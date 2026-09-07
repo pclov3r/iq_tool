@@ -3,7 +3,7 @@
  */
 
 #include "ring_buffer.h"
-#include "constants.h"
+#include "config/constants.h"
 #include "log.h"
 #include "mem_arena.h"
 #include "platform.h"

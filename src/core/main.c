@@ -21,7 +21,7 @@
 
 #include "app_context.h"
 #include "cli.h"
-#include "constants.h"
+#include "config/constants.h"
 #include "keyboard_handler.h"
 #include "log.h"
 #include "mem_arena.h"

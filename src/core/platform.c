@@ -3,7 +3,7 @@
  */
 
 #include "platform.h"
-#include "constants.h"
+#include "config/constants.h"
 #include "log.h"
 #include <errno.h>
 #include <stdio.h>

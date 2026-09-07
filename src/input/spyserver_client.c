@@ -36,12 +36,12 @@
 
 #include "app_context.h"
 #include "argparse.h"
-#include "constants.h"
+#include "config/constants.h"
+#include "config/module_defaults.h"
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
 #include "module.h"
-#include "module_defaults.h"
 #include "module_registry.h"
 #include "networking.h"
 #include "packet_serializer.h"
@@ -218,15 +218,15 @@ static const struct argparse_option input_spyserver_client_cli_options[] = {
                NULL, 0, 0),
 };
 
-const struct argparse_option *
-input_spyserver_client_get_cli_options(int *count) {
+static const struct argparse_option *input_spyserver_client_get_cli_options(int *count) {
   *count = sizeof(input_spyserver_client_cli_options) /
            sizeof(input_spyserver_client_cli_options[0]);
   return input_spyserver_client_cli_options;
 }
 
 // --- Default Configuration ---
-void input_spyserver_client_set_default_config(struct AppConfig *config) {
+static void
+input_spyserver_client_set_default_config(struct AppConfig *config) {
   config->sdr_general.sample_rate_hz = SPYSERVER_DEFAULT_SAMPLE_RATE_HZ;
   s_spyserver_client_config.hostname = NULL;
   s_spyserver_client_config.port = 0;

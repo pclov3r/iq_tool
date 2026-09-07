@@ -6,7 +6,7 @@
 
 #include "process_chain_io.h"
 #include "app_context.h"
-#include "constants.h"
+#include "config/constants.h"
 #include "input/common.h"
 #include "log.h"
 #include "module_registry.h"

@@ -18,7 +18,7 @@
 #include <math.h>
 #include <stddef.h>
 
-#include "constants.h" // For APP_MAX_SUMMARY_ITEMS
+#include "config/constants.h" // For APP_MAX_SUMMARY_ITEMS
 
 /**
  * @struct SummaryItem

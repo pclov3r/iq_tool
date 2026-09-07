@@ -11,7 +11,7 @@
 #endif
 
 #include "app_context.h"
-#include "constants.h"
+#include "config/constants.h"
 #include "log.h"
 #include "process_chain_context.h"
 #include "queue.h"
@@ -30,8 +30,8 @@
  * @param arg A void pointer to the ProcessChainContext struct.
  * @return NULL.
  */
-#include "process_chain_manager.h" // For process_chain_get_module_state
 #include "dsp/iq_correction.h"
+#include "process_chain_manager.h" // For process_chain_get_module_state
 
 void *process_chain_thread_iq_estimator(void *arg) {
   ProcessChainContext *args = (ProcessChainContext *)arg;

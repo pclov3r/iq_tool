@@ -17,7 +17,7 @@
 
 #include "argparse.h"     // For argparse_option struct
 #include "common_types.h" // For SampleFormat
-#include "constants.h"    // For APP_MAX_SUMMARY_ITEMS
+#include "config/constants.h"    // For APP_MAX_SUMMARY_ITEMS
 #include <stdbool.h>
 #include <stdint.h>
 #include <time.h>

@@ -7,7 +7,7 @@
  * and provide the correct summary information.
  */
 
-#include "module_defaults.h"
+#include "config/module_defaults.h"
 #include "module_registry.h"
 #include "output/wav_common.h" // Include the shared implementation
 #include "utilities.h"         // For utility_add_summary_item
@@ -38,7 +38,8 @@ static const struct argparse_option output_wav_rf64_cli_options[] = {
     OPT_GROUP("    (No module-specific options)"),
 };
 
-const struct argparse_option *output_wav_rf64_get_cli_options(int *count) {
+static const struct argparse_option *
+output_wav_rf64_get_cli_options(int *count) {
   *count = sizeof(output_wav_rf64_cli_options) /
            sizeof(output_wav_rf64_cli_options[0]);
   return output_wav_rf64_cli_options;

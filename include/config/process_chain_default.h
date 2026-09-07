@@ -7,10 +7,18 @@ typedef struct {
   const char *stage_tag;
 } ProcessNodeDef;
 
+// clang-format off
 static const ProcessNodeDef DEFAULT_PROCESS_CHAIN[] = {
-    {"dc_block", NULL}, {"iq_correct", NULL}, {"freq_shift", "pre"},
-    {"filter", "pre"},  {"resampler", NULL},  {"freq_shift", "post"},
-    {"filter", "post"}, {"agc", NULL}};
+    {"dc_block",   NULL},
+    {"iq_correct", NULL},
+    {"freq_shift", "pre"},
+    {"filter",     "pre"},
+    {"resampler",  NULL},
+    {"freq_shift", "post"},
+    {"filter",     "post"},
+    {"agc",        NULL}
+};
+// clang-format on
 
 static const int DEFAULT_PROCESS_CHAIN_LENGTH =
     sizeof(DEFAULT_PROCESS_CHAIN) / sizeof(DEFAULT_PROCESS_CHAIN[0]);

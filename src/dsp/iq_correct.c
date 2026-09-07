@@ -1,5 +1,5 @@
 #include "app_context.h"
-#include "module_defaults.h"
+#include "config/module_defaults.h"
 #include "module_registry.h"
 #include <stdlib.h>
 /**
@@ -58,7 +58,7 @@
  */
 
 #include "app_context.h"
-#include "constants.h"
+#include "config/constants.h"
 #include "dsp/iq_correction.h"
 #include "log.h"
 #include "mem_arena.h"

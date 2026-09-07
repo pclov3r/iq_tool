@@ -4,7 +4,7 @@
 
 #include "config.h"
 #include "app_context.h"
-#include "constants.h"
+#include "config/constants.h"
 #include "log.h"
 #include "module_registry.h"
 #include "sample_format_table.h"

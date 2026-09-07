@@ -3,7 +3,7 @@
  */
 
 #include "sample_format_table.h"
-#include "constants.h"
+#include "config/constants.h"
 #include <string.h>
 
 #ifdef _WIN32

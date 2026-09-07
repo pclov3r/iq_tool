@@ -3,7 +3,7 @@
  * @brief Implements the NRSC5 (HD Radio) output module using CF32 floats.
  */
 
-#include "module_defaults.h"
+#include "config/module_defaults.h"
 #include "module_registry.h"
 #include <complex.h>
 #include <ctype.h>
@@ -17,7 +17,7 @@
 
 #include "app_context.h"
 #include "audio_output_functions.h"
-#include "constants.h"
+#include "config/constants.h"
 #include "log.h"
 #include "module.h"
 #include "platform.h"
@@ -798,7 +798,7 @@ static const struct argparse_option output_nrsc5_cli_options[] = {
                "Directory to dump AAS files (logos, maps, etc).", NULL, 0, 0),
 };
 
-const struct argparse_option *output_nrsc5_get_cli_options(int *count) {
+static const struct argparse_option *output_nrsc5_get_cli_options(int *count) {
   *count =
       sizeof(output_nrsc5_cli_options) / sizeof(output_nrsc5_cli_options[0]);
   return output_nrsc5_cli_options;

@@ -4,11 +4,11 @@
 
 #include "app_context.h"
 #include "audio_output_functions.h"
-#include "constants.h"
+#include "config/constants.h"
+#include "config/module_defaults.h"
 #include "interleave_functions.h"
 #include "log.h"
 #include "module.h"
-#include "module_defaults.h"
 #include "module_registry.h"
 #include "queue.h"
 #include "ring_buffer.h"
@@ -354,7 +354,7 @@ static const struct argparse_option output_nfm_cli_options[] = {
                 "Disable the discriminator filter.", NULL, 0, 0),
 };
 
-const struct argparse_option *output_nfm_get_cli_options(int *count) {
+static const struct argparse_option *output_nfm_get_cli_options(int *count) {
   *count = sizeof(output_nfm_cli_options) / sizeof(output_nfm_cli_options[0]);
   return output_nfm_cli_options;
 }

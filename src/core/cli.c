@@ -5,7 +5,7 @@
 #include "cli.h"
 #include "app_context.h"
 #include "config.h"
-#include "constants.h"
+#include "config/constants.h"
 #include "log.h"
 #include "platform.h"
 #include "utilities.h"

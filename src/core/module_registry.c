@@ -4,12 +4,11 @@
 
 #include "module_registry.h"
 #include "app_context.h"
+#include "config/module_defaults.h"
 #include "log.h"
 #include "mem_arena.h"
-#include "module_defaults.h"
 #include <stdlib.h>
 #include <string.h>
-
 
 #include <stdio.h>
 
@@ -44,16 +43,15 @@ void module_registry_add(const Module *m) {
 }
 
 static void initialize_modules_list(MemoryArena *arena) {
-    // No-op. Modules register themselves before main().
-    (void)arena;
+  // No-op. Modules register themselves before main().
+  (void)arena;
 }
-
 
 static const Module *_find_module_by_name_and_type(const char *name,
                                                    ModuleType type,
                                                    MemoryArena *arena) {
   initialize_modules_list(arena); // Ensure the list is ready
-  if (!name || !all_modules) {
+  if (!name) {
     return NULL;
   }
   for (int i = 0; i < num_all_modules; ++i) {
@@ -71,8 +69,7 @@ static const Module *_find_module_by_name_and_type(const char *name,
  */
 void module_apply_defaults(AppConfig *config, MemoryArena *arena) {
   initialize_modules_list(arena); // Ensure the list is ready
-  if (!all_modules)
-    return;
+
 
   for (int i = 0; i < num_all_modules; ++i) {
     if (all_modules[i].set_default_config) {
@@ -100,8 +97,7 @@ void module_populate_cli_options(struct argparse_option *dest_buffer,
                                  const char *active_output_type,
                                  struct MemoryArena *arena) {
   initialize_modules_list(arena);
-  if (!all_modules)
-    return;
+
 
   for (int i = 0; i < num_all_modules; ++i) {
     const struct argparse_option *(*get_opts_fn)(int *) =

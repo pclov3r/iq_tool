@@ -8,7 +8,7 @@
 #define APP_CONTEXT_H_
 
 #include "common_types.h"
-#include "constants.h"
+#include "config/constants.h"
 #include "mem_arena.h"
 #include "module.h"
 #include "presets_loader.h"

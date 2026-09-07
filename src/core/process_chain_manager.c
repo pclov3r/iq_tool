@@ -11,14 +11,14 @@
 
 #include "process_chain_manager.h"
 #include "app_context.h"
-#include "constants.h"
+#include "config/constants.h"
 #include "input/common.h"
 #include "log.h"
 #include "module_registry.h"
 #include "packet_serializer.h"
 #include "platform.h" // Added for thread priority abstraction
 #include "process_chain_context.h"
-#include "process_chain_default.h"
+#include "config/process_chain_default.h"
 #include "process_chain_io.h"
 #include "queue.h"
 #include "ring_buffer.h"

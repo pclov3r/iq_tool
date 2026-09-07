@@ -5,8 +5,8 @@
 
 #include "output/wav_common.h"
 #include "app_context.h"
+#include "config/module_defaults.h"
 #include "log.h"
-#include "module_defaults.h"
 #include "module_registry.h"
 #include "platform.h"
 #include "ring_buffer.h"

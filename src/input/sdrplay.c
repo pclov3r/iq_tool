@@ -4,13 +4,13 @@
 
 #include "app_context.h"
 #include "argparse.h"
-#include "constants.h"
+#include "config/constants.h"
+#include "config/module_defaults.h"
 #include "input/common.h"
 #include "interleave_functions.h"
 #include "log.h"
 #include "mem_arena.h"
 #include "module.h"
-#include "module_defaults.h"
 #include "module_registry.h"
 #include "packet_serializer.h"
 #include "queue.h"
@@ -239,7 +239,7 @@ typedef struct {
   pthread_mutex_t driver_mutex;
 } SdrplayContext;
 
-void input_sdrplay_set_default_config(AppConfig *config) {
+static void input_sdrplay_set_default_config(AppConfig *config) {
   config->sdr_general.sample_rate_hz = SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
   s_sdrplay_config.bandwidth_hz = SDRPLAY_DEFAULT_BANDWIDTH_HZ;
   s_sdrplay_config.sdrplay_bandwidth_hz_arg = 0.0f;
@@ -285,7 +285,7 @@ static const struct argparse_option input_sdrplay_cli_options[] = {
                 "Enable MW/AM Notch Filter (RSPduo Tuner A only).", NULL, 0, 0),
 };
 
-const struct argparse_option *input_sdrplay_get_cli_options(int *count) {
+static const struct argparse_option *input_sdrplay_get_cli_options(int *count) {
   *count =
       sizeof(input_sdrplay_cli_options) / sizeof(input_sdrplay_cli_options[0]);
   return input_sdrplay_cli_options;
@@ -386,7 +386,7 @@ static bool input_sdrplay_validate_options(AppContext *app) {
   return true;
 }
 
-const char *get_sdrplay_device_name(uint8_t hwVer) {
+static const char *get_sdrplay_device_name(uint8_t hwVer) {
   switch (hwVer) {
   case SDRPLAY_RSP1_ID:
     return "SDRplay RSP1";

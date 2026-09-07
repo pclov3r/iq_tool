@@ -9,7 +9,7 @@
  */
 
 #include "networking.h"
-#include "constants.h" // Added for NETWORK_SOCKET_TIMEOUT_MS
+#include "config/constants.h" // Added for NETWORK_SOCKET_TIMEOUT_MS
 #include "log.h"
 #include "mem_arena.h"
 #include <stdlib.h>

@@ -1,4 +1,4 @@
-#include "constants.h"
+#include "config/constants.h"
 /**
  * @file process_chain_types.h
  * @brief Defines data structures used for communication within the processing

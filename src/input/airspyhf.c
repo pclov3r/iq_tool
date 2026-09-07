@@ -4,12 +4,12 @@
 
 #include "app_context.h"
 #include "argparse.h"
-#include "constants.h"
+#include "config/constants.h"
+#include "config/module_defaults.h"
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
 #include "module.h"
-#include "module_defaults.h"
 #include "module_registry.h"
 #include "sample_format_table.h"
 #include "signal_handler.h"
@@ -53,7 +53,7 @@ typedef struct {
   pthread_mutex_t driver_mutex;
 } AirspyHFContext;
 
-void input_airspyhf_set_default_config(AppConfig *config) {
+static void input_airspyhf_set_default_config(AppConfig *config) {
   config->sdr_general.sample_rate_hz = AIRSPYHF_DEFAULT_SAMPLE_RATE;
 }
 
@@ -76,7 +76,8 @@ static const struct argparse_option input_airspyhf_cli_options[] = {
         NULL, 0, 0),
 };
 
-const struct argparse_option *input_airspyhf_get_cli_options(int *count) {
+static const struct argparse_option *
+input_airspyhf_get_cli_options(int *count) {
   *count = sizeof(input_airspyhf_cli_options) /
            sizeof(input_airspyhf_cli_options[0]);
   return input_airspyhf_cli_options;

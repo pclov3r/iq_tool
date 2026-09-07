@@ -4,7 +4,7 @@
 
 // memory_arena.c
 #include "mem_arena.h"
-#include "constants.h"
+#include "config/constants.h"
 #include "log.h"
 #include "platform.h"
 #include <assert.h>

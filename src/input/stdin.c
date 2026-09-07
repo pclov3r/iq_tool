@@ -4,11 +4,11 @@
 
 #include "app_context.h"
 #include "argparse.h"
-#include "constants.h"
+#include "config/constants.h"
+#include "config/module_defaults.h"
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
-#include "module_defaults.h"
 #include "module_registry.h"
 #include "platform.h"
 #include "sample_format_table.h"
@@ -49,7 +49,7 @@ static const struct argparse_option input_stdin_cli_options[] = {
                "(Required) The sample format of the stdin stream.", NULL, 0, 0),
 };
 
-const struct argparse_option *input_stdin_get_cli_options(int *count) {
+static const struct argparse_option *input_stdin_get_cli_options(int *count) {
   *count = sizeof(input_stdin_cli_options) / sizeof(input_stdin_cli_options[0]);
   return input_stdin_cli_options;
 }

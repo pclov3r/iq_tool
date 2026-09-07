@@ -1,5 +1,5 @@
 #include "app_context.h"
-#include "module_defaults.h"
+#include "config/module_defaults.h"
 #include "module_registry.h"
 #include <stdlib.h>
 /**
