@@ -1,3 +1,5 @@
+#include "core/app_context.h"
+#include <stdlib.h>
 /**
  * @file agc.c
  * @brief Implements the Output Automatic Gain Control module.
@@ -47,7 +49,6 @@
  *   output samples
  */
 
-#include "dsp/agc.h"
 #include "core/constants.h"
 #include "core/module.h"
 #include "core/process_chain_types.h"
@@ -69,6 +70,10 @@ typedef struct harris_agc_s {
   float gain_min_db;     /* Minimum permitted gain in dB.                  */
   float gain_max_db;     /* Maximum permitted gain in dB.                  */
   uint64_t samples_seen; /* Total samples processed (for startup logging). */
+
+  // Extracted from DspContext
+  bool enabled;
+  double sample_rate_hz;
 } HarrisAgc;
 
 /* =========================================================================
@@ -165,22 +170,16 @@ static void harris_agc_execute(HarrisAgc *h, ComplexFloat *samples,
  * Public API
  * ======================================================================= */
 
-bool agc_create(AppConfig *config, AppContext *app) {
+static HarrisAgc *agc_create(AppConfig *config, AppContext *app) {
   (void)config;
   if (!app->dsp.process_chain_agc.enable) {
-    app->dsp.agc.harris_object = NULL;
-    return true;
+    return NULL;
   }
 
-  /* Initialise common runtime state. */
-  app->dsp.agc.current_gain = 1.0f;
-  app->dsp.agc.samples_seen = 0;
-
-  HarrisAgc *h = (HarrisAgc *)mem_arena_alloc(&app->process_chain.setup_arena,
-                                              sizeof(HarrisAgc), true);
+  HarrisAgc *h = (HarrisAgc *)malloc(sizeof(HarrisAgc));
   if (!h) {
     log_fatal("AGC: Failed to allocate Harris AGC state.");
-    return false;
+    return NULL;
   }
 
   h->target_db = AGC_HARRIS_TARGET_DBFS;
@@ -191,12 +190,12 @@ bool agc_create(AppConfig *config, AppContext *app) {
   h->gain_db = 0.0f; /* Start at unity gain. */
   h->gain_linear = 1.0f;
   h->samples_seen = 0;
+  h->enabled = app->dsp.process_chain_agc.enable;
+  h->sample_rate_hz = app->dsp.process_chain_sample_rate_hz;
 
   if (app->dsp.process_chain_agc.target_level_arg > 0.0f) {
     h->target_db = 20.0f * log10f(app->dsp.process_chain_agc.target_level_arg);
   }
-
-  app->dsp.agc.harris_object = (struct harris_agc_s *)h;
 
   log_info("AGC: Enabled (Harris/LMS Block Tracker).");
   log_info("AGC:   Algorithm:  Harris/LMS, dB domain, block-level.");
@@ -208,16 +207,12 @@ bool agc_create(AppConfig *config, AppContext *app) {
   log_info("AGC:   Blanker:    threshold magnitude > %.1f",
            (double)AGC_BLANKER_THRESHOLD);
 
-  return true;
+  return h;
 }
 
-void agc_apply(DspContext *dsp, ComplexFloat *samples,
-               unsigned int num_samples) {
-  if (!dsp->process_chain_agc.enable || num_samples == 0)
-    return;
-
-  HarrisAgc *h = (HarrisAgc *)dsp->agc.harris_object;
-  if (!h)
+static void agc_apply(HarrisAgc *h, ComplexFloat *samples,
+                      unsigned int num_samples) {
+  if (!h || !h->enabled || num_samples == 0)
     return;
 
   /* Stage 1: Impulse blanker. */
@@ -236,56 +231,49 @@ void agc_apply(DspContext *dsp, ComplexFloat *samples,
   }
 
   /* Periodic status. */
-  uint64_t prev = dsp->agc.samples_seen;
-  dsp->agc.samples_seen += num_samples;
-  uint64_t period =
-      (uint64_t)(dsp->process_chain_sample_rate_hz * AGC_LOG_INTERVAL_SEC);
+  uint64_t prev = h->samples_seen - num_samples;
+  uint64_t period = (uint64_t)(h->sample_rate_hz * AGC_LOG_INTERVAL_SEC);
 
-  if (period > 0 && (prev / period) != (dsp->agc.samples_seen / period)) {
+  if (period > 0 && (prev / period) != (h->samples_seen / period)) {
     bool in_deadband = (fabsf(h->gain_db - gain_db_before) < 1e-6f);
     log_debug("AGC: gain=%.2f dB  %s", h->gain_db,
               in_deadband ? "(deadband — passing through unchanged)"
                           : "(adjusting)");
   }
-
-  dsp->agc.current_gain = h->gain_linear;
 }
 
-void agc_reset(DspContext *dsp) {
-  HarrisAgc *h = (HarrisAgc *)dsp->agc.harris_object;
+static void agc_reset(HarrisAgc *h) {
   if (h) {
     h->gain_db = 0.0f;
     h->gain_linear = 1.0f;
     h->samples_seen = 0;
   }
-  dsp->agc.current_gain = 1.0f;
-  dsp->agc.samples_seen = 0;
 }
 
-void agc_destroy(AppContext *app) { app->dsp.agc.harris_object = NULL; }
+static void agc_destroy(HarrisAgc *h) {
+  if (h) {
+    free(h);
+  }
+}
 
 // === DSP Module Interface Implementation ===
 
-static bool dsp_agc_init(ModuleContext *ctx) {
+static void *dsp_agc_init(ModuleContext *ctx) {
   return agc_create((AppConfig *)ctx->config, ctx->app);
 }
 
-static SampleChunk *dsp_agc_process(ModuleContext *ctx, SampleChunk *chunk) {
+static SampleChunk *dsp_agc_process(void *state, SampleChunk *chunk) {
+  HarrisAgc *h = (HarrisAgc *)state;
   if (chunk->stream_discontinuity_event) {
-    agc_reset(&ctx->app->dsp);
+    agc_reset(h);
   }
-  agc_apply(&ctx->app->dsp, chunk->post_resample_buffer,
-            chunk->frames_to_write);
+  agc_apply(h, chunk->post_resample_buffer, chunk->frames_to_write);
   return chunk;
 }
 
-static void dsp_agc_cleanup(ModuleContext *ctx) { agc_destroy(ctx->app); }
+static void dsp_agc_cleanup(void *state) { agc_destroy((HarrisAgc *)state); }
 
-static void dsp_agc_reset_api(ModuleContext *ctx) {
-  if (ctx && ctx->app) {
-    agc_reset(&ctx->app->dsp);
-  }
-}
+static void dsp_agc_reset_api(void *state) { agc_reset((HarrisAgc *)state); }
 
 static bool s_baseband_agc = false;
 static float s_baseband_agc_target = 0.0f;

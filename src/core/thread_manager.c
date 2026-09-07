@@ -90,6 +90,7 @@ void thread_manager_join_all(ThreadManager *manager) {
 
 typedef struct {
   const struct DspModuleInterface **chain;
+  void **states;
   int num_modules;
   struct Queue *in_q;
   struct Queue *out_q;
@@ -99,7 +100,6 @@ typedef struct {
 static void *dsp_chain_thread_func(void *arg) {
   ChainThreadContext *ctx = (ChainThreadContext *)arg;
   ProcessChainContext *pctx = (ProcessChainContext *)ctx->thread_context;
-  ModuleContext mctx = {.config = pctx->config, .app = pctx->app};
 
   while (1) {
     SampleChunk *chunk = (SampleChunk *)queue_dequeue(ctx->in_q);
@@ -107,7 +107,7 @@ static void *dsp_chain_thread_func(void *arg) {
       break;
 
     for (int i = 0; i < ctx->num_modules; ++i) {
-      chunk = ctx->chain[i]->process(&mctx, chunk);
+      chunk = ctx->chain[i]->process(ctx->states[i], chunk);
     }
 
     if (!queue_enqueue(ctx->out_q, chunk)) {
@@ -119,6 +119,7 @@ static void *dsp_chain_thread_func(void *arg) {
       break;
   }
 
+  free(ctx->states);
   free(ctx->chain);
   free(ctx);
   return NULL;
@@ -126,10 +127,10 @@ static void *dsp_chain_thread_func(void *arg) {
 
 bool thread_manager_start_chain(ThreadManager *tm, const char *name,
                                 const struct DspModuleInterface **chain,
-                                int num_modules, struct Queue *in_q,
-                                struct Queue *out_q) {
+                                void **states, int num_modules,
+                                struct Queue *in_q, struct Queue *out_q) {
   (void)name;
-  if (!tm || !chain || !in_q || !out_q)
+  if (!tm || !chain || !states || !in_q || !out_q)
     return false;
 
   if (tm->num_threads_started >= MAX_MANAGED_THREADS) {
@@ -138,8 +139,10 @@ bool thread_manager_start_chain(ThreadManager *tm, const char *name,
 
   ChainThreadContext *ctx = malloc(sizeof(ChainThreadContext));
   ctx->chain = malloc(num_modules * sizeof(struct DspModuleInterface *));
+  ctx->states = malloc(num_modules * sizeof(void *));
   for (int i = 0; i < num_modules; i++) {
     ctx->chain[i] = chain[i];
+    ctx->states[i] = states[i];
   }
   ctx->num_modules = num_modules;
   ctx->in_q = in_q;

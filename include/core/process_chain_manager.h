@@ -40,4 +40,11 @@ bool process_chain_setup_buffers(struct ProcessChainContext *context);
 bool process_chain_run(struct ProcessChainContext *context);
 void process_chain_teardown(struct ProcessChainContext *context);
 
+#include "core/utilities.h" // For OutputSummaryInfo
+void process_chain_get_summary_info(const struct AppContext *app,
+                                    OutputSummaryInfo *info);
+
+void *process_chain_get_module_state(const struct AppContext *app,
+                                     const char *module_name);
+
 #endif // PROCESS_CHAIN_H_

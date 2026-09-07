@@ -1,3 +1,5 @@
+#include "core/app_context.h"
+#include <stdlib.h>
 /**
  * @file frequency_shift.c
  */
@@ -16,55 +18,76 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+typedef struct freq_shifter_s FreqShifter;
+
+typedef struct FreqShiftState {
+  FreqShifter *pre_resample_nco;
+  FreqShifter *post_resample_nco;
+  double nco_shift_hz;
+} FreqShiftState;
+
+static void frequency_shift_destroy_ncos(FreqShiftState *state);
+static void frequency_shift_reset_nco(FreqShifter *nco);
+static void frequency_shift_apply(FreqShifter *nco, double shift_hz,
+                                  ComplexFloat *input, ComplexFloat *output,
+                                  unsigned int num_samples);
+
 /**
  * @brief Creates and configures the NCOs (frequency shifters) based on user
  * arguments.
  */
-bool frequency_shift_create(AppConfig *config, AppContext *app) {
+static void *frequency_shift_create(AppConfig *config, AppContext *app) {
   if (!config || !app)
-    return false;
+    return NULL;
 
-  app->dsp.pre_resample_nco = NULL;
-  app->dsp.post_resample_nco = NULL;
+  FreqShiftState *state = (FreqShiftState *)malloc(sizeof(FreqShiftState));
+  if (!state)
+    return NULL;
 
-  // First, resolve the final shift value. If a module (like WAV) hasn't already
-  // calculated a shift, check for the generic manual shift option from the CLI.
-  if (app->dsp.nco_shift_hz == 0.0 && config->dsp.frequency_shift_hz != 0.0f) {
-    app->dsp.nco_shift_hz = config->dsp.frequency_shift_hz;
+  state->pre_resample_nco = NULL;
+  state->post_resample_nco = NULL;
+
+  state->nco_shift_hz = app->dsp.nco_shift_hz;
+  if (state->nco_shift_hz == 0.0 && config->dsp.frequency_shift_hz != 0.0f) {
+    state->nco_shift_hz = config->dsp.frequency_shift_hz;
   }
 
   // Now that the final shift value is resolved, validate dependent options.
-  if (config->dsp.shift_after_resample && fabs(app->dsp.nco_shift_hz) < 1e-9) {
+  if (config->dsp.shift_after_resample && fabs(state->nco_shift_hz) < 1e-9) {
     log_error("Option --shift-after-resample was used, but no effective "
               "frequency shift was requested or calculated.");
-    return false;
+    free(state);
+    return NULL;
   }
 
   // If no shift is needed, we're done.
-  if (fabs(app->dsp.nco_shift_hz) < 1e-9) {
-    return true;
+  if (fabs(state->nco_shift_hz) < 1e-9) {
+    free(state);
+    return NULL;
   }
 
   // --- Create Pre-Resample NCO ---
   if (!config->dsp.shift_after_resample) {
     double rate_for_nco = (double)app->module.source_info.sample_rate;
     double nyquist_limit = rate_for_nco / 2.0;
-    if (fabs(app->dsp.nco_shift_hz) > nyquist_limit) {
+    if (fabs(state->nco_shift_hz) > nyquist_limit) {
       log_error("Requested frequency shift %.1f Hz exceeds the Nyquist limit "
                 "of %.1f Hz for the input sample rate of %.1f Hz.",
-                app->dsp.nco_shift_hz, nyquist_limit, rate_for_nco);
+                state->nco_shift_hz, nyquist_limit, rate_for_nco);
       log_error("This will cause aliasing and images.");
-      return false;
+      free(state);
+      return NULL;
     }
-    app->dsp.pre_resample_nco =
+    state->pre_resample_nco =
         (struct freq_shifter_s *)nco_crcf_create(LIQUID_NCO);
-    if (!app->dsp.pre_resample_nco) {
+    if (!state->pre_resample_nco) {
       log_error("Failed to create pre-resample NCO (frequency shifter).");
-      return false;
+      free(state);
+      return NULL;
     }
     float nco_freq_rad_per_sample =
-        (float)(2.0 * M_PI * fabs(app->dsp.nco_shift_hz) / rate_for_nco);
-    nco_crcf_set_frequency((nco_crcf)app->dsp.pre_resample_nco,
+        (float)(2.0 * M_PI * fabs(state->nco_shift_hz) / rate_for_nco);
+    nco_crcf_set_frequency((nco_crcf)state->pre_resample_nco,
                            nco_freq_rad_per_sample);
   }
 
@@ -72,38 +95,40 @@ bool frequency_shift_create(AppConfig *config, AppContext *app) {
   if (config->dsp.shift_after_resample) {
     double rate_for_nco = app->dsp.process_chain_sample_rate_hz;
     double nyquist_limit = rate_for_nco / 2.0;
-    if (fabs(app->dsp.nco_shift_hz) > nyquist_limit) {
+    if (fabs(state->nco_shift_hz) > nyquist_limit) {
       log_error("Requested frequency shift %.1f Hz exceeds the Nyquist limit "
                 "of %.1f Hz for the post-resample rate of %.1f Hz.",
-                app->dsp.nco_shift_hz, nyquist_limit, rate_for_nco);
+                state->nco_shift_hz, nyquist_limit, rate_for_nco);
       log_error("This will cause aliasing and images.");
-      return false;
+      frequency_shift_destroy_ncos(
+          state); // Clean up pre-resample NCO if it was created
+      return NULL;
     }
-    app->dsp.post_resample_nco =
+    state->post_resample_nco =
         (struct freq_shifter_s *)nco_crcf_create(LIQUID_NCO);
-    if (!app->dsp.post_resample_nco) {
+    if (!state->post_resample_nco) {
       log_error("Failed to create post-resample NCO (frequency shifter).");
       frequency_shift_destroy_ncos(
-          app); // Clean up pre-resample NCO if it was created
-      return false;
+          state); // Clean up pre-resample NCO if it was created
+      return NULL;
     }
     float nco_freq_rad_per_sample =
-        (float)(2.0 * M_PI * fabs(app->dsp.nco_shift_hz) / rate_for_nco);
-    nco_crcf_set_frequency((nco_crcf)app->dsp.post_resample_nco,
+        (float)(2.0 * M_PI * fabs(state->nco_shift_hz) / rate_for_nco);
+    nco_crcf_set_frequency((nco_crcf)state->post_resample_nco,
                            nco_freq_rad_per_sample);
   }
 
-  return true;
+  return state;
 }
 
 /**
  * @brief Applies the frequency shift to a block of complex samples using a
  * specific NCO.
  */
-void frequency_shift_apply(FreqShifter *nco, double shift_hz,
-                           ComplexFloat *input_buffer,
-                           ComplexFloat *output_buffer,
-                           unsigned int num_frames) {
+static void frequency_shift_apply(FreqShifter *nco, double shift_hz,
+                                  ComplexFloat *input_buffer,
+                                  ComplexFloat *output_buffer,
+                                  unsigned int num_frames) {
   if (!nco || num_frames == 0) {
     return;
   }
@@ -121,7 +146,7 @@ void frequency_shift_apply(FreqShifter *nco, double shift_hz,
  * @brief Resets the NCO's phase accumulator without destroying its frequency.
  * This is the safe way to handle stream discontinuities from SDRs.
  */
-void frequency_shift_reset_nco(FreqShifter *nco) {
+static void frequency_shift_reset_nco(FreqShifter *nco) {
   if (nco) {
     // This only resets the phase, leaving the frequency configuration intact.
     nco_crcf_set_phase((nco_crcf)nco, 0.0f);
@@ -131,51 +156,63 @@ void frequency_shift_reset_nco(FreqShifter *nco) {
 /**
  * @brief Destroys the NCO objects if they were created.
  */
-void frequency_shift_destroy_ncos(AppContext *app) {
-  if (app) {
-    if (app->dsp.pre_resample_nco) {
-      nco_crcf_destroy((nco_crcf)app->dsp.pre_resample_nco);
-      app->dsp.pre_resample_nco = NULL;
+static void frequency_shift_destroy_ncos(FreqShiftState *state) {
+  if (state) {
+    if (state->pre_resample_nco) {
+      nco_crcf_destroy((nco_crcf)state->pre_resample_nco);
+      state->pre_resample_nco = NULL;
     }
-    if (app->dsp.post_resample_nco) {
-      nco_crcf_destroy((nco_crcf)app->dsp.post_resample_nco);
-      app->dsp.post_resample_nco = NULL;
+    if (state->post_resample_nco) {
+      nco_crcf_destroy((nco_crcf)state->post_resample_nco);
+      state->post_resample_nco = NULL;
     }
+    free(state);
   }
 }
 
 // === DSP Module Interface Implementation ===
 
-static bool dsp_freq_shift_init(ModuleContext *ctx) {
+static void *dsp_freq_shift_init(ModuleContext *ctx) {
   return frequency_shift_create((AppConfig *)ctx->config, ctx->app);
 }
 
-static SampleChunk *dsp_freq_shift_process(ModuleContext *ctx,
-                                           SampleChunk *chunk) {
+static SampleChunk *dsp_freq_shift_process(void *state, SampleChunk *chunk) {
+  FreqShiftState *fs = (FreqShiftState *)state;
+  if (!fs)
+    return chunk;
+
   if (chunk->stream_discontinuity_event) {
-    if (ctx->app->dsp.pre_resample_nco)
-      frequency_shift_reset_nco(ctx->app->dsp.pre_resample_nco);
-    if (ctx->app->dsp.post_resample_nco)
-      frequency_shift_reset_nco(ctx->app->dsp.post_resample_nco);
+    if (fs->pre_resample_nco)
+      frequency_shift_reset_nco((FreqShifter *)fs->pre_resample_nco);
+    if (fs->post_resample_nco)
+      frequency_shift_reset_nco((FreqShifter *)fs->post_resample_nco);
   }
 
-  if (ctx->app->dsp.pre_resample_nco) {
-    frequency_shift_apply(ctx->app->dsp.pre_resample_nco,
-                          ctx->app->dsp.nco_shift_hz,
+  if (fs->pre_resample_nco) {
+    frequency_shift_apply((FreqShifter *)fs->pre_resample_nco, fs->nco_shift_hz,
                           chunk->pre_resample_buffer,
                           chunk->pre_resample_buffer, chunk->frames_read);
   }
-  if (ctx->app->dsp.post_resample_nco) {
-    frequency_shift_apply(ctx->app->dsp.post_resample_nco,
-                          ctx->app->dsp.nco_shift_hz,
-                          chunk->post_resample_buffer,
+  if (fs->post_resample_nco) {
+    frequency_shift_apply((FreqShifter *)fs->post_resample_nco,
+                          fs->nco_shift_hz, chunk->post_resample_buffer,
                           chunk->post_resample_buffer, chunk->frames_to_write);
   }
   return chunk;
 }
 
-static void dsp_freq_shift_cleanup(ModuleContext *ctx) {
-  frequency_shift_destroy_ncos(ctx->app);
+static void dsp_freq_shift_cleanup(void *state) {
+  frequency_shift_destroy_ncos((FreqShiftState *)state);
+}
+
+static void dsp_freq_shift_reset_api(void *state) {
+  FreqShiftState *fs = (FreqShiftState *)state;
+  if (!fs)
+    return;
+  if (fs->pre_resample_nco)
+    frequency_shift_reset_nco((FreqShifter *)fs->pre_resample_nco);
+  if (fs->post_resample_nco)
+    frequency_shift_reset_nco((FreqShifter *)fs->post_resample_nco);
 }
 
 static double s_frequency_shift_hz = 0.0;
@@ -225,6 +262,7 @@ static const DspModuleInterface dsp_freq_shift_api = {
     .is_active = dsp_freq_shift_is_active,
     .initialize = dsp_freq_shift_init,
     .process = dsp_freq_shift_process,
+    .reset = dsp_freq_shift_reset_api,
     .cleanup = dsp_freq_shift_cleanup,
     .validate_options = dsp_freq_shift_validate_options,
     .get_cli_options = dsp_freq_shift_get_cli_options,

@@ -432,7 +432,7 @@ static void print_configuration_summary(const AppConfig *config,
         &output_info, "Frequency Shift", "%+.2f Hz%s", app->dsp.nco_shift_hz,
         config->dsp.shift_after_resample ? " (Post-Resample)" : "");
 
-  filter_get_summary_info(config, app, &output_info);
+  process_chain_get_summary_info(app, &output_info);
 
   if (app->dsp.process_chain_agc.enable) {
     utility_add_summary_item(&output_info, "ProcessChain AGC",

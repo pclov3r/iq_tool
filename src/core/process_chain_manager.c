@@ -449,19 +449,23 @@ bool process_chain_run(ProcessChainContext *context) {
   if (threads_ok && !config->dsp.raw_passthrough) {
     MemoryArena *arena = &app->process_chain.setup_arena;
     const struct DspModuleInterface *dsp_modules[16];
+    void *dsp_states[16];
     int num_dsp_modules = 0;
     for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
       const struct DspModuleInterface *mod =
           get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name, arena);
       if (mod && mod->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
-        dsp_modules[num_dsp_modules++] = mod;
+        dsp_modules[num_dsp_modules] = mod;
+        dsp_states[num_dsp_modules] = app->dsp.states[i];
+        num_dsp_modules++;
       }
     }
 
     for (int i = 0; i < num_dsp_modules; i++) {
       const struct DspModuleInterface *single_chain[1] = {dsp_modules[i]};
+      void *single_state[1] = {dsp_states[i]};
       if (!thread_manager_start_chain(
-              &manager, dsp_modules[i]->name, single_chain, 1,
+              &manager, dsp_modules[i]->name, single_chain, single_state, 1,
               app->process_chain.active_queues[i],
               app->process_chain.active_queues[i + 1])) {
         threads_ok = false;
@@ -508,6 +512,29 @@ void process_chain_teardown(ProcessChainContext *context) {
   _destroy_dsp_components(context->app);
 }
 
+void process_chain_get_summary_info(const AppContext *app,
+                                    OutputSummaryInfo *info) {
+  for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
+    const struct DspModuleInterface *mod =
+        get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name, NULL);
+    if (mod &&
+        mod->is_active((AppContext *)app, DEFAULT_PROCESS_CHAIN[i].stage_tag) &&
+        mod->get_summary_info) {
+      mod->get_summary_info(app->dsp.states[i], info);
+    }
+  }
+}
+
+void *process_chain_get_module_state(const AppContext *app,
+                                     const char *module_name) {
+  for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
+    if (strcmp(DEFAULT_PROCESS_CHAIN[i].module_name, module_name) == 0) {
+      return app->dsp.states[i];
+    }
+  }
+  return NULL;
+}
+
 // --- Private Helper Function Implementations ---
 
 static bool _create_dsp_components(AppConfig *config, AppContext *app,
@@ -516,11 +543,13 @@ static bool _create_dsp_components(AppConfig *config, AppContext *app,
   ModuleContext mctx = {.config = config, .app = app};
 
   for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
+    app->dsp.states[i] = NULL;
     const struct DspModuleInterface *mod = get_dsp_module(
         DEFAULT_PROCESS_CHAIN[i].module_name, &app->process_chain.setup_arena);
     if (mod && mod->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
       if (mod->initialize) {
-        if (!mod->initialize(&mctx))
+        app->dsp.states[i] = mod->initialize(&mctx);
+        if (!app->dsp.states[i])
           return false;
       }
     }
@@ -537,13 +566,13 @@ static bool _create_dsp_components(AppConfig *config, AppContext *app,
 }
 
 static void _destroy_dsp_components(AppContext *app) {
-  ModuleContext mctx = {.config = app->config, .app = app};
   for (int i = DEFAULT_PROCESS_CHAIN_LENGTH - 1; i >= 0; i--) {
     const struct DspModuleInterface *mod = get_dsp_module(
         DEFAULT_PROCESS_CHAIN[i].module_name, &app->process_chain.setup_arena);
     if (mod && mod->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
-      if (mod->cleanup) {
-        mod->cleanup(&mctx);
+      if (mod->cleanup && app->dsp.states[i]) {
+        mod->cleanup(app->dsp.states[i]);
+        app->dsp.states[i] = NULL;
       }
     }
   }

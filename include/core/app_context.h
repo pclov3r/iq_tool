@@ -221,50 +221,10 @@ typedef struct ModuleState {
 
 // --- 3. DSP Context (Math & Signal Processing) ---
 
-struct liquid_agc_s;
-struct harris_agc_s;
-struct liquid_filter_s;
-struct freq_shifter_s;
-struct dc_blocker_s;
-struct iq_state_s;
-
-typedef struct AgcContext {
-  struct harris_agc_s
-      *harris_object; /* Internal state for the Harris/LMS gain tracker */
-  float current_gain; /* Most recently applied linear gain scalar.           */
-  uint64_t samples_seen; /* Total samples processed. Used for log interval. */
-} AgcContext;
-
-typedef struct FilterContext {
-  struct liquid_filter_s *object;
-  int type_actual;
-  unsigned int block_size;
-  ComplexFloat *pre_fft_remainder_buffer;
-  unsigned int pre_fft_remainder_length;
-  ComplexFloat *post_fft_remainder_buffer;
-  unsigned int post_fft_remainder_length;
-  ComplexFloat *fft_scratch_buffer;
-} FilterContext;
-
-typedef struct IqCorrectionResources {
-  struct iq_state_s *internal_state;
-  _Atomic double last_optimization_time;
-} IqCorrectionResources;
-
-typedef struct DcBlockResources {
-  struct dc_blocker_s *dc_block_filter;
-} DcBlockResources;
-
 typedef struct DspContext {
   const struct AppConfig *config; // Injected for DSP access
-  IqCorrectionResources iq_correct;
-  DcBlockResources dc_block;
-  AgcContext agc;
-  FilterContext filter;
 
-  Resampler *resampler;
-  struct freq_shifter_s *pre_resample_nco;
-  struct freq_shifter_s *post_resample_nco;
+  void *states[16];
 
   float resample_ratio;
   double nco_shift_hz;

@@ -1,9 +1,10 @@
+#include "core/app_context.h"
+#include <stdlib.h>
 /**
  * @file filter.c
  * @brief Implements the user-defined FIR/FFT filter chain.
  */
 
-#include "dsp/filter.h"
 #include "core/app_context.h"
 #include "core/constants.h"
 #include "core/mem_arena.h"
@@ -22,6 +23,18 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+typedef struct FilterState {
+  struct liquid_filter_s *object;
+  int type_actual;
+  unsigned int block_size;
+  ComplexFloat *pre_fft_remainder_buffer;
+  unsigned int pre_fft_remainder_length;
+  ComplexFloat *post_fft_remainder_buffer;
+  unsigned int post_fft_remainder_length;
+  ComplexFloat *fft_scratch_buffer;
+  bool apply_post_resample;
+} FilterState;
+
 // --- Create a real-coefficient (_crcf) filter from the complex master taps ---
 #define PREPARE_AND_CREATE_CRCF_FILTER(prefix, ...)                            \
   do {                                                                         \
@@ -32,7 +45,7 @@
     for (int i = 0; i < master_taps_length; i++) {                             \
       final_real_taps[i] = crealf(master_taps[i]);                             \
     }                                                                          \
-    app->dsp.filter.object = (struct liquid_filter_s *)prefix##_crcf_create(   \
+    state->object = (struct liquid_filter_s *)prefix##_crcf_create(            \
         final_real_taps, master_taps_length, ##__VA_ARGS__);                   \
   } while (0)
 
@@ -294,11 +307,10 @@ _compound_filter_stages(AppConfig *config, double sample_rate,
   return master_taps;
 }
 
-static struct liquid_filter_s *
-_compile_filter_object(AppConfig *config, AppContext *app,
-                       liquid_float_complex *master_taps,
-                       int master_taps_length, bool is_final_filter_complex,
-                       bool normalize_by_peak, MemoryArena *arena) {
+static struct liquid_filter_s *_compile_filter_object(
+    AppConfig *config, FilterState *state, liquid_float_complex *master_taps,
+    int master_taps_length, bool is_final_filter_complex,
+    bool normalize_by_peak, MemoryArena *arena, size_t alloc_size_samples) {
   if (normalize_by_peak || is_final_filter_complex) {
     log_info("Normalizing filter gain (this may be slow for large filters)...");
     float max_mag = 0.0f;
@@ -354,56 +366,62 @@ _compile_filter_object(AppConfig *config, AppContext *app,
       if (block_size < (unsigned int)master_taps_length * 2)
         block_size *= 2;
     }
-    app->dsp.filter.block_size = block_size;
+    state->block_size = block_size;
 
     if (is_final_filter_complex) {
-      app->dsp.filter.type_actual = FILTER_IMPL_FFT_ASYMMETRIC;
-      app->dsp.filter.object = (struct liquid_filter_s *)fftfilt_cccf_create(
+      state->type_actual = FILTER_IMPL_FFT_ASYMMETRIC;
+      state->object = (struct liquid_filter_s *)fftfilt_cccf_create(
           master_taps, master_taps_length, block_size);
     } else {
       float *real_taps = (float *)mem_arena_alloc(
           arena, master_taps_length * sizeof(float), false);
       for (int i = 0; i < master_taps_length; i++)
         real_taps[i] = crealf(master_taps[i]);
-      app->dsp.filter.type_actual = FILTER_IMPL_FFT_SYMMETRIC;
-      app->dsp.filter.object = (struct liquid_filter_s *)fftfilt_crcf_create(
+      state->type_actual = FILTER_IMPL_FFT_SYMMETRIC;
+      state->object = (struct liquid_filter_s *)fftfilt_crcf_create(
           real_taps, master_taps_length, block_size);
     }
 
-    size_t scratch_needed =
-        app->process_chain.alloc_size_samples + app->dsp.filter.block_size + 64;
-    app->dsp.filter.fft_scratch_buffer = (ComplexFloat *)mem_arena_alloc(
+    size_t scratch_needed = alloc_size_samples + state->block_size + 64;
+    state->fft_scratch_buffer = (ComplexFloat *)mem_arena_alloc(
         arena, scratch_needed * sizeof(ComplexFloat), true);
-    if (!app->dsp.filter.fft_scratch_buffer)
+    if (!state->fft_scratch_buffer)
       return NULL;
   } else {
     log_info("Preparing FIR (time-domain) filter object...");
     if (is_final_filter_complex) {
-      app->dsp.filter.type_actual = FILTER_IMPL_FIR_ASYMMETRIC;
-      app->dsp.filter.object = (struct liquid_filter_s *)firfilt_cccf_create(
+      state->type_actual = FILTER_IMPL_FIR_ASYMMETRIC;
+      state->object = (struct liquid_filter_s *)firfilt_cccf_create(
           master_taps, master_taps_length);
     } else {
       float *real_taps = (float *)mem_arena_alloc(
           arena, master_taps_length * sizeof(float), false);
       for (int i = 0; i < master_taps_length; i++)
         real_taps[i] = crealf(master_taps[i]);
-      app->dsp.filter.type_actual = FILTER_IMPL_FIR_SYMMETRIC;
-      app->dsp.filter.object = (struct liquid_filter_s *)firfilt_crcf_create(
+      state->type_actual = FILTER_IMPL_FIR_SYMMETRIC;
+      state->object = (struct liquid_filter_s *)firfilt_crcf_create(
           real_taps, master_taps_length);
     }
   }
-  return app->dsp.filter.object;
+  return state->object;
 }
 
-bool filter_create(AppConfig *config, AppContext *app, MemoryArena *arena) {
-  app->dsp.filter.object = NULL;
-  app->dsp.filter.type_actual = FILTER_IMPL_NONE;
-  app->dsp.filter.block_size = 0;
-
+static void *filter_create(AppConfig *config, AppContext *app,
+                           MemoryArena *arena) {
   if (config->dsp.filter.count == 0)
-    return true;
+    return NULL;
+
+  FilterState *state =
+      (FilterState *)mem_arena_alloc(arena, sizeof(FilterState), true);
+  if (!state)
+    return NULL;
+
+  state->object = NULL;
+  state->type_actual = FILTER_IMPL_NONE;
+  state->block_size = 0;
+
   if (!_configure_filter_stage(config, app))
-    return false;
+    return NULL;
 
   double sample_rate = config->dsp.filter.apply_post_resample
                            ? app->dsp.process_chain_sample_rate_hz
@@ -417,7 +435,7 @@ bool filter_create(AppConfig *config, AppContext *app, MemoryArena *arena) {
   liquid_float_complex *master_taps = _compound_filter_stages(
       config, sample_rate, &master_length, &is_complex, &norm_peak, arena);
   if (!master_taps)
-    return false;
+    return NULL;
 
   if (config->dsp.filter.args.taps > 0) {
     log_info("Using user-specified filter size of %d taps.", master_length);
@@ -431,61 +449,64 @@ bool filter_create(AppConfig *config, AppContext *app, MemoryArena *arena) {
   if (is_complex)
     log_info("Asymmetric filter detected.");
 
-  if (!_compile_filter_object(config, app, master_taps, master_length,
-                              is_complex, norm_peak, arena)) {
+  if (!_compile_filter_object(config, state, master_taps, master_length,
+                              is_complex, norm_peak, arena,
+                              app->process_chain.alloc_size_samples)) {
     log_fatal("Failed to create final combined filter object.");
-    return false;
+    return NULL;
   }
 
   if (config->dsp.filter.apply_post_resample) {
-    app->dsp.filter.post_fft_remainder_buffer = (ComplexFloat *)mem_arena_alloc(
-        arena, app->dsp.filter.block_size * sizeof(ComplexFloat), true);
-    app->dsp.filter.post_fft_remainder_length = 0;
+    state->post_fft_remainder_buffer = (ComplexFloat *)mem_arena_alloc(
+        arena, state->block_size * sizeof(ComplexFloat), true);
+    state->post_fft_remainder_length = 0;
   } else {
-    app->dsp.filter.pre_fft_remainder_buffer = (ComplexFloat *)mem_arena_alloc(
-        arena, app->dsp.filter.block_size * sizeof(ComplexFloat), true);
-    app->dsp.filter.pre_fft_remainder_length = 0;
+    state->pre_fft_remainder_buffer = (ComplexFloat *)mem_arena_alloc(
+        arena, state->block_size * sizeof(ComplexFloat), true);
+    state->pre_fft_remainder_length = 0;
   }
 
-  return true;
+  state->apply_post_resample = config->dsp.filter.apply_post_resample;
+
+  return state;
 }
 
-void filter_destroy(AppContext *app) {
-  if (app->dsp.filter.object) {
-    switch (app->dsp.filter.type_actual) {
+static void filter_destroy(FilterState *state) {
+  if (state && state->object) {
+    switch (state->type_actual) {
     case FILTER_IMPL_FIR_SYMMETRIC:
-      firfilt_crcf_destroy((firfilt_crcf)app->dsp.filter.object);
+      firfilt_crcf_destroy((firfilt_crcf)state->object);
       break;
     case FILTER_IMPL_FIR_ASYMMETRIC:
-      firfilt_cccf_destroy((firfilt_cccf)app->dsp.filter.object);
+      firfilt_cccf_destroy((firfilt_cccf)state->object);
       break;
     case FILTER_IMPL_FFT_SYMMETRIC:
-      fftfilt_crcf_destroy((fftfilt_crcf)app->dsp.filter.object);
+      fftfilt_crcf_destroy((fftfilt_crcf)state->object);
       break;
     case FILTER_IMPL_FFT_ASYMMETRIC:
-      fftfilt_cccf_destroy((fftfilt_cccf)app->dsp.filter.object);
+      fftfilt_cccf_destroy((fftfilt_cccf)state->object);
       break;
     default:
       break;
     }
-    app->dsp.filter.object = NULL;
+    state->object = NULL;
   }
 }
 
-void filter_reset(DspContext *dsp) {
-  if (dsp->filter.object) {
-    switch (dsp->filter.type_actual) {
+static void filter_reset(FilterState *state) {
+  if (state && state->object) {
+    switch (state->type_actual) {
     case FILTER_IMPL_FIR_SYMMETRIC:
-      firfilt_crcf_reset((firfilt_crcf)dsp->filter.object);
+      firfilt_crcf_reset((firfilt_crcf)state->object);
       break;
     case FILTER_IMPL_FIR_ASYMMETRIC:
-      firfilt_cccf_reset((firfilt_cccf)dsp->filter.object);
+      firfilt_cccf_reset((firfilt_cccf)state->object);
       break;
     case FILTER_IMPL_FFT_SYMMETRIC:
-      fftfilt_crcf_reset((fftfilt_crcf)dsp->filter.object);
+      fftfilt_crcf_reset((fftfilt_crcf)state->object);
       break;
     case FILTER_IMPL_FFT_ASYMMETRIC:
-      fftfilt_cccf_reset((fftfilt_cccf)dsp->filter.object);
+      fftfilt_cccf_reset((fftfilt_cccf)state->object);
       break;
     default:
       break;
@@ -493,9 +514,9 @@ void filter_reset(DspContext *dsp) {
   }
 }
 
-unsigned int filter_apply(DspContext *dsp, SampleChunk *item,
-                          bool is_post_resample) {
-  if (!dsp->filter.object) {
+static unsigned int filter_apply(FilterState *state, SampleChunk *item,
+                                 bool is_post_resample) {
+  if (!state || !state->object) {
     return is_post_resample ? item->frames_to_write : item->frames_read;
   }
 
@@ -507,36 +528,33 @@ unsigned int filter_apply(DspContext *dsp, SampleChunk *item,
     return 0;
   }
 
-  switch (dsp->filter.type_actual) {
+  switch (state->type_actual) {
   case FILTER_IMPL_FIR_SYMMETRIC:
   case FILTER_IMPL_FIR_ASYMMETRIC:
-    if (dsp->filter.type_actual == FILTER_IMPL_FIR_SYMMETRIC) {
-      firfilt_crcf_execute_block((firfilt_crcf)dsp->filter.object,
-                                 (liquid_float_complex *)target_buffer,
-                                 frames_in,
-                                 (liquid_float_complex *)target_buffer);
+    if (state->type_actual == FILTER_IMPL_FIR_SYMMETRIC) {
+      firfilt_crcf_execute_block(
+          (firfilt_crcf)state->object, (liquid_float_complex *)target_buffer,
+          frames_in, (liquid_float_complex *)target_buffer);
     } else {
-      firfilt_cccf_execute_block((firfilt_cccf)dsp->filter.object,
-                                 (liquid_float_complex *)target_buffer,
-                                 frames_in,
-                                 (liquid_float_complex *)target_buffer);
+      firfilt_cccf_execute_block(
+          (firfilt_cccf)state->object, (liquid_float_complex *)target_buffer,
+          frames_in, (liquid_float_complex *)target_buffer);
     }
     return frames_in;
 
   case FILTER_IMPL_FFT_SYMMETRIC:
   case FILTER_IMPL_FFT_ASYMMETRIC: {
     ComplexFloat *remainder_buffer = is_post_resample
-                                         ? dsp->filter.post_fft_remainder_buffer
-                                         : dsp->filter.pre_fft_remainder_buffer;
-    unsigned int *remainder_length_ptr =
-        is_post_resample ? &dsp->filter.post_fft_remainder_length
-                         : &dsp->filter.pre_fft_remainder_length;
+                                         ? state->post_fft_remainder_buffer
+                                         : state->pre_fft_remainder_buffer;
+    unsigned int *remainder_length_ptr = is_post_resample
+                                             ? &state->post_fft_remainder_length
+                                             : &state->pre_fft_remainder_length;
 
     unsigned int output_frames = _execute_fft_filter_pass(
-        dsp->filter.object, dsp->filter.type_actual, target_buffer, frames_in,
+        state->object, state->type_actual, target_buffer, frames_in,
         target_buffer, remainder_buffer, remainder_length_ptr,
-        dsp->filter.block_size, dsp->filter.fft_scratch_buffer,
-        item->is_last_chunk);
+        state->block_size, state->fft_scratch_buffer, item->is_last_chunk);
 
     return output_frames;
   }
@@ -705,86 +723,64 @@ static bool dsp_filter_validate_options(struct AppContext *app) {
   return true;
 }
 
-void filter_get_summary_info(const AppConfig *config, const AppContext *app,
-                             OutputSummaryInfo *output_info) {
-  if (config->dsp.filter.count == 0) {
+static void filter_get_summary_info(void *state,
+                                    OutputSummaryInfo *output_info) {
+  FilterState *fs = (FilterState *)state;
+  if (!fs) {
     utility_add_summary_item(output_info, "Filter", "Disabled");
   } else {
     const char *filter_label;
-    switch (app->dsp.filter.type_actual) {
+    switch (fs->type_actual) {
     case FILTER_IMPL_FIR_SYMMETRIC:
+      filter_label = "FIR (Symmetric, Time-Domain)";
+      break;
     case FILTER_IMPL_FIR_ASYMMETRIC:
-      filter_label = "FIR Filter";
+      filter_label = "FIR (Asymmetric, Time-Domain)";
       break;
     case FILTER_IMPL_FFT_SYMMETRIC:
+      filter_label = "FFT (Symmetric, Frequency-Domain)";
+      break;
     case FILTER_IMPL_FFT_ASYMMETRIC:
-      filter_label = "FFT Filter";
+      filter_label = "FFT (Asymmetric, Frequency-Domain)";
       break;
     default:
-      filter_label = "Filter";
+      filter_label = "None";
       break;
     }
-    char filter_buf[256] = {0};
-    const char *stage =
-        config->dsp.filter.apply_post_resample ? " (Post-Resample)" : "";
-    strncat(filter_buf,
-            "Enabled: ", sizeof(filter_buf) - strlen(filter_buf) - 1);
-    for (int i = 0; i < config->dsp.filter.count; i++) {
-      char desc[128] = {0};
-      const FilterRequest *req = &config->dsp.filter.requests[i];
-      switch (req->type) {
-      case FILTER_TYPE_LOWPASS:
-        snprintf(desc, sizeof(desc), "LPF(%.15g Hz)", req->freq1_hz);
-        break;
-      case FILTER_TYPE_HIGHPASS:
-        snprintf(desc, sizeof(desc), "HPF(%.15g Hz)", req->freq1_hz);
-        break;
-      case FILTER_TYPE_PASSBAND:
-        snprintf(desc, sizeof(desc), "BPF(%.15g Hz, BW %.15g Hz)",
-                 req->freq1_hz, req->freq2_hz);
-        break;
-      case FILTER_TYPE_STOPBAND:
-        snprintf(desc, sizeof(desc), "BSF(%.15g Hz, BW %.15g Hz)",
-                 req->freq1_hz, req->freq2_hz);
-        break;
-      default:
-        break;
-      }
-      if (i > 0)
-        strncat(filter_buf, " + ", sizeof(filter_buf) - strlen(filter_buf) - 1);
-      strncat(filter_buf, desc, sizeof(filter_buf) - strlen(filter_buf) - 1);
-    }
-    strncat(filter_buf, stage, sizeof(filter_buf) - strlen(filter_buf) - 1);
-    utility_add_summary_item(output_info, filter_label, "%s", filter_buf);
+    utility_add_summary_item(output_info, "Filter", "%s", filter_label);
   }
 }
 
 // === DSP Module Interface Implementation ===
 
-static bool dsp_filter_init(ModuleContext *ctx) {
+static void *dsp_filter_init(ModuleContext *ctx) {
   return filter_create((AppConfig *)ctx->config, ctx->app,
                        &ctx->app->process_chain.setup_arena);
 }
 
-static SampleChunk *dsp_filter_process(ModuleContext *ctx, SampleChunk *chunk) {
+static SampleChunk *dsp_filter_process(void *state, SampleChunk *chunk) {
+  FilterState *fs = (FilterState *)state;
+  if (!fs)
+    return chunk;
+
   if (chunk->stream_discontinuity_event) {
-    filter_reset(&ctx->app->dsp);
+    filter_reset(fs);
   }
-  bool is_post = ctx->config->dsp.filter.apply_post_resample;
-  if (is_post) {
-    chunk->frames_to_write = filter_apply(&ctx->app->dsp, chunk, true);
+
+  if (fs->apply_post_resample) {
+    chunk->frames_to_write = filter_apply(fs, chunk, true);
   } else {
-    chunk->frames_read = filter_apply(&ctx->app->dsp, chunk, false);
+    chunk->frames_read = filter_apply(fs, chunk, false);
   }
   return chunk;
 }
 
-static void dsp_filter_cleanup(ModuleContext *ctx) { filter_destroy(ctx->app); }
+static void dsp_filter_cleanup(void *state) {
+  filter_destroy((FilterState *)state);
+}
 
-static void dsp_filter_reset_api(ModuleContext *ctx) {
-  if (ctx && ctx->app) {
-    filter_reset(&ctx->app->dsp);
-  }
+static void dsp_filter_reset_api(void *state) {
+  filter_reset((FilterState *)state);
 }
 
 static bool dsp_filter_is_active(AppContext *app, const char *stage_tag) {
@@ -810,6 +806,7 @@ static const DspModuleInterface dsp_filter_api = {
     .cleanup = dsp_filter_cleanup,
     .validate_options = dsp_filter_validate_options,
     .get_cli_options = dsp_filter_get_cli_options,
+    .get_summary_info = filter_get_summary_info,
 };
 
 const DspModuleInterface *dsp_filter_get_api(void) { return &dsp_filter_api; }

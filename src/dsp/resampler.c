@@ -1,8 +1,9 @@
+#include "core/app_context.h"
+#include <stdlib.h>
 /**
  * @file resampler.c
  */
 
-#include "dsp/resampler.h"
 #include "core/app_context.h"
 #include "core/module.h"
 #include "core/process_chain_types.h"
@@ -11,8 +12,10 @@
 #include <liquid.h>
 #include <stdlib.h> // For exit()
 
-Resampler *resampler_create(const AppConfig *config, AppContext *app,
-                            float resample_ratio) {
+typedef struct msresamp_crcf_s Resampler;
+
+static Resampler *resampler_create(const AppConfig *config, AppContext *app,
+                                   float resample_ratio) {
   (void)config; // config is not used here but kept for API consistency
   if (app->dsp.bypass_resampler) {
     return NULL; // No resampler needed in passthrough mode.
@@ -29,22 +32,23 @@ Resampler *resampler_create(const AppConfig *config, AppContext *app,
   return resampler;
 }
 
-void resampler_destroy(Resampler *resampler) {
+static void resampler_destroy(Resampler *resampler) {
   if (resampler) {
     // We cast our opaque type back to the liquid-dsp type to destroy it.
     msresamp_crcf_destroy((msresamp_crcf)resampler);
   }
 }
 
-void resampler_reset(Resampler *resampler) {
+static void resampler_reset(Resampler *resampler) {
   if (resampler) {
     msresamp_crcf_reset((msresamp_crcf)resampler);
   }
 }
 
-void resampler_execute(Resampler *resampler, ComplexFloat *input,
-                       unsigned int num_input_frames, ComplexFloat *output,
-                       unsigned int *num_output_frames) {
+static void resampler_execute(Resampler *resampler, ComplexFloat *input,
+                              unsigned int num_input_frames,
+                              ComplexFloat *output,
+                              unsigned int *num_output_frames) {
   if (resampler) {
     msresamp_crcf_execute((msresamp_crcf)resampler,
                           (liquid_float_complex *)input, num_input_frames,
@@ -54,24 +58,21 @@ void resampler_execute(Resampler *resampler, ComplexFloat *input,
 
 // === DSP Module Interface Implementation ===
 
-static bool dsp_resampler_init(ModuleContext *ctx) {
+static void *dsp_resampler_init(ModuleContext *ctx) {
   float resample_ratio = (float)ctx->app->dsp.process_chain_sample_rate_hz /
                          (float)ctx->app->module.source_info.sample_rate;
-  ctx->app->dsp.resampler =
-      resampler_create(ctx->config, ctx->app, resample_ratio);
-  return true;
+  return resampler_create(ctx->config, ctx->app, resample_ratio);
 }
 
-static SampleChunk *dsp_resampler_process(ModuleContext *ctx,
-                                          SampleChunk *chunk) {
-  if (chunk->stream_discontinuity_event && ctx->app->dsp.resampler) {
-    resampler_reset(ctx->app->dsp.resampler);
+static SampleChunk *dsp_resampler_process(void *state, SampleChunk *chunk) {
+  Resampler *resampler = (Resampler *)state;
+  if (chunk->stream_discontinuity_event && resampler) {
+    resampler_reset(resampler);
   }
-  if (ctx->app->dsp.resampler) {
+  if (resampler) {
     unsigned int out_frames = 0;
-    resampler_execute(ctx->app->dsp.resampler, chunk->pre_resample_buffer,
-                      chunk->frames_read, chunk->post_resample_buffer,
-                      &out_frames);
+    resampler_execute(resampler, chunk->pre_resample_buffer, chunk->frames_read,
+                      chunk->post_resample_buffer, &out_frames);
     chunk->frames_to_write = out_frames;
   } else {
     chunk->frames_to_write = chunk->frames_read;
@@ -84,8 +85,12 @@ static SampleChunk *dsp_resampler_process(ModuleContext *ctx,
   return chunk;
 }
 
-static void dsp_resampler_cleanup(ModuleContext *ctx) {
-  resampler_destroy(ctx->app->dsp.resampler);
+static void dsp_resampler_cleanup(void *state) {
+  resampler_destroy((Resampler *)state);
+}
+
+static void dsp_resampler_reset_api(void *state) {
+  resampler_reset((Resampler *)state);
 }
 
 static bool dsp_resampler_is_active(AppContext *app, const char *stage_tag) {
@@ -98,6 +103,7 @@ static const DspModuleInterface dsp_resampler_api = {
     .is_active = dsp_resampler_is_active,
     .initialize = dsp_resampler_init,
     .process = dsp_resampler_process,
+    .reset = dsp_resampler_reset_api,
     .cleanup = dsp_resampler_cleanup};
 
 const DspModuleInterface *dsp_resampler_get_api(void) {

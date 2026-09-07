@@ -197,15 +197,14 @@ typedef struct DspModuleInterface {
 
   // Performs all one-time setup for the DSP block (allocates liquid-dsp
   // objects)
-  bool (*initialize)(struct ModuleContext *context);
+  void *(*initialize)(struct ModuleContext *context);
 
   // Processes a chunk of samples. The module may modify the chunk in-place,
   // or modify the chunk metadata (like sample_rate or frames_read).
-  struct SampleChunk *(*process)(struct ModuleContext *context,
-                                 struct SampleChunk *chunk);
+  struct SampleChunk *(*process)(void *state, struct SampleChunk *chunk);
 
   // Resets internal state (e.g., clears history buffers, resets AGC gain)
-  void (*reset)(struct ModuleContext *context);
+  void (*reset)(void *state);
 
   // Validates module-specific options
   bool (*validate_options)(struct AppContext *app);
@@ -213,7 +212,10 @@ typedef struct DspModuleInterface {
   // Returns any CLI options specific to this DSP module
   const struct argparse_option *(*get_cli_options)(int *count);
 
+  // Appends to the summary info block before processing starts (optional)
+  void (*get_summary_info)(void *state, OutputSummaryInfo *info);
+
   // Frees all allocated memory
-  void (*cleanup)(struct ModuleContext *context);
+  void (*cleanup)(void *state);
 } DspModuleInterface;
 #endif // MODULE_H_

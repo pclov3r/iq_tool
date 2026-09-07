@@ -1,3 +1,5 @@
+#include "core/app_context.h"
+#include <stdlib.h>
 /**
  * @file dsp_dcblock.c
  */
@@ -19,15 +21,14 @@
 // Forward the C interface calls to the new module structure if needed, or
 // implement it here directly.
 
-bool dc_block_create(AppConfig *config, AppContext *app) {
+static void *dc_block_create(AppConfig *config, AppContext *app) {
   if (!config->dsp.dc_block.enable) {
-    app->dsp.dc_block.dc_block_filter = NULL;
-    return true;
+    return NULL;
   }
 
   if (app->module.source_info.sample_rate <= 0.0) {
     log_error("DC Block: Cannot initialize with invalid sample rate.");
-    return false;
+    return NULL;
   }
 
   float normalized_alpha = (float)(2.0 * M_PI * DC_BLOCK_CUTOFF_HZ /
@@ -36,65 +37,64 @@ bool dc_block_create(AppConfig *config, AppContext *app) {
   if (normalized_alpha <= 0.0f) {
     log_error("DC Block: Calculated normalized alpha (%.6f) is invalid.",
               normalized_alpha);
-    return false;
+    return NULL;
   }
   if (normalized_alpha > 1.0f) {
     log_warn("DC Block: Calculated normalized alpha (%.6f) is very large.",
              normalized_alpha);
   }
 
-  app->dsp.dc_block.dc_block_filter =
-      (struct dc_blocker_s *)iirfilt_crcf_create_dc_blocker(normalized_alpha);
+  void *dc_block_filter =
+      (void *)iirfilt_crcf_create_dc_blocker(normalized_alpha);
 
-  if (!app->dsp.dc_block.dc_block_filter) {
+  if (!dc_block_filter) {
     log_fatal("Failed to create liquid-dsp DC block filter.");
-    return false;
+    return NULL;
   }
 
   log_info("DC Block enabled");
-  return true;
+  return dc_block_filter;
 }
 
-void dc_block_reset(DspContext *dsp) {
-  if (!dsp->config->dsp.dc_block.enable || !dsp->dc_block.dc_block_filter) {
+static void dc_block_reset(void *state) {
+  if (!state) {
     return;
   }
   log_debug("DC block filter reset due to stream discontinuity.");
-  iirfilt_crcf_reset((iirfilt_crcf)dsp->dc_block.dc_block_filter);
+  iirfilt_crcf_reset((iirfilt_crcf)state);
 }
 
-void dc_block_apply(DspContext *dsp, ComplexFloat *samples, int num_samples) {
-  if (!dsp->config->dsp.dc_block.enable || !dsp->dc_block.dc_block_filter) {
+static void dc_block_apply(void *state, ComplexFloat *samples,
+                           int num_samples) {
+  if (!state) {
     return;
   }
-  iirfilt_crcf_execute_block((iirfilt_crcf)dsp->dc_block.dc_block_filter,
+  iirfilt_crcf_execute_block((iirfilt_crcf)state,
                              (liquid_float_complex *)samples, num_samples,
                              (liquid_float_complex *)samples);
 }
 
-void dc_block_destroy(AppContext *app) {
-  if (app->dsp.dc_block.dc_block_filter) {
-    iirfilt_crcf_destroy((iirfilt_crcf)app->dsp.dc_block.dc_block_filter);
-    app->dsp.dc_block.dc_block_filter = NULL;
+static void dc_block_destroy(void *state) {
+  if (state) {
+    iirfilt_crcf_destroy((iirfilt_crcf)state);
   }
 }
 
 // === DSP Module Interface Implementation ===
 
-static bool dcblock_initialize(ModuleContext *ctx) {
+static void *dcblock_initialize(ModuleContext *ctx) {
   return dc_block_create((AppConfig *)ctx->config, ctx->app);
 }
 
-static SampleChunk *dcblock_process(ModuleContext *ctx, SampleChunk *chunk) {
+static SampleChunk *dcblock_process(void *state, SampleChunk *chunk) {
   if (chunk->stream_discontinuity_event) {
-    dc_block_reset(&ctx->app->dsp);
+    dc_block_reset(state);
   }
-  dc_block_apply(&ctx->app->dsp, chunk->pre_resample_buffer,
-                 chunk->frames_read);
+  dc_block_apply(state, chunk->pre_resample_buffer, chunk->frames_read);
   return chunk;
 }
 
-static void dcblock_cleanup(ModuleContext *ctx) { dc_block_destroy(ctx->app); }
+static void dcblock_cleanup(void *state) { dc_block_destroy(state); }
 
 static bool s_enable_dc_block = false;
 
@@ -117,9 +117,7 @@ static bool dsp_dcblock_validate_options(struct AppContext *app) {
   return true;
 }
 
-static void dcblock_reset_api(ModuleContext *ctx) {
-  dc_block_reset(&ctx->app->dsp);
-}
+static void dcblock_reset_api(void *state) { dc_block_reset(state); }
 
 static bool dcblock_is_active(AppContext *app, const char *stage_tag) {
   (void)stage_tag;

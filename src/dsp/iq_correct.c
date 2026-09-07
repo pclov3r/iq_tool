@@ -1,3 +1,5 @@
+#include "core/app_context.h"
+#include <stdlib.h>
 /**
  * @file iq_correction.c
  */
@@ -57,6 +59,7 @@
 #include "core/constants.h"
 #include "core/mem_arena.h"
 #include "core/module.h"
+#include "core/module_registry.h"
 #include "core/queue.h"
 #include "core/sample_conversion_functions.h"
 #include "core/utilities.h"
@@ -106,6 +109,8 @@ static bool __boost_initialized = false;
 typedef struct iq_state_s {
   // Shared State (Protected by Mutex)
   _Atomic uint64_t packed_state;
+  _Atomic double last_optimization_time;
+  AppContext *app;
 
   // Apply-Only State (Accessed only by DSP thread, no lock needed)
   float last_phase;
@@ -181,27 +186,23 @@ static void estimate_imbalance(IqState *st, const complex float *restrict iq,
 // == Public API Implementation
 // ============================================================================
 
-bool iq_correction_init(AppConfig *config, AppContext *app,
-                        MemoryArena *arena) {
-  if (!config->dsp.iq_correction.enable) {
-    app->dsp.iq_correct.internal_state = NULL;
-    return true;
-  }
+static float s_calibrated_phase = 0.0f;
+static float s_calibrated_amplitude = 1.0f;
 
-  // Allocate internal state
+static void *iq_correction_init(AppConfig *config, AppContext *app,
+                                MemoryArena *arena) {
+  if (!config->dsp.iq_correction.enable)
+    return NULL;
+
   IqState *st = (IqState *)mem_arena_alloc(arena, sizeof(IqState), true);
-  if (!st)
-    return false;
+  if (!st) {
+    log_fatal("Failed to allocate memory for I/Q Correction state.");
+    return NULL;
+  }
 
   // Default configuration
   st->optimal_bin = FFTBins / 2;
-
-  // NOTE: In the original library, total integration = FFTIntegration *
-  // CorrelationIntegration. Original: 4 * 16 = 64 frames. Our process_chain
-  // processes 1 frame per call. To maintain the same statistical weight, we set
-  // correlation_integration to 32 to get updates roughly every 0.5-1.0 seconds.
-  st->fft_integration =
-      4; // Used only for sizing power_flag array in this adaptation
+  st->fft_integration = 4;
   st->fft_overlap = 2;
   st->correlation_integration = 32; // Reduced from 64 for faster convergence
   st->reset_flag = 1;
@@ -245,19 +246,26 @@ bool iq_correction_init(AppConfig *config, AppContext *app,
     return false;
   }
 
-  app->dsp.iq_correct.internal_state = st;
-  app->dsp.iq_correct.last_optimization_time = 0.0;
+  st->last_optimization_time = 0.0;
+  st->app = app;
+  st->last_phase = s_calibrated_phase;
+  st->last_amplitude = s_calibrated_amplitude;
+
+  // Also pack the initial state into the atomic variable so other threads see
+  // it
+  uint64_t initial_packed =
+      pack_iq_state(s_calibrated_phase, s_calibrated_amplitude);
+  atomic_store_explicit(&st->packed_state, initial_packed,
+                        memory_order_relaxed);
 
   log_info("I/Q Correction Enabled");
-  return true;
+  return st;
 }
 
-void iq_correction_apply(DspContext *dsp, ComplexFloat *samples,
-                         int num_samples) {
-  if (!dsp->config->dsp.iq_correction.enable || !dsp->iq_correct.internal_state)
+static void iq_correction_apply(IqState *st, ComplexFloat *samples,
+                                int num_samples) {
+  if (!st)
     return;
-
-  IqState *st = (IqState *)dsp->iq_correct.internal_state;
 
   // Lock briefly to read shared values.
   // This allows the optimizer to update them safely without tearing.
@@ -293,14 +301,18 @@ void iq_correction_apply(DspContext *dsp, ComplexFloat *samples,
   st->last_amplitude = current_amp;
 }
 
-void iq_correction_run_estimation(DspContext *dsp,
+void iq_correction_run_estimation(void *state,
                                   const ComplexFloat *optimization_data) {
-  if (!dsp->config->dsp.iq_correction.enable || !dsp->iq_correct.internal_state)
+  if (!state)
     return;
 
-  atomic_store_explicit(&dsp->iq_correct.last_optimization_time,
-                        utility_get_time(), memory_order_relaxed);
-  IqState *st = (IqState *)dsp->iq_correct.internal_state;
+  IqState *st = (IqState *)state;
+
+  if (!st->app->config->dsp.iq_correction.enable)
+    return;
+
+  atomic_store_explicit(&st->last_optimization_time, utility_get_time(),
+                        memory_order_relaxed);
 
   // Snapshot current values lock-free.
   uint64_t packed_start =
@@ -322,8 +334,8 @@ void iq_correction_run_estimation(DspContext *dsp,
 
   // Debug logging (rate limited)
   static double last_debug_log_time = 0.0;
-  double current_opt_time = atomic_load_explicit(
-      &dsp->iq_correct.last_optimization_time, memory_order_relaxed);
+  double current_opt_time =
+      atomic_load_explicit(&st->last_optimization_time, memory_order_relaxed);
   if (current_opt_time - last_debug_log_time >= CONSOLE_UPDATE_INTERVAL_SEC) {
     float phase_deg = new_phase * (180.0f / (float)M_PI);
     float amp_pct = new_amp * 100.0f;
@@ -336,13 +348,11 @@ void iq_correction_run_estimation(DspContext *dsp,
   }
 }
 
-void iq_correction_destroy(AppContext *app) {
-  if (app->dsp.iq_correct.internal_state) {
-    IqState *st = (IqState *)app->dsp.iq_correct.internal_state;
+static void iq_correction_destroy(IqState *st) {
+  if (st) {
     if (st->fft_plan)
       fft_destroy_plan(st->fft_plan);
     // Arena handles memory free
-    app->dsp.iq_correct.internal_state = NULL;
   }
 }
 
@@ -374,6 +384,16 @@ bool iq_correction_run_initial_calibration(
   temp_chunk.packet_sample_format = app->module.input_format;
   temp_chunk.pre_resample_buffer = cf32_buffer;
 
+  void *dc_block_state = NULL;
+  const DspModuleInterface *dc_block_api =
+      get_dsp_module("dcblock", &app->process_chain.setup_arena);
+  if (((AppConfig *)app->config)->dsp.dc_block.enable && dc_block_api) {
+    dc_block_state = dc_block_api->initialize(context);
+  }
+
+  void *st = iq_correction_init((AppConfig *)context->config, app,
+                                &app->process_chain.setup_arena);
+
   for (int i = 0; i < 64; i++) {
     size_t bytes_read = read_cb(user_data, raw_buffer, num_bytes);
     if (bytes_read < num_bytes)
@@ -384,13 +404,25 @@ bool iq_correction_run_initial_calibration(
         temp_chunk.raw_input_data, temp_chunk.pre_resample_buffer,
         temp_chunk.frames_read, temp_chunk.packet_sample_format,
         ((AppConfig *)app->config)->dsp.input_gain);
-    if (((AppConfig *)app->config)->dsp.dc_block.enable) {
-      dc_block_apply(&app->dsp, temp_chunk.pre_resample_buffer,
-                     temp_chunk.frames_read);
+
+    if (dc_block_state) {
+      temp_chunk.stream_discontinuity_event = false;
+      dc_block_api->process(dc_block_state, &temp_chunk);
     }
 
-    iq_correction_run_estimation(&app->dsp, temp_chunk.pre_resample_buffer);
-    app->dsp.iq_correct.last_optimization_time = 0.0;
+    iq_correction_run_estimation(st, temp_chunk.pre_resample_buffer);
+    if (st) {
+      ((IqState *)st)->last_optimization_time = 0.0;
+    }
+  }
+
+  if (st) {
+    s_calibrated_phase = ((IqState *)st)->last_phase;
+    s_calibrated_amplitude = ((IqState *)st)->last_amplitude;
+    iq_correction_destroy(st);
+  }
+  if (dc_block_state) {
+    dc_block_api->cleanup(dc_block_state);
   }
 
   log_info("Initial I/Q calibration complete.");
@@ -639,30 +671,28 @@ static void estimate_imbalance(IqState *st, const complex float *restrict iq,
 
 // === DSP Module Interface Implementation ===
 
-static bool dsp_iq_correct_init(ModuleContext *ctx) {
+static void *dsp_iq_correct_init(ModuleContext *ctx) {
   return iq_correction_init((AppConfig *)ctx->config, ctx->app,
                             &ctx->app->process_chain.setup_arena);
 }
 
-static SampleChunk *dsp_iq_correct_process(ModuleContext *ctx,
-                                           SampleChunk *chunk) {
+static SampleChunk *dsp_iq_correct_process(void *state, SampleChunk *chunk) {
   if (chunk->stream_discontinuity_event) {
     // no-op for now
   }
-  iq_correction_apply(&ctx->app->dsp, chunk->pre_resample_buffer,
-                      chunk->frames_read);
+  IqState *st = (IqState *)state;
+  iq_correction_apply(st, chunk->pre_resample_buffer, chunk->frames_read);
 
   // Asynchronous estimation logic
-  IqState *st = (IqState *)ctx->app->dsp.iq_correct.internal_state;
-  if (st && ctx->app->process_chain.iq_estimation_free_queue &&
-      ctx->app->process_chain.iq_estimation_data_queue) {
+  if (st && st->app && st->app->process_chain.iq_estimation_free_queue &&
+      st->app->process_chain.iq_estimation_data_queue) {
     unsigned int frames_remaining = chunk->frames_read;
     unsigned int read_ptr = 0;
 
     while (frames_remaining > 0) {
       if (!st->current_estimation_buffer) {
         st->current_estimation_buffer = (ComplexFloat *)queue_try_dequeue(
-            ctx->app->process_chain.iq_estimation_free_queue);
+            st->app->process_chain.iq_estimation_free_queue);
         if (!st->current_estimation_buffer)
           break; // If no free buffers, skip estimation (drops frames)
         st->current_estimation_collected = 0;
@@ -681,9 +711,9 @@ static SampleChunk *dsp_iq_correct_process(ModuleContext *ctx,
       frames_remaining -= to_copy;
 
       if (st->current_estimation_collected == FFTBins) {
-        if (!queue_enqueue(ctx->app->process_chain.iq_estimation_data_queue,
+        if (!queue_enqueue(st->app->process_chain.iq_estimation_data_queue,
                            st->current_estimation_buffer)) {
-          queue_enqueue_forced(ctx->app->process_chain.iq_estimation_free_queue,
+          queue_enqueue_forced(st->app->process_chain.iq_estimation_free_queue,
                                st->current_estimation_buffer);
         }
         st->current_estimation_buffer = NULL;
@@ -693,8 +723,8 @@ static SampleChunk *dsp_iq_correct_process(ModuleContext *ctx,
   return chunk;
 }
 
-static void dsp_iq_correct_cleanup(ModuleContext *ctx) {
-  iq_correction_destroy(ctx->app);
+static void dsp_iq_correct_cleanup(void *state) {
+  iq_correction_destroy((IqState *)state);
 }
 
 // No reset function needed for IQ Correction
