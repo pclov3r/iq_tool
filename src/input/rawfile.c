@@ -27,9 +27,9 @@
 #ifdef _WIN32
 #define strcasecmp _stricmp
 #else
-#include "dsp/iq_correction.h"
 #include <strings.h>
 #endif
+#include "dsp/iq_correction.h"
 
 static struct {
   double sample_rate_hz;

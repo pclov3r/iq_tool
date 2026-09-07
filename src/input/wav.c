@@ -35,9 +35,9 @@
 #ifdef _WIN32
 #define strcasecmp _stricmp
 #else
-#include "dsp/iq_correction.h"
 #include <strings.h>
 #endif
+#include "dsp/iq_correction.h"
 
 #define SDRC_AUXI_CHUNK_ID_STR "auxi"
 #define MAX_METADATA_CHUNK_SIZE (1024 * 1024)
