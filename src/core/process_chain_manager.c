@@ -86,8 +86,14 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
 
   // Set the unified process_chain sample rate, format, gain, and agc
   app->dsp.process_chain_sample_rate_hz = target_rate_hz;
-  
+
   if (config->dsp.raw_passthrough) {
+    if (config->output.format_provided &&
+        config->output.sample_format != app->module.input_format) {
+      log_error("Option --raw-passthrough cannot be used with an explicit "
+                "--output-sample-format that differs from the input source.");
+      return false;
+    }
     app->dsp.process_chain_sample_format = app->module.input_format;
     config->output.sample_format = app->module.input_format;
   } else {
@@ -96,7 +102,7 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
             ? config->baseband_sample_format.format
             : config->output.sample_format;
   }
-  
+
   app->dsp.process_chain_gain = (config->output.payload == PAYLOAD_AUDIO)
                                     ? config->dsp.baseband_gain
                                     : config->dsp.output_gain;

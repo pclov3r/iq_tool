@@ -51,6 +51,9 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
       return false;
     }
   } else {
+    if (config->output.sample_format_str) {
+      config->output.format_provided = true;
+    }
     if (!config->output.sample_format_str) {
       if (config->output.path_arg) {
         config->output.sample_format_str = "cs16";

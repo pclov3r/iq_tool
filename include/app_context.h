@@ -67,6 +67,7 @@ typedef struct AppConfig {
     char *sample_format_str;
     char *type_name;
     bool type_provided;
+    bool format_provided;
     OutputPayload payload;
     SampleFormat sample_format;
 #ifdef _WIN32
