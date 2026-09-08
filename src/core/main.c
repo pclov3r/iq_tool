@@ -312,13 +312,6 @@ static bool init_output_module(AppConfig *config, AppContext *app) {
   }
   app->module.output_api = (OutputModuleInterface *)selected_output_module->api;
 
-  if (config->dsp.raw_passthrough &&
-      app->module.input_format != app->dsp.process_chain_sample_format) {
-    log_error("Option --raw-passthrough requires input and output formats to "
-              "be identical.");
-    return false;
-  }
-
   log_info("Initializing the '%s' output module...",
            config->output.module_name);
   return app->module.output_api->initialize(&context);

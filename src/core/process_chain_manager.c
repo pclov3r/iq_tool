@@ -86,10 +86,17 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
 
   // Set the unified process_chain sample rate, format, gain, and agc
   app->dsp.process_chain_sample_rate_hz = target_rate_hz;
-  app->dsp.process_chain_sample_format =
-      (config->output.payload == PAYLOAD_AUDIO)
-          ? config->baseband_sample_format.format
-          : config->output.sample_format;
+  
+  if (config->dsp.raw_passthrough) {
+    app->dsp.process_chain_sample_format = app->module.input_format;
+    config->output.sample_format = app->module.input_format;
+  } else {
+    app->dsp.process_chain_sample_format =
+        (config->output.payload == PAYLOAD_AUDIO)
+            ? config->baseband_sample_format.format
+            : config->output.sample_format;
+  }
+  
   app->dsp.process_chain_gain = (config->output.payload == PAYLOAD_AUDIO)
                                     ? config->dsp.baseband_gain
                                     : config->dsp.output_gain;
