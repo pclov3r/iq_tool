@@ -1,7 +1,3 @@
-#include "app_context.h"
-#include "config/module_defaults.h"
-#include "module_registry.h"
-#include <stdlib.h>
 /**
  * @file dsp/dcblock.c
  */
@@ -10,10 +6,15 @@
 #include "config/constants.h"
 #include "log.h"
 #include "module.h"
+#include "module_registry.h"
 #include "process_chain_types.h"
 #include <liquid.h>
 #include <math.h>
 #include <stdlib.h>
+
+// --- Default Configuration ---
+// The cutoff frequency for the DC blocking high-pass filter.
+#define DC_BLOCK_CUTOFF_HZ 50.0f
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846

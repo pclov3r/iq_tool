@@ -1,7 +1,3 @@
-#include "app_context.h"
-#include "config/module_defaults.h"
-#include "module_registry.h"
-#include <stdlib.h>
 /**
  * @file frequency_shift.c
  */
@@ -9,10 +5,12 @@
 #include "app_context.h"
 #include "log.h"
 #include "module.h"
+#include "module_registry.h"
 #include "process_chain_types.h"
 #include <liquid.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifndef M_PI

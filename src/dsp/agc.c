@@ -1,7 +1,3 @@
-#include "app_context.h"
-#include "config/module_defaults.h"
-#include "module_registry.h"
-#include <stdlib.h>
 /**
  * @file agc.c
  * @brief Implements the Output Automatic Gain Control module.
@@ -51,12 +47,110 @@
  *   output samples
  */
 
+#include "app_context.h"
 #include "config/constants.h"
 #include "log.h"
 #include "module.h"
+#include "module_registry.h"
 #include "process_chain_types.h"
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
+
+// --- Default Configuration ---
+
+// Harris/LMS AGC Logic
+//
+// The algorithm operates entirely in dB (treating the AGC as a linear
+// system), applies a deadband so signals already in a good range are
+// passed through untouched, and applies only a clean linear gain scalar
+// to the samples — no nonlinear soft limiting.
+//
+// Signal chain:
+//   [1] Pre-AGC impulse blanker  — zeros samples whose magnitude exceeds
+//                                   AGC_BLANKER_THRESHOLD.
+//   [2] Harris/LMS gain loop     — block RMS measurement, dB-domain LMS
+//                                   update with deadband and gain rails.
+//                                   Output is always a linear multiply.
+
+/**
+ * @def AGC_HARRIS_TARGET_DBFS
+ * @brief Target RMS output level in dBFS for the Harris/LMS AGC.
+ *
+ * -18 dBFS gives high-PAPR signals with high peak-to-average power ratios
+ * comfortable headroom below full scale. A signal arriving at -14 dBFS with a 6
+ * dB deadband has an error of +4 dB which falls inside the deadband, so the
+ * gain stays at 0 dB and the signal passes through untouched.
+ *
+ */
+#define AGC_HARRIS_TARGET_DBFS -18.0f
+
+/**
+ * @def AGC_HARRIS_DEADBAND_DB
+ * @brief Deadband half-width in dB for the Harris/LMS AGC.
+ *
+ * If |error| <= deadband, gain is frozen and samples pass through with
+ * the current gain unchanged. Signals within [TARGET-DEADBAND, TARGET+DEADBAND]
+ * dBFS receive no gain adjustment at all.
+ *
+ * With the default target of -18 dBFS and deadband of 1 dB, signals
+ * in the range [-19, -17] dBFS are passed through untouched. This covers
+ * the natural volume variations of most signals without constant intervention.
+ *
+ * Harris's original paper used 1 dB for discrete hardware VGA steps.
+ * While software AGC has infinite gain resolution, using a tight 1 dB
+ * deadband ensures weak signals are properly amplified to the target, while
+ * still saving CPU cycles when the signal is stable.
+ */
+#define AGC_HARRIS_DEADBAND_DB 1.0f
+
+/**
+ * @def AGC_HARRIS_ALPHA
+ * @brief LMS loop filter coefficient for the Harris/LMS AGC (0 < alpha < 1).
+ *
+ * Controls convergence speed. Smaller = slower and more stable.
+ *
+ * This AGC operates once per block rather than once per sample, so it
+ * ticks many times per second at typical block sizes. A much smaller
+ * value than Harris's original 0.8 (for infrequently-called hardware
+ * VGA) is therefore appropriate.
+ *
+ * At alpha 0.2 and a 20 dB error (very weak signal), gain moves 4 dB
+ * per block — converging in roughly 5 blocks. For a 6 dB error (just
+ * outside the deadband), gain moves 1.2 dB per block.
+ */
+#define AGC_HARRIS_ALPHA 0.2f
+
+/**
+ * @def AGC_HARRIS_GAIN_MIN_DB
+ * @brief Minimum gain the Harris/LMS AGC may apply, in dB.
+ *
+ * Negative values allow attenuation of hot signals.
+ * -20 dB allows meaningful attenuation without the loop going to extremes.
+ */
+#define AGC_HARRIS_GAIN_MIN_DB -20.0f
+
+/**
+ * @def AGC_HARRIS_GAIN_MAX_DB
+ * @brief Maximum gain the Harris/LMS AGC may apply, in dB.
+ *
+ * +40 dB (100x linear) is enough to rescue a genuinely weak signal.
+ * Caps gain to prevent amplifying a noise floor into something a decoder
+ * mistakes for a signal.
+ */
+#define AGC_HARRIS_GAIN_MAX_DB 40.0f
+
+// Impulse blanker threshold (absolute IQ magnitude).
+// Any sample whose magnitude exceeds this value is zeroed before entering
+// the AGC. Legitimate normalised signals should never exceed 1.0; hardware
+// impulse artefacts commonly exceed 5-10. A value of 2.0 gives comfortable
+// margin between the two without risk of blanking valid signal content.
+#define AGC_BLANKER_THRESHOLD 2.0f
+
+// How often to emit periodic AGC runtime status at debug level (seconds).
+// Applies to all profiles. 5 seconds is frequent enough to observe gain
+// riding during a fade without flooding the log during normal operation.
+#define AGC_LOG_INTERVAL_SEC 5.0f
 
 /* =========================================================================
  * Harris/LMS AGC — internal state block

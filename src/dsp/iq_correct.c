@@ -1,7 +1,3 @@
-#include "app_context.h"
-#include "config/module_defaults.h"
-#include "module_registry.h"
-#include <stdlib.h>
 /**
  * @file iq_correction.c
  */
@@ -63,6 +59,7 @@
 #include "log.h"
 #include "mem_arena.h"
 #include "module.h"
+#include "module_registry.h"
 #include "queue.h"
 #include "sample_conversion_functions.h"
 #include "utilities.h"
@@ -72,6 +69,14 @@
 #include <stdatomic.h> // Needed for byte size calculations
 #include <stdlib.h>
 #include <string.h>
+
+// --- Default Configuration ---
+#define IQ_CORRECTION_FFT_SIZE 4096
+#define IQ_CORRECTION_INTERVAL_MS 500
+#define IQ_BASE_INCREMENT 0.0001f
+#define IQ_MAX_PASSES 25
+#define IQ_CORRECTION_POWER_THRESHOLD_DB 20.0f
+#define IQ_CORRECTION_SMOOTHING_FACTOR 0.05f
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846

@@ -1,7 +1,3 @@
-#include "app_context.h"
-#include "config/module_defaults.h"
-#include "module_registry.h"
-#include <stdlib.h>
 /**
  * @file resampler.c
  */
@@ -9,6 +5,7 @@
 #include "app_context.h"
 #include "log.h"
 #include "module.h"
+#include "module_registry.h"
 #include "process_chain_types.h"
 #include <liquid.h>
 #include <stdlib.h> // For exit()
