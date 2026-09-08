@@ -61,7 +61,7 @@ static void _destroy_queues_and_buffers(AppContext *app);
  * @return true if the process_chain ran and shut down cleanly, false if there
  * was a setup or execution error.
  */
-static bool calculate_and_validate_resample_ratio(AppConfig *config,
+static bool resolve_process_chain_config(AppConfig *config,
                                                   AppContext *app,
                                                   float *out_ratio) {
   if (!config || !app || !out_ratio)
@@ -375,7 +375,7 @@ bool process_chain_setup_buffers(ProcessChainContext *context) {
   AppContext *app = context->app;
 
   // --- Step 0: Calculate Ratios & Allocate Memory Pools ---
-  if (!calculate_and_validate_resample_ratio(config, app,
+  if (!resolve_process_chain_config(config, app,
                                              &app->dsp.resample_ratio))
     return false;
   if (!allocate_processing_buffers(config, app, app->dsp.resample_ratio))

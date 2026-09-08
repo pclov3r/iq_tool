@@ -240,6 +240,15 @@ cleanup:
 
   bool final_ok = !app.stats.error_occurred;
 
+  if (app.module.output_api) {
+    log_info("Closing %s output module...", config.output.module_name);
+    close_output_module(&config, &app);
+  }
+
+  // Close DSP components and free buffers (Mirror of setup phase)
+  process_chain_close_dsp_modules(&process_chain_context);
+  process_chain_teardown_buffers(&process_chain_context);
+
   if (app.module.input_api) {
     if (app.process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH) {
       log_info("Stopping %s live source capture...", config.input.type_name);
@@ -250,21 +259,12 @@ cleanup:
     close_input_source(&config, &app);
   }
 
-  if (app.module.output_api) {
-    log_info("Closing %s output module...", config.output.module_name);
-    close_output_module(&config, &app);
-  }
-
+  // Print summary AFTER all buffers are flushed and files are closed
   if (resources_initialized) {
     print_final_summary(&config, &app, final_ok);
   }
 
   pthread_mutex_unlock(&g_console_mutex);
-
-  // Always tear down process_chain buffers and components before freeing their
-  // memory arena
-  process_chain_close_dsp_modules(&process_chain_context);
-  process_chain_teardown_buffers(&process_chain_context);
 
   if (arena_initialized) {
     mem_arena_destroy(&app.process_chain.setup_arena);
