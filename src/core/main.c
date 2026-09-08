@@ -202,6 +202,10 @@ int main(int argc, char *argv[]) {
   if (!process_chain_setup_buffers(&process_chain_context)) {
     goto cleanup;
   }
+  
+  if (!process_chain_init_dsp_modules(&process_chain_context)) {
+    goto cleanup;
+  }
 
   if (!init_output_module(&config, &app)) {
     goto cleanup;
@@ -223,7 +227,7 @@ int main(int argc, char *argv[]) {
 
   setup_keyboard_handler(&app);
 
-  if (!process_chain_run(&process_chain_context)) {
+  if (!process_chain_execute(&process_chain_context)) {
     log_fatal("ProcessChain execution failed.");
   }
 
@@ -259,7 +263,8 @@ cleanup:
 
   // Always tear down process_chain buffers and components before freeing their
   // memory arena
-  process_chain_teardown(&process_chain_context);
+  process_chain_close_dsp_modules(&process_chain_context);
+  process_chain_teardown_buffers(&process_chain_context);
 
   if (arena_initialized) {
     mem_arena_destroy(&app.process_chain.setup_arena);

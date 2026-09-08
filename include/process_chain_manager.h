@@ -37,8 +37,10 @@ struct ProcessChainContext;
  */
 bool process_chain_setup_buffers(struct ProcessChainContext *context);
 
-bool process_chain_run(struct ProcessChainContext *context);
-void process_chain_teardown(struct ProcessChainContext *context);
+bool process_chain_init_dsp_modules(struct ProcessChainContext *context);
+bool process_chain_execute(struct ProcessChainContext *context);
+void process_chain_close_dsp_modules(struct ProcessChainContext *context);
+void process_chain_teardown_buffers(struct ProcessChainContext *context);
 
 #include "utilities.h" // For OutputSummaryInfo
 void process_chain_get_summary_info(const struct AppContext *app,

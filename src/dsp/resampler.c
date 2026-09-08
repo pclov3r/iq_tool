@@ -61,10 +61,8 @@ static void *dsp_resampler_init(ModuleContext *ctx) {
   float output_rate = (float)ctx->app->dsp.process_chain_sample_rate_hz;
   float resample_ratio = output_rate / input_rate;
 
-  log_info("Resampler: Enabled (Liquid-DSP msresamp_crcf)");
-  log_info("Resampler:   Input Rate:  %.1f Hz", input_rate);
-  log_info("Resampler:   Output Rate: %.1f Hz", output_rate);
-  log_info("Resampler:   Ratio:       %f", resample_ratio);
+  log_info("Resampling: %.15g Hz -> %.15g Hz (Ratio: %.15g)",
+           input_rate, output_rate, resample_ratio);
 
   return resampler_create(ctx->config, ctx->app, resample_ratio);
 }

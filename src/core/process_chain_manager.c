@@ -46,9 +46,6 @@
 // --- Private Function Prototypes for Setup Helpers ---
 static bool _init_queues_and_buffers(AppConfig *config, AppContext *app);
 static void _destroy_queues_and_buffers(AppContext *app);
-static bool _create_dsp_components(AppConfig *config, AppContext *app,
-                                   float resample_ratio);
-static void _destroy_dsp_components(AppContext *app);
 
 /**
  * @brief Creates, runs, and waits for the entire processing process_chain to
@@ -387,23 +384,16 @@ bool process_chain_setup_buffers(ProcessChainContext *context) {
   return true;
 }
 
-bool process_chain_run(ProcessChainContext *context) {
+bool process_chain_execute(ProcessChainContext *context) {
   AppConfig *config = context->config;
   AppContext *app = context->app;
   bool success = false;
-
-  // --- Step 1: Create all internal DSP components ---
-  if (!_create_dsp_components(config, app, app->dsp.resample_ratio)) {
-    log_fatal("Failed to create DSP components.");
-    _destroy_dsp_components(app); // Attempt cleanup
-    return false;
-  }
 
   // --- Step 2: Verify memory pools (Allocated during initialization) ---
   if (!app->process_chain.chunk_data_pool) {
     log_fatal(
         "ProcessChain memory pool not allocated. Initialization order error.");
-    _destroy_dsp_components(app);
+    process_chain_close_dsp_modules(context);
     return false;
   }
 
@@ -411,7 +401,7 @@ bool process_chain_run(ProcessChainContext *context) {
   if (!_init_queues_and_buffers(config, app)) {
     log_fatal("Failed to initialize process_chain queues and buffers.");
     _destroy_queues_and_buffers(app);
-    _destroy_dsp_components(app);
+    process_chain_close_dsp_modules(context);
     return false;
   }
 
@@ -491,11 +481,10 @@ bool process_chain_run(ProcessChainContext *context) {
   return success;
 }
 
-void process_chain_teardown(ProcessChainContext *context) {
+void process_chain_teardown_buffers(ProcessChainContext *context) {
   if (!context || !context->app)
     return;
   _destroy_queues_and_buffers(context->app);
-  _destroy_dsp_components(context->app);
 }
 
 void process_chain_get_summary_info(const AppContext *app,
@@ -523,8 +512,10 @@ void *process_chain_get_module_state(const AppContext *app,
 
 // --- Private Helper Function Implementations ---
 
-static bool _create_dsp_components(AppConfig *config, AppContext *app,
-                                   float resample_ratio) {
+bool process_chain_init_dsp_modules(ProcessChainContext *context) {
+  AppConfig *config = context->config;
+  AppContext *app = context->app;
+  float resample_ratio = app->dsp.resample_ratio;
   (void)resample_ratio; // Handled by resampler module directly now
   ModuleContext mctx = {.config = config, .app = app};
 
@@ -558,7 +549,9 @@ static bool _create_dsp_components(AppConfig *config, AppContext *app,
   return true;
 }
 
-static void _destroy_dsp_components(AppContext *app) {
+void process_chain_close_dsp_modules(ProcessChainContext *context) {
+  AppContext *app = context->app;
+  if (!app) return;
   for (int i = DEFAULT_PROCESS_CHAIN_LENGTH - 1; i >= 0; i--) {
     const struct DspModuleInterface *mod = get_dsp_module(
         DEFAULT_PROCESS_CHAIN[i].module_name, &app->process_chain.setup_arena);
