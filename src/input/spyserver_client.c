@@ -37,7 +37,7 @@
 #include "app_context.h"
 #include "argparse.h"
 #include "config/constants.h"
-#include "config/module_defaults.h"
+
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
@@ -66,6 +66,16 @@
 #else
 #include <unistd.h>
 #endif
+
+// --- Default Configuration ---
+#define SPYSERVER_DEFAULT_SAMPLE_RATE_HZ 600000.0
+#define SPYSERVER_MAX_BUFFER_BYTES (256 * 1024 * 1024)
+#define SPYSERVER_PREBUFFER_TARGET_SECONDS 5.0f
+#define SPYSERVER_PREBUFFER_MIN_BYTES 65536
+#define SPYSERVER_BUFFER_HEADROOM_FACTOR 4.0f
+#define SPYSERVER_RING_BUFFER_MIN_BYTES (1024 * 1024)
+#define SPYSERVER_PREBUFFER_MAX_FILL_RATIO 0.8f
+#define SPYSERVER_DEMOD_AUDIO_BUFFER_SIZE (1536 * 1024)
 
 // =============================================================================
 // == START: Encapsulated SpyServer Protocol Definitions
@@ -210,7 +220,8 @@ static const struct argparse_option input_spyserver_client_cli_options[] = {
 };
 // clang-format on
 
-static const struct argparse_option *input_spyserver_client_get_cli_options(int *count) {
+static const struct argparse_option *
+input_spyserver_client_get_cli_options(int *count) {
   *count = sizeof(input_spyserver_client_cli_options) /
            sizeof(input_spyserver_client_cli_options[0]);
   return input_spyserver_client_cli_options;

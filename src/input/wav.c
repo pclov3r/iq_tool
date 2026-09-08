@@ -5,7 +5,7 @@
 #include "app_context.h"
 #include "argparse.h"
 #include "config/constants.h"
-#include "config/module_defaults.h"
+
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
@@ -38,6 +38,9 @@
 #include <strings.h>
 #endif
 #include "dsp/iq_correction.h"
+
+// --- Default Configuration ---
+#define WAV_DEMOD_AUDIO_BUFFER_SIZE (128 * 1024)
 
 #define SDRC_AUXI_CHUNK_ID_STR "auxi"
 #define MAX_METADATA_CHUNK_SIZE (1024 * 1024)
@@ -856,7 +859,8 @@ static bool input_wav_initialize(ModuleContext *context) {
 
   if (s_wav_config.center_target_hz_arg != 0.0f) {
     if (private_data->is_real) {
-      log_error("--wav-center-target-freq can only be used with I/Q (complex) WAV files.");
+      log_error("--wav-center-target-freq can only be used with I/Q (complex) "
+                "WAV files.");
       sf_close(private_data->infile);
       return false;
     }

@@ -5,7 +5,7 @@
 #include "app_context.h"
 #include "argparse.h"
 #include "config/constants.h"
-#include "config/module_defaults.h"
+
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
@@ -31,6 +31,13 @@
 #include <time.h>
 #include <unistd.h>
 #endif
+
+// --- Default Configuration ---
+#define HACKRF_DEFAULT_FILTER_ATTENUATION_DB 60.0f
+#define HACKRF_DEFAULT_SAMPLE_RATE 8000000.0
+#define HACKRF_DEFAULT_LNA_GAIN 16
+#define HACKRF_DEFAULT_VGA_GAIN 0
+#define HACKRF_DEMOD_AUDIO_BUFFER_SIZE (128 * 1024)
 
 extern pthread_mutex_t g_console_mutex;
 

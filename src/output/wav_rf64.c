@@ -7,7 +7,6 @@
  * and provide the correct summary information.
  */
 
-#include "config/module_defaults.h"
 #include "module_registry.h"
 #include "output/wav_common.h" // Include the shared implementation
 #include "utilities.h"         // For utility_add_summary_item

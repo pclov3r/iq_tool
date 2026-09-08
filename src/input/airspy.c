@@ -5,7 +5,7 @@
 #include "app_context.h"
 #include "argparse.h"
 #include "config/constants.h"
-#include "config/module_defaults.h"
+
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
@@ -42,6 +42,16 @@
 #include <time.h>
 #include <unistd.h>
 #endif
+
+// --- Default Configuration ---
+#define AIRSPY_DEFAULT_FILTER_ATTENUATION_DB 80.0f
+#define AIRSPY_DEFAULT_SAMPLE_RATE 2500000.0
+#define AIRSPY_DEFAULT_SAMPLE_FORMAT CS16
+#define AIRSPY_DEFAULT_GAIN_VALUE 10
+#define AIRSPY_DEFAULT_LNA_GAIN 5
+#define AIRSPY_DEFAULT_MIXER_GAIN 5
+#define AIRSPY_DEFAULT_VGA_GAIN 5
+#define AIRSPY_DEMOD_AUDIO_BUFFER_SIZE (128 * 1024)
 
 extern pthread_mutex_t g_console_mutex;
 

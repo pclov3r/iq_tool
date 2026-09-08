@@ -5,7 +5,7 @@
 #include "app_context.h"
 #include "argparse.h"
 #include "config/constants.h"
-#include "config/module_defaults.h"
+
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
@@ -28,6 +28,12 @@
 #include <time.h>
 #include <unistd.h>
 #endif
+
+// --- Default Configuration ---
+#define RTLSDR_DEFAULT_FILTER_ATTENUATION_DB 60.0f
+#define RTLSDR_DEFAULT_SAMPLE_RATE 2400000.0
+#define RTLSDR_PASSTHROUGH_BUFFER_SIZE 16384
+#define RTLSDR_DEMOD_AUDIO_BUFFER_SIZE (128 * 1024)
 
 // --- Private Module Configuration ---
 static struct {

@@ -47,7 +47,6 @@
 #include "app_context.h"
 #include "audio_output_functions.h"
 #include "config/constants.h"
-#include "config/module_defaults.h"
 #include "interleave_functions.h"
 #include "log.h"
 #include "module.h"

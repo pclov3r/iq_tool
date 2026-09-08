@@ -4,7 +4,6 @@
 
 #include "module_registry.h"
 #include "app_context.h"
-#include "config/module_defaults.h"
 #include "log.h"
 #include "mem_arena.h"
 #include <stdlib.h>
@@ -70,7 +69,6 @@ static const Module *_find_module_by_name_and_type(const char *name,
 void module_apply_defaults(AppConfig *config, MemoryArena *arena) {
   initialize_modules_list(arena); // Ensure the list is ready
 
-
   for (int i = 0; i < num_all_modules; ++i) {
     if (all_modules[i].set_default_config) {
       all_modules[i].set_default_config(config);
@@ -97,7 +95,6 @@ void module_populate_cli_options(struct argparse_option *dest_buffer,
                                  const char *active_output_type,
                                  struct MemoryArena *arena) {
   initialize_modules_list(arena);
-
 
   for (int i = 0; i < num_all_modules; ++i) {
     const struct argparse_option *(*get_opts_fn)(int *) =

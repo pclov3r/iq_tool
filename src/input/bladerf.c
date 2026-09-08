@@ -5,7 +5,7 @@
 #include "app_context.h"
 #include "argparse.h"
 #include "config/constants.h"
-#include "config/module_defaults.h"
+
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
@@ -40,6 +40,19 @@
 #include <strings.h>
 #include <unistd.h>
 #endif
+
+// --- Default Configuration ---
+#define BLADERF_DEFAULT_FILTER_ATTENUATION_DB 80.0f
+#define BLADERF_DEFAULT_SAMPLE_RATE_HZ 2000000
+#define BLADERF_DEFAULT_BANDWIDTH_HZ 1500000
+#define BLADERF_TRANSFER_SIZE_SECONDS 0.020
+#define BLADERF_PROFILE_LOWLATENCY_NUM_BUFFERS 32
+#define BLADERF_PROFILE_LOWLATENCY_NUM_TRANSFERS 16
+#define BLADERF_PROFILE_BALANCED_NUM_BUFFERS 64
+#define BLADERF_PROFILE_BALANCED_NUM_TRANSFERS 32
+#define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_BUFFERS 96
+#define BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS 48
+#define BLADERF_DEMOD_AUDIO_BUFFER_SIZE (128 * 1024)
 
 #if defined(_WIN32) && defined(WITH_BLADERF)
 // --- Private Windows Dynamic API Loading ---

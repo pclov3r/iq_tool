@@ -3,7 +3,6 @@
  * @brief Implements the NRSC5 (HD Radio) output module using CF32 floats.
  */
 
-#include "config/module_defaults.h"
 #include "module_registry.h"
 #include <complex.h>
 #include <ctype.h>

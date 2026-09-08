@@ -5,7 +5,7 @@
 #include "app_context.h"
 #include "argparse.h"
 #include "config/constants.h"
-#include "config/module_defaults.h"
+
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
@@ -30,6 +30,9 @@
 #include <strings.h>
 #endif
 #include "dsp/iq_correction.h"
+
+// --- Default Configuration ---
+#define RAWFILE_DEMOD_AUDIO_BUFFER_SIZE (128 * 1024)
 
 static struct {
   double sample_rate_hz;

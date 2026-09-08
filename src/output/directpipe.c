@@ -3,7 +3,6 @@
  */
 
 #include "app_context.h"
-#include "config/module_defaults.h"
 #include "log.h"
 #include "mem_arena.h"
 #include "module.h"

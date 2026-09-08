@@ -24,7 +24,6 @@
 #include "app_context.h"
 #include "audio_output_functions.h"
 #include "config/constants.h"
-#include "config/module_defaults.h"
 #include "log.h"
 #include "module.h"
 #include "module_registry.h"

@@ -18,12 +18,12 @@
 #include <shlwapi.h>
 #include <windows.h>
 #else
+#include <dlfcn.h>
 #include <pthread.h>
 #include <sched.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <unistd.h>
-#include <dlfcn.h>
 #endif
 
 void platform_set_thread_priority(ThreadPriority priority,
@@ -355,9 +355,11 @@ void *platform_dll_load_w(const wchar_t *dll_path) {
 #endif
 
 void *platform_dll_get_symbol(void *handle, const char *symbol_name) {
-  if (!handle) return NULL;
+  if (!handle)
+    return NULL;
 #ifdef _WIN32
-  /* Cast through size_t to silence ISO C -Wpedantic warnings about converting function pointers to object pointers */
+  /* Cast through size_t to silence ISO C -Wpedantic warnings about converting
+   * function pointers to object pointers */
   return (void *)(size_t)GetProcAddress((HMODULE)handle, symbol_name);
 #else
   return dlsym(handle, symbol_name);
@@ -365,7 +367,8 @@ void *platform_dll_get_symbol(void *handle, const char *symbol_name) {
 }
 
 void platform_dll_unload(void *handle) {
-  if (!handle) return;
+  if (!handle)
+    return;
 #ifdef _WIN32
   FreeLibrary((HMODULE)handle);
 #else

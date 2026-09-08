@@ -5,7 +5,7 @@
 #include "app_context.h"
 #include "argparse.h"
 #include "config/constants.h"
-#include "config/module_defaults.h"
+
 #include "input/common.h"
 #include "interleave_functions.h"
 #include "log.h"
@@ -38,7 +38,7 @@
 #pragma GCC diagnostic pop
 #endif
 
-// --- Configuration Constants ---
+// --- Default Configuration ---
 #define SDRPLAY_TARGET_VERSION 3.15f
 
 #if defined(_WIN32)
@@ -52,6 +52,14 @@
 #include <time.h>
 #include <unistd.h>
 #endif
+
+// --- Default Configuration ---
+#define SDRPLAY_DEFAULT_FILTER_ATTENUATION_DB 80.0f
+#define SDRPLAY_DEFAULT_SAMPLE_RATE_HZ 2000000.0
+#define SDRPLAY_DEFAULT_BANDWIDTH_HZ 1536000.0
+#define SDRPLAY_DEFAULT_IF_GAIN_DB -50
+#define MAX_SDRPLAY_CONVERSION_SAMPLES 16384
+#define SDRPLAY_DEMOD_AUDIO_BUFFER_SIZE (128 * 1024)
 
 #if defined(_WIN32) && defined(WITH_SDRPLAY)
 // --- Private Windows Dynamic API Loading ---

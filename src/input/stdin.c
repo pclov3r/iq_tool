@@ -5,7 +5,7 @@
 #include "app_context.h"
 #include "argparse.h"
 #include "config/constants.h"
-#include "config/module_defaults.h"
+
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
@@ -17,6 +17,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+// --- Default Configuration ---
+#define STDIN_DEMOD_AUDIO_BUFFER_SIZE (128 * 1024)
 
 #ifdef _WIN32
 #include <fcntl.h>

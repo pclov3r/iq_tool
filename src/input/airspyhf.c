@@ -5,7 +5,7 @@
 #include "app_context.h"
 #include "argparse.h"
 #include "config/constants.h"
-#include "config/module_defaults.h"
+
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
@@ -31,6 +31,11 @@
 #include <time.h>
 #include <unistd.h>
 #endif
+
+// --- Default Configuration ---
+#define AIRSPYHF_DEFAULT_FILTER_ATTENUATION_DB 100.0f
+#define AIRSPYHF_DEFAULT_SAMPLE_RATE 768000
+#define AIRSPYHF_DEMOD_AUDIO_BUFFER_SIZE (128 * 1024)
 
 extern pthread_mutex_t g_console_mutex;
 
