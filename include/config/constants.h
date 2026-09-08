@@ -142,29 +142,6 @@
 // The number of separate components in a complex sample (I and Q).
 #define COMPLEX_SAMPLE_COMPONENTS 2
 
-
-// --- Filter Design & Analysis Tuning ---
-#define FILTER_MINIMUM_TAPS 21
-
-// Hard limit for auto-calculated filters. Prevents the auto-designer from
-// The absolute maximum number of taps allowed when the engine auto-calculates
-// filter length based on transition width.
-#define FILTER_MAXIMUM_AUTO_TAPS 65536
-
-// Used by initialization.c to budget memory when taps aren't explicitly
-// defined.
-#define FILTER_SAFETY_DEFAULT_TAPS FILTER_MAXIMUM_AUTO_TAPS
-
-// Minimum gain threshold to safely trigger normalization and prevent
-// divide-by-zero.
-#define FILTER_GAIN_ZERO_THRESHOLD 1e-9f
-
-// Number of frequency bins evaluated to find the absolute peak gain and prevent
-// clipping.
-#define FILTER_FREQ_RESPONSE_POINTS 2048
-
-
-
 // --- Dynamic DSP Filter Attenuation ---
 #define DEFAULT_FILTER_ATTENUATION_8BIT_DB 60.0f
 #define DEFAULT_FILTER_ATTENUATION_16BIT_DB 100.0f
@@ -175,8 +152,8 @@
 // == Tier 4: Sanity Checks & Hard Limits
 // =============================================================================
 
-#define RESAMPLER_MIN_RATIO 0.001f
-#define RESAMPLER_MAX_RATIO 1000.0f
+#define PROCESS_CHAIN_MIN_RATE_SCALAR 0.001f
+#define PROCESS_CHAIN_MAX_RATE_SCALAR 1000.0f
 #define FILTER_MAX_CHAIN 5
 #define PRESETS_MAX_COUNT 128
 #define PRESETS_MAX_LINE_LENGTH 1024

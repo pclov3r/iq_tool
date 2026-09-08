@@ -1,7 +1,3 @@
-#include "app_context.h"
-#include "config/module_defaults.h"
-#include "module_registry.h"
-#include <stdlib.h>
 /**
  * @file filter.c
  * @brief Implements the user-defined FIR/FFT filter chain.
@@ -12,6 +8,7 @@
 #include "log.h"
 #include "mem_arena.h"
 #include "module.h"
+#include "module_registry.h"
 #include "process_chain_types.h"
 #include "sample_format_table.h"
 #include "utilities.h"
@@ -25,6 +22,13 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+
+// --- Filter Design & Analysis Tuning ---
+#define FILTER_MINIMUM_TAPS 21
+#define FILTER_MAXIMUM_AUTO_TAPS 65536
+#define FILTER_SAFETY_DEFAULT_TAPS FILTER_MAXIMUM_AUTO_TAPS
+#define FILTER_GAIN_ZERO_THRESHOLD 1e-9f
+#define FILTER_FREQ_RESPONSE_POINTS 2048
 
 typedef struct FilterState {
   struct liquid_filter_s *object;
@@ -901,6 +905,27 @@ static void dsp_filter_reset_api(void *state) {
   filter_reset((FilterState *)state);
 }
 
+static size_t dsp_filter_get_chunk_size(AppConfig *config) {
+  size_t estimated_taps = 0;
+  if (config->dsp.filter.args.taps > 0) {
+    estimated_taps = config->dsp.filter.args.taps;
+  } else if (config->dsp.filter.count > 0) {
+    estimated_taps = FILTER_SAFETY_DEFAULT_TAPS;
+  }
+
+  size_t req_block_size = 0;
+  if (estimated_taps > 0) {
+    req_block_size = 1;
+    while (req_block_size < estimated_taps) {
+      req_block_size *= 2;
+    }
+    if (req_block_size < estimated_taps * 2) {
+      req_block_size *= 2;
+    }
+  }
+  return req_block_size;
+}
+
 static bool dsp_filter_is_active(AppContext *app, const char *stage_tag) {
   AppConfig *config = (AppConfig *)app->config;
   if (config->dsp.filter.count == 0) {
@@ -918,6 +943,7 @@ static bool dsp_filter_is_active(AppContext *app, const char *stage_tag) {
 static const DspModuleInterface dsp_filter_api = {
     .name = "filter",
     .is_active = dsp_filter_is_active,
+    .get_required_chunk_size = dsp_filter_get_chunk_size,
     .initialize = dsp_filter_init,
     .process = dsp_filter_process,
     .reset = dsp_filter_reset_api,

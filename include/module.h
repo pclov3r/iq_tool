@@ -15,9 +15,9 @@
 #ifndef MODULE_H_
 #define MODULE_H_
 
-#include "argparse.h"     // For argparse_option struct
-#include "common_types.h" // For SampleFormat
-#include "config/constants.h"    // For APP_MAX_SUMMARY_ITEMS
+#include "argparse.h"         // For argparse_option struct
+#include "common_types.h"     // For SampleFormat
+#include "config/constants.h" // For APP_MAX_SUMMARY_ITEMS
 #include <stdbool.h>
 #include <stdint.h>
 #include <time.h>
@@ -195,6 +195,8 @@ typedef struct DspModuleInterface {
   // Determines if this module should be active in the current flowgraph stage
   bool (*is_active)(struct AppContext *app, const char *stage_tag);
 
+  size_t (*get_required_chunk_size)(struct AppConfig *config);
+
   // Performs all one-time setup for the DSP block (allocates liquid-dsp
   // objects)
   void *(*initialize)(struct ModuleContext *context);
@@ -219,6 +221,4 @@ typedef struct DspModuleInterface {
   void (*cleanup)(void *state);
 } DspModuleInterface;
 
-
 #endif // MODULE_H_
-

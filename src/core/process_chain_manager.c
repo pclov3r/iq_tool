@@ -12,13 +12,13 @@
 #include "process_chain_manager.h"
 #include "app_context.h"
 #include "config/constants.h"
+#include "config/process_chain_default.h"
 #include "input/common.h"
 #include "log.h"
 #include "module_registry.h"
 #include "packet_serializer.h"
 #include "platform.h" // Added for thread priority abstraction
 #include "process_chain_context.h"
-#include "config/process_chain_default.h"
 #include "process_chain_io.h"
 #include "queue.h"
 #include "ring_buffer.h"
@@ -122,7 +122,8 @@ static bool calculate_and_validate_resample_ratio(AppConfig *config,
   }
 
   // --- Step 4: Validate Ratio ---
-  if (!isfinite(r) || r < RESAMPLER_MIN_RATIO || r > RESAMPLER_MAX_RATIO) {
+  if (!isfinite(r) || r < PROCESS_CHAIN_MIN_RATE_SCALAR ||
+      r > PROCESS_CHAIN_MAX_RATE_SCALAR) {
     log_error("Error: Calculated resampling ratio (%.6f) is invalid or outside "
               "acceptable range.",
               r);
@@ -155,39 +156,29 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app,
   size_t target_block_samples =
       PROCESS_CHAIN_TARGET_BLOCK_SAMPLES; // 12,288 samples (~192KB)
 
-  // 2. Adjust target for FFT requirements if necessary
-  // The filter object does not exist yet. We must estimate requirements based
-  // on CONFIG.
-  size_t estimated_taps = 0;
-  if (config->dsp.filter.args.taps > 0) {
-    estimated_taps = config->dsp.filter.args.taps;
-  } else if (config->dsp.filter.count > 0) {
-    // If taps aren't explicit, assume a worst-case default for sizing
-    estimated_taps = FILTER_SAFETY_DEFAULT_TAPS;
+  // 2. Adjust target for FFT requirements if necessary by querying DSP modules
+  size_t req_block_size = 0;
+  for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
+    const struct DspModuleInterface *mod = get_dsp_module(
+        DEFAULT_PROCESS_CHAIN[i].module_name, &app->process_chain.setup_arena);
+    if (mod && mod->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag) &&
+        mod->get_required_chunk_size) {
+      size_t mod_req_size = mod->get_required_chunk_size(config);
+      if (mod_req_size > req_block_size) {
+        req_block_size = mod_req_size;
+      }
+    }
   }
 
-  size_t req_block_size = 0;
-  if (estimated_taps > 0) {
-    // Calculate the FFT block size logic used by liquid-dsp/filter.c
-    req_block_size = 1;
-    while (req_block_size < estimated_taps) {
-      req_block_size *= 2;
-    }
-    // Heuristic from filter.c: double it for efficiency
-    if (req_block_size < estimated_taps * 2) {
-      req_block_size *= 2;
-    }
-
-    // If the filter needs huge blocks (e.g. 32k for 15k taps), expand the
-    // process_chain chunks.
-    if (req_block_size > target_block_samples) {
-      log_info("FFT filter block size (%zu) exceeds optimal process_chain "
-               "target (%zu).",
-               req_block_size, target_block_samples);
-      log_info("Expanding internal chunk size to accommodate FFT bursts (may "
-               "reduce CPU cache efficiency).");
-      target_block_samples = req_block_size;
-    }
+  if (req_block_size > target_block_samples) {
+    log_info(
+        "DSP module required block size (%zu) exceeds optimal process_chain "
+        "target (%zu).",
+        req_block_size, target_block_samples);
+    log_info(
+        "Expanding internal chunk size to accommodate DSP requirements (may "
+        "reduce CPU cache efficiency).");
+    target_block_samples = req_block_size;
   }
 
   size_t calculated_input_samples = 0;
