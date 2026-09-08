@@ -68,10 +68,19 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
 
   // --- Step 1: Determine Target Rate ---
   double target_rate_hz = 0.0;
-  if (config->output.payload == PAYLOAD_AUDIO) {
-    target_rate_hz = config->baseband_sample_rate.rate_hz;
+  SampleFormat target_format = FORMAT_UNKNOWN;
+  float target_gain = 0.0f;
+  OutputAgcConfig target_agc = {0};
+
+  const Module *out_mod = module_get(config->output.module_name, MODULE_TYPE_OUTPUT, &app->process_chain.setup_arena);
+  const struct OutputModuleInterface *out_api = out_mod ? (const struct OutputModuleInterface *)out_mod->api : NULL;
+  if (out_api && out_api->get_pipeline_requirements) {
+    out_api->get_pipeline_requirements(config, &target_rate_hz, &target_format, &target_gain, &target_agc);
   } else {
     target_rate_hz = config->output_sample_rate.rate_hz;
+    target_format = config->output.sample_format;
+    target_gain = config->dsp.output_gain;
+    target_agc = config->dsp.output_agc;
   }
 
   // --- Step 2: Handle Smart Default (Missing Rate) ---
@@ -97,18 +106,11 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
     app->dsp.process_chain_sample_format = app->module.input_format;
     config->output.sample_format = app->module.input_format;
   } else {
-    app->dsp.process_chain_sample_format =
-        (config->output.payload == PAYLOAD_AUDIO)
-            ? config->baseband_sample_format.format
-            : config->output.sample_format;
+    app->dsp.process_chain_sample_format = target_format;
   }
 
-  app->dsp.process_chain_gain = (config->output.payload == PAYLOAD_AUDIO)
-                                    ? config->dsp.baseband_gain
-                                    : config->dsp.output_gain;
-  app->dsp.process_chain_agc = (config->output.payload == PAYLOAD_AUDIO)
-                                   ? config->dsp.baseband_agc
-                                   : config->dsp.output_agc;
+  app->dsp.process_chain_gain = target_gain;
+  app->dsp.process_chain_agc = target_agc;
 
   // --- Step 3: Calculate Ratio ---
   double input_rate_d = (double)app->module.source_info.sample_rate;
@@ -117,15 +119,11 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
   // --- Step 4: Check for Passthrough Conditions ---
   if (config->dsp.raw_passthrough) {
     log_info("Raw Passthrough mode enabled: Bypassing all DSP blocks.");
-    app->dsp.bypass_resampler = true;
     r = 1.0f; // Force ratio to 1.0 for buffer calcs
     app->dsp.process_chain_sample_format = app->module.input_format;
     app->dsp.process_chain_sample_rate_hz = input_rate_d;
   } else if (fabs(r - 1.0f) < 1e-6) {
-    app->dsp.bypass_resampler = true;
     r = 1.0f; // Snap to exact 1.0
-  } else {
-    app->dsp.bypass_resampler = false;
   }
 
   // --- Step 4: Validate Ratio ---
@@ -338,13 +336,9 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app,
 
     item->raw_input_data = data_ptr;
     data_ptr += raw_stride;
-    item->pre_resample_buffer = (ComplexFloat *)data_ptr;
+    item->buffer_a = (ComplexFloat *)data_ptr;
     data_ptr += complex_stride;
-    if (app->dsp.bypass_resampler) {
-      item->post_resample_buffer = item->pre_resample_buffer;
-    } else {
-      item->post_resample_buffer = (ComplexFloat *)data_ptr;
-    }
+    item->buffer_b = (ComplexFloat *)data_ptr;
     data_ptr += complex_stride;
     item->final_output_data = (unsigned char *)data_ptr;
 
@@ -386,9 +380,10 @@ bool process_chain_setup_buffers(ProcessChainContext *context) {
   AppContext *app = context->app;
 
   // --- Step 0: Calculate Ratios & Allocate Memory Pools ---
-  if (!resolve_process_chain_config(config, app, &app->dsp.resample_ratio))
+  float resample_ratio;
+  if (!resolve_process_chain_config(config, app, &resample_ratio))
     return false;
-  if (!allocate_processing_buffers(config, app, app->dsp.resample_ratio))
+  if (!allocate_processing_buffers(config, app, resample_ratio))
     return false;
 
   return true;
@@ -525,8 +520,6 @@ void *process_chain_get_module_state(const AppContext *app,
 bool process_chain_init_dsp_modules(ProcessChainContext *context) {
   AppConfig *config = context->config;
   AppContext *app = context->app;
-  float resample_ratio = app->dsp.resample_ratio;
-  (void)resample_ratio; // Handled by resampler module directly now
   ModuleContext mctx = {.config = config, .app = app};
 
   if (config->dsp.raw_passthrough) {

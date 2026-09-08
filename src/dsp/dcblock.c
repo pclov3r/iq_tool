@@ -93,7 +93,7 @@ static SampleChunk *dcblock_process(void *state, SampleChunk *chunk) {
   if (chunk->stream_discontinuity_event) {
     dc_block_reset(state);
   }
-  dc_block_apply(state, chunk->pre_resample_buffer, chunk->frames_read);
+  dc_block_apply(state, chunk->current_buffer, chunk->frames_read);
   return chunk;
 }
 

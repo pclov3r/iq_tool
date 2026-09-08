@@ -442,8 +442,6 @@ static void print_configuration_summary(const AppConfig *config,
     utility_add_summary_item(&output_info, "ProcessChain Gain", "%.2fx",
                              app->dsp.process_chain_gain);
 
-  utility_add_summary_item(&output_info, "Resampling", "%s",
-                           app->dsp.bypass_resampler ? "Disabled" : "Enabled");
 
   if (config->output.path_arg != NULL) {
 #ifdef _WIN32

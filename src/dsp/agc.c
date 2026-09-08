@@ -363,7 +363,7 @@ static SampleChunk *dsp_agc_process(void *state, SampleChunk *chunk) {
   if (chunk->stream_discontinuity_event) {
     agc_reset(h);
   }
-  agc_apply(h, chunk->post_resample_buffer, chunk->frames_to_write);
+  agc_apply(h, chunk->current_buffer, chunk->frames_to_write);
   return chunk;
 }
 

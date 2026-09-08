@@ -37,6 +37,7 @@ struct InputSummaryInfo;
 typedef struct InputSummaryInfo OutputSummaryInfo;
 struct ModuleContext;
 struct SampleChunk;
+struct OutputAgcConfig;
 
 // --- Data Structures ---
 
@@ -157,6 +158,8 @@ typedef struct OutputModuleInterface {
 
   // Returns any CLI options specific to this output format
   const struct argparse_option *(*get_cli_options)(int *count);
+
+  void (*get_pipeline_requirements)(const struct AppConfig *config, double *rate, SampleFormat *format, float *gain, struct OutputAgcConfig *agc);
 
   // Performs all one-time setup for the writer (opens files, etc.)
   bool (*initialize)(struct ModuleContext *context);

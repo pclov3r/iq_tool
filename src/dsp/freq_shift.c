@@ -193,13 +193,13 @@ static SampleChunk *dsp_freq_shift_process(void *state, SampleChunk *chunk) {
 
   if (fs->pre_resample_nco) {
     frequency_shift_apply((FreqShifter *)fs->pre_resample_nco, fs->nco_shift_hz,
-                          chunk->pre_resample_buffer,
-                          chunk->pre_resample_buffer, chunk->frames_read);
+                          chunk->current_buffer,
+                          chunk->current_buffer, chunk->frames_read);
   }
   if (fs->post_resample_nco) {
     frequency_shift_apply((FreqShifter *)fs->post_resample_nco,
-                          fs->nco_shift_hz, chunk->post_resample_buffer,
-                          chunk->post_resample_buffer, chunk->frames_to_write);
+                          fs->nco_shift_hz, chunk->current_buffer,
+                          chunk->current_buffer, chunk->frames_to_write);
   }
   return chunk;
 }

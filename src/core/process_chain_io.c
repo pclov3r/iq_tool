@@ -127,12 +127,14 @@ void *process_chain_thread_reader(void *arg) {
       item->stream_discontinuity_event = is_reset;
       item->is_last_chunk = false;
 
+      item->current_buffer = item->buffer_a;
+
       if (config->dsp.raw_passthrough && item->frames_read > 0) {
         size_t bytes = item->frames_read * item->input_bytes_per_iq_sample;
         memcpy(item->final_output_data, item->raw_input_data, bytes);
       } else if (!config->dsp.raw_passthrough && item->frames_read > 0) {
         sample_convert_block_to_cf32(
-            item->raw_input_data, item->pre_resample_buffer, item->frames_read,
+            item->raw_input_data, item->current_buffer, item->frames_read,
             item->packet_sample_format, config->dsp.input_gain);
       }
 
@@ -187,9 +189,11 @@ void *process_chain_thread_reader(void *arg) {
         item->stream_discontinuity_event = false;
         item->is_last_chunk = (bytes_read == 0); // EOF reached
 
+        item->current_buffer = item->buffer_a;
+
         if (!config->dsp.raw_passthrough && item->frames_read > 0) {
           sample_convert_block_to_cf32(
-              item->raw_input_data, item->pre_resample_buffer,
+              item->raw_input_data, item->current_buffer,
               item->frames_read, item->packet_sample_format,
               config->dsp.input_gain);
         }
@@ -256,11 +260,11 @@ void *process_chain_thread_writer(void *arg) {
         if (app->dsp.process_chain_gain != 1.0f) {
           float g = app->dsp.process_chain_gain;
           for (unsigned int i = 0; i < item->frames_to_write; i++) {
-            item->post_resample_buffer[i] *= g;
+            item->current_buffer[i] *= g;
           }
         }
         sample_convert_cf32_to_block(
-            item->post_resample_buffer, item->final_output_data,
+            item->current_buffer, item->final_output_data,
             item->frames_to_write, app->dsp.process_chain_sample_format);
       }
       size_t bytes_to_write =

@@ -16,10 +16,11 @@ typedef struct msresamp_crcf_s Resampler;
 static Resampler *resampler_create(const AppConfig *config, AppContext *app,
                                    float resample_ratio) {
   (void)config; // config is not used here but kept for API consistency
-  if (app->dsp.bypass_resampler) {
-    return NULL; // No resampler needed in passthrough mode.
-  }
+  (void)app;
 
+  // We use liquid-dsp's arbitrary resampler
+  // liquid-dsp uses a polyphase filterbank for resampling.
+  // We use the default parameters: As=60dB (stopband attenuation)
   // We cast the liquid-dsp object to our opaque type.
   Resampler *resampler = (Resampler *)msresamp_crcf_create(
       resample_ratio, config->dsp.filter.args.attenuation);
@@ -70,22 +71,17 @@ static void *dsp_resampler_init(ModuleContext *ctx) {
 
 static SampleChunk *dsp_resampler_process(void *state, SampleChunk *chunk) {
   Resampler *resampler = (Resampler *)state;
-  if (chunk->stream_discontinuity_event && resampler) {
+  if (chunk->stream_discontinuity_event) {
     resampler_reset(resampler);
   }
-  if (resampler) {
-    unsigned int out_frames = 0;
-    resampler_execute(resampler, chunk->pre_resample_buffer, chunk->frames_read,
-                      chunk->post_resample_buffer, &out_frames);
-    chunk->frames_to_write = out_frames;
-  } else {
-    chunk->frames_to_write = chunk->frames_read;
-    if (chunk->pre_resample_buffer != chunk->post_resample_buffer) {
-      for (unsigned int i = 0; i < chunk->frames_read; i++) {
-        chunk->post_resample_buffer[i] = chunk->pre_resample_buffer[i];
-      }
-    }
-  }
+
+  unsigned int out_frames = 0;
+  ComplexFloat *out_buf = (chunk->current_buffer == chunk->buffer_a) ? chunk->buffer_b : chunk->buffer_a;
+  resampler_execute(resampler, chunk->current_buffer, chunk->frames_read,
+                    out_buf, &out_frames);
+  chunk->frames_to_write = out_frames;
+  chunk->current_buffer = out_buf;
+
   return chunk;
 }
 
@@ -99,7 +95,10 @@ static void dsp_resampler_reset_api(void *state) {
 
 static bool dsp_resampler_is_active(AppContext *app, const char *stage_tag) {
   (void)stage_tag;
-  return !app->dsp.bypass_resampler;
+  float r = (float)(app->dsp.process_chain_sample_rate_hz /
+                    (double)app->module.source_info.sample_rate);
+  AppConfig *config = (AppConfig *)app->config;
+  return !(fabs(r - 1.0f) < 1e-6 || config->dsp.raw_passthrough);
 }
 
 static size_t dsp_resampler_get_max_output_size(struct AppContext *app,

@@ -36,10 +36,9 @@
 typedef struct SampleChunk {
   // --- Data Buffers ---
   void *raw_input_data; ///< Buffer for raw data from the source.
-  ComplexFloat
-      *pre_resample_buffer; ///< Complex float buffer at the source sample rate.
-  ComplexFloat *
-      post_resample_buffer; ///< Complex float buffer at the target sample rate.
+  ComplexFloat *buffer_a;
+  ComplexFloat *buffer_b;
+  ComplexFloat *current_buffer;
   unsigned char
       *final_output_data; ///< Buffer for the final, converted output data.
 

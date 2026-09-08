@@ -387,7 +387,7 @@ bool iq_correction_run_initial_calibration(
   memset(&temp_chunk, 0, sizeof(SampleChunk));
   temp_chunk.raw_input_data = (void *)raw_buffer;
   temp_chunk.packet_sample_format = app->module.input_format;
-  temp_chunk.pre_resample_buffer = cf32_buffer;
+  temp_chunk.current_buffer = cf32_buffer;
 
   void *dc_block_state = NULL;
   const DspModuleInterface *dc_block_api =
@@ -406,7 +406,7 @@ bool iq_correction_run_initial_calibration(
 
     temp_chunk.frames_read = IQ_CORRECTION_FFT_SIZE;
     sample_convert_block_to_cf32(
-        temp_chunk.raw_input_data, temp_chunk.pre_resample_buffer,
+        temp_chunk.raw_input_data, temp_chunk.current_buffer,
         temp_chunk.frames_read, temp_chunk.packet_sample_format,
         ((AppConfig *)app->config)->dsp.input_gain);
 
@@ -415,7 +415,7 @@ bool iq_correction_run_initial_calibration(
       dc_block_api->process(dc_block_state, &temp_chunk);
     }
 
-    iq_correction_run_estimation(st, temp_chunk.pre_resample_buffer);
+    iq_correction_run_estimation(st, temp_chunk.current_buffer);
     if (st) {
       ((IqState *)st)->last_optimization_time = 0.0;
     }
@@ -687,7 +687,7 @@ static SampleChunk *dsp_iq_correct_process(void *state, SampleChunk *chunk) {
     // no-op for now
   }
   IqState *st = (IqState *)state;
-  iq_correction_apply(st, chunk->pre_resample_buffer, chunk->frames_read);
+  iq_correction_apply(st, chunk->current_buffer, chunk->frames_read);
 
   // Asynchronous estimation logic
   if (st && st->app && st->app->process_chain.iq_estimation_free_queue &&
@@ -709,7 +709,7 @@ static SampleChunk *dsp_iq_correct_process(void *state, SampleChunk *chunk) {
         to_copy = frames_remaining;
 
       memcpy(st->current_estimation_buffer + st->current_estimation_collected,
-             chunk->pre_resample_buffer + read_ptr,
+             chunk->current_buffer + read_ptr,
              to_copy * sizeof(ComplexFloat));
 
       st->current_estimation_collected += to_copy;

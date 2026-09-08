@@ -72,8 +72,7 @@ typedef struct FilterState {
 static bool _configure_filter_stage(AppConfig *config, AppContext *app) {
   config->dsp.filter.apply_post_resample = false;
 
-  if (config->dsp.filter.count == 0 || app->dsp.bypass_resampler ||
-      config->dsp.raw_passthrough) {
+  if (config->dsp.filter.count == 0 || config->dsp.raw_passthrough) {
     return true;
   }
 
@@ -529,8 +528,7 @@ static unsigned int filter_apply(FilterState *state, SampleChunk *item,
 
   unsigned int frames_in =
       is_post_resample ? item->frames_to_write : item->frames_read;
-  ComplexFloat *target_buffer =
-      is_post_resample ? item->post_resample_buffer : item->pre_resample_buffer;
+  ComplexFloat *target_buffer = item->current_buffer;
   if (frames_in == 0) {
     return 0;
   }

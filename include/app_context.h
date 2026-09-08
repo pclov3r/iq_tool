@@ -31,7 +31,7 @@ typedef struct {
   bool enable;
 } DcBlockConfig;
 
-typedef struct {
+typedef struct OutputAgcConfig {
   bool enable;
   float target_level;
   float target_level_arg;
@@ -226,13 +226,11 @@ typedef struct DspContext {
 
   void *states[16];
 
-  float resample_ratio;
   double nco_shift_hz;
   double process_chain_sample_rate_hz;
   SampleFormat process_chain_sample_format;
   float process_chain_gain;
   OutputAgcConfig process_chain_agc;
-  bool bypass_resampler;
 } DspContext;
 
 // --- 4. Runtime Context (Metrics & Telemetry) ---
