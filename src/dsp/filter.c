@@ -940,10 +940,17 @@ static bool dsp_filter_is_active(AppContext *app, const char *stage_tag) {
   return true;
 }
 
+static size_t dsp_filter_get_max_output_size(struct AppContext *app,
+                                             size_t input_size) {
+  AppConfig *config = (AppConfig *)app->config;
+  return input_size + dsp_filter_get_chunk_size(config);
+}
+
 static const DspModuleInterface dsp_filter_api = {
     .name = "filter",
     .is_active = dsp_filter_is_active,
     .get_required_chunk_size = dsp_filter_get_chunk_size,
+    .get_max_output_size = dsp_filter_get_max_output_size,
     .initialize = dsp_filter_init,
     .process = dsp_filter_process,
     .reset = dsp_filter_reset_api,

@@ -197,6 +197,8 @@ typedef struct DspModuleInterface {
 
   size_t (*get_required_chunk_size)(struct AppConfig *config);
 
+  size_t (*get_max_output_size)(struct AppContext *app, size_t input_size);
+
   // Performs all one-time setup for the DSP block (allocates liquid-dsp
   // objects)
   void *(*initialize)(struct ModuleContext *context);

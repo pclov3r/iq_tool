@@ -213,31 +213,29 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app,
   }
 
   // --- Calculate Elastic Maximum Buffer Size ---
-  // The filter object processes in blocks. If a remainder exists from a
-  // previous chunk, the output of the filter can momentarily exceed the input
-  // size by up to the FFT block size.
-  size_t max_pre_resample_samples = calculated_input_samples;
-  if (config->dsp.filter.count > 0 && !config->dsp.filter.apply_post_resample) {
-    max_pre_resample_samples += req_block_size;
+  // We simulate the data flow through the DSP chain to find the maximum
+  // possible number of samples at any stage.
+  size_t current_max_size = calculated_input_samples;
+  size_t absolute_max_size = current_max_size;
+
+  if (!config->dsp.raw_passthrough) {
+    for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
+      const struct DspModuleInterface *mod =
+          get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name,
+                         &app->process_chain.setup_arena);
+      if (mod && mod->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
+        if (mod->get_max_output_size) {
+          current_max_size = mod->get_max_output_size(app, current_max_size);
+        }
+        if (current_max_size > absolute_max_size) {
+          absolute_max_size = current_max_size;
+        }
+      }
+    }
   }
 
-  // Determine the absolute maximum number of samples that could exist
-  // post-resampling
-  size_t max_post_resample_samples =
-      (size_t)ceil((double)(max_pre_resample_samples + 32) * resample_ratio) +
-      64;
-
-  if (config->dsp.filter.count > 0 && config->dsp.filter.apply_post_resample) {
-    max_post_resample_samples += req_block_size;
-  }
-
-  // The buffer must be large enough to hold the maximum size at ANY stage of
-  // the process_chain
   size_t sample_allocation_count =
-      (max_pre_resample_samples > max_post_resample_samples)
-          ? max_pre_resample_samples
-          : max_post_resample_samples;
-  sample_allocation_count += PROCESS_CHAIN_BUFFER_PADDING_SAMPLES;
+      absolute_max_size + PROCESS_CHAIN_BUFFER_PADDING_SAMPLES;
 
   // Store the results for runtime usage
   app->process_chain.read_chunk_size = calculated_input_samples;

@@ -8,6 +8,7 @@
 #include "module_registry.h"
 #include "process_chain_types.h"
 #include <liquid.h>
+#include <math.h>
 #include <stdlib.h> // For exit()
 
 typedef struct msresamp_crcf_s Resampler;
@@ -101,9 +102,20 @@ static bool dsp_resampler_is_active(AppContext *app, const char *stage_tag) {
   return !app->dsp.bypass_resampler;
 }
 
+static size_t dsp_resampler_get_max_output_size(struct AppContext *app,
+                                                size_t input_size) {
+  float r = (float)(app->dsp.process_chain_sample_rate_hz /
+                    (double)app->module.source_info.sample_rate);
+  if (fabs(r - 1.0f) < 1e-6) {
+    return input_size;
+  }
+  return (size_t)ceil((double)(input_size + 32) * r) + 64;
+}
+
 static const DspModuleInterface dsp_resampler_api = {
     .name = "resampler",
     .is_active = dsp_resampler_is_active,
+    .get_max_output_size = dsp_resampler_get_max_output_size,
     .initialize = dsp_resampler_init,
     .process = dsp_resampler_process,
     .reset = dsp_resampler_reset_api,
