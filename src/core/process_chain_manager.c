@@ -117,8 +117,6 @@ static bool calculate_and_validate_resample_ratio(AppConfig *config,
     r = 1.0f; // Snap to exact 1.0
   } else {
     app->dsp.bypass_resampler = false;
-    log_info("Resampling enabled: %.15g Hz -> %.15g Hz (Ratio: %.15g)",
-             input_rate_d, app->dsp.process_chain_sample_rate_hz, r);
   }
 
   // --- Step 4: Validate Ratio ---
@@ -158,14 +156,16 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app,
 
   // 2. Adjust target for FFT requirements if necessary by querying DSP modules
   size_t req_block_size = 0;
-  for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
-    const struct DspModuleInterface *mod = get_dsp_module(
-        DEFAULT_PROCESS_CHAIN[i].module_name, &app->process_chain.setup_arena);
-    if (mod && mod->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag) &&
-        mod->get_required_chunk_size) {
-      size_t mod_req_size = mod->get_required_chunk_size(config);
-      if (mod_req_size > req_block_size) {
-        req_block_size = mod_req_size;
+  if (!config->dsp.raw_passthrough) {
+    for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
+      const struct DspModuleInterface *mod = get_dsp_module(
+          DEFAULT_PROCESS_CHAIN[i].module_name, &app->process_chain.setup_arena);
+      if (mod && mod->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag) &&
+          mod->get_required_chunk_size) {
+        size_t mod_req_size = mod->get_required_chunk_size(config);
+        if (mod_req_size > req_block_size) {
+          req_block_size = mod_req_size;
+        }
       }
     }
   }
@@ -527,6 +527,13 @@ static bool _create_dsp_components(AppConfig *config, AppContext *app,
                                    float resample_ratio) {
   (void)resample_ratio; // Handled by resampler module directly now
   ModuleContext mctx = {.config = config, .app = app};
+
+  if (config->dsp.raw_passthrough) {
+    // In raw passthrough, do not initialize any DSP modules
+    app->process_chain.shutdown_event =
+        wait_event_create(&app->process_chain.setup_arena);
+    return app->process_chain.shutdown_event != NULL;
+  }
 
   for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
     app->dsp.states[i] = NULL;

@@ -85,6 +85,7 @@ static void dc_block_destroy(void *state) {
 // === DSP Module Interface Implementation ===
 
 static void *dcblock_initialize(ModuleContext *ctx) {
+  log_info("DC Blocker: Enabled (High-pass 1st order)");
   return dc_block_create((AppConfig *)ctx->config, ctx->app);
 }
 

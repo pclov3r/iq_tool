@@ -677,6 +677,7 @@ static void estimate_imbalance(IqState *st, const complex float *restrict iq,
 // === DSP Module Interface Implementation ===
 
 static void *dsp_iq_correct_init(ModuleContext *ctx) {
+  log_info("I/Q Optimizer: Enabled (Automatic Image Rejection)");
   return iq_correction_init((AppConfig *)ctx->config, ctx->app,
                             &ctx->app->process_chain.setup_arena);
 }
