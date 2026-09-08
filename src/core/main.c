@@ -202,7 +202,7 @@ int main(int argc, char *argv[]) {
   if (!process_chain_setup_buffers(&process_chain_context)) {
     goto cleanup;
   }
-  
+
   if (!process_chain_init_dsp_modules(&process_chain_context)) {
     goto cleanup;
   }

@@ -61,9 +61,8 @@ static void _destroy_queues_and_buffers(AppContext *app);
  * @return true if the process_chain ran and shut down cleanly, false if there
  * was a setup or execution error.
  */
-static bool resolve_process_chain_config(AppConfig *config,
-                                                  AppContext *app,
-                                                  float *out_ratio) {
+static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
+                                         float *out_ratio) {
   if (!config || !app || !out_ratio)
     return false;
 
@@ -155,8 +154,9 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app,
   size_t req_block_size = 0;
   if (!config->dsp.raw_passthrough) {
     for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
-      const struct DspModuleInterface *mod = get_dsp_module(
-          DEFAULT_PROCESS_CHAIN[i].module_name, &app->process_chain.setup_arena);
+      const struct DspModuleInterface *mod =
+          get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name,
+                         &app->process_chain.setup_arena);
       if (mod && mod->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag) &&
           mod->get_required_chunk_size) {
         size_t mod_req_size = mod->get_required_chunk_size(config);
@@ -375,8 +375,7 @@ bool process_chain_setup_buffers(ProcessChainContext *context) {
   AppContext *app = context->app;
 
   // --- Step 0: Calculate Ratios & Allocate Memory Pools ---
-  if (!resolve_process_chain_config(config, app,
-                                             &app->dsp.resample_ratio))
+  if (!resolve_process_chain_config(config, app, &app->dsp.resample_ratio))
     return false;
   if (!allocate_processing_buffers(config, app, app->dsp.resample_ratio))
     return false;
@@ -551,7 +550,8 @@ bool process_chain_init_dsp_modules(ProcessChainContext *context) {
 
 void process_chain_close_dsp_modules(ProcessChainContext *context) {
   AppContext *app = context->app;
-  if (!app) return;
+  if (!app)
+    return;
   for (int i = DEFAULT_PROCESS_CHAIN_LENGTH - 1; i >= 0; i--) {
     const struct DspModuleInterface *mod = get_dsp_module(
         DEFAULT_PROCESS_CHAIN[i].module_name, &app->process_chain.setup_arena);
