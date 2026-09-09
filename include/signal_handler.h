@@ -64,6 +64,14 @@ void reset_shutdown_flag(void);
 void request_shutdown(void);
 
 /**
+ * @brief Clears the AppContext pointer held by the signal handler.
+ *
+ * Must be called before the AppContext is freed/goes out of scope to prevent
+ * the signal handler thread from dereferencing a dangling pointer.
+ */
+void signal_handler_clear_context(void);
+
+/**
  * @brief Handles a fatal error that occurs within any processing thread.
  *
  * This is the central, thread-safe function for reporting a fatal error.

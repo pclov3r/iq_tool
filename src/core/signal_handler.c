@@ -125,6 +125,10 @@ void reset_shutdown_flag(void) {
   atomic_store_explicit(&g_shutdown_flag, false, memory_order_relaxed);
 }
 
+void signal_handler_clear_context(void) {
+  g_resources_for_signal_handler = NULL;
+}
+
 void request_shutdown(void) {
   bool expected = false;
   if (!atomic_compare_exchange_strong(&g_shutdown_flag, &expected, true)) {

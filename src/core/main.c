@@ -267,6 +267,7 @@ cleanup:
   pthread_mutex_unlock(&g_console_mutex);
 
   if (arena_initialized) {
+    signal_handler_clear_context();
     mem_arena_destroy(&app.process_chain.setup_arena);
   }
 
