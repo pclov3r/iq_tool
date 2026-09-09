@@ -126,7 +126,6 @@ bool thread_manager_start_chain(ThreadManager *tm, const char *name,
                                 const struct DspModuleInterface *module,
                                 void *state, struct Queue *in_q,
                                 struct Queue *out_q) {
-  (void)name;
   if (!tm || !module || !in_q || !out_q)
     return false;
 
@@ -135,6 +134,10 @@ bool thread_manager_start_chain(ThreadManager *tm, const char *name,
   }
 
   ChainThreadContext *ctx = malloc(sizeof(ChainThreadContext));
+  if (!ctx) {
+    log_fatal("Failed to allocate context for DSP chain thread '%s'.", name);
+    return false;
+  }
   ctx->module = module;
   ctx->state = state;
   ctx->in_q = in_q;
