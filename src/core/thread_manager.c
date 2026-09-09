@@ -89,9 +89,8 @@ void thread_manager_join_all(ThreadManager *manager) {
 #include <stdlib.h>
 
 typedef struct {
-  const struct DspModuleInterface **chain;
-  void **states;
-  int num_modules;
+  const struct DspModuleInterface *module;
+  void *state;
   struct Queue *in_q;
   struct Queue *out_q;
   void *thread_context;
@@ -105,9 +104,7 @@ static void *dsp_chain_thread_func(void *arg) {
     if (!chunk)
       break;
 
-    for (int i = 0; i < ctx->num_modules; ++i) {
-      chunk = ctx->chain[i]->process(ctx->states[i], chunk);
-    }
+    chunk = ctx->module->process(ctx->state, chunk);
 
     if (!queue_enqueue(ctx->out_q, chunk)) {
       if (chunk->is_last_chunk)
@@ -118,18 +115,16 @@ static void *dsp_chain_thread_func(void *arg) {
       break;
   }
 
-  free(ctx->states);
-  free(ctx->chain);
   free(ctx);
   return NULL;
 }
 
 bool thread_manager_start_chain(ThreadManager *tm, const char *name,
-                                const struct DspModuleInterface **chain,
-                                void **states, int num_modules,
+                                const struct DspModuleInterface *module,
+                                void *state,
                                 struct Queue *in_q, struct Queue *out_q) {
   (void)name;
-  if (!tm || !chain || !states || !in_q || !out_q)
+  if (!tm || !module || !in_q || !out_q)
     return false;
 
   if (tm->num_threads_started >= MAX_MANAGED_THREADS) {
@@ -137,13 +132,8 @@ bool thread_manager_start_chain(ThreadManager *tm, const char *name,
   }
 
   ChainThreadContext *ctx = malloc(sizeof(ChainThreadContext));
-  ctx->chain = malloc(num_modules * sizeof(struct DspModuleInterface *));
-  ctx->states = malloc(num_modules * sizeof(void *));
-  for (int i = 0; i < num_modules; i++) {
-    ctx->chain[i] = chain[i];
-    ctx->states[i] = states[i];
-  }
-  ctx->num_modules = num_modules;
+  ctx->module = module;
+  ctx->state = state;
   ctx->in_q = in_q;
   ctx->out_q = out_q;
   ctx->thread_context = tm->thread_context;
@@ -151,7 +141,6 @@ bool thread_manager_start_chain(ThreadManager *tm, const char *name,
   int return_code = pthread_create(&tm->thread_handles[tm->num_threads_started],
                                    NULL, dsp_chain_thread_func, ctx);
   if (return_code != 0) {
-    free(ctx->chain);
     free(ctx);
     return false;
   }

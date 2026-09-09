@@ -456,10 +456,8 @@ bool process_chain_execute(ProcessChainContext *context) {
     }
 
     for (int i = 0; i < num_dsp_modules; i++) {
-      const struct DspModuleInterface *single_chain[1] = {dsp_modules[i]};
-      void *single_state[1] = {dsp_states[i]};
       if (!thread_manager_start_chain(
-              &manager, dsp_modules[i]->name, single_chain, single_state, 1,
+              &manager, dsp_modules[i]->name, dsp_modules[i], dsp_states[i],
               app->process_chain.active_queues[i],
               app->process_chain.active_queues[i + 1])) {
         threads_ok = false;
