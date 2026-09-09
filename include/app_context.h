@@ -196,8 +196,6 @@ typedef struct ProcessChainInfrastructure {
   Queue **active_queues;
   int num_active_queues;
   Queue *writer_input_queue;
-  Queue *iq_estimation_data_queue;
-  Queue *iq_estimation_free_queue;
 
   struct RingBuffer *source_input_buffer;
 

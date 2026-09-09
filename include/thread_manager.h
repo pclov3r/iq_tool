@@ -24,7 +24,7 @@
  * @struct ThreadManager
  * @brief The manager struct that holds thread handles and state.
  */
-typedef struct {
+typedef struct ThreadManager {
   pthread_t thread_handles[MAX_MANAGED_THREADS];
   int num_threads_started;
   void *thread_context; // A generic context pointer to pass to all threads.

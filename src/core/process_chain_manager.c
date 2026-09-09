@@ -447,6 +447,15 @@ bool process_chain_execute(ProcessChainContext *context) {
     }
 
     for (int i = 0; i < num_dsp_modules; i++) {
+      if (dsp_modules[i]->start_background_threads) {
+        if (!dsp_modules[i]->start_background_threads(dsp_states[i], &manager)) {
+          threads_ok = false;
+          break;
+        }
+      }
+    }
+
+    for (int i = 0; i < num_dsp_modules; i++) {
       const struct DspModuleInterface *single_chain[1] = {dsp_modules[i]};
       void *single_state[1] = {dsp_states[i]};
       if (!thread_manager_start_chain(
@@ -462,11 +471,6 @@ bool process_chain_execute(ProcessChainContext *context) {
   if (threads_ok && !thread_manager_spawn_thread(&manager, "Writer",
                                                  process_chain_thread_writer))
     threads_ok = false;
-  if (threads_ok && config->dsp.iq_correction.enable) {
-    if (!thread_manager_spawn_thread(&manager, "I/Q Optimizer",
-                                     process_chain_thread_iq_estimator))
-      threads_ok = false;
-  }
   if (threads_ok && module_is_live_source(config->input.type_name,
                                           &app->process_chain.setup_arena)) {
     if (!thread_manager_spawn_thread(&manager, "Source Watchdog",
@@ -634,25 +638,6 @@ static bool _init_queues_and_buffers(AppConfig *config, AppContext *app) {
                   arena))
     return false;
 
-  if (config->dsp.iq_correction.enable) {
-    app->process_chain.iq_estimation_data_queue =
-        (Queue *)mem_arena_alloc(arena, sizeof(Queue), true);
-    if (!queue_init(app->process_chain.iq_estimation_data_queue, queue_capacity,
-                    arena))
-      return false;
-
-    app->process_chain.iq_estimation_free_queue =
-        (Queue *)mem_arena_alloc(arena, sizeof(Queue), true);
-    if (!queue_init(app->process_chain.iq_estimation_free_queue, queue_capacity,
-                    arena))
-      return false;
-
-    for (int i = 0; i < 16; i++) {
-      void *buffer = mem_arena_alloc(arena, 4096 * sizeof(ComplexFloat), false);
-      queue_enqueue(app->process_chain.iq_estimation_free_queue, buffer);
-    }
-  }
-
   for (size_t i = 0; i < app->process_chain.num_chunks; ++i) {
     if (!queue_enqueue(app->process_chain.free_sample_chunk_queue,
                        app->process_chain.sample_chunk_pool[i])) {
@@ -697,11 +682,6 @@ static void _destroy_queues_and_buffers(AppContext *app) {
       }
     }
   }
-
-  if (app->process_chain.iq_estimation_data_queue)
-    queue_destroy(app->process_chain.iq_estimation_data_queue);
-  if (app->process_chain.iq_estimation_free_queue)
-    queue_destroy(app->process_chain.iq_estimation_free_queue);
 
   if (app->process_chain.chunk_data_pool) {
     aligned_free(app->process_chain.chunk_data_pool);

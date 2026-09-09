@@ -11,13 +11,6 @@
 #define UTILITY_THREADS_H_
 
 /**
- * @brief The main function for the I/Q Optimization utility thread.
- * @param arg A void pointer to the ProcessChainContext struct.
- * @return NULL.
- */
-void *process_chain_thread_iq_estimator(void *arg);
-
-/**
  * @brief The main function for the Source Watchdog utility thread.
  * @param arg A void pointer to the ProcessChainContext struct.
  * @return NULL.

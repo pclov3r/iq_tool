@@ -158,8 +158,6 @@ void request_shutdown(void) {
         }
       }
     }
-    if (r->process_chain.iq_estimation_data_queue)
-      queue_signal_shutdown(r->process_chain.iq_estimation_data_queue);
 
     // Signal all ring buffers to wake up any waiting threads
     if (r->process_chain.source_input_buffer)

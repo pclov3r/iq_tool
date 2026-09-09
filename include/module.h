@@ -38,6 +38,8 @@ typedef struct InputSummaryInfo OutputSummaryInfo;
 struct ModuleContext;
 struct SampleChunk;
 struct OutputAgcConfig;
+struct ThreadManager;
+
 
 // --- Data Structures ---
 
@@ -199,6 +201,8 @@ typedef struct DspModuleInterface {
 
   // Determines if this module should be active in the current flowgraph stage
   bool (*is_active)(struct AppContext *app, const char *stage_tag);
+
+  bool (*start_background_threads)(void *state, struct ThreadManager *tm);
 
   size_t (*get_required_chunk_size)(struct AppConfig *config);
 

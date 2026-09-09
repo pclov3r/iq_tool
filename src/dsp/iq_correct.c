@@ -63,6 +63,9 @@
 #include "queue.h"
 #include "sample_conversion_functions.h"
 #include "utilities.h"
+#include "process_chain_context.h"
+#include "process_chain_manager.h"
+#include "thread_manager.h"
 #include <complex.h>
 #include <liquid.h>
 #include <math.h>
@@ -144,6 +147,9 @@ typedef struct iq_state_s {
   int optimal_bin;
   int reset_flag;
   int *power_flag;
+
+  Queue data_queue;
+  Queue free_queue;
 
   // Buffers (Optimizer Only)
   complex float *corr;
@@ -263,6 +269,18 @@ static void *iq_correction_init(AppConfig *config, AppContext *app,
   atomic_store_explicit(&st->packed_state, initial_packed,
                         memory_order_relaxed);
 
+  if (!queue_init(&st->data_queue, 32, arena) ||
+      !queue_init(&st->free_queue, 32, arena)) {
+    log_fatal("Failed to initialize queues for I/Q Correction.");
+    return NULL;
+  }
+  for (int i = 0; i < 16; i++) {
+    void *buffer = malloc(4096 * sizeof(ComplexFloat));
+    if (buffer) {
+      queue_enqueue(&st->free_queue, buffer);
+    }
+  }
+
   log_info("I/Q Correction Enabled");
   return st;
 }
@@ -355,6 +373,16 @@ void iq_correction_run_estimation(void *state,
 
 static void iq_correction_destroy(IqState *st) {
   if (st) {
+    void *buffer;
+    while ((buffer = queue_try_dequeue(&st->free_queue)) != NULL) {
+      free(buffer);
+    }
+    while ((buffer = queue_try_dequeue(&st->data_queue)) != NULL) {
+      free(buffer);
+    }
+    queue_destroy(&st->free_queue);
+    queue_destroy(&st->data_queue);
+
     if (st->fft_plan)
       fft_destroy_plan(st->fft_plan);
     // Arena handles memory free
@@ -676,6 +704,25 @@ static void estimate_imbalance(IqState *st, const complex float *restrict iq,
 
 // === DSP Module Interface Implementation ===
 
+static void *iq_estimation_thread(void *arg) {
+  ProcessChainContext *ctx = (ProcessChainContext *)arg;
+  IqState *st = process_chain_get_module_state(ctx->app, "iq_correct");
+  if (!st) return NULL;
+
+  void *buffer;
+  while ((buffer = queue_dequeue(&st->data_queue)) != NULL) {
+    iq_correction_run_estimation(st, (ComplexFloat *)buffer);
+    queue_enqueue(&st->free_queue, buffer);
+  }
+  log_debug("I/Q optimization thread is exiting.");
+  return NULL;
+}
+
+static bool dsp_iq_correct_start_background_threads(void *state, struct ThreadManager *tm) {
+  (void)state;
+  return thread_manager_spawn_thread(tm, "I/Q Optimizer", iq_estimation_thread);
+}
+
 static void *dsp_iq_correct_init(ModuleContext *ctx) {
   log_info("I/Q Optimizer: Enabled (Automatic Image Rejection)");
   return iq_correction_init((AppConfig *)ctx->config, ctx->app,
@@ -690,15 +737,14 @@ static SampleChunk *dsp_iq_correct_process(void *state, SampleChunk *chunk) {
   iq_correction_apply(st, chunk->current_buffer, chunk->frames_read);
 
   // Asynchronous estimation logic
-  if (st && st->app && st->app->process_chain.iq_estimation_free_queue &&
-      st->app->process_chain.iq_estimation_data_queue) {
+  if (st) {
     unsigned int frames_remaining = chunk->frames_read;
     unsigned int read_ptr = 0;
 
     while (frames_remaining > 0) {
       if (!st->current_estimation_buffer) {
         st->current_estimation_buffer = (ComplexFloat *)queue_try_dequeue(
-            st->app->process_chain.iq_estimation_free_queue);
+            &st->free_queue);
         if (!st->current_estimation_buffer)
           break; // If no free buffers, skip estimation (drops frames)
         st->current_estimation_collected = 0;
@@ -716,9 +762,9 @@ static SampleChunk *dsp_iq_correct_process(void *state, SampleChunk *chunk) {
       frames_remaining -= to_copy;
 
       if (st->current_estimation_collected == FFTBins) {
-        if (!queue_enqueue(st->app->process_chain.iq_estimation_data_queue,
+        if (!queue_enqueue(&st->data_queue,
                            st->current_estimation_buffer)) {
-          queue_enqueue_forced(st->app->process_chain.iq_estimation_free_queue,
+          queue_enqueue_forced(&st->free_queue,
                                st->current_estimation_buffer);
         }
         st->current_estimation_buffer = NULL;
@@ -771,6 +817,7 @@ static bool dsp_iq_correct_is_active(AppContext *app, const char *stage_tag) {
 static const DspModuleInterface dsp_iq_correct_api = {
     .name = "iq_correct",
     .is_active = dsp_iq_correct_is_active,
+    .start_background_threads = dsp_iq_correct_start_background_threads,
     .initialize = dsp_iq_correct_init,
     .process = dsp_iq_correct_process,
     .reset = NULL,

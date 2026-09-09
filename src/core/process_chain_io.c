@@ -319,10 +319,6 @@ void *process_chain_thread_writer(void *arg) {
   }
 
   // 5. Signal auxiliary threads to shutdown on normal exit
-  if (app->process_chain.iq_estimation_data_queue) {
-    queue_signal_shutdown(app->process_chain.iq_estimation_data_queue);
-  }
-
   log_debug("Generic Writer thread is exiting.");
   return NULL;
 }

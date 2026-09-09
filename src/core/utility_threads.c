@@ -21,36 +21,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-/**
- * @brief The I/Q optimization thread's main function.
- *
- * This optional, lower-priority thread periodically runs the I/Q imbalance
- * correction algorithm to refine the correction factors.
- *
- * @param arg A void pointer to the ProcessChainContext struct.
- * @return NULL.
- */
-#include "dsp/iq_correction.h"
-#include "process_chain_manager.h" // For process_chain_get_module_state
-
-void *process_chain_thread_iq_estimator(void *arg) {
-  ProcessChainContext *args = (ProcessChainContext *)arg;
-  AppContext *app = args->app;
-
-  void *iq_state = process_chain_get_module_state(app, "iq_correct");
-
-  void *buffer;
-  while ((buffer = queue_dequeue(
-              app->process_chain.iq_estimation_data_queue)) != NULL) {
-    if (iq_state) {
-      iq_correction_run_estimation(iq_state, (ComplexFloat *)buffer);
-    }
-    // Return the chunk to the free pool for reuse
-    queue_enqueue(app->process_chain.iq_estimation_free_queue, buffer);
-  }
-  log_debug("I/Q optimization thread is exiting.");
-  return NULL;
-}
 
 /**
  * @brief The Source watchdog thread's main function.
