@@ -265,13 +265,6 @@ typedef struct AppContext {
   RuntimeState stats;
 
   ProcessChainMode process_chain_mode;
-  struct {
-    bool reader;
-    bool writer;
-    bool iq_optimizer;
-    bool source;
-    bool source_watchdog;
-  } threads_to_create;
 } AppContext;
 
 #endif // APP_CONTEXT_H_
