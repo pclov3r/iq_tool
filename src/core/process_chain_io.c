@@ -127,7 +127,7 @@ void *process_chain_thread_reader(void *arg) {
       item->stream_discontinuity_event = is_reset;
       item->is_last_chunk = false;
 
-      item->current_buffer = item->buffer_a;
+      item->current_buffer = item->ping_buffer;
 
       if (config->dsp.raw_passthrough && item->frames_read > 0) {
         size_t bytes = item->frames_read * item->input_bytes_per_iq_sample;
@@ -189,7 +189,7 @@ void *process_chain_thread_reader(void *arg) {
         item->stream_discontinuity_event = false;
         item->is_last_chunk = (bytes_read == 0); // EOF reached
 
-        item->current_buffer = item->buffer_a;
+        item->current_buffer = item->ping_buffer;
 
         if (!config->dsp.raw_passthrough && item->frames_read > 0) {
           sample_convert_block_to_cf32(

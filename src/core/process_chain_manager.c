@@ -340,9 +340,9 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app,
 
     item->raw_input_data = data_ptr;
     data_ptr += raw_stride;
-    item->buffer_a = (ComplexFloat *)data_ptr;
+    item->ping_buffer = (ComplexFloat *)data_ptr;
     data_ptr += complex_stride;
-    item->buffer_b = (ComplexFloat *)data_ptr;
+    item->pong_buffer = (ComplexFloat *)data_ptr;
     data_ptr += complex_stride;
     item->final_output_data = (unsigned char *)data_ptr;
 

@@ -36,8 +36,8 @@
 typedef struct SampleChunk {
   // --- Data Buffers ---
   void *raw_input_data; ///< Buffer for raw data from the source.
-  ComplexFloat *buffer_a;
-  ComplexFloat *buffer_b;
+  ComplexFloat *ping_buffer;
+  ComplexFloat *pong_buffer;
   ComplexFloat *current_buffer;
   unsigned char
       *final_output_data; ///< Buffer for the final, converted output data.
