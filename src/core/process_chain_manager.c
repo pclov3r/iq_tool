@@ -568,13 +568,15 @@ void process_chain_close_dsp_modules(ProcessChainContext *context) {
   if (!app)
     return;
   for (int i = DEFAULT_PROCESS_CHAIN_LENGTH - 1; i >= 0; i--) {
+    // Use states[i] != NULL as the canonical check — not is_active(), which
+    // may return false after shutdown even if the module was initialized.
+    if (!app->dsp.states[i])
+      continue;
     const struct DspModuleInterface *module = get_dsp_module(
         DEFAULT_PROCESS_CHAIN[i].module_name, &app->process_chain.setup_arena);
-    if (module && module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
-      if (module->cleanup && app->dsp.states[i]) {
-        module->cleanup(app->dsp.states[i]);
-        app->dsp.states[i] = NULL;
-      }
+    if (module && module->cleanup) {
+      module->cleanup(app->dsp.states[i]);
+      app->dsp.states[i] = NULL;
     }
   }
 }
