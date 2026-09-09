@@ -113,7 +113,18 @@ static size_t dsp_resampler_get_max_output_size(struct AppContext *app,
   return (size_t)ceil((double)(input_size + 32) * r) + 64;
 }
 
+static size_t dsp_resampler_get_ideal_input_size(struct AppContext *app,
+                                                 size_t target_output_size) {
+  float r = (float)(app->dsp.process_chain_sample_rate_hz /
+                    (double)app->module.source_info.sample_rate);
+  if (r > 1.0f) {
+    return (size_t)(target_output_size / r);
+  }
+  return target_output_size;
+}
+
 static const DspModuleInterface dsp_resampler_api = {
+    .get_ideal_input_size = dsp_resampler_get_ideal_input_size,
     .name = "resampler",
     .is_active = dsp_resampler_is_active,
     .get_max_output_size = dsp_resampler_get_max_output_size,

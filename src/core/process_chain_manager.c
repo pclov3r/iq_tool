@@ -152,16 +152,11 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
   return true;
 }
 
-static bool allocate_processing_buffers(AppConfig *config, AppContext *app,
-                                        float resample_ratio) {
+static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
   if (!config || !app)
     return false;
 
-  // 1. Determine the "Fat Pipe" (highest data rate side)
-  //    Upsampling (Ratio > 1.0): Output is the Fat Pipe.
-  //    Downsampling (Ratio <= 1.0): Input is the Fat Pipe.
-  bool upsampling = (resample_ratio > 1.0f);
-
+  // 1. Target block size based on optimal cache size
   size_t target_block_samples =
       PROCESS_CHAIN_TARGET_BLOCK_SAMPLES; // 12,288 samples (~192KB)
 
@@ -169,49 +164,52 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app,
   size_t req_block_size = 0;
   if (!config->dsp.raw_passthrough) {
     for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
-      const struct DspModuleInterface *mod =
+      const struct DspModuleInterface *module =
           get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name,
                          &app->process_chain.setup_arena);
-      if (mod && mod->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag) &&
-          mod->get_required_chunk_size) {
-        size_t mod_req_size = mod->get_required_chunk_size(config);
-        if (mod_req_size > req_block_size) {
-          req_block_size = mod_req_size;
+      if (module &&
+          module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag) &&
+          module->get_required_chunk_size) {
+        size_t module_req_size = module->get_required_chunk_size(config);
+        if (module_req_size > req_block_size) {
+          req_block_size = module_req_size;
         }
       }
     }
   }
 
   if (req_block_size > target_block_samples) {
-    log_info(
-        "DSP module required block size (%zu) exceeds optimal process_chain "
-        "target (%zu).",
-        req_block_size, target_block_samples);
-    log_info(
-        "Expanding internal chunk size to accommodate DSP requirements (may "
-        "reduce CPU cache efficiency).");
+    log_info("DSP module required block size (%zu) exceeds optimal "
+             "process_chain target (%zu).",
+             req_block_size, target_block_samples);
+    log_info("Expanding internal chunk size to accommodate DSP requirements "
+             "(may reduce CPU cache efficiency).");
     target_block_samples = req_block_size;
   }
 
-  size_t calculated_input_samples = 0;
+  // 3. Ask modules backwards what input size they need to produce the target
+  // output size
+  size_t calculated_input_samples = target_block_samples;
 
-  if (upsampling) {
-    // --- CASE A: UPSAMPLING ---
-    // The Output is pinned to the Target.
-    // Calculate Input required: Input = Target / Ratio.
-    size_t raw_input_calc = (size_t)(target_block_samples / resample_ratio);
-
-    // Sanity Floor: Prevent tiny read requests that cause excessive locking
-    // overhead.
-    if (raw_input_calc < PROCESS_CHAIN_MIN_READ_SAMPLES) {
-      calculated_input_samples = PROCESS_CHAIN_MIN_READ_SAMPLES;
-    } else {
-      calculated_input_samples = raw_input_calc;
+  if (!config->dsp.raw_passthrough) {
+    for (int i = DEFAULT_PROCESS_CHAIN_LENGTH - 1; i >= 0; i--) {
+      const struct DspModuleInterface *module =
+          get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name,
+                         &app->process_chain.setup_arena);
+      if (module &&
+          module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
+        if (module->get_ideal_input_size) {
+          calculated_input_samples =
+              module->get_ideal_input_size(app, calculated_input_samples);
+        }
+      }
     }
-  } else {
-    // --- CASE B: DOWNSAMPLING / PASSTHROUGH ---
-    // The Input is pinned to the Target.
-    calculated_input_samples = target_block_samples;
+  }
+
+  // Sanity Floor: Prevent tiny read requests that cause excessive locking
+  // overhead.
+  if (calculated_input_samples < PROCESS_CHAIN_MIN_READ_SAMPLES) {
+    calculated_input_samples = PROCESS_CHAIN_MIN_READ_SAMPLES;
   }
 
   // --- Calculate Elastic Maximum Buffer Size ---
@@ -222,12 +220,13 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app,
 
   if (!config->dsp.raw_passthrough) {
     for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
-      const struct DspModuleInterface *mod =
+      const struct DspModuleInterface *module =
           get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name,
                          &app->process_chain.setup_arena);
-      if (mod && mod->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
-        if (mod->get_max_output_size) {
-          current_max_size = mod->get_max_output_size(app, current_max_size);
+      if (module &&
+          module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
+        if (module->get_max_output_size) {
+          current_max_size = module->get_max_output_size(app, current_max_size);
         }
         if (current_max_size > absolute_max_size) {
           absolute_max_size = current_max_size;
@@ -387,7 +386,7 @@ bool process_chain_setup_buffers(ProcessChainContext *context) {
   float resample_ratio;
   if (!resolve_process_chain_config(config, app, &resample_ratio))
     return false;
-  if (!allocate_processing_buffers(config, app, resample_ratio))
+  if (!allocate_processing_buffers(config, app))
     return false;
 
   return true;
@@ -437,10 +436,11 @@ bool process_chain_execute(ProcessChainContext *context) {
     void *dsp_states[16];
     int num_dsp_modules = 0;
     for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
-      const struct DspModuleInterface *mod =
+      const struct DspModuleInterface *module =
           get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name, arena);
-      if (mod && mod->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
-        dsp_modules[num_dsp_modules] = mod;
+      if (module &&
+          module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
+        dsp_modules[num_dsp_modules] = module;
         dsp_states[num_dsp_modules] = app->dsp.states[i];
         num_dsp_modules++;
       }
@@ -502,12 +502,13 @@ void process_chain_teardown_buffers(ProcessChainContext *context) {
 void process_chain_get_summary_info(const AppContext *app,
                                     OutputSummaryInfo *info) {
   for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
-    const struct DspModuleInterface *mod =
+    const struct DspModuleInterface *module =
         get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name, NULL);
-    if (mod &&
-        mod->is_active((AppContext *)app, DEFAULT_PROCESS_CHAIN[i].stage_tag) &&
-        mod->get_summary_info) {
-      mod->get_summary_info(app->dsp.states[i], info);
+    if (module &&
+        module->is_active((AppContext *)app,
+                          DEFAULT_PROCESS_CHAIN[i].stage_tag) &&
+        module->get_summary_info) {
+      module->get_summary_info(app->dsp.states[i], info);
     }
   }
 }
@@ -538,11 +539,11 @@ bool process_chain_init_dsp_modules(ProcessChainContext *context) {
 
   for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
     app->dsp.states[i] = NULL;
-    const struct DspModuleInterface *mod = get_dsp_module(
+    const struct DspModuleInterface *module = get_dsp_module(
         DEFAULT_PROCESS_CHAIN[i].module_name, &app->process_chain.setup_arena);
-    if (mod && mod->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
-      if (mod->initialize) {
-        app->dsp.states[i] = mod->initialize(&mctx);
+    if (module && module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
+      if (module->initialize) {
+        app->dsp.states[i] = module->initialize(&mctx);
         if (!app->dsp.states[i])
           return false;
       }
@@ -564,11 +565,11 @@ void process_chain_close_dsp_modules(ProcessChainContext *context) {
   if (!app)
     return;
   for (int i = DEFAULT_PROCESS_CHAIN_LENGTH - 1; i >= 0; i--) {
-    const struct DspModuleInterface *mod = get_dsp_module(
+    const struct DspModuleInterface *module = get_dsp_module(
         DEFAULT_PROCESS_CHAIN[i].module_name, &app->process_chain.setup_arena);
-    if (mod && mod->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
-      if (mod->cleanup && app->dsp.states[i]) {
-        mod->cleanup(app->dsp.states[i]);
+    if (module && module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
+      if (module->cleanup && app->dsp.states[i]) {
+        module->cleanup(app->dsp.states[i]);
         app->dsp.states[i] = NULL;
       }
     }
@@ -584,10 +585,11 @@ static bool _init_queues_and_buffers(AppConfig *config, AppContext *app) {
 
   if (!config->dsp.raw_passthrough) {
     for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
-      const struct DspModuleInterface *mod =
+      const struct DspModuleInterface *module =
           get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name,
                          &app->process_chain.setup_arena);
-      if (mod && mod->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
+      if (module &&
+          module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
         num_dsp_modules++;
       }
     }

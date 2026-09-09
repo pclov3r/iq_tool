@@ -231,19 +231,19 @@ bool cli_parse(int argc, char *argv[], AppContext *app) {
       pre_output = argv[i + 1];
   }
   if (pre_input) {
-    const Module *mod = module_get(pre_input, MODULE_TYPE_INPUT, arena);
-    if (mod) {
-      if (mod->set_default_config)
-        mod->set_default_config(config);
+    const Module *module = module_get(pre_input, MODULE_TYPE_INPUT, arena);
+    if (module) {
+      if (module->set_default_config)
+        module->set_default_config(config);
     } else {
       pre_input = NULL; // Prevent spurious warnings if module doesn't exist
     }
   }
   if (pre_output) {
-    const Module *mod = module_get(pre_output, MODULE_TYPE_OUTPUT, arena);
-    if (mod) {
-      if (mod->set_default_config)
-        mod->set_default_config(config);
+    const Module *module = module_get(pre_output, MODULE_TYPE_OUTPUT, arena);
+    if (module) {
+      if (module->set_default_config)
+        module->set_default_config(config);
     } else {
       pre_output = NULL; // Prevent spurious warnings if module doesn't exist
     }

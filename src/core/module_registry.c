@@ -83,10 +83,10 @@ const Module *module_get_all(int *count, MemoryArena *arena) {
 }
 
 bool module_is_live_source(const char *name, MemoryArena *arena) {
-  const Module *mod =
+  const Module *module =
       _find_module_by_name_and_type(name, MODULE_TYPE_INPUT, arena);
-  return (mod != NULL &&
-          mod->process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH);
+  return (module != NULL &&
+          module->process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH);
 }
 
 void module_populate_cli_options(struct argparse_option *dest_buffer,
@@ -158,9 +158,9 @@ const Module *module_get(const char *name, ModuleType type,
 
 const struct DspModuleInterface *get_dsp_module(const char *name,
                                                 struct MemoryArena *arena) {
-  const Module *mod = module_get(name, MODULE_TYPE_DSP, arena);
-  if (mod)
-    return (const struct DspModuleInterface *)mod->api;
+  const Module *module = module_get(name, MODULE_TYPE_DSP, arena);
+  if (module)
+    return (const struct DspModuleInterface *)module->api;
   return NULL;
 }
 

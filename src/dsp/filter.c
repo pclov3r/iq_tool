@@ -277,7 +277,8 @@ _compound_filter_stages(AppConfig *config, double sample_rate,
       *out_is_complex = true;
 
     float bw_norm = 0.0f;
-    if (request->type == FILTER_TYPE_LOWPASS || request->type == FILTER_TYPE_HIGHPASS) {
+    if (request->type == FILTER_TYPE_LOWPASS ||
+        request->type == FILTER_TYPE_HIGHPASS) {
       bw_norm = request->freq1_hz / (float)sample_rate;
     } else {
       bw_norm = (request->freq2_hz / 2.0f) / (float)sample_rate;
