@@ -64,6 +64,7 @@
 #include "process_chain_manager.h"
 #include "queue.h"
 #include "sample_conversion_functions.h"
+#include "signal_handler.h"
 #include "thread_manager.h"
 #include "utilities.h"
 #include <complex.h>
@@ -72,6 +73,7 @@
 #include <stdatomic.h> // Needed for byte size calculations
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 // --- Default Configuration ---
 #define IQ_CORRECTION_FFT_SIZE 4096
@@ -713,10 +715,14 @@ static void *iq_estimation_thread(void *arg) {
   if (!st)
     return NULL;
 
-  void *buffer;
-  while ((buffer = queue_dequeue(&st->data_queue)) != NULL) {
-    iq_correction_run_estimation(st, (ComplexFloat *)buffer);
-    queue_enqueue(&st->free_queue, buffer);
+  while (!is_shutdown_requested()) {
+    void *buffer = queue_try_dequeue(&st->data_queue);
+    if (buffer) {
+      iq_correction_run_estimation(st, (ComplexFloat *)buffer);
+      queue_enqueue(&st->free_queue, buffer);
+    } else {
+      usleep(1000);
+    }
   }
   log_debug("I/Q optimization thread is exiting.");
   return NULL;
@@ -731,8 +737,13 @@ static bool dsp_iq_correct_start_background_threads(void *state,
 static void *dsp_iq_correct_init(ModuleContext *ctx, double input_rate,
                                  double target_output_rate, double *out_rate) {
   *out_rate = input_rate;
+  AppConfig *config = (AppConfig *)ctx->config;
+  if (!config->dsp.dc_block.enable) {
+    log_error("--iq-correction requires --dc-block to be enabled.");
+    return NULL;
+  }
   log_info("I/Q Optimizer: Enabled (Automatic Image Rejection)");
-  return iq_correction_init((AppConfig *)ctx->config, ctx->app,
+  return iq_correction_init(config, ctx->app,
                             &ctx->app->process_chain.setup_arena);
 }
 
@@ -804,12 +815,6 @@ static bool dsp_iq_correct_validate_options(struct AppContext *app) {
   if (app && app->config) {
     AppConfig *config = (AppConfig *)app->config;
     config->dsp.iq_correction.enable = s_enable_iq_correction;
-
-    if (config->dsp.iq_correction.enable && !config->dsp.dc_block.enable) {
-      log_error("--iq-correction requires --dc-block to be enabled for optimal "
-                "performance.");
-      return false;
-    }
   }
   return true;
 }

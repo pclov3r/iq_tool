@@ -320,6 +320,7 @@ void *process_chain_thread_writer(void *arg) {
   }
 
   // 5. Signal auxiliary threads to shutdown on normal exit
+  request_shutdown();
   log_debug("Generic Writer thread is exiting.");
   return NULL;
 }
