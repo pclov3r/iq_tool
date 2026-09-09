@@ -60,12 +60,12 @@
 #include "mem_arena.h"
 #include "module.h"
 #include "module_registry.h"
-#include "queue.h"
-#include "sample_conversion_functions.h"
-#include "utilities.h"
 #include "process_chain_context.h"
 #include "process_chain_manager.h"
+#include "queue.h"
+#include "sample_conversion_functions.h"
 #include "thread_manager.h"
+#include "utilities.h"
 #include <complex.h>
 #include <liquid.h>
 #include <math.h>
@@ -707,7 +707,8 @@ static void estimate_imbalance(IqState *st, const complex float *restrict iq,
 static void *iq_estimation_thread(void *arg) {
   ProcessChainContext *ctx = (ProcessChainContext *)arg;
   IqState *st = process_chain_get_module_state(ctx->app, "iq_correct");
-  if (!st) return NULL;
+  if (!st)
+    return NULL;
 
   void *buffer;
   while ((buffer = queue_dequeue(&st->data_queue)) != NULL) {
@@ -718,7 +719,8 @@ static void *iq_estimation_thread(void *arg) {
   return NULL;
 }
 
-static bool dsp_iq_correct_start_background_threads(void *state, struct ThreadManager *tm) {
+static bool dsp_iq_correct_start_background_threads(void *state,
+                                                    struct ThreadManager *tm) {
   (void)state;
   return thread_manager_spawn_thread(tm, "I/Q Optimizer", iq_estimation_thread);
 }
@@ -743,8 +745,8 @@ static SampleChunk *dsp_iq_correct_process(void *state, SampleChunk *chunk) {
 
     while (frames_remaining > 0) {
       if (!st->current_estimation_buffer) {
-        st->current_estimation_buffer = (ComplexFloat *)queue_try_dequeue(
-            &st->free_queue);
+        st->current_estimation_buffer =
+            (ComplexFloat *)queue_try_dequeue(&st->free_queue);
         if (!st->current_estimation_buffer)
           break; // If no free buffers, skip estimation (drops frames)
         st->current_estimation_collected = 0;
@@ -762,10 +764,8 @@ static SampleChunk *dsp_iq_correct_process(void *state, SampleChunk *chunk) {
       frames_remaining -= to_copy;
 
       if (st->current_estimation_collected == FFTBins) {
-        if (!queue_enqueue(&st->data_queue,
-                           st->current_estimation_buffer)) {
-          queue_enqueue_forced(&st->free_queue,
-                               st->current_estimation_buffer);
+        if (!queue_enqueue(&st->data_queue, st->current_estimation_buffer)) {
+          queue_enqueue_forced(&st->free_queue, st->current_estimation_buffer);
         }
         st->current_estimation_buffer = NULL;
       }

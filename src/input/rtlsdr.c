@@ -379,10 +379,10 @@ static void *input_rtlsdr_push_samples_to_queue(ModuleContext *context,
                              app, 0, 0);
 
   if (result < 0) {
-    char error_buf[256];
-    snprintf(error_buf, sizeof(error_buf), "rtlsdr_read_async() failed: %s",
-             strerror(-result));
-    request_forceful_shutdown(error_buf, app);
+    char error_buffer[256];
+    snprintf(error_buffer, sizeof(error_buffer),
+             "rtlsdr_read_async() failed: %s", strerror(-result));
+    request_forceful_shutdown(error_buffer, app);
     return NULL;
   }
 
@@ -422,11 +422,11 @@ static void input_rtlsdr_get_summary_info(const ModuleContext *context,
   AppContext *app = context->app;
   RtlSdrContext *private_data = (RtlSdrContext *)app->module.input_private_data;
 
-  char source_name_buf[775];
-  snprintf(source_name_buf, sizeof(source_name_buf), "%s %s (S/N: %s)",
+  char source_name_buffer[775];
+  snprintf(source_name_buffer, sizeof(source_name_buffer), "%s %s (S/N: %s)",
            private_data->manufact, private_data->product, private_data->serial);
 
-  utility_add_summary_item(info, "Input Source", "%s", source_name_buf);
+  utility_add_summary_item(info, "Input Source", "%s", source_name_buffer);
   utility_add_summary_item(info, "Input Format",
                            "8-bit Unsigned Complex (cu8)");
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",

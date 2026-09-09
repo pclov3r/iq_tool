@@ -40,7 +40,6 @@ struct SampleChunk;
 struct OutputAgcConfig;
 struct ThreadManager;
 
-
 // --- Data Structures ---
 
 /**

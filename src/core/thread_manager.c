@@ -124,8 +124,8 @@ static void *dsp_chain_thread_func(void *arg) {
 
 bool thread_manager_start_chain(ThreadManager *tm, const char *name,
                                 const struct DspModuleInterface *module,
-                                void *state,
-                                struct Queue *in_q, struct Queue *out_q) {
+                                void *state, struct Queue *in_q,
+                                struct Queue *out_q) {
   (void)name;
   if (!tm || !module || !in_q || !out_q)
     return false;

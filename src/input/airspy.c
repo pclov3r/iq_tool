@@ -673,10 +673,11 @@ static void *input_airspy_push_samples_to_queue(ModuleContext *context,
 
   result = airspy_start_rx(private_data->dev, callback_fn, app);
   if (result != AIRSPY_SUCCESS) {
-    char error_buf[256];
-    snprintf(error_buf, sizeof(error_buf), "airspy_start_rx() failed: %s (%d)",
-             airspy_error_name(result), result);
-    request_forceful_shutdown(error_buf, app);
+    char error_buffer[256];
+    snprintf(error_buffer, sizeof(error_buffer),
+             "airspy_start_rx() failed: %s (%d)", airspy_error_name(result),
+             result);
+    request_forceful_shutdown(error_buffer, app);
     return NULL;
   }
 

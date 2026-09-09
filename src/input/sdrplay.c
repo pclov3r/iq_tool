@@ -89,15 +89,16 @@ static SdrplayApiFunctionPointers sdrplay_api;
 static wchar_t *get_sdrplay_dll_path(void) {
   HKEY hKey;
   LONG reg_status;
-  wchar_t api_path_buf[APP_MAX_PATH_BUFFER] = {0};
-  DWORD buffer_size = sizeof(api_path_buf);
+  wchar_t api_path_buffer[APP_MAX_PATH_BUFFER] = {0};
+  DWORD buffer_size = sizeof(api_path_buffer);
   bool path_found = false;
 
   reg_status =
       RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\SDRplay\\Service\\API", 0,
                     KEY_READ | KEY_WOW64_64KEY, &hKey);
   if (reg_status == ERROR_SUCCESS) {
-    if (RegQueryValueExW(hKey, L"Install_Dir", NULL, NULL, (LPBYTE)api_path_buf,
+    if (RegQueryValueExW(hKey, L"Install_Dir", NULL, NULL,
+                         (LPBYTE)api_path_buffer,
                          &buffer_size) == ERROR_SUCCESS) {
       path_found = true;
     }
@@ -109,9 +110,9 @@ static wchar_t *get_sdrplay_dll_path(void) {
                                L"SOFTWARE\\WOW6432Node\\SDRplay\\Service\\API",
                                0, KEY_READ, &hKey);
     if (reg_status == ERROR_SUCCESS) {
-      buffer_size = sizeof(api_path_buf);
+      buffer_size = sizeof(api_path_buffer);
       if (RegQueryValueExW(hKey, L"Install_Dir", NULL, NULL,
-                           (LPBYTE)api_path_buf,
+                           (LPBYTE)api_path_buffer,
                            &buffer_size) == ERROR_SUCCESS) {
         path_found = true;
       }
@@ -125,16 +126,16 @@ static wchar_t *get_sdrplay_dll_path(void) {
     return NULL;
   }
 
-  api_path_buf[APP_MAX_PATH_BUFFER - 1] = L'\0';
+  api_path_buffer[APP_MAX_PATH_BUFFER - 1] = L'\0';
 
 #ifdef _WIN64
-  PathAppendW(api_path_buf, L"x64");
+  PathAppendW(api_path_buffer, L"x64");
 #else
-  PathAppendW(api_path_buf, L"x86");
+  PathAppendW(api_path_buffer, L"x86");
 #endif
-  PathAppendW(api_path_buf, L"sdrplay_api.dll");
+  PathAppendW(api_path_buffer, L"sdrplay_api.dll");
 
-  return _wcsdup(api_path_buf);
+  return _wcsdup(api_path_buffer);
 }
 
 // clang-format off
@@ -565,11 +566,11 @@ static void input_sdrplay_get_summary_info(const ModuleContext *context,
   if (!private_data || !private_data->sdr_device)
     return;
 
-  char source_name_buf[128];
-  snprintf(source_name_buf, sizeof(source_name_buf), "%s (S/N: %s)",
+  char source_name_buffer[128];
+  snprintf(source_name_buffer, sizeof(source_name_buffer), "%s (S/N: %s)",
            get_sdrplay_device_name(private_data->sdr_device->hwVer),
            private_data->sdr_device->SerNo);
-  utility_add_summary_item(info, "Input Source", "%s", source_name_buf);
+  utility_add_summary_item(info, "Input Source", "%s", source_name_buffer);
   utility_add_summary_item(info, "Input Format",
                            "16-bit Signed Complex (cs16)");
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
@@ -1045,15 +1046,16 @@ static void *input_sdrplay_push_samples_to_queue(ModuleContext *context,
       api_error != sdrplay_api_StopPending) {
     sdrplay_api_ErrorInfoT *errorInfo =
         sdrplay_api_GetLastError(private_data->sdr_device);
-    char error_buf[1536];
-    snprintf(error_buf, sizeof(error_buf), "sdrplay_api_Init() failed: %s",
+    char error_buffer[1536];
+    snprintf(error_buffer, sizeof(error_buffer),
+             "sdrplay_api_Init() failed: %s",
              sdrplay_api_GetErrorString(api_error));
     if (errorInfo && strlen(errorInfo->message) > 0) {
-      snprintf(error_buf + strlen(error_buf),
-               sizeof(error_buf) - strlen(error_buf), " - API Message: %s",
-               errorInfo->message);
+      snprintf(error_buffer + strlen(error_buffer),
+               sizeof(error_buffer) - strlen(error_buffer),
+               " - API Message: %s", errorInfo->message);
     }
-    request_forceful_shutdown(error_buf, app);
+    request_forceful_shutdown(error_buffer, app);
   } else {
     // Wait for the shutdown signal (Event-driven)
     if (app->process_chain.shutdown_event) {

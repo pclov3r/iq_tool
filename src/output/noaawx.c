@@ -3584,11 +3584,11 @@ static void parse_same_header(const char *header) {
   if (strncmp(header, "ZCZC-", 5) != 0)
     return;
 
-  char buf[256];
-  strncpy(buf, header + 5, sizeof(buf) - 1);
-  buf[255] = '\0';
+  char buffer[256];
+  strncpy(buffer, header + 5, sizeof(buffer) - 1);
+  buffer[255] = '\0';
 
-  char *org = strtok(buf, "-");
+  char *org = strtok(buffer, "-");
   char *event = strtok(NULL, "-");
   if (!org || !event)
     return;

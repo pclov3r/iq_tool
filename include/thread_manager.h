@@ -65,7 +65,7 @@ struct DspModuleInterface;
 
 bool thread_manager_start_chain(ThreadManager *tm, const char *name,
                                 const struct DspModuleInterface *module,
-                                void *state,
-                                struct Queue *in_q, struct Queue *out_q);
+                                void *state, struct Queue *in_q,
+                                struct Queue *out_q);
 
 #endif // THREAD_MANAGER_H_

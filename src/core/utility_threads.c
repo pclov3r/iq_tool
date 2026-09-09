@@ -21,7 +21,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-
 /**
  * @brief The Source watchdog thread's main function.
  *

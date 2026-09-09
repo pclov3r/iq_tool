@@ -252,17 +252,17 @@ bool utility_verify_output_path(const AppConfig *config,
   }
 #else
   (void)config; // Not needed on Linux where we use out_path_utf8
-  struct stat stat_buf;
-  if (lstat(out_path_utf8, &stat_buf) == 0) {
+  struct stat stat_buffer;
+  if (lstat(out_path_utf8, &stat_buffer) == 0) {
     // Explicitly reject directories
-    if (S_ISDIR(stat_buf.st_mode)) {
+    if (S_ISDIR(stat_buffer.st_mode)) {
       log_error("Output path '%s' is a directory. Aborting.", out_path_utf8);
       return false;
     }
 
     // Only trigger the interactive overwrite prompt if it's a regular file.
     // This allows /dev/null (S_ISCHR) and FIFOs (S_ISFIFO) to stream seamlessly
-    if (S_ISREG(stat_buf.st_mode)) {
+    if (S_ISREG(stat_buffer.st_mode)) {
       if (!utility_prompt_for_overwrite(out_path_utf8)) {
         return false;
       }

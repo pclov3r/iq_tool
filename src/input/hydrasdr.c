@@ -520,11 +520,11 @@ static void *input_hydrasdr_push_samples_to_queue(ModuleContext *context,
   hydrasdr_device_info_t info = {0};
   result = hydrasdr_get_device_info(private_data->dev, &info);
   if (result != HYDRASDR_SUCCESS) {
-    char error_buf[256];
-    snprintf(error_buf, sizeof(error_buf),
+    char error_buffer[256];
+    snprintf(error_buffer, sizeof(error_buffer),
              "hydrasdr_get_device_info() failed: %s (%d)",
              hydrasdr_error_name(result), result);
-    request_forceful_shutdown(error_buf, app);
+    request_forceful_shutdown(error_buffer, app);
     return NULL;
   }
 
@@ -539,11 +539,11 @@ static void *input_hydrasdr_push_samples_to_queue(ModuleContext *context,
   result = hydrasdr_set_freq(private_data->dev,
                              (uint64_t)app->config->sdr_general.rf_freq_hz);
   if (result != HYDRASDR_SUCCESS) {
-    char error_buf[256];
-    snprintf(error_buf, sizeof(error_buf),
+    char error_buffer[256];
+    snprintf(error_buffer, sizeof(error_buffer),
              "hydrasdr_set_freq() failed: %s (%d)", hydrasdr_error_name(result),
              result);
-    request_forceful_shutdown(error_buf, app);
+    request_forceful_shutdown(error_buffer, app);
     return NULL;
   }
 
@@ -554,22 +554,22 @@ static void *input_hydrasdr_push_samples_to_queue(ModuleContext *context,
   result = hydrasdr_set_samplerate(
       private_data->dev, (uint32_t)app->config->sdr_general.sample_rate_hz);
   if (result != HYDRASDR_SUCCESS) {
-    char error_buf[256];
-    snprintf(error_buf, sizeof(error_buf),
+    char error_buffer[256];
+    snprintf(error_buffer, sizeof(error_buffer),
              "hydrasdr_set_samplerate() failed: %s (%d)",
              hydrasdr_error_name(result), result);
-    request_forceful_shutdown(error_buf, app);
+    request_forceful_shutdown(error_buffer, app);
     return NULL;
   }
 
   result =
       hydrasdr_set_sample_type(private_data->dev, private_data->sample_type);
   if (result != HYDRASDR_SUCCESS) {
-    char error_buf[256];
-    snprintf(error_buf, sizeof(error_buf),
+    char error_buffer[256];
+    snprintf(error_buffer, sizeof(error_buffer),
              "hydrasdr_set_sample_type() failed: %s (%d)",
              hydrasdr_error_name(result), result);
-    request_forceful_shutdown(error_buf, app);
+    request_forceful_shutdown(error_buffer, app);
     return NULL;
   }
 
@@ -632,11 +632,11 @@ static void *input_hydrasdr_push_samples_to_queue(ModuleContext *context,
       input_hydrasdr_buffered_stream_callback;
   result = hydrasdr_start_rx(private_data->dev, callback_fn, app);
   if (result != HYDRASDR_SUCCESS) {
-    char error_buf[256];
-    snprintf(error_buf, sizeof(error_buf),
+    char error_buffer[256];
+    snprintf(error_buffer, sizeof(error_buffer),
              "hydrasdr_start_rx() failed: %s (%d)", hydrasdr_error_name(result),
              result);
-    request_forceful_shutdown(error_buf, app);
+    request_forceful_shutdown(error_buffer, app);
     return NULL;
   }
 

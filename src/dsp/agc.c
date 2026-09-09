@@ -220,45 +220,45 @@ static float measure_rms_dbfs(const ComplexFloat *samples,
 /**
  * @brief Runs one Harris/LMS AGC update for a block of samples.
  */
-static void harris_agc_execute(HarrisAgc *h, ComplexFloat *samples,
+static void harris_agc_execute(HarrisAgc *agc, ComplexFloat *samples,
                                unsigned int num_samples) {
   /* Measure block RMS in dBFS arriving at the input. */
   float rms_db = measure_rms_dbfs(samples, num_samples);
 
   /* y(n) = x(n) + g(n)  — estimated output level.
    * e(n) = R - y(n)     — deviation from target. */
-  float output_db = rms_db + h->gain_db;
-  float error = h->target_db - output_db;
+  float output_db = rms_db + agc->gain_db;
+  float error = agc->target_db - output_db;
 
   /* Deadband: freeze gain when signal is already close enough to target. */
-  if (fabsf(error) <= h->deadband_db) {
+  if (fabsf(error) <= agc->deadband_db) {
     error = 0.0f;
   }
 
   /* Gain rails: stop adjusting beyond the hard limits. */
-  if (h->gain_db >= h->gain_max_db && error > 0.0f)
+  if (agc->gain_db >= agc->gain_max_db && error > 0.0f)
     error = 0.0f;
-  if (h->gain_db <= h->gain_min_db && error < 0.0f)
+  if (agc->gain_db <= agc->gain_min_db && error < 0.0f)
     error = 0.0f;
 
   /* LMS update: g(n+1) = g(n) + alpha * e(n). */
   if (error != 0.0f) {
-    h->gain_db += h->alpha * error;
+    agc->gain_db += agc->alpha * error;
 
-    if (h->gain_db > h->gain_max_db)
-      h->gain_db = h->gain_max_db;
-    if (h->gain_db < h->gain_min_db)
-      h->gain_db = h->gain_min_db;
+    if (agc->gain_db > agc->gain_max_db)
+      agc->gain_db = agc->gain_max_db;
+    if (agc->gain_db < agc->gain_min_db)
+      agc->gain_db = agc->gain_min_db;
 
-    h->gain_linear = powf(10.0f, h->gain_db / 20.0f);
+    agc->gain_linear = powf(10.0f, agc->gain_db / 20.0f);
   }
 
   /* Apply linear gain to all samples in-place. */
   for (unsigned int i = 0; i < num_samples; i++) {
-    samples[i] *= h->gain_linear;
+    samples[i] *= agc->gain_linear;
   }
 
-  h->samples_seen += num_samples;
+  agc->samples_seen += num_samples;
 }
 
 /* =========================================================================
@@ -271,84 +271,85 @@ static HarrisAgc *agc_create(AppConfig *config, AppContext *app) {
     return NULL;
   }
 
-  HarrisAgc *h = (HarrisAgc *)mem_arena_alloc(&app->process_chain.setup_arena,
-                                              sizeof(HarrisAgc), true);
-  if (!h) {
+  HarrisAgc *agc = (HarrisAgc *)mem_arena_alloc(&app->process_chain.setup_arena,
+                                                sizeof(HarrisAgc), true);
+  if (!agc) {
     log_fatal("AGC: Failed to allocate Harris AGC state.");
     return NULL;
   }
 
-  h->target_db = AGC_HARRIS_TARGET_DBFS;
-  h->deadband_db = AGC_HARRIS_DEADBAND_DB;
-  h->alpha = AGC_HARRIS_ALPHA;
-  h->gain_min_db = AGC_HARRIS_GAIN_MIN_DB;
-  h->gain_max_db = AGC_HARRIS_GAIN_MAX_DB;
-  h->gain_db = 0.0f; /* Start at unity gain. */
-  h->gain_linear = 1.0f;
-  h->samples_seen = 0;
-  h->enabled = app->dsp.process_chain_agc.enable;
-  h->sample_rate_hz = app->dsp.process_chain_sample_rate_hz;
+  agc->target_db = AGC_HARRIS_TARGET_DBFS;
+  agc->deadband_db = AGC_HARRIS_DEADBAND_DB;
+  agc->alpha = AGC_HARRIS_ALPHA;
+  agc->gain_min_db = AGC_HARRIS_GAIN_MIN_DB;
+  agc->gain_max_db = AGC_HARRIS_GAIN_MAX_DB;
+  agc->gain_db = 0.0f; /* Start at unity gain. */
+  agc->gain_linear = 1.0f;
+  agc->samples_seen = 0;
+  agc->enabled = app->dsp.process_chain_agc.enable;
+  agc->sample_rate_hz = app->dsp.process_chain_sample_rate_hz;
 
   if (app->dsp.process_chain_agc.target_level_arg > 0.0f) {
-    h->target_db = 20.0f * log10f(app->dsp.process_chain_agc.target_level_arg);
+    agc->target_db =
+        20.0f * log10f(app->dsp.process_chain_agc.target_level_arg);
   }
 
   log_info("AGC: Enabled (Harris/LMS Block Tracker).");
   log_info("AGC:   Algorithm:  Harris/LMS, dB domain, block-level.");
-  log_info("AGC:   Target:     %.1f dBFS", h->target_db);
-  log_info("AGC:   Deadband:   ±%.1f dB", h->deadband_db);
-  log_info("AGC:   Alpha:      %.2f", h->alpha);
-  log_info("AGC:   Gain range: [%.1f dB .. %.1f dB]", h->gain_min_db,
-           h->gain_max_db);
+  log_info("AGC:   Target:     %.1f dBFS", agc->target_db);
+  log_info("AGC:   Deadband:   ±%.1f dB", agc->deadband_db);
+  log_info("AGC:   Alpha:      %.2f", agc->alpha);
+  log_info("AGC:   Gain range: [%.1f dB .. %.1f dB]", agc->gain_min_db,
+           agc->gain_max_db);
   log_info("AGC:   Blanker:    threshold magnitude > %.1f",
            (double)AGC_BLANKER_THRESHOLD);
 
-  return h;
+  return agc;
 }
 
-static void agc_apply(HarrisAgc *h, ComplexFloat *samples,
+static void agc_apply(HarrisAgc *agc, ComplexFloat *samples,
                       unsigned int num_samples) {
-  if (!h || !h->enabled || num_samples == 0)
+  if (!agc || !agc->enabled || num_samples == 0)
     return;
 
   /* Stage 1: Impulse blanker. */
   apply_impulse_blanker(samples, num_samples, AGC_BLANKER_THRESHOLD);
 
   /* Capture pre-execute gain for deadband detection in the log. */
-  float gain_db_before = h->gain_db;
+  float gain_db_before = agc->gain_db;
 
   /* Stage 2: Harris/LMS update. */
-  harris_agc_execute(h, samples, num_samples);
+  harris_agc_execute(agc, samples, num_samples);
 
   /* Log on first block. */
-  if (h->samples_seen == num_samples) {
-    log_info("AGC: First block - gain: %.2f dB (%.4fx).", h->gain_db,
-             h->gain_linear);
+  if (agc->samples_seen == num_samples) {
+    log_info("AGC: First block - gain: %.2f dB (%.4fx).", agc->gain_db,
+             agc->gain_linear);
   }
 
   /* Periodic status. */
-  uint64_t prev = h->samples_seen - num_samples;
-  uint64_t period = (uint64_t)(h->sample_rate_hz * AGC_LOG_INTERVAL_SEC);
+  uint64_t prev = agc->samples_seen - num_samples;
+  uint64_t period = (uint64_t)(agc->sample_rate_hz * AGC_LOG_INTERVAL_SEC);
 
-  if (period > 0 && (prev / period) != (h->samples_seen / period)) {
-    bool in_deadband = (fabsf(h->gain_db - gain_db_before) < 1e-6f);
-    log_debug("AGC: gain=%.2f dB  %s", h->gain_db,
+  if (period > 0 && (prev / period) != (agc->samples_seen / period)) {
+    bool in_deadband = (fabsf(agc->gain_db - gain_db_before) < 1e-6f);
+    log_debug("AGC: gain=%.2f dB  %s", agc->gain_db,
               in_deadband ? "(deadband — passing through unchanged)"
                           : "(adjusting)");
   }
 }
 
-static void agc_reset(HarrisAgc *h) {
-  if (h) {
-    h->gain_db = 0.0f;
-    h->gain_linear = 1.0f;
-    h->samples_seen = 0;
+static void agc_reset(HarrisAgc *agc) {
+  if (agc) {
+    agc->gain_db = 0.0f;
+    agc->gain_linear = 1.0f;
+    agc->samples_seen = 0;
   }
 }
 
-static void agc_destroy(HarrisAgc *h) {
-  if (h) {
-    // free(h); // Memory arena handles this
+static void agc_destroy(HarrisAgc *agc) {
+  if (agc) {
+    // free(agc); // Memory arena handles this
   }
 }
 
@@ -359,11 +360,11 @@ static void *dsp_agc_init(ModuleContext *ctx) {
 }
 
 static SampleChunk *dsp_agc_process(void *state, SampleChunk *chunk) {
-  HarrisAgc *h = (HarrisAgc *)state;
+  HarrisAgc *agc = (HarrisAgc *)state;
   if (chunk->stream_discontinuity_event) {
-    agc_reset(h);
+    agc_reset(agc);
   }
-  agc_apply(h, chunk->current_buffer, chunk->frames_to_write);
+  agc_apply(agc, chunk->current_buffer, chunk->frames_to_write);
   return chunk;
 }
 

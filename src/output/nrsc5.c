@@ -428,23 +428,24 @@ static void nrsc5_event_callback(const nrsc5_event_t *event_payload,
 
   case NRSC5_EVENT_EMERGENCY_ALERT:
     if (event_payload->emergency_alert.message) {
-      char alert_buf[1024];
+      char alert_buffer[1024];
       int offset = 0;
-      offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset,
+      offset += snprintf(alert_buffer + offset, sizeof(alert_buffer) - offset,
                          "Category=[");
       if (event_payload->emergency_alert.category1 >= 1) {
         nrsc5_alert_category_name(event_payload->emergency_alert.category1,
                                   &name_ptr);
-        offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "%s",
-                           SAFE_STR(name_ptr));
+        offset += snprintf(alert_buffer + offset, sizeof(alert_buffer) - offset,
+                           "%s", SAFE_STR(name_ptr));
       }
       if (event_payload->emergency_alert.category2 >= 1) {
         nrsc5_alert_category_name(event_payload->emergency_alert.category2,
                                   &name_ptr);
-        offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset,
+        offset += snprintf(alert_buffer + offset, sizeof(alert_buffer) - offset,
                            ", %s", SAFE_STR(name_ptr));
       }
-      offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "] ");
+      offset +=
+          snprintf(alert_buffer + offset, sizeof(alert_buffer) - offset, "] ");
 
       const char *format_label = NULL;
       switch (event_payload->emergency_alert.location_format) {
@@ -462,20 +463,22 @@ static void nrsc5_event_callback(const nrsc5_event_t *event_payload,
       }
 
       if (format_label) {
-        offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "%s",
-                           format_label);
+        offset += snprintf(alert_buffer + offset, sizeof(alert_buffer) - offset,
+                           "%s", format_label);
       }
 
-      offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "[");
+      offset +=
+          snprintf(alert_buffer + offset, sizeof(alert_buffer) - offset, "[");
       for (int i = 0; i < event_payload->emergency_alert.num_locations; i++) {
         if (i > 0)
-          offset +=
-              snprintf(alert_buf + offset, sizeof(alert_buf) - offset, ", ");
-        offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "%d",
-                           event_payload->emergency_alert.locations[i]);
+          offset += snprintf(alert_buffer + offset,
+                             sizeof(alert_buffer) - offset, ", ");
+        offset += snprintf(alert_buffer + offset, sizeof(alert_buffer) - offset,
+                           "%d", event_payload->emergency_alert.locations[i]);
       }
-      offset += snprintf(alert_buf + offset, sizeof(alert_buf) - offset, "]");
-      log_info("NRSC5: Alert: %s %s", alert_buf,
+      offset +=
+          snprintf(alert_buffer + offset, sizeof(alert_buffer) - offset, "]");
+      log_info("NRSC5: Alert: %s %s", alert_buffer,
                SAFE_STR(event_payload->emergency_alert.message));
     } else {
       log_info("NRSC5: Alert ended");

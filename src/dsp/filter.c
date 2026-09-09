@@ -85,16 +85,16 @@ static bool _configure_filter_stage(AppConfig *config, AppContext *app) {
 
     // Find the highest frequency required by any filter in the chain.
     for (int i = 0; i < config->dsp.filter.count; i++) {
-      const FilterRequest *req = &config->dsp.filter.requests[i];
+      const FilterRequest *request = &config->dsp.filter.requests[i];
       float current_max = 0.0f;
-      switch (req->type) {
+      switch (request->type) {
       case FILTER_TYPE_LOWPASS:
       case FILTER_TYPE_HIGHPASS:
-        current_max = fabsf(req->freq1_hz);
+        current_max = fabsf(request->freq1_hz);
         break;
       case FILTER_TYPE_PASSBAND:
       case FILTER_TYPE_STOPBAND:
-        current_max = fabsf(req->freq1_hz) + (req->freq2_hz / 2.0f);
+        current_max = fabsf(request->freq1_hz) + (request->freq2_hz / 2.0f);
         break;
       default:
         break;
@@ -234,9 +234,9 @@ _compound_filter_stages(AppConfig *config, double sample_rate,
   *out_norm_peak = false;
 
   for (int i = 0; i < config->dsp.filter.count; ++i) {
-    FilterRequest *req = &config->dsp.filter.requests[i];
+    FilterRequest *request = &config->dsp.filter.requests[i];
 
-    if (req->type != FILTER_TYPE_LOWPASS) {
+    if (request->type != FILTER_TYPE_LOWPASS) {
       *out_norm_peak = true;
     }
 
@@ -250,10 +250,10 @@ _compound_filter_stages(AppConfig *config, double sample_rate,
     } else {
       float tw_hz = config->dsp.filter.args.transition_width;
       if (tw_hz <= 0.0f) {
-        float ref_freq = (req->type == FILTER_TYPE_LOWPASS ||
-                          req->type == FILTER_TYPE_HIGHPASS)
-                             ? req->freq1_hz
-                             : req->freq2_hz;
+        float ref_freq = (request->type == FILTER_TYPE_LOWPASS ||
+                          request->type == FILTER_TYPE_HIGHPASS)
+                             ? request->freq1_hz
+                             : request->freq2_hz;
         tw_hz = fabsf(ref_freq) * DEFAULT_FILTER_TRANSITION_FACTOR;
       }
       if (tw_hz < 1.0f)
@@ -270,17 +270,17 @@ _compound_filter_stages(AppConfig *config, double sample_rate,
       }
     }
 
-    bool is_complex = ((req->type == FILTER_TYPE_PASSBAND ||
-                        req->type == FILTER_TYPE_STOPBAND) &&
-                       fabsf(req->freq1_hz) > 1e-9f);
+    bool is_complex = ((request->type == FILTER_TYPE_PASSBAND ||
+                        request->type == FILTER_TYPE_STOPBAND) &&
+                       fabsf(request->freq1_hz) > 1e-9f);
     if (is_complex)
       *out_is_complex = true;
 
     float bw_norm = 0.0f;
-    if (req->type == FILTER_TYPE_LOWPASS || req->type == FILTER_TYPE_HIGHPASS) {
-      bw_norm = req->freq1_hz / (float)sample_rate;
+    if (request->type == FILTER_TYPE_LOWPASS || request->type == FILTER_TYPE_HIGHPASS) {
+      bw_norm = request->freq1_hz / (float)sample_rate;
     } else {
-      bw_norm = (req->freq2_hz / 2.0f) / (float)sample_rate;
+      bw_norm = (request->freq2_hz / 2.0f) / (float)sample_rate;
     }
 
     liquid_float_complex *current_taps =
@@ -290,11 +290,11 @@ _compound_filter_stages(AppConfig *config, double sample_rate,
 
     if (is_complex) {
       _apply_complex_nco_shift(current_taps, current_taps_length,
-                               req->freq1_hz / (float)sample_rate);
+                               request->freq1_hz / (float)sample_rate);
     }
 
-    if (req->type == FILTER_TYPE_HIGHPASS ||
-        req->type == FILTER_TYPE_STOPBAND) {
+    if (request->type == FILTER_TYPE_HIGHPASS ||
+        request->type == FILTER_TYPE_STOPBAND) {
       _invert_to_highpass_or_notch(current_taps, current_taps_length);
     }
 
@@ -692,8 +692,8 @@ static const struct argparse_option *dsp_filter_get_cli_options(int *count) {
 
 static bool parse_start_end_string(const char *input_str, const char *arg_name,
                                    float *out_start, float *out_end) {
-  char start_buf[128], end_buf[128];
-  if (sscanf(input_str, "%127[^:]:%127s", start_buf, end_buf) != 2) {
+  char start_buffer[128], end_buffer[128];
+  if (sscanf(input_str, "%127[^:]:%127s", start_buffer, end_buffer) != 2) {
     log_error(
         "Invalid format for %s. Expected 'start_freq:end_freq'. Found '%s'.",
         arg_name, input_str);
@@ -701,8 +701,8 @@ static bool parse_start_end_string(const char *input_str, const char *arg_name,
   }
   char *endptr1;
   char *endptr2;
-  *out_start = strtof(start_buf, &endptr1);
-  *out_end = strtof(end_buf, &endptr2);
+  *out_start = strtof(start_buffer, &endptr1);
+  *out_end = strtof(end_buffer, &endptr2);
   if (*endptr1 != '\0' || *endptr2 != '\0') {
     log_fatal("Invalid numerical value in %s argument. Could not parse '%s'.",
               arg_name, input_str);

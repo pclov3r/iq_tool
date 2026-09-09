@@ -392,11 +392,11 @@ static bool output_wfm_initialize(ModuleContext *context) {
   // We calculate the maximum buffer size required for ANY stage of this
   // specific module. If upsampling (e.g. 32k -> 48k), the output buffer needs
   // more space than the input.
-  size_t buf_samples = res->process_chain.alloc_size_samples;
+  size_t buffer_samples = res->process_chain.alloc_size_samples;
   size_t out_buf_samples =
-      (size_t)ceil(buf_samples * wfm_decoder->output_resample_ratio) + 128;
+      (size_t)ceil(buffer_samples * wfm_decoder->output_resample_ratio) + 128;
   size_t max_dsp_samples =
-      (buf_samples > out_buf_samples) ? buf_samples : out_buf_samples;
+      (buffer_samples > out_buf_samples) ? buffer_samples : out_buf_samples;
 
   wfm_decoder->mpx_buffer = mem_arena_alloc(
       &res->process_chain.setup_arena, max_dsp_samples * sizeof(float), false);
@@ -574,38 +574,40 @@ static size_t output_wfm_write_chunk(ModuleContext *context, const void *buffer,
       while (*ps_ptr == ' ')
         ps_ptr++;
 
-      char main_af_buf[128] = "";
+      char main_af_buffer[128] = "";
       if (current.alt_freq_count > 0) {
-        int offset = snprintf(main_af_buf, sizeof(main_af_buf), "AF: ");
+        int offset = snprintf(main_af_buffer, sizeof(main_af_buffer), "AF: ");
         for (int f = 0; f < current.alt_freq_count &&
-                        (size_t)offset < sizeof(main_af_buf) - 10;
+                        (size_t)offset < sizeof(main_af_buffer) - 10;
              f++) {
-          offset += snprintf(main_af_buf + offset, sizeof(main_af_buf) - offset,
-                             "%.1f%s", current.alt_freqs[f] / 1000.0,
-                             (f < current.alt_freq_count - 1) ? ", " : "");
+          offset +=
+              snprintf(main_af_buffer + offset, sizeof(main_af_buffer) - offset,
+                       "%.1f%s", current.alt_freqs[f] / 1000.0,
+                       (f < current.alt_freq_count - 1) ? ", " : "");
         }
       }
 
-      char iso_buf[32] = "";
+      char iso_buffer[32] = "";
       if (current.country_code[0] != '\0' && current.country_code[0] != '-') {
-        snprintf(iso_buf, sizeof(iso_buf), " | ECC: %s", current.country_code);
+        snprintf(iso_buffer, sizeof(iso_buffer), " | ECC: %s",
+                 current.country_code);
       }
 
-      char ptyn_buf[32] = "";
+      char ptyn_buffer[32] = "";
       if (ptyn_length > 0) {
-        snprintf(ptyn_buf, sizeof(ptyn_buf), " | PTYN: %s", clean_ptyn);
+        snprintf(ptyn_buffer, sizeof(ptyn_buffer), " | PTYN: %s", clean_ptyn);
       }
 
       if (s_wfm_config.rds_standard == RDS_STANDARD_RBDS &&
           current.callsign[0] != '\0') {
         log_info("RBDS PI: %04X | CALL: %s%s", current.pi_code,
-                 current.callsign, iso_buf);
+                 current.callsign, iso_buffer);
       } else {
-        log_info("RDS PI: %04X%s", current.pi_code, iso_buf);
+        log_info("RDS PI: %04X%s", current.pi_code, iso_buffer);
       }
 
-      if (main_af_buf[0] != '\0') {
-        log_info("%s %s", current.is_rbds ? "RBDS" : "RDS", main_af_buf);
+      if (main_af_buffer[0] != '\0') {
+        log_info("%s %s", current.is_rbds ? "RBDS" : "RDS", main_af_buffer);
       }
 
       int has_tmc = 0;
@@ -624,7 +626,7 @@ static size_t output_wfm_write_chunk(ModuleContext *context, const void *buffer,
                current.dynamic, has_tmc);
 
       log_info("%s PTY: %s%s", current.is_rbds ? "RBDS" : "RDS",
-               current.program_type, ptyn_buf);
+               current.program_type, ptyn_buffer);
 
       if (ps_ptr[0] != '\0') {
         char utf8_ps[32];
@@ -783,37 +785,39 @@ static size_t output_wfm_write_chunk(ModuleContext *context, const void *buffer,
 
           if (!changed)
             continue;
-          char af_buf[128] = "";
+          char af_buffer[128] = "";
           if (current.eon.networks[i].mapped_freq_khz > 0) {
-            snprintf(af_buf, sizeof(af_buf), " | AF=%.1f",
+            snprintf(af_buffer, sizeof(af_buffer), " | AF=%.1f",
                      current.eon.networks[i].mapped_freq_khz / 1000.0);
           } else if (current.eon.networks[i].alt_freq_count > 0) {
-            int offset = snprintf(af_buf, sizeof(af_buf), " | AF=");
+            int offset = snprintf(af_buffer, sizeof(af_buffer), " | AF=");
             for (int f = 0; f < current.eon.networks[i].alt_freq_count &&
-                            (size_t)offset < sizeof(af_buf) - 10;
+                            (size_t)offset < sizeof(af_buffer) - 10;
                  f++) {
               offset += snprintf(
-                  af_buf + offset, sizeof(af_buf) - offset, "%.1f%s",
+                  af_buffer + offset, sizeof(af_buffer) - offset, "%.1f%s",
                   current.eon.networks[i].alt_freqs[f] / 1000.0,
                   (f < current.eon.networks[i].alt_freq_count - 1) ? ", " : "");
             }
           }
 
-          char eon_ps_buf[9];
-          strncpy(eon_ps_buf, current.eon.networks[i].ps, 8);
-          eon_ps_buf[8] = '\0';
-          size_t eon_ps_length = strlen(eon_ps_buf);
-          while (eon_ps_length > 0 && (eon_ps_buf[eon_ps_length - 1] == ' ' ||
-                                       eon_ps_buf[eon_ps_length - 1] == '\r')) {
-            eon_ps_buf[eon_ps_length - 1] = '\0';
+          char eon_ps_buffer[9];
+          strncpy(eon_ps_buffer, current.eon.networks[i].ps, 8);
+          eon_ps_buffer[8] = '\0';
+          size_t eon_ps_length = strlen(eon_ps_buffer);
+          while (eon_ps_length > 0 &&
+                 (eon_ps_buffer[eon_ps_length - 1] == ' ' ||
+                  eon_ps_buffer[eon_ps_length - 1] == '\r')) {
+            eon_ps_buffer[eon_ps_length - 1] = '\0';
             eon_ps_length--;
           }
 
           log_info(
               "%s EON: Network PI=0x%04X | PS: %s | TP=%d | TA=%d | PTY=%u%s",
               current.is_rbds ? "RBDS" : "RDS", current.eon.networks[i].pi,
-              eon_ps_buf, current.eon.networks[i].tp,
-              current.eon.networks[i].ta, current.eon.networks[i].pty, af_buf);
+              eon_ps_buffer, current.eon.networks[i].tp,
+              current.eon.networks[i].ta, current.eon.networks[i].pty,
+              af_buffer);
 
           current.eon.networks[i].is_update = false;
         }

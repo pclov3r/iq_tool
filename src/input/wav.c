@@ -1109,18 +1109,19 @@ static void input_wav_get_summary_info(const ModuleContext *context,
     // combined
     long long combined_bytes = (long long)app->module.source_info.frames *
                                app->module.input_bytes_per_iq_sample;
-    char size_buf[40];
+    char size_buffer[40];
     utility_add_summary_item(
         info, "Total Size", "%s",
-        utility_format_size(combined_bytes, size_buf, sizeof(size_buf)));
+        utility_format_size(combined_bytes, size_buffer, sizeof(size_buffer)));
 
     // Reuse existing utilities.c duration parser for combined HH:MM:SS
     // formatting
     double total_seconds = (double)app->module.source_info.frames /
                            (double)app->module.source_info.sample_rate;
-    char duration_buf[40];
-    utility_format_duration(total_seconds, duration_buf, sizeof(duration_buf));
-    utility_add_summary_item(info, "Total Duration", "%s", duration_buf);
+    char duration_buffer[40];
+    utility_format_duration(total_seconds, duration_buffer,
+                            sizeof(duration_buffer));
+    utility_add_summary_item(info, "Total Duration", "%s", duration_buffer);
   } else {
     // Standard single file fallback
     utility_add_summary_item(info, "Input File", "%s", display_path);
@@ -1131,14 +1132,14 @@ static void input_wav_get_summary_info(const ModuleContext *context,
     if (_wstat64(config->input.effective_path_w, &stat_buf64) == 0)
       input_file_size = stat_buf64.st_size;
 #else
-    struct stat stat_buf;
-    if (stat(display_path, &stat_buf) == 0)
-      input_file_size = stat_buf.st_size;
+    struct stat stat_buffer;
+    if (stat(display_path, &stat_buffer) == 0)
+      input_file_size = stat_buffer.st_size;
 #endif
-    char size_buf[40];
+    char size_buffer[40];
     utility_add_summary_item(
         info, "Input File Size", "%s",
-        utility_format_size(input_file_size, size_buf, sizeof(size_buf)));
+        utility_format_size(input_file_size, size_buffer, sizeof(size_buffer)));
   }
 
   const char *format_str;
@@ -1159,20 +1160,20 @@ static void input_wav_get_summary_info(const ModuleContext *context,
 
   if (private_data->sdr_metadata_present) {
     if (private_data->sdr_metadata.timestamp_unix_present) {
-      char time_buf[64];
+      char time_buffer[64];
       struct tm time_info;
 #ifdef _WIN32
       if (gmtime_s(&time_info, &private_data->sdr_metadata.timestamp_unix) ==
           0) {
-        strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC",
+        strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S UTC",
                  &time_info);
-        utility_add_summary_item(info, "Timestamp", "%s", time_buf);
+        utility_add_summary_item(info, "Timestamp", "%s", time_buffer);
       }
 #else
       if (gmtime_r(&private_data->sdr_metadata.timestamp_unix, &time_info)) {
-        strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC",
+        strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S UTC",
                  &time_info);
-        utility_add_summary_item(info, "Timestamp", "%s", time_buf);
+        utility_add_summary_item(info, "Timestamp", "%s", time_buffer);
       }
 #endif
     } else if (private_data->sdr_metadata.timestamp_str_present) {
@@ -1184,13 +1185,13 @@ static void input_wav_get_summary_info(const ModuleContext *context,
                                private_data->sdr_metadata.center_freq_hz);
     }
     if (private_data->sdr_metadata.software_name_present) {
-      char sw_buf[128];
-      snprintf(sw_buf, sizeof(sw_buf), "%s %s",
+      char sw_buffer[128];
+      snprintf(sw_buffer, sizeof(sw_buffer), "%s %s",
                private_data->sdr_metadata.software_name,
                private_data->sdr_metadata.software_version_present
                    ? private_data->sdr_metadata.software_version
                    : "");
-      utility_add_summary_item(info, "SDR Software", "%s", sw_buf);
+      utility_add_summary_item(info, "SDR Software", "%s", sw_buffer);
     }
     if (private_data->sdr_metadata.radio_model_present) {
       utility_add_summary_item(info, "Radio Model", "%s",

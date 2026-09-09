@@ -448,7 +448,8 @@ bool process_chain_execute(ProcessChainContext *context) {
 
     for (int i = 0; i < num_dsp_modules; i++) {
       if (dsp_modules[i]->start_background_threads) {
-        if (!dsp_modules[i]->start_background_threads(dsp_states[i], &manager)) {
+        if (!dsp_modules[i]->start_background_threads(dsp_states[i],
+                                                      &manager)) {
           threads_ok = false;
           break;
         }

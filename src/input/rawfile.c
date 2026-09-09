@@ -305,12 +305,12 @@ static void input_rawfile_get_summary_info(const ModuleContext *context,
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
                            s_rawfile_config.sample_rate_hz);
 
-  char size_buf[40];
+  char size_buffer[40];
   long long file_size_bytes =
       app->module.source_info.frames * app->module.input_bytes_per_iq_sample;
   utility_add_summary_item(
       info, "Input File Size", "%s",
-      utility_format_size(file_size_bytes, size_buf, sizeof(size_buf)));
+      utility_format_size(file_size_bytes, size_buffer, sizeof(size_buffer)));
 }
 
 static size_t raw_iq_cal_read_cb(void *user_data, void *buffer, size_t bytes) {

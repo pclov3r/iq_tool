@@ -750,19 +750,19 @@ static void *input_bladerf_push_samples_to_queue(ModuleContext *context,
       &private_data->stream_buffers, s_bladerf_config.num_buffers, format,
       samples_per_buffer, s_bladerf_config.num_transfers, app);
   if (status != 0) {
-    char error_buf[256];
-    snprintf(error_buf, sizeof(error_buf), "bladerf_init_stream() failed: %s",
-             bladerf_strerror(status));
-    request_forceful_shutdown(error_buf, app);
+    char error_buffer[256];
+    snprintf(error_buffer, sizeof(error_buffer),
+             "bladerf_init_stream() failed: %s", bladerf_strerror(status));
+    request_forceful_shutdown(error_buffer, app);
     return NULL;
   }
 
   status = bladerf_enable_module(private_data->dev, rx_channel, true);
   if (status != 0) {
-    char error_buf[256];
-    snprintf(error_buf, sizeof(error_buf), "bladerf_enable_module() failed: %s",
-             bladerf_strerror(status));
-    request_forceful_shutdown(error_buf, app);
+    char error_buffer[256];
+    snprintf(error_buffer, sizeof(error_buffer),
+             "bladerf_enable_module() failed: %s", bladerf_strerror(status));
+    request_forceful_shutdown(error_buffer, app);
     bladerf_deinit_stream(private_data->rx_stream);
     private_data->rx_stream = NULL;
     return NULL;
@@ -776,10 +776,10 @@ static void *input_bladerf_push_samples_to_queue(ModuleContext *context,
 #endif
 
   if (status != 0 && !is_shutdown_requested()) {
-    char error_buf[256];
-    snprintf(error_buf, sizeof(error_buf), "bladerf_stream() failed: %s",
+    char error_buffer[256];
+    snprintf(error_buffer, sizeof(error_buffer), "bladerf_stream() failed: %s",
              bladerf_strerror(status));
-    request_forceful_shutdown(error_buf, app);
+    request_forceful_shutdown(error_buffer, app);
   }
 
   input_bladerf_stop_sample_queue_push(context);
@@ -954,27 +954,28 @@ static bool bladerf_find_and_load_fpga_automatically(struct bladerf *dev) {
     }
   }
 #else
-  char exe_path_buf[APP_MAX_PATH_BUFFER] = {0};
+  char exe_path_buffer[APP_MAX_PATH_BUFFER] = {0};
   char exe_dir[APP_MAX_PATH_BUFFER] = {0};
-  char parent_dir_buf[APP_MAX_PATH_BUFFER] = {0};
+  char parent_dir_buffer[APP_MAX_PATH_BUFFER] = {0};
 
   ssize_t length =
-      readlink("/proc/self/exe", exe_path_buf, sizeof(exe_path_buf) - 1);
+      readlink("/proc/self/exe", exe_path_buffer, sizeof(exe_path_buffer) - 1);
   if (length > 0) {
-    exe_path_buf[length] = '\0';
+    exe_path_buffer[length] = '\0';
     char temp_path1[APP_MAX_PATH_BUFFER];
-    snprintf(temp_path1, sizeof(temp_path1), "%s", exe_path_buf);
+    snprintf(temp_path1, sizeof(temp_path1), "%s", exe_path_buffer);
     snprintf(exe_dir, sizeof(exe_dir), "%s", dirname(temp_path1));
     char temp_path2[APP_MAX_PATH_BUFFER];
-    snprintf(temp_path2, sizeof(temp_path2), "%s", exe_path_buf);
+    snprintf(temp_path2, sizeof(temp_path2), "%s", exe_path_buffer);
     dirname(temp_path2);
-    snprintf(parent_dir_buf, sizeof(parent_dir_buf), "%s", dirname(temp_path2));
+    snprintf(parent_dir_buffer, sizeof(parent_dir_buffer), "%s",
+             dirname(temp_path2));
   } else {
     snprintf(exe_dir, sizeof(exe_dir), ".");
-    snprintf(parent_dir_buf, sizeof(parent_dir_buf), "..");
+    snprintf(parent_dir_buffer, sizeof(parent_dir_buffer), "..");
   }
 
-  const char *search_bases[] = {exe_dir, parent_dir_buf,
+  const char *search_bases[] = {exe_dir, parent_dir_buffer,
                                 "/usr/local/share/" APP_NAME,
                                 "/usr/share/" APP_NAME, NULL};
   char full_path[APP_MAX_PATH_BUFFER];

@@ -173,10 +173,10 @@ static void frequency_shift_destroy_ncos(FreqShiftState *state) {
 // === DSP Module Interface Implementation ===
 
 static void *dsp_freq_shift_init(ModuleContext *ctx) {
-  AppConfig *cfg = (AppConfig *)ctx->config;
+  AppConfig *config = (AppConfig *)ctx->config;
   log_info("FreqShift: Enabled (Shift: %.0f Hz, NCO: %.0f Hz)",
-           cfg->dsp.frequency_shift_hz, ctx->app->dsp.nco_shift_hz);
-  return frequency_shift_create(cfg, ctx->app);
+           config->dsp.frequency_shift_hz, ctx->app->dsp.nco_shift_hz);
+  return frequency_shift_create(config, ctx->app);
 }
 
 static SampleChunk *dsp_freq_shift_process(void *state, SampleChunk *chunk) {

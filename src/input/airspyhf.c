@@ -463,10 +463,10 @@ static void *input_airspyhf_push_samples_to_queue(ModuleContext *context,
 
   result = airspyhf_start(private_data->dev, callback_fn, app);
   if (result != AIRSPYHF_SUCCESS) {
-    char error_buf[256];
-    snprintf(error_buf, sizeof(error_buf), "airspyhf_start() failed: %d",
+    char error_buffer[256];
+    snprintf(error_buffer, sizeof(error_buffer), "airspyhf_start() failed: %d",
              result);
-    request_forceful_shutdown(error_buf, app);
+    request_forceful_shutdown(error_buffer, app);
     return NULL;
   }
 
