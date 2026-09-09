@@ -878,6 +878,7 @@ static void filter_get_summary_info(void *state,
 
 static void *dsp_filter_init(ModuleContext *ctx, double input_rate,
                              double target_output_rate, double *out_rate) {
+  (void)target_output_rate;
   *out_rate = input_rate;
   return filter_create((AppConfig *)ctx->config, ctx->app,
                        &ctx->app->process_chain.setup_arena);

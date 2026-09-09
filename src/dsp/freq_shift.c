@@ -174,6 +174,7 @@ static void frequency_shift_destroy_ncos(FreqShiftState *state) {
 
 static void *dsp_freq_shift_init(ModuleContext *ctx, double input_rate,
                                  double target_output_rate, double *out_rate) {
+  (void)target_output_rate;
   *out_rate = input_rate;
   AppConfig *config = (AppConfig *)ctx->config;
   log_info("FreqShift: Enabled (Shift: %.0f Hz, NCO: %.0f Hz)",

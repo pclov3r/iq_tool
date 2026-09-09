@@ -742,6 +742,7 @@ static bool dsp_iq_correct_start_background_threads(void *state,
 
 static void *dsp_iq_correct_init(ModuleContext *ctx, double input_rate,
                                  double target_output_rate, double *out_rate) {
+  (void)target_output_rate;
   *out_rate = input_rate;
   AppConfig *config = (AppConfig *)ctx->config;
   if (!config->dsp.dc_block.enable) {

@@ -86,6 +86,7 @@ static void dc_block_destroy(void *state) {
 
 static void *dcblock_initialize(ModuleContext *ctx, double input_rate,
                                 double target_output_rate, double *out_rate) {
+  (void)target_output_rate;
   *out_rate = input_rate;
   log_info("DC Blocker: Enabled (High-pass 1st order)");
   return dc_block_create((AppConfig *)ctx->config, ctx->app);
