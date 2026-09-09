@@ -537,13 +537,16 @@ bool process_chain_init_dsp_modules(ProcessChainContext *context) {
     return app->process_chain.shutdown_event != NULL;
   }
 
+  double current_stream_rate = app->module.source_info.sample_rate;
   for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
     app->dsp.states[i] = NULL;
     const struct DspModuleInterface *module = get_dsp_module(
         DEFAULT_PROCESS_CHAIN[i].module_name, &app->process_chain.setup_arena);
     if (module && module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
       if (module->initialize) {
-        app->dsp.states[i] = module->initialize(&mctx);
+        app->dsp.states[i] = module->initialize(
+            &mctx, current_stream_rate, app->dsp.process_chain_sample_rate_hz,
+            &current_stream_rate);
         if (!app->dsp.states[i])
           return false;
       }

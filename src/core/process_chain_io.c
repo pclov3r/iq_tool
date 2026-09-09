@@ -40,7 +40,8 @@ static bool process_chain_queue_samples(void *context, const void *data,
     return false;
 
   if (!packet_serializer_write_packet(app->process_chain.source_input_buffer,
-                                      num_samples, data, format)) {
+                                      num_samples, data, format,
+                                      app->module.source_info.sample_rate)) {
     static double last_drop_log_time = 0.0;
     static size_t accumulated_drops = 0;
 

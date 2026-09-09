@@ -212,7 +212,8 @@ typedef struct DspModuleInterface {
 
   // Performs all one-time setup for the DSP block (allocates liquid-dsp
   // objects)
-  void *(*initialize)(struct ModuleContext *context);
+  void *(*initialize)(struct ModuleContext *context, double input_rate,
+                      double target_output_rate, double *out_rate);
 
   // Processes a chunk of samples. The module may modify the chunk in-place,
   // or modify the chunk metadata (like sample_rate or frames_read).

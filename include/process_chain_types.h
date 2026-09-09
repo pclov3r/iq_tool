@@ -56,6 +56,7 @@ typedef struct SampleChunk {
                                      ///< live sources).
   unsigned int
       frames_to_write; ///< Number of valid frames to be written to output.
+  double sample_rate;  ///< The sample rate of this data chunk in Hz.
   size_t
       input_bytes_per_iq_sample; ///< Size of a single I/Q pair from the source.
 

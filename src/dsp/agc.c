@@ -355,7 +355,9 @@ static void agc_destroy(HarrisAgc *agc) {
 
 // === DSP Module Interface Implementation ===
 
-static void *dsp_agc_init(ModuleContext *ctx) {
+static void *dsp_agc_init(ModuleContext *ctx, double input_rate,
+                          double target_output_rate, double *out_rate) {
+  *out_rate = input_rate;
   return agc_create((AppConfig *)ctx->config, ctx->app);
 }
 

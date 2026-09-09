@@ -66,9 +66,10 @@ struct SampleChunk;
 typedef struct {
   uint32_t magic;       ///< Synchronization marker (IQPK_MAGIC).
   uint32_t num_samples; ///< The number of I/Q pairs in the following payload.
-  uint8_t flags;        ///< Bitmask of stream status flags (e.g. RESET).
-  uint8_t format_id;    ///< The SampleFormat enum value of the sample data.
-  uint8_t reserved[22];
+  double sample_rate;
+  uint8_t flags;     ///< Bitmask of stream status flags (e.g. RESET).
+  uint8_t format_id; ///< The SampleFormat enum value of the sample data.
+  uint8_t reserved[14];
 } PacketHeader;
 #pragma pack(pop)
 
@@ -87,6 +88,7 @@ typedef struct {
                                         ///< current ring buffer packet.
   SampleFormat
       current_packet_format; ///< The sample format of the current packet.
+  double current_sample_rate;
 } SerializerState;
 
 // --- Serialization Functions (Writing to the Stream) ---
@@ -108,7 +110,7 @@ typedef struct {
 bool packet_serializer_write_packet(struct RingBuffer *buffer,
                                     uint32_t num_samples,
                                     const void *sample_data,
-                                    SampleFormat format);
+                                    SampleFormat format, double sample_rate);
 
 /**
  * @brief Writes a "Stream Reset" event packet to the buffer.

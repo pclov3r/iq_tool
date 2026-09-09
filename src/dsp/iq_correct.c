@@ -421,7 +421,10 @@ bool iq_correction_run_initial_calibration(
   const DspModuleInterface *dc_block_api =
       get_dsp_module("dcblock", &app->process_chain.setup_arena);
   if (((AppConfig *)app->config)->dsp.dc_block.enable && dc_block_api) {
-    dc_block_state = dc_block_api->initialize(context);
+    double dummy_rate;
+    dc_block_state = dc_block_api->initialize(
+        context, app->module.source_info.sample_rate,
+        app->module.source_info.sample_rate, &dummy_rate);
   }
 
   void *st = iq_correction_init((AppConfig *)context->config, app,
@@ -725,7 +728,9 @@ static bool dsp_iq_correct_start_background_threads(void *state,
   return thread_manager_spawn_thread(tm, "I/Q Optimizer", iq_estimation_thread);
 }
 
-static void *dsp_iq_correct_init(ModuleContext *ctx) {
+static void *dsp_iq_correct_init(ModuleContext *ctx, double input_rate,
+                                 double target_output_rate, double *out_rate) {
+  *out_rate = input_rate;
   log_info("I/Q Optimizer: Enabled (Automatic Image Rejection)");
   return iq_correction_init((AppConfig *)ctx->config, ctx->app,
                             &ctx->app->process_chain.setup_arena);

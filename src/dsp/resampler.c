@@ -11,7 +11,10 @@
 #include <math.h>
 #include <stdlib.h> // For exit()
 
-typedef struct msresamp_crcf_s Resampler;
+typedef struct {
+  struct msresamp_crcf_s *q;
+  double target_rate;
+} Resampler;
 
 static Resampler *resampler_create(const AppConfig *config, AppContext *app,
                                    float resample_ratio) {
@@ -22,26 +25,30 @@ static Resampler *resampler_create(const AppConfig *config, AppContext *app,
   // liquid-dsp uses a polyphase filterbank for resampling.
   // We use the default parameters: As=60dB (stopband attenuation)
   // We cast the liquid-dsp object to our opaque type.
-  Resampler *resampler = (Resampler *)msresamp_crcf_create(
-      resample_ratio, config->dsp.filter.args.attenuation);
+  struct msresamp_crcf_s *q =
+      msresamp_crcf_create(resample_ratio, config->dsp.filter.args.attenuation);
 
-  if (!resampler) {
+  if (!q) {
     log_fatal("Error: Failed to create liquid-dsp resampler object.");
     return NULL;
   }
+  Resampler *resampler = malloc(sizeof(Resampler));
+  resampler->q = q;
+  resampler->target_rate = (double)app->dsp.process_chain_sample_rate_hz;
   return resampler;
 }
 
 static void resampler_destroy(Resampler *resampler) {
   if (resampler) {
     // We cast our opaque type back to the liquid-dsp type to destroy it.
-    msresamp_crcf_destroy((msresamp_crcf)resampler);
+    msresamp_crcf_destroy((msresamp_crcf)resampler->q);
+    free(resampler);
   }
 }
 
 static void resampler_reset(Resampler *resampler) {
   if (resampler) {
-    msresamp_crcf_reset((msresamp_crcf)resampler);
+    msresamp_crcf_reset((msresamp_crcf)resampler->q);
   }
 }
 
@@ -50,7 +57,7 @@ static void resampler_execute(Resampler *resampler, ComplexFloat *input,
                               ComplexFloat *output,
                               unsigned int *num_output_frames) {
   if (resampler) {
-    msresamp_crcf_execute((msresamp_crcf)resampler,
+    msresamp_crcf_execute((msresamp_crcf)resampler->q,
                           (liquid_float_complex *)input, num_input_frames,
                           (liquid_float_complex *)output, num_output_frames);
   }
@@ -58,15 +65,19 @@ static void resampler_execute(Resampler *resampler, ComplexFloat *input,
 
 // === DSP Module Interface Implementation ===
 
-static void *dsp_resampler_init(ModuleContext *ctx) {
-  float input_rate = (float)ctx->app->module.source_info.sample_rate;
-  float output_rate = (float)ctx->app->dsp.process_chain_sample_rate_hz;
-  float resample_ratio = output_rate / input_rate;
+static void *dsp_resampler_init(ModuleContext *ctx, double input_rate,
+                                double target_output_rate, double *out_rate) {
+  float resample_ratio = (float)(target_output_rate / input_rate);
+  *out_rate = target_output_rate;
 
   log_info("Resampling: %.15g Hz -> %.15g Hz (Ratio: %.15g)", input_rate,
-           output_rate, resample_ratio);
+           target_output_rate, resample_ratio);
 
-  return resampler_create(ctx->config, ctx->app, resample_ratio);
+  Resampler *resampler =
+      resampler_create(ctx->config, ctx->app, resample_ratio);
+  if (resampler)
+    resampler->target_rate = target_output_rate;
+  return resampler;
 }
 
 static SampleChunk *dsp_resampler_process(void *state, SampleChunk *chunk) {
@@ -83,6 +94,7 @@ static SampleChunk *dsp_resampler_process(void *state, SampleChunk *chunk) {
                     out_buffer, &out_frames);
   chunk->frames_to_write = out_frames;
   chunk->current_buffer = out_buffer;
+  chunk->sample_rate = resampler->target_rate;
 
   return chunk;
 }

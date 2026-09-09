@@ -23,7 +23,7 @@ static bool _has_space_for(RingBuffer *buffer, size_t bytes_needed) {
 
 bool packet_serializer_write_packet(RingBuffer *buffer, uint32_t num_samples,
                                     const void *sample_data,
-                                    SampleFormat format) {
+                                    SampleFormat format, double sample_rate) {
   const SampleFormatInfo *fmt_info = get_format_info_by_enum(format);
   size_t bytes_per_sample = fmt_info ? fmt_info->bytes_per_iq_sample : 0;
   size_t data_size = num_samples * bytes_per_sample;
@@ -40,6 +40,7 @@ bool packet_serializer_write_packet(RingBuffer *buffer, uint32_t num_samples,
   header.num_samples = num_samples;
   header.flags = 0; // Data is implicitly interleaved now
   header.format_id = (uint8_t)format;
+  header.sample_rate = sample_rate;
 
   // Ensure padding bytes are zeroed for deterministic behavior and future
   // compatibility
@@ -58,6 +59,7 @@ bool packet_serializer_write_reset_event(RingBuffer *buffer) {
   header.num_samples = 0;
   header.flags = PACKET_FLAG_STREAM_RESET;
   header.format_id = (uint8_t)FORMAT_UNKNOWN;
+  header.sample_rate = 0.0;
 
   // Ensure padding bytes are zeroed
   memset(header.reserved, 0, sizeof(header.reserved));
@@ -99,6 +101,7 @@ int64_t packet_serializer_read_packet(RingBuffer *buffer,
 
     state->samples_remaining_in_packet = header.num_samples;
     state->current_packet_format = (SampleFormat)header.format_id;
+    state->current_sample_rate = header.sample_rate;
   }
 
   // 2. Read Payload
@@ -132,6 +135,7 @@ int64_t packet_serializer_read_packet(RingBuffer *buffer,
 
   state->samples_remaining_in_packet -= samples_to_read;
   target_chunk->packet_sample_format = state->current_packet_format;
+  target_chunk->sample_rate = state->current_sample_rate;
   target_chunk->input_bytes_per_iq_sample = bpp;
 
   return (int64_t)samples_to_read;
