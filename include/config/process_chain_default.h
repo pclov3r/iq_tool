@@ -2,6 +2,13 @@
 #ifndef PROCESS_CHAIN_DEFAULT_H
 #define PROCESS_CHAIN_DEFAULT_H
 
+#include <assert.h>
+#include <stddef.h>
+
+// Hard cap for the DspContext states[] array. Must always be >= chain length.
+// Raise this if you add more modules to DEFAULT_PROCESS_CHAIN.
+#define DSP_MAX_MODULES 16
+
 typedef struct {
   const char *module_name;
   const char *stage_tag;
@@ -22,5 +29,10 @@ static const ProcessNodeDef DEFAULT_PROCESS_CHAIN[] = {
 
 static const int DEFAULT_PROCESS_CHAIN_LENGTH =
     sizeof(DEFAULT_PROCESS_CHAIN) / sizeof(DEFAULT_PROCESS_CHAIN[0]);
+
+static_assert(
+    sizeof(DEFAULT_PROCESS_CHAIN) / sizeof(DEFAULT_PROCESS_CHAIN[0]) <=
+        DSP_MAX_MODULES,
+    "DEFAULT_PROCESS_CHAIN length exceeds DSP_MAX_MODULES — raise the cap.");
 
 #endif // PROCESS_CHAIN_DEFAULT_H

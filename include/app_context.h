@@ -9,6 +9,7 @@
 
 #include "common_types.h"
 #include "config/constants.h"
+#include "config/process_chain_default.h"
 #include "mem_arena.h"
 #include "module.h"
 #include "presets_loader.h"
@@ -222,7 +223,7 @@ typedef struct ModuleState {
 typedef struct DspContext {
   const struct AppConfig *config; // Injected for DSP access
 
-  void *states[16];
+  void *states[DSP_MAX_MODULES];
 
   double nco_shift_hz;
   double process_chain_sample_rate_hz;
