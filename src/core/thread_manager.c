@@ -84,6 +84,7 @@ void thread_manager_join_all(ThreadManager *manager) {
 }
 
 #include "module.h"
+#include "platform.h"
 #include "process_chain_context.h"
 #include "queue.h"
 #include <stdlib.h>
@@ -98,6 +99,8 @@ typedef struct {
 
 static void *dsp_chain_thread_func(void *arg) {
   ChainThreadContext *ctx = (ChainThreadContext *)arg;
+
+  platform_set_thread_priority(PRIORITY_HIGH, ctx->module->name);
 
   while (1) {
     SampleChunk *chunk = (SampleChunk *)queue_dequeue(ctx->in_q);
