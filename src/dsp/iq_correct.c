@@ -375,6 +375,12 @@ void iq_correction_run_estimation(void *state,
 
 static void iq_correction_destroy(IqState *st) {
   if (st) {
+    // Free the partially-filled estimation buffer if it was never enqueued
+    // (happens when the file ends before FFTBins samples are accumulated).
+    if (st->current_estimation_buffer) {
+      free(st->current_estimation_buffer);
+      st->current_estimation_buffer = NULL;
+    }
     void *buffer;
     while ((buffer = queue_try_dequeue(&st->free_queue)) != NULL) {
       free(buffer);
