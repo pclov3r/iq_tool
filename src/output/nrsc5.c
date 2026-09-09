@@ -818,7 +818,17 @@ static void output_nrsc5_on_keypress(ModuleContext *context, int key) {
   }
 }
 
+static void output_nrsc5_get_pipeline_requirements(
+    const struct AppConfig *config, double *rate, SampleFormat *format,
+    float *gain, struct OutputAgcConfig *agc) {
+  *rate = config->baseband_sample_rate.rate_hz;
+  *format = config->baseband_sample_format.format;
+  *gain = config->dsp.baseband_gain;
+  *agc = config->dsp.baseband_agc;
+}
+
 static OutputModuleInterface s_output_nrsc5_api = {
+    .get_pipeline_requirements = output_nrsc5_get_pipeline_requirements,
     .validate_options = output_nrsc5_validate_options,
     .get_cli_options = output_nrsc5_get_cli_options,
     .initialize = output_nrsc5_initialize,

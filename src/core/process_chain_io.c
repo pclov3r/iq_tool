@@ -193,9 +193,8 @@ void *process_chain_thread_reader(void *arg) {
 
         if (!config->dsp.raw_passthrough && item->frames_read > 0) {
           sample_convert_block_to_cf32(
-              item->raw_input_data, item->current_buffer,
-              item->frames_read, item->packet_sample_format,
-              config->dsp.input_gain);
+              item->raw_input_data, item->current_buffer, item->frames_read,
+              item->packet_sample_format, config->dsp.input_gain);
         }
 
         if (item->frames_read > 0) {

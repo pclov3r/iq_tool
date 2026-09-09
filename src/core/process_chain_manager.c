@@ -72,10 +72,14 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
   float target_gain = 0.0f;
   OutputAgcConfig target_agc = {0};
 
-  const Module *out_mod = module_get(config->output.module_name, MODULE_TYPE_OUTPUT, &app->process_chain.setup_arena);
-  const struct OutputModuleInterface *out_api = out_mod ? (const struct OutputModuleInterface *)out_mod->api : NULL;
+  const Module *out_mod =
+      module_get(config->output.module_name, MODULE_TYPE_OUTPUT,
+                 &app->process_chain.setup_arena);
+  const struct OutputModuleInterface *out_api =
+      out_mod ? (const struct OutputModuleInterface *)out_mod->api : NULL;
   if (out_api && out_api->get_pipeline_requirements) {
-    out_api->get_pipeline_requirements(config, &target_rate_hz, &target_format, &target_gain, &target_agc);
+    out_api->get_pipeline_requirements(config, &target_rate_hz, &target_format,
+                                       &target_gain, &target_agc);
   } else {
     target_rate_hz = config->output_sample_rate.rate_hz;
     target_format = config->output.sample_format;

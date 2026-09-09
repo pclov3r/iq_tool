@@ -709,8 +709,7 @@ static SampleChunk *dsp_iq_correct_process(void *state, SampleChunk *chunk) {
         to_copy = frames_remaining;
 
       memcpy(st->current_estimation_buffer + st->current_estimation_collected,
-             chunk->current_buffer + read_ptr,
-             to_copy * sizeof(ComplexFloat));
+             chunk->current_buffer + read_ptr, to_copy * sizeof(ComplexFloat));
 
       st->current_estimation_collected += to_copy;
       read_ptr += to_copy;

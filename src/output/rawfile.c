@@ -135,7 +135,18 @@ output_rawfile_get_cli_options(int *count) {
 }
 
 // --- The V-Table ---
+
+static void output_rawfile_get_pipeline_requirements(
+    const struct AppConfig *config, double *rate, SampleFormat *format,
+    float *gain, struct OutputAgcConfig *agc) {
+  *rate = config->output_sample_rate.rate_hz;
+  *format = config->output.sample_format;
+  *gain = config->dsp.output_gain;
+  *agc = config->dsp.output_agc;
+}
+
 static OutputModuleInterface s_output_rawfile_api = {
+    .get_pipeline_requirements = output_rawfile_get_pipeline_requirements,
     .validate_options = output_rawfile_validate_options,
     .get_cli_options = output_rawfile_get_cli_options,
     .initialize = output_rawfile_initialize,

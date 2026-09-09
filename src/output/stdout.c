@@ -94,7 +94,18 @@ static const struct argparse_option *output_stdout_get_cli_options(int *count) {
 }
 
 // --- The V-Table ---
+
+static void output_stdout_get_pipeline_requirements(
+    const struct AppConfig *config, double *rate, SampleFormat *format,
+    float *gain, struct OutputAgcConfig *agc) {
+  *rate = config->output_sample_rate.rate_hz;
+  *format = config->output.sample_format;
+  *gain = config->dsp.output_gain;
+  *agc = config->dsp.output_agc;
+}
+
 static OutputModuleInterface s_output_stdout_api = {
+    .get_pipeline_requirements = output_stdout_get_pipeline_requirements,
     .validate_options = NULL,
     .get_cli_options = output_stdout_get_cli_options,
     .initialize = output_stdout_initialize,

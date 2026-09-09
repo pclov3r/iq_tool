@@ -76,7 +76,9 @@ static SampleChunk *dsp_resampler_process(void *state, SampleChunk *chunk) {
   }
 
   unsigned int out_frames = 0;
-  ComplexFloat *out_buf = (chunk->current_buffer == chunk->buffer_a) ? chunk->buffer_b : chunk->buffer_a;
+  ComplexFloat *out_buf = (chunk->current_buffer == chunk->buffer_a)
+                              ? chunk->buffer_b
+                              : chunk->buffer_a;
   resampler_execute(resampler, chunk->current_buffer, chunk->frames_read,
                     out_buf, &out_frames);
   chunk->frames_to_write = out_frames;

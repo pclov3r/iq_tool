@@ -534,7 +534,19 @@ static const struct argparse_option *output_am_get_cli_options(int *count) {
   return output_am_cli_options;
 }
 
+static void output_am_get_pipeline_requirements(const struct AppConfig *config,
+                                                double *rate,
+                                                SampleFormat *format,
+                                                float *gain,
+                                                struct OutputAgcConfig *agc) {
+  *rate = config->baseband_sample_rate.rate_hz;
+  *format = config->baseband_sample_format.format;
+  *gain = config->dsp.baseband_gain;
+  *agc = config->dsp.baseband_agc;
+}
+
 static OutputModuleInterface s_output_am_api = {
+    .get_pipeline_requirements = output_am_get_pipeline_requirements,
     .initialize = output_am_initialize,
     .write_chunk = output_am_write_chunk,
     .reset = output_am_reset,

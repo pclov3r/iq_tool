@@ -442,7 +442,6 @@ static void print_configuration_summary(const AppConfig *config,
     utility_add_summary_item(&output_info, "ProcessChain Gain", "%.2fx",
                              app->dsp.process_chain_gain);
 
-
   if (config->output.path_arg != NULL) {
 #ifdef _WIN32
     utility_add_summary_item(&output_info, "Output File", "%s",

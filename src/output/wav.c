@@ -8,6 +8,7 @@
  * size limit; for larger files, the 'wav-rf64' output module should be used.
  */
 
+#include "app_context.h"
 #include "module_registry.h"
 #include "output/wav_common.h" // Include the shared implementation
 #include "utilities.h"         // For utility_add_summary_item
@@ -51,7 +52,20 @@ static const struct argparse_option *output_wav_get_cli_options(int *count) {
  * This struct wires up the public interface to the functions in this file
  * and the shared functions from the common WAV module.
  */
+
+static void output_wav_get_pipeline_requirements(const struct AppConfig *config,
+                                                 double *rate,
+                                                 SampleFormat *format,
+                                                 float *gain,
+                                                 struct OutputAgcConfig *agc) {
+  *rate = config->output_sample_rate.rate_hz;
+  *format = config->output.sample_format;
+  *gain = config->dsp.output_gain;
+  *agc = config->dsp.output_agc;
+}
+
 static OutputModuleInterface s_output_wav_api = {
+    .get_pipeline_requirements = output_wav_get_pipeline_requirements,
     .validate_options =
         output_wav_common_validate_options, // Use common validation
     .get_cli_options = output_wav_get_cli_options,

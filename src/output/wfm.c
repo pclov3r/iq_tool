@@ -1029,7 +1029,19 @@ static const struct argparse_option *output_wfm_get_cli_options(int *count) {
   return output_wfm_cli_options;
 }
 
+static void output_wfm_get_pipeline_requirements(const struct AppConfig *config,
+                                                 double *rate,
+                                                 SampleFormat *format,
+                                                 float *gain,
+                                                 struct OutputAgcConfig *agc) {
+  *rate = config->baseband_sample_rate.rate_hz;
+  *format = config->baseband_sample_format.format;
+  *gain = config->dsp.baseband_gain;
+  *agc = config->dsp.baseband_agc;
+}
+
 static OutputModuleInterface s_output_wfm_api = {
+    .get_pipeline_requirements = output_wfm_get_pipeline_requirements,
     .initialize = output_wfm_initialize,
     .write_chunk = output_wfm_write_chunk,
     .reset = output_wfm_reset,
