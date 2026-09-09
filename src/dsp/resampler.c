@@ -9,7 +9,7 @@
 #include "process_chain_types.h"
 #include <liquid.h>
 #include <math.h>
-#include <stdlib.h> // For exit()
+#include "mem_arena.h"
 
 typedef struct {
   struct msresamp_crcf_s *q;
@@ -17,13 +17,8 @@ typedef struct {
 } Resampler;
 
 static Resampler *resampler_create(const AppConfig *config, AppContext *app,
-                                   float resample_ratio) {
-  (void)config; // config is not used here but kept for API consistency
-  (void)app;
-
-  // We use liquid-dsp's arbitrary resampler
-  // liquid-dsp uses a polyphase filterbank for resampling.
-  // We use the default parameters: As=60dB (stopband attenuation)
+                                   MemoryArena *arena, float resample_ratio) {
+  // We use liquid-dsp's arbitrary resampler (polyphase filterbank).
   // We cast the liquid-dsp object to our opaque type.
   struct msresamp_crcf_s *q =
       msresamp_crcf_create(resample_ratio, config->dsp.filter.args.attenuation);
@@ -32,7 +27,13 @@ static Resampler *resampler_create(const AppConfig *config, AppContext *app,
     log_fatal("Error: Failed to create liquid-dsp resampler object.");
     return NULL;
   }
-  Resampler *resampler = malloc(sizeof(Resampler));
+  Resampler *resampler =
+      (Resampler *)mem_arena_alloc(arena, sizeof(Resampler), true);
+  if (!resampler) {
+    msresamp_crcf_destroy(q);
+    log_fatal("Failed to allocate Resampler state.");
+    return NULL;
+  }
   resampler->q = q;
   resampler->target_rate = (double)app->dsp.process_chain_sample_rate_hz;
   return resampler;
@@ -40,9 +41,9 @@ static Resampler *resampler_create(const AppConfig *config, AppContext *app,
 
 static void resampler_destroy(Resampler *resampler) {
   if (resampler) {
-    // We cast our opaque type back to the liquid-dsp type to destroy it.
+    // Only destroy the liquid-dsp object — the Resampler struct itself is
+    // arena-allocated and freed with the arena.
     msresamp_crcf_destroy((msresamp_crcf)resampler->q);
-    free(resampler);
   }
 }
 
@@ -73,8 +74,9 @@ static void *dsp_resampler_init(ModuleContext *ctx, double input_rate,
   log_info("Resampling: %.15g Hz -> %.15g Hz (Ratio: %.15g)", input_rate,
            target_output_rate, resample_ratio);
 
-  Resampler *resampler =
-      resampler_create(ctx->config, ctx->app, resample_ratio);
+  Resampler *resampler = resampler_create(ctx->config, ctx->app,
+                                          &ctx->app->process_chain.setup_arena,
+                                          resample_ratio);
   if (resampler)
     resampler->target_rate = target_output_rate;
   return resampler;
