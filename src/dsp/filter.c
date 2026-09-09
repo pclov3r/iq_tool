@@ -179,6 +179,7 @@ _generate_base_lowpass_taps(unsigned int taps_length, float half_bw_norm,
       (float *)mem_arena_alloc(arena, taps_length * sizeof(float), false);
   if (!real_taps)
     return NULL;
+  memset(real_taps, 0, taps_length * sizeof(float));
   liquid_firdes_kaiser(taps_length, half_bw_norm, attenuation_db, 0.0f,
                        real_taps);
   _normalize_filter_dc_gain(real_taps, taps_length);
@@ -187,6 +188,7 @@ _generate_base_lowpass_taps(unsigned int taps_length, float half_bw_norm,
       arena, taps_length * sizeof(liquid_float_complex), false);
   if (!complex_taps)
     return NULL;
+  memset(complex_taps, 0, taps_length * sizeof(liquid_float_complex));
   for (unsigned int k = 0; k < taps_length; k++) {
     complex_taps[k] = real_taps[k] + 0.0f * I;
   }
