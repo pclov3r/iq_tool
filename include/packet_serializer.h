@@ -65,11 +65,11 @@ struct SampleChunk;
 #pragma pack(push, 1)
 typedef struct {
   uint32_t magic;       ///< Synchronization marker (IQPK_MAGIC).
+  uint16_t flags;       ///< Bitmask of stream status flags (e.g. RESET).
+  uint16_t format_id;   ///< The SampleFormat enum value of the sample data.
+  double sample_rate;   ///< The sample rate of the stream in Hz.
   uint32_t num_samples; ///< The number of I/Q pairs in the following payload.
-  double sample_rate;
-  uint8_t flags;     ///< Bitmask of stream status flags (e.g. RESET).
-  uint8_t format_id; ///< The SampleFormat enum value of the sample data.
-  uint8_t reserved[14];
+  uint8_t reserved[12];
 } PacketHeader;
 #pragma pack(pop)
 

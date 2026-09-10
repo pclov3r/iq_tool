@@ -36,15 +36,12 @@ bool packet_serializer_write_packet(RingBuffer *buffer, uint32_t num_samples,
   }
 
   PacketHeader header;
+  memset(&header, 0, sizeof(header));
   header.magic = IQPK_MAGIC;
-  header.num_samples = num_samples;
-  header.flags = 0; // Data is implicitly interleaved now
-  header.format_id = (uint8_t)format;
+  header.flags = 0;
+  header.format_id = (uint16_t)format;
   header.sample_rate = sample_rate;
-
-  // Ensure padding bytes are zeroed for deterministic behavior and future
-  // compatibility
-  memset(header.reserved, 0, sizeof(header.reserved));
+  header.num_samples = num_samples;
 
   return ring_buffer_write_packet(buffer, &header, sizeof(header), sample_data,
                                   data_size) > 0;
@@ -55,14 +52,12 @@ bool packet_serializer_write_reset_event(RingBuffer *buffer) {
     return false;
 
   PacketHeader header;
+  memset(&header, 0, sizeof(header));
   header.magic = IQPK_MAGIC;
-  header.num_samples = 0;
   header.flags = PACKET_FLAG_STREAM_RESET;
-  header.format_id = (uint8_t)FORMAT_UNKNOWN;
+  header.format_id = (uint16_t)FORMAT_UNKNOWN;
   header.sample_rate = 0.0;
-
-  // Ensure padding bytes are zeroed
-  memset(header.reserved, 0, sizeof(header.reserved));
+  header.num_samples = 0;
 
   return ring_buffer_write_packet(buffer, &header, sizeof(header), NULL, 0) > 0;
 }
