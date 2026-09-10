@@ -412,10 +412,10 @@ static void print_configuration_summary(const AppConfig *config,
 
   if (config->output.payload == PAYLOAD_AUDIO) {
     utility_add_summary_item(&output_info, "Baseband Sample Rate", "%.15g Hz",
-                             config->baseband_sample_rate.rate_hz);
+                             app->dsp.process_chain_sample_rate_hz);
   } else {
     utility_add_summary_item(&output_info, "Output Sample Rate", "%.15g Hz",
-                             config->output_sample_rate.rate_hz);
+                             app->dsp.process_chain_sample_rate_hz);
   }
 
   utility_add_summary_item(&output_info, "Input Gain", "%.5f",

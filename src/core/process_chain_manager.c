@@ -97,6 +97,9 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
         target_rate_hz);
   }
 
+  config->output_sample_rate.rate_hz = target_rate_hz;
+  config->baseband_sample_rate.rate_hz = target_rate_hz;
+
   // Set the unified process_chain sample rate, format, gain, and agc
   app->dsp.process_chain_sample_rate_hz = target_rate_hz;
 
