@@ -122,10 +122,6 @@ set(SNDFILE_INCLUDE_DIR "" CACHE PATH "Manual include path for libsndfile")
 set(SNDFILE_LIBRARY "" CACHE PATH "Manual library path for libsndfile")
 set(LIQUID_INCLUDE_DIR "" CACHE PATH "Manual include path for liquid-dsp")
 set(LIQUID_LIBRARY "" CACHE PATH "Manual library path for liquid-dsp")
-set(EXPAT_INCLUDE_DIR "" CACHE PATH "Manual include path for Expat")
-set(EXPAT_LIBRARY "" CACHE PATH "Manual library path for Expat")
-set(ICONV_INCLUDE_DIR "" CACHE PATH "Manual include path for libiconv")
-set(ICONV_LIBRARY "" CACHE PATH "Manual library path for libiconv")
 
 #=======================================================================
 # Compiler Flags Setup
@@ -162,7 +158,7 @@ endif()
 message(STATUS "Searching for required system libraries...")
 find_package(SndFile REQUIRED)
 find_package(LiquidDSP REQUIRED)
-find_package(Expat REQUIRED)
+find_package(EXPAT REQUIRED)
 find_package(Threads REQUIRED)
 
 #=======================================================================
@@ -334,7 +330,7 @@ set_source_files_properties(${NETWORK_SOURCES} PROPERTIES COMPILE_OPTIONS "-fsta
 target_link_libraries(iq_tool PRIVATE
     ${SndFile_LIBRARIES}
     ${LiquidDSP_LIBRARIES}
-    ${Expat_LIBRARIES}
+    EXPAT::EXPAT
     Threads::Threads
 )
 
@@ -395,7 +391,7 @@ else()
 endif()
 message(STATUS "  libsndfile:          ${SndFile_LIBRARIES}")
 message(STATUS "  liquid-dsp:          ${LiquidDSP_LIBRARIES}")
-message(STATUS "  Expat:               ${Expat_LIBRARIES}")
+message(STATUS "  Expat:               ${EXPAT_LIBRARIES}")
 message(STATUS "  Threads:             Threads::Threads")
 
 foreach(SUMMARY_MSG IN LISTS MODULE_SUMMARY_LIST)
