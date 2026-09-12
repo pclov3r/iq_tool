@@ -4,8 +4,6 @@
 #include "app_context.h"
 #include "module.h"
 
-const struct DspModuleInterface *dsp_iq_correct_get_api(void);
-
 void iq_correction_run_estimation(void *state, const ComplexFloat *samples);
 
 bool iq_correction_run_initial_calibration(

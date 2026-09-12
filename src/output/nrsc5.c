@@ -833,7 +833,6 @@ static void output_nrsc5_get_pipeline_requirements(
 static OutputModuleInterface s_output_nrsc5_api = {
     .get_pipeline_requirements = output_nrsc5_get_pipeline_requirements,
     .validate_options = output_nrsc5_validate_options,
-    .get_cli_options = output_nrsc5_get_cli_options,
     .initialize = output_nrsc5_initialize,
     .write_chunk = output_nrsc5_write_chunk,
     .reset = output_nrsc5_reset,

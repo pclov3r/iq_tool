@@ -148,7 +148,6 @@ static void output_rawfile_get_pipeline_requirements(
 static OutputModuleInterface s_output_rawfile_api = {
     .get_pipeline_requirements = output_rawfile_get_pipeline_requirements,
     .validate_options = output_rawfile_validate_options,
-    .get_cli_options = output_rawfile_get_cli_options,
     .initialize = output_rawfile_initialize,
     .reset = NULL,
     .flush = NULL,

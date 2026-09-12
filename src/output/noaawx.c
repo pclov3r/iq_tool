@@ -4213,7 +4213,6 @@ static OutputModuleInterface s_output_noaawx_api = {
     .cleanup = output_noaawx_cleanup,
     .get_summary_info = output_noaawx_get_summary_info,
     .validate_options = output_noaawx_validate_options,
-    .get_cli_options = output_noaawx_get_cli_options,
 };
 
 // --- Auto-Registration ---

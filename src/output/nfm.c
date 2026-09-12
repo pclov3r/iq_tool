@@ -372,7 +372,6 @@ static OutputModuleInterface s_output_nfm_api = {
     .cleanup = output_nfm_cleanup,
     .get_summary_info = output_nfm_get_summary_info,
     .validate_options = output_nfm_validate_options,
-    .get_cli_options = output_nfm_get_cli_options,
 };
 
 // --- Auto-Registration ---

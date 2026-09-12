@@ -6,10 +6,9 @@
 #include "app_context.h"
 #include "log.h"
 #include "mem_arena.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include <stdio.h>
 
 #ifdef _WIN32
 #define strcasecmp _stricmp
@@ -26,10 +25,12 @@ typedef struct {
 static int inactive_option_warning_cb(struct argparse *self,
                                       const struct argparse_option *opt);
 
-// The master list is now built at startup time via __attribute__((constructor))
+// The master list is built at startup time via __attribute__((constructor))
 #define MAX_MODULES 128
 static Module all_modules[MAX_MODULES];
 static int num_all_modules = 0;
+
+// --- Registry Maintenance ---
 
 void module_registry_add(const Module *m) {
   if (m && num_all_modules < MAX_MODULES) {
@@ -49,7 +50,7 @@ static void initialize_modules_list(MemoryArena *arena) {
 static const Module *_find_module_by_name_and_type(const char *name,
                                                    ModuleType type,
                                                    MemoryArena *arena) {
-  initialize_modules_list(arena); // Ensure the list is ready
+  initialize_modules_list(arena);
   if (!name) {
     return NULL;
   }
@@ -62,12 +63,41 @@ static const Module *_find_module_by_name_and_type(const char *name,
   return NULL; // Not found
 }
 
-/**
- * @brief Iterates through all registered modules and applies their default
- * settings.
- */
+// --- Public Module Getters ---
+
+const Module *module_get(const char *name, ModuleType type,
+                         MemoryArena *arena) {
+  return _find_module_by_name_and_type(name, type, arena);
+}
+
+const struct InputModuleInterface *get_input_module(const char *name,
+                                                    MemoryArena *arena) {
+  const Module *module = module_get(name, MODULE_TYPE_INPUT, arena);
+  if (module)
+    return (const struct InputModuleInterface *)module->api;
+  return NULL;
+}
+
+const struct OutputModuleInterface *get_output_module(const char *name,
+                                                      MemoryArena *arena) {
+  const Module *module = module_get(name, MODULE_TYPE_OUTPUT, arena);
+  if (module)
+    return (const struct OutputModuleInterface *)module->api;
+  return NULL;
+}
+
+const struct DspModuleInterface *get_dsp_module(const char *name,
+                                                MemoryArena *arena) {
+  const Module *module = module_get(name, MODULE_TYPE_DSP, arena);
+  if (module)
+    return (const struct DspModuleInterface *)module->api;
+  return NULL;
+}
+
+// --- Public Queries & Actions ---
+
 void module_apply_defaults(AppConfig *config, MemoryArena *arena) {
-  initialize_modules_list(arena); // Ensure the list is ready
+  initialize_modules_list(arena);
 
   for (int i = 0; i < num_all_modules; ++i) {
     if (all_modules[i].set_default_config) {
@@ -77,7 +107,7 @@ void module_apply_defaults(AppConfig *config, MemoryArena *arena) {
 }
 
 const Module *module_get_all(int *count, MemoryArena *arena) {
-  initialize_modules_list(arena); // Ensure the list is ready
+  initialize_modules_list(arena);
   *count = num_all_modules;
   return all_modules;
 }
@@ -89,6 +119,8 @@ bool module_is_live_source(const char *name, MemoryArena *arena) {
           module->process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH);
 }
 
+// --- CLI Options Population ---
+
 void module_populate_cli_options(struct argparse_option *dest_buffer,
                                  int *total_opts_ptr, int max_opts,
                                  const char *active_input_type,
@@ -99,13 +131,6 @@ void module_populate_cli_options(struct argparse_option *dest_buffer,
   for (int i = 0; i < num_all_modules; ++i) {
     const struct argparse_option *(*get_opts_fn)(int *) =
         all_modules[i].get_cli_options;
-    if (!get_opts_fn && all_modules[i].type == MODULE_TYPE_DSP) {
-      const DspModuleInterface *dsp =
-          (const DspModuleInterface *)all_modules[i].api;
-      if (dsp)
-        get_opts_fn = dsp->get_cli_options;
-    }
-
     if (get_opts_fn) {
       int count = 0;
       const struct argparse_option *opts = get_opts_fn(&count);
@@ -151,23 +176,8 @@ void module_populate_cli_options(struct argparse_option *dest_buffer,
   }
 }
 
-const Module *module_get(const char *name, ModuleType type,
-                         MemoryArena *arena) {
-  return _find_module_by_name_and_type(name, type, arena);
-}
-
-const struct DspModuleInterface *get_dsp_module(const char *name,
-                                                struct MemoryArena *arena) {
-  const Module *module = module_get(name, MODULE_TYPE_DSP, arena);
-  if (module)
-    return (const struct DspModuleInterface *)module->api;
-  return NULL;
-}
-
 // --- Private Helper Functions ---
 
-// Callback triggered when a user provides a flag for a module that isn't
-// currently active.
 static int inactive_option_warning_cb(struct argparse *self,
                                       const struct argparse_option *opt) {
   if (opt->type != ARGPARSE_OPT_GROUP && opt->data != 0) {

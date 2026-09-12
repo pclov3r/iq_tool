@@ -1053,7 +1053,6 @@ static OutputModuleInterface s_output_wfm_api = {
     .cleanup = output_wfm_cleanup,
     .get_summary_info = output_wfm_get_summary_info,
     .validate_options = output_wfm_validate_options,
-    .get_cli_options = output_wfm_get_cli_options,
 };
 
 // --- Auto-Registration ---

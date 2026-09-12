@@ -554,7 +554,6 @@ static OutputModuleInterface s_output_am_api = {
     .cleanup = output_am_cleanup,
     .get_summary_info = output_am_get_summary_info,
     .validate_options = output_am_validate_options,
-    .get_cli_options = output_am_get_cli_options,
 };
 
 // --- Auto-Registration ---

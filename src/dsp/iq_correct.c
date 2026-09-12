@@ -839,7 +839,6 @@ static const DspModuleInterface dsp_iq_correct_api = {
     .reset = NULL,
     .cleanup = dsp_iq_correct_cleanup,
     .validate_options = dsp_iq_correct_validate_options,
-    .get_cli_options = dsp_iq_correct_get_cli_options,
 };
 
 // --- Auto-Registration ---
@@ -848,6 +847,7 @@ static void __attribute__((constructor)) register_module(void) {
       .name = "iq_correct",
       .type = MODULE_TYPE_DSP,
       .api = (void *)&dsp_iq_correct_api,
+      .get_cli_options = dsp_iq_correct_get_cli_options,
   };
   module_registry_add(&m);
 }

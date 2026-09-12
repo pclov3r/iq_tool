@@ -420,7 +420,6 @@ static const DspModuleInterface dsp_agc_api = {
     .reset = dsp_agc_reset_api,
     .cleanup = dsp_agc_cleanup,
     .validate_options = dsp_agc_validate_options,
-    .get_cli_options = dsp_agc_get_cli_options,
 };
 
 // --- Auto-Registration ---
@@ -429,6 +428,7 @@ static void __attribute__((constructor)) register_module(void) {
       .name = "agc",
       .type = MODULE_TYPE_DSP,
       .api = (void *)&dsp_agc_api,
+      .get_cli_options = dsp_agc_get_cli_options,
   };
   module_registry_add(&m);
 }

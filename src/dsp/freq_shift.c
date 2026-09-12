@@ -269,7 +269,6 @@ static const DspModuleInterface dsp_freq_shift_api = {
     .reset = dsp_freq_shift_reset_api,
     .cleanup = dsp_freq_shift_cleanup,
     .validate_options = dsp_freq_shift_validate_options,
-    .get_cli_options = dsp_freq_shift_get_cli_options,
 };
 
 // --- Auto-Registration ---
@@ -278,6 +277,7 @@ static void __attribute__((constructor)) register_module(void) {
       .name = "freq_shift",
       .type = MODULE_TYPE_DSP,
       .api = (void *)&dsp_freq_shift_api,
+      .get_cli_options = dsp_freq_shift_get_cli_options,
   };
   module_registry_add(&m);
 }

@@ -61,6 +61,11 @@ typedef struct Module {
  */
 const Module *module_get(const char *name, ModuleType type,
                          struct MemoryArena *arena);
+const struct InputModuleInterface *get_input_module(const char *name,
+                                                    struct MemoryArena *arena);
+const struct OutputModuleInterface *
+get_output_module(const char *name, struct MemoryArena *arena);
+
 const struct DspModuleInterface *get_dsp_module(const char *name,
                                                 struct MemoryArena *arena);
 
@@ -129,13 +134,5 @@ void module_populate_cli_options(struct argparse_option *dest_buffer,
                                  const char *active_input_type,
                                  const char *active_output_type,
                                  struct MemoryArena *arena);
-
-// --- DSP Module Getters ---
-const struct DspModuleInterface *module_dsp_dcblock_get_api(void);
-const struct DspModuleInterface *module_dsp_iq_correct_get_api(void);
-const struct DspModuleInterface *module_dsp_freq_shift_get_api(void);
-const struct DspModuleInterface *module_dsp_filter_get_api(void);
-const struct DspModuleInterface *module_dsp_resampler_get_api(void);
-const struct DspModuleInterface *module_dsp_agc_get_api(void);
 
 #endif // MODULE_REGISTRY_H_

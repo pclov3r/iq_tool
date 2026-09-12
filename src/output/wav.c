@@ -68,7 +68,6 @@ static OutputModuleInterface s_output_wav_api = {
     .get_pipeline_requirements = output_wav_get_pipeline_requirements,
     .validate_options =
         output_wav_common_validate_options, // Use common validation
-    .get_cli_options = output_wav_get_cli_options,
     .initialize = output_wav_initialize, // Use our specific initializer
     .reset = NULL,
     .flush = NULL,

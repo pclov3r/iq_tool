@@ -55,7 +55,6 @@ output_wav_rf64_get_cli_options(int *count) {
 static OutputModuleInterface s_output_wav_rf64_api = {
     .validate_options =
         output_wav_common_validate_options, // Use common validation
-    .get_cli_options = output_wav_rf64_get_cli_options,
     .initialize = output_wav_rf64_initialize, // Use our specific initializer
     .reset = NULL,
     .flush = NULL,

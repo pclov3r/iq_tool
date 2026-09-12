@@ -158,7 +158,6 @@ typedef struct OutputModuleInterface {
   bool (*validate_options)(struct AppContext *app);
 
   // Returns any CLI options specific to this output format
-  const struct argparse_option *(*get_cli_options)(int *count);
 
   void (*get_pipeline_requirements)(const struct AppConfig *config,
                                     double *rate, SampleFormat *format,
@@ -226,7 +225,6 @@ typedef struct DspModuleInterface {
   bool (*validate_options)(struct AppContext *app);
 
   // Returns any CLI options specific to this DSP module
-  const struct argparse_option *(*get_cli_options)(int *count);
 
   // Appends to the summary info block before processing starts (optional)
   void (*get_summary_info)(void *state, OutputSummaryInfo *info);

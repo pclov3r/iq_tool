@@ -107,7 +107,6 @@ static void output_stdout_get_pipeline_requirements(
 static OutputModuleInterface s_output_stdout_api = {
     .get_pipeline_requirements = output_stdout_get_pipeline_requirements,
     .validate_options = NULL,
-    .get_cli_options = output_stdout_get_cli_options,
     .initialize = output_stdout_initialize,
     .reset = NULL,
     .flush = NULL,

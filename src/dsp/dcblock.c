@@ -137,7 +137,6 @@ static const DspModuleInterface dsp_dcblock_api = {
     .process = dcblock_process,
     .reset = dcblock_reset_api,
     .validate_options = dsp_dcblock_validate_options,
-    .get_cli_options = dsp_dcblock_get_cli_options,
     .cleanup = dcblock_cleanup};
 
 // --- Auto-Registration ---
@@ -146,6 +145,7 @@ static void __attribute__((constructor)) register_module(void) {
       .name = "dc_block",
       .type = MODULE_TYPE_DSP,
       .api = (void *)&dsp_dcblock_api,
+      .get_cli_options = dsp_dcblock_get_cli_options,
   };
   module_registry_add(&m);
 }

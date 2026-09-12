@@ -960,7 +960,6 @@ static const DspModuleInterface dsp_filter_api = {
     .reset = dsp_filter_reset_api,
     .cleanup = dsp_filter_cleanup,
     .validate_options = dsp_filter_validate_options,
-    .get_cli_options = dsp_filter_get_cli_options,
     .get_summary_info = filter_get_summary_info,
 };
 
@@ -970,6 +969,7 @@ static void __attribute__((constructor)) register_module(void) {
       .name = "filter",
       .type = MODULE_TYPE_DSP,
       .api = (void *)&dsp_filter_api,
+      .get_cli_options = dsp_filter_get_cli_options,
   };
   module_registry_add(&m);
 }

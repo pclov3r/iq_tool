@@ -144,7 +144,6 @@ static void directpipe_get_pipeline_requirements(const struct AppConfig *config,
 static OutputModuleInterface s_directpipe_api = {
     .get_pipeline_requirements = directpipe_get_pipeline_requirements,
     .validate_options = NULL,
-    .get_cli_options = output_directpipe_get_cli_options,
     .initialize = output_directpipe_initialize,
     .reset = NULL,
     .flush = NULL,
