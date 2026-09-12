@@ -48,10 +48,7 @@ static int SAME_ALERT_EXTRA_REPEATS =
 static int SAME_ALERT_REPEAT_DELAY_SEC =
     10; // Delay between extra prints in seconds
 
-static char same_alert_saved_header[256] = {0};
-static int same_alert_repeat_counter = 0;
-static int same_alert_samples_until_next_print = 0;
-static bool same_alert_is_repeat = false;
+// Statics moved to Context struct
 
 // --- Context ---
 typedef struct {
@@ -94,6 +91,19 @@ typedef struct {
   float alert_tone_phase_2;
   bool is_unmuted;
   int num_eom_bursts;
+
+  // Statistics & Metrics (Moved from static scope)
+  size_t stat_counter;
+  double accum_mag_sum;
+  double accum_mag_sq_sum;
+  size_t stat_rate_threshold;
+  bool first_run;
+
+  // SAME Alert State (Moved from file-scope statics)
+  char same_alert_saved_header[256];
+  int same_alert_repeat_counter;
+  int same_alert_samples_until_next_print;
+  bool same_alert_is_repeat;
 } NoaawxContext;
 
 // --- Config ---
@@ -202,6 +212,7 @@ static bool output_noaawx_initialize(ModuleContext *context) {
   decoder->pcm_out = mem_arena_alloc(&res->process_chain.setup_arena,
                                      in_samples * sizeof(int16_t), false);
 
+    decoder->first_run = true;
   return true;
 }
 
@@ -3831,12 +3842,12 @@ static void run_bit_wise_voting(NoaawxContext *decoder) {
   }
 
   log_info("Error corrected SAME Header: %s", final_msg);
-  if (!same_alert_is_repeat) {
-    strncpy(same_alert_saved_header, final_msg,
-            sizeof(same_alert_saved_header) - 1);
-    same_alert_saved_header[255] = '\0';
-    same_alert_repeat_counter = SAME_ALERT_EXTRA_REPEATS;
-    same_alert_samples_until_next_print =
+  if (!decoder->same_alert_is_repeat) {
+    strncpy(decoder->same_alert_saved_header, final_msg,
+            sizeof(decoder->same_alert_saved_header) - 1);
+    decoder->same_alert_saved_header[255] = '\0';
+    decoder->same_alert_repeat_counter = SAME_ALERT_EXTRA_REPEATS;
+    decoder->same_alert_samples_until_next_print =
         SAME_ALERT_REPEAT_DELAY_SEC * NOAAWX_SAMPLE_RATE;
   }
   parse_same_header(final_msg);
@@ -3868,14 +3879,11 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
   AppContext *res = context->app;
   NoaawxContext *decoder = (NoaawxContext *)res->module.output_private_data;
 
-  static size_t stat_counter = 0;
-  static double accum_mag_sum = 0.0, accum_mag_sq_sum = 0.0;
-  static size_t stat_rate_threshold = 0;
-  static bool _first_run = true;
-  if (_first_run) {
-    stat_rate_threshold =
+// Statics moved to Context struct
+  if (decoder->first_run) {
+    decoder->stat_rate_threshold =
         (size_t)(decoder->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC);
-    _first_run = false;
+    decoder->first_run = false;
   }
   if (input_bytes == 0)
     return 0;
@@ -3901,15 +3909,15 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
   }
 
   // Accumulate for periodic status logging
-  accum_mag_sum += block_mag_sum;
-  accum_mag_sq_sum += block_mag_sq_sum;
-  stat_counter += n;
+  decoder->accum_mag_sum += block_mag_sum;
+  decoder->accum_mag_sq_sum += block_mag_sq_sum;
+  decoder->stat_counter += n;
 
   // 4. Periodic console logging (unchanged, rates aligned to
   // CONSOLE_UPDATE_INTERVAL)
-  if (stat_counter >= stat_rate_threshold) {
-    double avg_power = accum_mag_sq_sum / (double)stat_counter;
-    double mean_mag = accum_mag_sum / (double)stat_counter;
+  if (decoder->stat_counter >= decoder->stat_rate_threshold) {
+    double avg_power = decoder->accum_mag_sq_sum / (double)decoder->stat_counter;
+    double mean_mag = decoder->accum_mag_sum / (double)decoder->stat_counter;
     double variance = avg_power - (mean_mag * mean_mag);
 
     float snr_db = 0.0f;
@@ -3927,9 +3935,9 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
       log_info("dBFS: %.1f | SNR: %.1f dB", dbfs, snr_db);
     }
 
-    stat_counter = 0;
-    accum_mag_sum = 0.0;
-    accum_mag_sq_sum = 0.0;
+    decoder->stat_counter = 0;
+    decoder->accum_mag_sum = 0.0;
+    decoder->accum_mag_sq_sum = 0.0;
   }
 
   if (s_noaawx_config.audio_in) {
@@ -4050,15 +4058,15 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
   }
 
   // --- SAME Alert Repetition Logic ---
-  if (same_alert_repeat_counter > 0) {
-    same_alert_samples_until_next_print -= n;
-    if (same_alert_samples_until_next_print <= 0) {
-      same_alert_is_repeat = true;
-      parse_same_header(same_alert_saved_header);
-      same_alert_is_repeat = false;
+  if (decoder->same_alert_repeat_counter > 0) {
+    decoder->same_alert_samples_until_next_print -= n;
+    if (decoder->same_alert_samples_until_next_print <= 0) {
+      decoder->same_alert_is_repeat = true;
+      parse_same_header(decoder->same_alert_saved_header);
+      decoder->same_alert_is_repeat = false;
 
-      same_alert_repeat_counter--;
-      same_alert_samples_until_next_print =
+      decoder->same_alert_repeat_counter--;
+      decoder->same_alert_samples_until_next_print =
           SAME_ALERT_REPEAT_DELAY_SEC * NOAAWX_SAMPLE_RATE;
     }
   }

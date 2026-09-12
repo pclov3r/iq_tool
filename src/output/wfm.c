@@ -169,6 +169,17 @@ typedef struct {
   bool active_rt_plus_tags_valid[66];
   size_t rds_display_counter;
   size_t rds_display_threshold;
+
+  // Statistics & Metrics (Moved from static scope)
+  size_t stat_counter;
+  double accum_mag_sum;
+  double accum_mag_sq_sum;
+  double accum_pilot_mag_sum;
+  double accum_stereo_pct_sum;
+  double accum_pilot_err_sq_sum;
+  size_t accum_pilot_count;
+  size_t stat_rate_threshold;
+  bool first_run;
 } WfmContext;
 
 // --- CLI Config ---
@@ -442,6 +453,7 @@ static bool output_wfm_initialize(ModuleContext *context) {
     wfm_decoder->redsea = NULL;
   }
 
+    wfm_decoder->first_run = true;
   return true;
 }
 
@@ -463,18 +475,11 @@ static size_t output_wfm_write_chunk(ModuleContext *context, const void *buffer,
   AppContext *res = context->app;
   WfmContext *wfm_decoder = (WfmContext *)res->module.output_private_data;
 
-  static size_t stat_counter = 0;
-  static double accum_mag_sum = 0.0, accum_mag_sq_sum = 0.0,
-                accum_pilot_mag_sum = 0.0;
-  static double accum_stereo_pct_sum = 0.0, accum_pilot_err_sq_sum = 0.0;
-  static size_t accum_pilot_count = 0;
-
-  static size_t stat_rate_threshold = 0;
-  static bool _first_run = true;
-  if (_first_run) {
-    stat_rate_threshold =
+// Statics moved to Context struct
+  if (wfm_decoder->first_run) {
+    wfm_decoder->stat_rate_threshold =
         (size_t)(wfm_decoder->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC);
-    _first_run = false;
+    wfm_decoder->first_run = false;
   }
 
   if (input_bytes == 0)
@@ -487,10 +492,10 @@ static size_t output_wfm_write_chunk(ModuleContext *context, const void *buffer,
 
   for (unsigned int k = 0; k < num_frames; k++) {
     float mag = cabsf(iq_ptr[k]);
-    accum_mag_sum += mag;
-    accum_mag_sq_sum += (mag * mag);
+    wfm_decoder->accum_mag_sum += mag;
+    wfm_decoder->accum_mag_sq_sum += (mag * mag);
   }
-  stat_counter += num_frames;
+  wfm_decoder->stat_counter += num_frames;
 
   freqdem_demodulate_block(wfm_decoder->fm_demod, iq_ptr, num_frames,
                            wfm_decoder->mpx_buffer);
@@ -835,7 +840,7 @@ static size_t output_wfm_write_chunk(ModuleContext *context, const void *buffer,
     firfilt_crcf_push(wfm_decoder->fir_pilot, pilot_mix_down);
     liquid_float_complex fir_out;
     firfilt_crcf_execute(wfm_decoder->fir_pilot, &fir_out);
-    accum_pilot_mag_sum += cabsf(fir_out);
+    wfm_decoder->accum_pilot_mag_sum += cabsf(fir_out);
     liquid_float_complex pilot;
     nco_crcf_mix_up(wfm_decoder->nco_pilot_approx, fir_out, &pilot);
     nco_crcf_step(wfm_decoder->nco_pilot_approx);
@@ -846,8 +851,8 @@ static size_t output_wfm_write_chunk(ModuleContext *context, const void *buffer,
     float phase_error = cargf(pilot * conjf(pll_val));
     if (i % 4 == 0) {
       nco_crcf_pll_step(wfm_decoder->nco_pilot_exact, phase_error);
-      accum_pilot_err_sq_sum += (phase_error * phase_error);
-      accum_pilot_count++;
+      wfm_decoder->accum_pilot_err_sq_sum += (phase_error * phase_error);
+      wfm_decoder->accum_pilot_count++;
       running_average_push(&wfm_decoder->pilotnoise, phase_error * phase_error);
     }
     nco_crcf_step(wfm_decoder->nco_pilot_exact);
@@ -860,7 +865,7 @@ static size_t output_wfm_write_chunk(ModuleContext *context, const void *buffer,
                            fminf(1.0f, WFM_STEREO_SEPARATION -
                                            running_average_get(
                                                &wfm_decoder->pilotnoise))));
-    accum_stereo_pct_sum += (stereogain * 100.0f);
+    wfm_decoder->accum_stereo_pct_sum += (stereogain * 100.0f);
     firfilt_rrrf_push(wfm_decoder->fir_sum, insample);
     liquid_float_complex sc_mix;
     nco_crcf_mix_down(wfm_decoder->nco_stereo_subcarrier, insample + 0.0f * I,
@@ -877,23 +882,23 @@ static size_t output_wfm_write_chunk(ModuleContext *context, const void *buffer,
     wfm_decoder->audio_out_r[i] = right;
   }
 
-  if (stat_counter >= stat_rate_threshold) {
-    double avg_power = accum_mag_sq_sum / (double)stat_counter;
+  if (wfm_decoder->stat_counter >= wfm_decoder->stat_rate_threshold) {
+    double avg_power = wfm_decoder->accum_mag_sq_sum / (double)wfm_decoder->stat_counter;
     float dbfs = utility_calculate_dbfs((float)avg_power);
 
-    double mean_mag = accum_mag_sum / (double)stat_counter;
+    double mean_mag = wfm_decoder->accum_mag_sum / (double)wfm_decoder->stat_counter;
     float snr_db =
         10.0f * log10f((float)((mean_mag * mean_mag) /
                                fmax(1e-10, avg_power - (mean_mag * mean_mag))));
     float avg_pilot_mse =
-        (accum_pilot_count > 0)
-            ? (float)(accum_pilot_err_sq_sum / (double)accum_pilot_count)
+        (wfm_decoder->accum_pilot_count > 0)
+            ? (float)(wfm_decoder->accum_pilot_err_sq_sum / (double)wfm_decoder->accum_pilot_count)
             : 0.0f;
     float raw_pilot_err = sqrtf(avg_pilot_mse) * 100.0f;
     float pilot_pct = fminf(raw_pilot_err, 100.0f);
-    double avg_pilot = accum_pilot_mag_sum / (double)stat_counter;
+    double avg_pilot = wfm_decoder->accum_pilot_mag_sum / (double)wfm_decoder->stat_counter;
     bool is_mono_station = (avg_pilot < 0.001) || (raw_pilot_err > 100.0f);
-    float avg_stereo_pct = (float)(accum_stereo_pct_sum / (double)stat_counter);
+    float avg_stereo_pct = (float)(wfm_decoder->accum_stereo_pct_sum / (double)wfm_decoder->stat_counter);
     if (avg_stereo_pct > 1.0f)
       is_mono_station = false;
 
@@ -932,13 +937,13 @@ static size_t output_wfm_write_chunk(ModuleContext *context, const void *buffer,
             dbfs, snr_db, avg_stereo_pct, pilot_pct);
       }
     }
-    stat_counter = 0;
-    accum_mag_sum = 0.0;
-    accum_mag_sq_sum = 0.0;
-    accum_pilot_mag_sum = 0.0;
-    accum_stereo_pct_sum = 0.0;
-    accum_pilot_err_sq_sum = 0.0;
-    accum_pilot_count = 0;
+    wfm_decoder->stat_counter = 0;
+    wfm_decoder->accum_mag_sum = 0.0;
+    wfm_decoder->accum_mag_sq_sum = 0.0;
+    wfm_decoder->accum_pilot_mag_sum = 0.0;
+    wfm_decoder->accum_stereo_pct_sum = 0.0;
+    wfm_decoder->accum_pilot_err_sq_sum = 0.0;
+    wfm_decoder->accum_pilot_count = 0;
   }
 
   unsigned int num_resampled;
