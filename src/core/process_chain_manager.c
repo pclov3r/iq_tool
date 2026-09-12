@@ -418,18 +418,18 @@ bool process_chain_execute(ProcessChainContext *context) {
 
   // --- Step 4: Initialize the generic thread manager ---
   ThreadManager manager;
-  thread_manager_init(&manager, context);
+  thread_manager_init(&manager);
 
   // --- Step 5: Spawn threads based on configuration (Direct Command Model) ---
   log_debug("Spawning process_chain threads...");
   bool threads_ok = true;
   if (app->process_chain_mode != PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL) {
-    if (!thread_manager_spawn_thread(&manager, "Source",
-                                     process_chain_thread_source))
+    if (!thread_manager_spawn(&manager, "source", process_chain_thread_source,
+                              context))
       threads_ok = false;
   }
-  if (threads_ok && !thread_manager_spawn_thread(&manager, "Reader",
-                                                 process_chain_thread_reader))
+  if (threads_ok && !thread_manager_spawn(&manager, "reader",
+                                          process_chain_thread_reader, context))
     threads_ok = false;
 
   // Start DSP chains
@@ -460,23 +460,24 @@ bool process_chain_execute(ProcessChainContext *context) {
     }
 
     for (int i = 0; i < num_dsp_modules; i++) {
-      if (!thread_manager_start_chain(
-              &manager, dsp_modules[i]->name, dsp_modules[i], dsp_states[i],
+      if (!process_chain_start_dsp_stage(
+              &manager, dsp_modules[i], dsp_states[i],
               app->process_chain.active_queues[i],
-              app->process_chain.active_queues[i + 1])) {
+              app->process_chain.active_queues[i + 1],
+              app->process_chain.free_sample_chunk_queue)) {
         threads_ok = false;
         break;
       }
     }
   }
 
-  if (threads_ok && !thread_manager_spawn_thread(&manager, "Writer",
-                                                 process_chain_thread_writer))
+  if (threads_ok && !thread_manager_spawn(&manager, "writer",
+                                          process_chain_thread_writer, context))
     threads_ok = false;
   if (threads_ok && module_is_live_source(config->input.type_name,
                                           &app->process_chain.setup_arena)) {
-    if (!thread_manager_spawn_thread(&manager, "Source Watchdog",
-                                     process_chain_thread_watchdog))
+    if (!thread_manager_spawn(&manager, "source watchdog",
+                              process_chain_thread_watchdog, context))
       threads_ok = false;
   }
 

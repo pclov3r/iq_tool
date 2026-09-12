@@ -1,12 +1,6 @@
 /**
  * @file thread_manager.h
- * @brief Defines a generic, application-agnostic utility for managing thread
- * lifecycle.
- *
- * This module provides a clean interface for creating, starting, and joining a
- * group of threads. It is designed to be completely decoupled from the
- * application's specific logic; it simply executes functions in threads when
- * commanded to do so.
+ * @brief Generic, application-agnostic utility for managing thread lifecycles.
  */
 
 #ifndef THREAD_MANAGER_H_
@@ -15,57 +9,32 @@
 #include <pthread.h>
 #include <stdbool.h>
 
-// --- Constants ---
 #define MAX_MANAGED_THREADS 16
 
-// --- Type Definitions ---
-
-/**
- * @struct ThreadManager
- * @brief The manager struct that holds thread handles and state.
- */
 typedef struct ThreadManager {
   pthread_t thread_handles[MAX_MANAGED_THREADS];
   int num_threads_started;
-  void *thread_context; // A generic context pointer to pass to all threads.
 } ThreadManager;
-
-// --- Function Declarations ---
 
 /**
  * @brief Initializes the thread manager.
- * @param manager A pointer to the ThreadManager struct to initialize.
- * @param context A void pointer to a context struct (e.g., ProcessChainContext)
- * that will be passed as the sole argument to every thread function that is
- * started.
  */
-void thread_manager_init(ThreadManager *manager, void *context);
+void thread_manager_init(ThreadManager *manager);
 
 /**
- * @brief Spawns a single task in a new thread.
- *
- * This function immediately creates a new thread to execute the given function.
- *
- * @param manager A pointer to the initialized ThreadManager.
- * @param name The name of the thread for logging.
- * @param func The function pointer for the thread to execute.
- * @return true if the thread was spawned successfully, false otherwise.
+ * @brief Spawns a new thread to execute func(arg) and assigns an OS name.
+ * @param manager Pointer to the ThreadManager.
+ * @param name Diagnostic name for logging and OS profilers (htop/gdb).
+ * @param func Function to execute in thread.
+ * @param arg Pointer passed as sole argument to func.
+ * @return true on success, false on failure.
  */
-bool thread_manager_spawn_thread(ThreadManager *manager, const char *name,
-                                 void *(*func)(void *));
+bool thread_manager_spawn(ThreadManager *manager, const char *name,
+                          void *(*func)(void *), void *arg);
 
 /**
- * @brief Waits for all threads spawned by this manager to complete.
- * @param manager A pointer to the ThreadManager.
+ * @brief Waits for all spawned threads to complete and resets the manager.
  */
 void thread_manager_join_all(ThreadManager *manager);
-
-struct Queue;
-struct DspModuleInterface;
-
-bool thread_manager_start_chain(ThreadManager *tm, const char *name,
-                                const struct DspModuleInterface *module,
-                                void *state, struct Queue *in_q,
-                                struct Queue *out_q);
 
 #endif // THREAD_MANAGER_H_

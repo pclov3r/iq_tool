@@ -716,8 +716,7 @@ static void estimate_imbalance(IqState *st, const complex float *restrict iq,
 // === DSP Module Interface Implementation ===
 
 static void *iq_estimation_thread(void *arg) {
-  ProcessChainContext *ctx = (ProcessChainContext *)arg;
-  IqState *st = process_chain_get_module_state(ctx->app, "iq_correct");
+  IqState *st = (IqState *)arg;
   if (!st)
     return NULL;
 
@@ -737,7 +736,7 @@ static void *iq_estimation_thread(void *arg) {
 static bool dsp_iq_correct_start_background_threads(void *state,
                                                     struct ThreadManager *tm) {
   (void)state;
-  return thread_manager_spawn_thread(tm, "I/Q Optimizer", iq_estimation_thread);
+  return thread_manager_spawn(tm, "I/Q Optimizer", iq_estimation_thread, state);
 }
 
 static void *dsp_iq_correct_init(ModuleContext *ctx, double input_rate,

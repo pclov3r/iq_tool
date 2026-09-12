@@ -1,70 +1,64 @@
 /**
  * @file thread_manager.c
- * @brief Implements a generic utility for managing the lifecycle of application
- * threads.
+ * @brief Implements generic thread lifecycle management.
  */
 
-#include "thread_manager.h"
-#include "log.h"
+#include <pthread.h>
+#include <stdlib.h>
 #include <string.h>
 
-/**
- * @brief Initializes the thread manager.
- * @param manager A pointer to the ThreadManager struct to initialize.
- * @param context A void pointer to a context struct (e.g., ProcessChainContext)
- * that will be passed as the sole argument to every thread function that is
- * started.
- */
-void thread_manager_init(ThreadManager *manager, void *context) {
+#include "log.h"
+#include "thread_manager.h"
+
+static void set_os_thread_name(pthread_t thread, const char *name) {
+  if (!name) {
+    return;
+  }
+#if defined(__linux__) || defined(__MINGW32__)
+  char buf[16];
+  strncpy(buf, name, sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0';
+  pthread_setname_np(thread, buf);
+#endif
+}
+
+void thread_manager_init(ThreadManager *manager) {
   if (!manager) {
     return;
   }
   manager->num_threads_started = 0;
-  manager->thread_context = context;
 }
 
-/**
- * @brief Spawns a single task in a new thread.
- *
- * This function immediately creates a new thread to execute the given function.
- *
- * @param manager A pointer to the initialized ThreadManager.
- * @param name The name of the thread for logging.
- * @param func The function pointer for the thread to execute.
- * @return true if the thread was spawned successfully, false otherwise.
- */
-bool thread_manager_spawn_thread(ThreadManager *manager, const char *name,
-                                 void *(*func)(void *)) {
-  if (!manager || !name || !func) {
-    log_error("thread_manager_spawn_thread called with NULL arguments.");
+bool thread_manager_spawn(ThreadManager *manager, const char *name,
+                          void *(*func)(void *), void *arg) {
+  if (!manager || !func) {
+    log_error("thread_manager_spawn called with NULL arguments.");
     return false;
   }
 
   if (manager->num_threads_started >= MAX_MANAGED_THREADS) {
-    log_fatal("Cannot spawn thread '%s', manager has reached its maximum "
-              "capacity of %d threads.",
-              name, MAX_MANAGED_THREADS);
+    log_fatal("Cannot spawn thread '%s': capacity of %d reached.",
+              name ? name : "unnamed", MAX_MANAGED_THREADS);
     return false;
   }
 
-  int return_code =
-      pthread_create(&manager->thread_handles[manager->num_threads_started],
-                     NULL, func, manager->thread_context);
-  if (return_code != 0) {
-    log_fatal("Failed to create '%s' thread: %s", name, strerror(return_code));
-    // Do not increment num_threads_started on failure.
+  int rc = pthread_create(
+      &manager->thread_handles[manager->num_threads_started], NULL, func, arg);
+  if (rc != 0) {
+    log_fatal("Failed to create '%s' thread: %s", name ? name : "unnamed",
+              strerror(rc));
     return false;
   }
 
-  log_debug("Spawned thread \'%s\'.", name);
+  // Set OS kernel thread name for htop, top -H, and gdb
+  set_os_thread_name(manager->thread_handles[manager->num_threads_started],
+                     name);
+
+  log_debug("Spawned thread '%s'.", name ? name : "unnamed");
   manager->num_threads_started++;
   return true;
 }
 
-/**
- * @brief Waits for all threads spawned by this manager to complete.
- * @param manager A pointer to the ThreadManager.
- */
 void thread_manager_join_all(ThreadManager *manager) {
   if (!manager || manager->num_threads_started == 0) {
     return;
@@ -72,85 +66,14 @@ void thread_manager_join_all(ThreadManager *manager) {
 
   log_debug("Waiting for %d thread(s) to complete...",
             manager->num_threads_started);
+
   for (int i = 0; i < manager->num_threads_started; i++) {
-    if (pthread_join(manager->thread_handles[i], NULL) != 0) {
-      // This is not a fatal error, but it's important to log.
-      log_warn("Error joining thread '%d'.", i);
+    int rc = pthread_join(manager->thread_handles[i], NULL);
+    if (rc != 0) {
+      log_warn("Error joining thread index %d: %s", i, strerror(rc));
     }
   }
+
   log_debug("All managed threads have joined.");
-  // Reset for potential reuse.
   manager->num_threads_started = 0;
-}
-
-#include "module.h"
-#include "platform.h"
-#include "process_chain_context.h"
-#include "queue.h"
-#include <stdlib.h>
-
-typedef struct {
-  const struct DspModuleInterface *module;
-  void *state;
-  struct Queue *in_q;
-  struct Queue *out_q;
-  void *thread_context;
-} ChainThreadContext;
-
-static void *dsp_chain_thread_func(void *arg) {
-  ChainThreadContext *ctx = (ChainThreadContext *)arg;
-
-  platform_set_thread_priority(PRIORITY_HIGH, ctx->module->name);
-
-  while (1) {
-    SampleChunk *chunk = (SampleChunk *)queue_dequeue(ctx->in_q);
-    if (!chunk)
-      break;
-
-    chunk = ctx->module->process(ctx->state, chunk);
-
-    if (!queue_enqueue(ctx->out_q, chunk)) {
-      if (chunk->is_last_chunk)
-        break;
-      break;
-    }
-    if (chunk->is_last_chunk)
-      break;
-  }
-
-  free(ctx);
-  return NULL;
-}
-
-bool thread_manager_start_chain(ThreadManager *tm, const char *name,
-                                const struct DspModuleInterface *module,
-                                void *state, struct Queue *in_q,
-                                struct Queue *out_q) {
-  if (!tm || !module || !in_q || !out_q)
-    return false;
-
-  if (tm->num_threads_started >= MAX_MANAGED_THREADS) {
-    return false;
-  }
-
-  ChainThreadContext *ctx = malloc(sizeof(ChainThreadContext));
-  if (!ctx) {
-    log_fatal("Failed to allocate context for DSP chain thread '%s'.", name);
-    return false;
-  }
-  ctx->module = module;
-  ctx->state = state;
-  ctx->in_q = in_q;
-  ctx->out_q = out_q;
-  ctx->thread_context = tm->thread_context;
-
-  int return_code = pthread_create(&tm->thread_handles[tm->num_threads_started],
-                                   NULL, dsp_chain_thread_func, ctx);
-  if (return_code != 0) {
-    free(ctx);
-    return false;
-  }
-
-  tm->num_threads_started++;
-  return true;
 }

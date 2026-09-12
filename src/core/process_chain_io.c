@@ -1,10 +1,10 @@
+#include "thread_manager.h"
 /**
  * @file process_chain_stages.c
  * @brief Implements the high-speed data processing stages for the DSP
  * process_chain.
  */
 
-#include "process_chain_io.h"
 #include "app_context.h"
 #include "config/constants.h"
 #include "input/common.h"
@@ -13,6 +13,7 @@
 #include "packet_serializer.h"
 #include "platform.h"
 #include "process_chain_context.h"
+#include "process_chain_io.h"
 #include "queue.h"
 #include "ring_buffer.h"
 #include "sample_conversion_functions.h"
@@ -60,7 +61,7 @@ static bool process_chain_queue_samples(void *context, const void *data,
 }
 
 void *process_chain_thread_source(void *arg) {
-  platform_set_thread_priority(PRIORITY_REALTIME, "Source");
+  platform_set_thread_priority(PRIORITY_REALTIME, "source");
 
   ProcessChainContext *args = (ProcessChainContext *)arg;
   AppContext *app = args->app;
@@ -78,7 +79,7 @@ void *process_chain_thread_source(void *arg) {
 }
 
 void *process_chain_thread_reader(void *arg) {
-  platform_set_thread_priority(PRIORITY_NORMAL, "Reader");
+  platform_set_thread_priority(PRIORITY_NORMAL, "reader");
 
   ProcessChainContext *args = (ProcessChainContext *)arg;
   AppContext *app = args->app;
@@ -235,7 +236,7 @@ void *process_chain_thread_reader(void *arg) {
 }
 
 void *process_chain_thread_writer(void *arg) {
-  platform_set_thread_priority(PRIORITY_HIGHEST, "Writer");
+  platform_set_thread_priority(PRIORITY_HIGHEST, "writer");
 
   ProcessChainContext *args = (ProcessChainContext *)arg;
   AppContext *app = args->app;
@@ -323,4 +324,80 @@ void *process_chain_thread_writer(void *arg) {
   request_shutdown();
   log_debug("Generic Writer thread is exiting.");
   return NULL;
+}
+
+// --- DSP Stage Thread Function ---
+
+typedef struct {
+  const struct DspModuleInterface *module;
+  void *state;
+  struct Queue *in_q;
+  struct Queue *out_q;
+  struct Queue *free_chunk_q;
+} ProcessChainDspStageContext;
+
+static void *process_chain_thread_dsp(void *arg) {
+  ProcessChainDspStageContext *ctx = (ProcessChainDspStageContext *)arg;
+
+  platform_set_thread_priority(PRIORITY_HIGH, ctx->module->name);
+
+  while (1) {
+    SampleChunk *chunk = (SampleChunk *)queue_dequeue(ctx->in_q);
+    if (!chunk) {
+      break; // Input queue signaled shutdown
+    }
+
+    bool was_last = chunk->is_last_chunk;
+
+    chunk = ctx->module->process(ctx->state, chunk);
+
+    if (chunk) {
+      if (!queue_enqueue(ctx->out_q, chunk)) {
+        // Enqueue failed because pipeline is shutting down.
+        // Return chunk to pool so we don't leak memory during shutdown.
+        if (ctx->free_chunk_q) {
+          queue_enqueue_forced(ctx->free_chunk_q, chunk);
+        }
+        break;
+      }
+    }
+
+    if (was_last) {
+      break;
+    }
+  }
+
+  free(ctx);
+  return NULL;
+}
+
+bool process_chain_start_dsp_stage(struct ThreadManager *tm,
+                                   const struct DspModuleInterface *module,
+                                   void *state, struct Queue *in_q,
+                                   struct Queue *out_q,
+                                   struct Queue *free_chunk_q) {
+  if (!tm || !module || !in_q || !out_q) {
+    log_error("process_chain_start_dsp_stage called with NULL arguments.");
+    return false;
+  }
+
+  ProcessChainDspStageContext *ctx = (ProcessChainDspStageContext *)malloc(
+      sizeof(ProcessChainDspStageContext));
+  if (!ctx) {
+    log_fatal("Failed to allocate context for DSP stage '%s'.", module->name);
+    return false;
+  }
+
+  ctx->module = module;
+  ctx->state = state;
+  ctx->in_q = in_q;
+  ctx->out_q = out_q;
+  ctx->free_chunk_q = free_chunk_q;
+
+  if (!thread_manager_spawn(tm, module->name, process_chain_thread_dsp, ctx)) {
+    free(ctx);
+    return false;
+  }
+
+  return true;
 }
