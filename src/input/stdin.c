@@ -1,5 +1,6 @@
 /**
  * @file input/stdin.c
+ * @brief Input source module for standard input (stdin) pipe.
  */
 
 #include "app_context.h"

@@ -1,5 +1,6 @@
 /**
  * @file input/hydrasdr.c
+ * @brief Input source module for HydraSDR devices.
  */
 
 #include "app_context.h"

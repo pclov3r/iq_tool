@@ -1,5 +1,6 @@
 /**
  * @file dsp/dcblock.c
+ * @brief DC offset blocking filter module.
  */
 
 #include "app_context.h"

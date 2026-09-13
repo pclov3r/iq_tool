@@ -1,5 +1,10 @@
-#ifndef DSP_IQ_CORRECTION_H
-#define DSP_IQ_CORRECTION_H
+/**
+ * @file dsp/iq_correction.h
+ * @brief Helper declarations for I/Q estimation and initial calibration.
+ */
+
+#ifndef DSP_IQ_CORRECTION_H_
+#define DSP_IQ_CORRECTION_H_
 
 #include "app_context.h"
 #include "module.h"
@@ -11,4 +16,4 @@ bool iq_correction_run_initial_calibration(
     size_t (*read_cb)(void *user_data, void *buffer, size_t bytes),
     void *user_data);
 
-#endif // DSP_IQ_CORRECTION_H
+#endif // DSP_IQ_CORRECTION_H_

@@ -1,6 +1,10 @@
-#pragma once
-#ifndef PROCESS_CHAIN_DEFAULT_H
-#define PROCESS_CHAIN_DEFAULT_H
+/**
+ * @file process_chain_default.h
+ * @brief Defines the default DSP processing chain order and stage nodes.
+ */
+
+#ifndef PROCESS_CHAIN_DEFAULT_H_
+#define PROCESS_CHAIN_DEFAULT_H_
 
 #include <assert.h>
 #include <stddef.h>
@@ -35,4 +39,4 @@ static_assert(
         DSP_MAX_MODULES,
     "DEFAULT_PROCESS_CHAIN length exceeds DSP_MAX_MODULES — raise the cap.");
 
-#endif // PROCESS_CHAIN_DEFAULT_H
+#endif // PROCESS_CHAIN_DEFAULT_H_

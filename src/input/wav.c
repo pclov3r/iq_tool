@@ -1,5 +1,6 @@
 /**
  * @file input/wav.c
+ * @brief Input source module for WAV and RF64 audio/recording files.
  */
 
 #include "app_context.h"

@@ -1,5 +1,6 @@
 /**
  * @file resampler.c
+ * @brief Rational sample rate conversion and interpolation/decimation module.
  */
 
 #include "app_context.h"

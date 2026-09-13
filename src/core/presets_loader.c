@@ -1,5 +1,6 @@
 /**
  * @file presets_loader.c
+ * @brief Configuration presets file parser and property loader.
  */
 
 #include "presets_loader.h"

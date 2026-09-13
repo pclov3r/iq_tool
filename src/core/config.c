@@ -1,5 +1,6 @@
 /**
  * @file config.c
+ * @brief Configuration resolution, defaults application, and parameter synthesis.
  */
 
 #include "config.h"

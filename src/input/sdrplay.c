@@ -1,5 +1,6 @@
 /**
  * @file input/sdrplay.c
+ * @brief Input source module for SDRplay RSP devices.
  */
 
 #include "app_context.h"

@@ -1,5 +1,6 @@
 /**
  * @file ring_buffer.c
+ * @brief Lock-free single-producer single-consumer ring buffer implementation.
  */
 
 #include "ring_buffer.h"

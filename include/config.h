@@ -37,17 +37,6 @@ bool validate_output_destination(struct AppConfig *config);
  */
 bool validate_output_type_and_sample_format(struct AppConfig *config);
 
-/**
- * @brief Validates and processes all user-defined filter arguments.
- * @param config The application configuration struct.
- * @return true if valid, false otherwise.
- */
-
-/**
- * @brief Validates I/Q correction dependencies.
- * @param config The application configuration struct.
- * @return true if valid, false otherwise.
- */
 
 /**
  * @brief Performs high-level validation, checking for logical conflicts between

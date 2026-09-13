@@ -1,5 +1,6 @@
 /**
  * @file cli.c
+ * @brief Command-line argument parsing and configuration validation.
  */
 
 #include "cli.h"

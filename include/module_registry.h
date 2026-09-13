@@ -28,7 +28,7 @@ struct MemoryArena;
  */
 typedef struct Module {
   const char
-      *name; ///< The name used in the --input argument (e.g., "wav", "rtlsdr").
+      *name; ///< The module identifier (e.g., "wav", "rtlsdr", "wfm", "filter").
   ModuleType type;
   void *api; ///< Generic pointer to the module's interface (e.g.,
              ///< InputModuleInterface* or OutputModuleInterface*).
@@ -52,12 +52,12 @@ typedef struct Module {
 // --- Function Declarations ---
 
 /**
- * @brief Finds an INPUT module by name and returns its specific API.
- * @param name The name of the input source to find (e.g., "wav").
+ * @brief Finds a module by name and type.
+ * @param name The name of the module to find (e.g., "wav", "dc_block").
+ * @param type The type of the module (INPUT, OUTPUT, or DSP).
  * @param arena The memory arena, needed to initialize the module list on first
  * call.
- * @return A pointer to the corresponding InputModuleInterface struct, or NULL
- * if not found.
+ * @return A pointer to the corresponding Module struct, or NULL if not found.
  */
 const Module *module_get(const char *name, ModuleType type,
                          struct MemoryArena *arena);
@@ -74,14 +74,6 @@ const struct DspModuleInterface *get_dsp_module(const char *name,
  * @param m Pointer to a populated Module struct to copy into the registry.
  */
 void module_registry_add(const Module *m);
-
-/**
- * @brief Finds a module by name and returns its full registration struct.
- * @param name The name of the module to find.
- * @param arena The memory arena, needed to initialize the module list on first
- * call.
- * @return A read-only pointer to the Module struct, or NULL if not found.
- */
 
 /**
  * @brief Gets a list of all registered and compiled-in modules.

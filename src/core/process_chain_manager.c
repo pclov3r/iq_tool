@@ -1,5 +1,5 @@
 /**
- * @file process_chain.c
+ * @file process_chain_manager.c
  * @brief Implements the creation, execution, and destruction of the
  * application's DSP process_chain.
  *
@@ -48,18 +48,12 @@ static bool _init_queues_and_buffers(AppConfig *config, AppContext *app);
 static void _destroy_queues_and_buffers(AppContext *app);
 
 /**
- * @brief Creates, runs, and waits for the entire processing process_chain to
- * complete.
+ * @brief Resolves process chain rates, formats, and calculates resample ratio.
  *
- * This is the main high-level function that encapsulates the entire
- * process_chain lifecycle. It handles the creation of all DSP objects and
- * queues, spawns all necessary threads using the thread manager, waits for them
- * to finish, and then cleans up all process_chain-specific app.
- *
- * @param context A pointer to the ProcessChainContext, containing the
- * application config and app.
- * @return true if the process_chain ran and shut down cleanly, false if there
- * was a setup or execution error.
+ * @param config Pointer to the application configuration.
+ * @param app Pointer to the application context.
+ * @param[out] out_ratio Output pointer for the calculated resample ratio.
+ * @return true on success, false if configuration is invalid.
  */
 static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
                                          float *out_ratio) {

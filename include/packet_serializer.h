@@ -105,6 +105,7 @@ typedef struct {
  * @param num_samples The number of I/Q pairs to write.
  * @param sample_data Pointer to the interleaved data ([I, Q, I, Q...]).
  * @param format The format of the samples (e.g., CU8, CS16).
+ * @param sample_rate The sampling rate of the packet in Hz.
  * @return true if written successfully, false if dropped due to lack of space.
  */
 bool packet_serializer_write_packet(struct RingBuffer *buffer,

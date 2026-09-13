@@ -1,5 +1,6 @@
 /**
  * @file packet_serializer.c
+ * @brief Ring buffer packet header serializer and streaming deserializer.
  */
 
 #include "packet_serializer.h"

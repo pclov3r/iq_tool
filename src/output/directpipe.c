@@ -1,5 +1,6 @@
 /**
  * @file output/directpipe.c
+ * @brief Direct pipe and subprocess streaming output module.
  */
 
 #include "app_context.h"

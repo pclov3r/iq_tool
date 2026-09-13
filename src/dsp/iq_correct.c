@@ -1,5 +1,6 @@
 /**
- * @file iq_correction.c
+ * @file iq_correct.c
+ * @brief Real-time automatic I/Q phase and amplitude imbalance correction.
  */
 
 /*

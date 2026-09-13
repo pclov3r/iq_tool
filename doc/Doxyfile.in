@@ -1,5 +1,5 @@
 # =============================================================================
-# Doxyfile Configuration Template for iq_resample_tool
+# Doxyfile Configuration Template for iq_tool
 #
 # This file is a template used by CMake. The '@VAR@' variables will be
 # replaced by CMake during the configuration step to create the final

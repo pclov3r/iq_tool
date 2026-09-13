@@ -1,5 +1,6 @@
 /**
  * @file utilities.c
+ * @brief String formatting, unit conversion, and terminal display helpers.
  */
 
 #include "utilities.h"

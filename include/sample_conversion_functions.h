@@ -12,12 +12,6 @@
 // --- Function Declarations ---
 
 /**
- * @brief Gets the number of bytes for a single I/Q pair of the given format.
- * @param format The sample format.
- * @return The size in bytes, or 0 for unknown formats.
- */
-
-/**
  * @brief Converts a block of samples from a source format to complex float
  * (cf32).
  *

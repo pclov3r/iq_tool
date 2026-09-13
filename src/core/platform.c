@@ -1,5 +1,6 @@
 /**
  * @file platform.c
+ * @brief Cross-platform system helpers, terminal controls, and thread priority abstraction.
  */
 
 #include "platform.h"

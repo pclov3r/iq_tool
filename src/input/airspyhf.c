@@ -1,5 +1,6 @@
 /**
  * @file input/airspyhf.c
+ * @brief Input source module for Airspy HF+ SDR devices.
  */
 
 #include "app_context.h"

@@ -1,14 +1,13 @@
 /**
  * @file module.h
- * @brief Defines the abstract interface for all I/Q data input sources.
+ * @brief Defines the abstract interfaces for Input, Output, and DSP modules.
  *
- * This file is the cornerstone of the modular input system. It defines a
- * generic interface (`InputModuleInterface`) using a structure of function
- * pointers. Any concrete input source, whether a file reader (WAV, raw) or a
- * live SDR device (RTL-SDR, SDRplay), must provide an implementation of this
- * interface.
+ * This file is the cornerstone of the modular pipeline system. It defines
+ * generic interfaces (`InputModuleInterface`, `OutputModuleInterface`, and
+ * `DspModuleInterface`) using function pointer vtables. Concrete input sources,
+ * demodulators/writers, and DSP filters implement these interfaces.
  *
- * It also defines the common data structures used to describe an input source's
+ * It also defines the common data structures used to describe module
  * properties and metadata.
  */
 

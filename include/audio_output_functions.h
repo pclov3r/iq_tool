@@ -24,7 +24,7 @@ typedef struct AudioOutputContext AudioOutputContext;
  * Initializes a lock-free ring buffer and the underlying OS audio driver (via
  * Miniaudio).
  *
- * @param arena The memory arena to allocate the context from.
+ * @param app The application context.
  * @param sample_rate The audio sample rate (e.g., 48000).
  * @param channels The number of audio channels (e.g., 2 for stereo).
  * @param buffer_size_bytes The size of the internal ring buffer.

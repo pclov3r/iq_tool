@@ -1,5 +1,6 @@
 /**
  * @file output/wfm.c
+ * @brief Wideband FM stereo demodulator output module with RDS decoding.
  */
 
 /*

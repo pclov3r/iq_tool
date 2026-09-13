@@ -1,5 +1,6 @@
 /**
  * @file input/hackrf.c
+ * @brief Input source module for HackRF SDR devices.
  */
 
 #include "app_context.h"

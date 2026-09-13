@@ -1,5 +1,6 @@
 /**
  * @file output/noaawx.c
+ * @brief NOAA weather satellite APT demodulator and image decoder module.
  */
 
 #include "app_context.h"

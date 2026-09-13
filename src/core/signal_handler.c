@@ -1,5 +1,6 @@
 /**
  * @file signal_handler.c
+ * @brief Platform-independent signal handling and graceful pipeline shutdown.
  */
 
 #include "signal_handler.h"

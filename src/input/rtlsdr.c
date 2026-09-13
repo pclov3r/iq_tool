@@ -1,5 +1,6 @@
 /**
  * @file input/rtlsdr.c
+ * @brief Input source module for RTL-SDR USB dongles.
  */
 
 #include "app_context.h"

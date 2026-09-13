@@ -1,5 +1,6 @@
 /**
  * @file output/rawfile.c
+ * @brief Raw binary sample file output writer module.
  */
 
 #include "app_context.h"

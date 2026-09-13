@@ -1,9 +1,10 @@
-#include "thread_manager.h"
 /**
- * @file process_chain_stages.c
+ * @file process_chain_io.c
  * @brief Implements the high-speed data processing stages for the DSP
  * process_chain.
  */
+
+#include "thread_manager.h"
 
 #include "app_context.h"
 #include "config/constants.h"

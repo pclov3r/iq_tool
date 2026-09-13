@@ -1,8 +1,8 @@
 /**
  * @file mem_arena.c
+ * @brief Thread-safe bump-pointer memory arena allocator.
  */
 
-// memory_arena.c
 #include "mem_arena.h"
 #include "config/constants.h"
 #include "log.h"
@@ -45,14 +45,7 @@ bool mem_arena_init(MemoryArena *arena, size_t capacity) {
   return true;
 }
 
-/**
- * @brief Allocates a block of memory from the arena.
- * This is a simple, fast bump-pointer allocator.
- * @param arena Pointer to the initialized MemoryArena.
- * @param size The number of bytes to allocate.
- * @param zero_memory If true, the allocated memory will be zero-initialized.
- * @return A void pointer to the allocated memory, or NULL if the arena is full.
- */
+// --- mem_arena_alloc implementation ---
 void *mem_arena_alloc(MemoryArena *arena, size_t size, bool zero_memory) {
   if (!arena || !arena->memory)
     return NULL;

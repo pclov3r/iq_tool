@@ -27,8 +27,7 @@ struct AppContext;
  *
  * @param argc Argument count from main.
  * @param argv Argument vector from main.
- * @param config Pointer to the AppConfig struct to populate.
- * @param arena Pointer to the memory arena for setup-time allocations.
+ * @param app Pointer to the application context.
  * @return true on successful parsing, false on a syntax error or an invalid
  * value format.
  */

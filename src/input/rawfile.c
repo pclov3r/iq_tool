@@ -1,5 +1,6 @@
 /**
  * @file input/rawfile.c
+ * @brief Input source module for raw binary I/Q sample files.
  */
 
 #include "app_context.h"

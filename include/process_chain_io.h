@@ -1,5 +1,5 @@
 /**
- * @file process_chain_stages.h
+ * @file process_chain_io.h
  * @brief Declares the high-speed data processing stages for the DSP
  * process_chain.
  */

@@ -1,5 +1,6 @@
 /**
  * @file output/stdout.c
+ * @brief Standard output stream writer module for piping samples.
  */
 
 #include "app_context.h"

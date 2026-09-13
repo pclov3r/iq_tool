@@ -1,5 +1,6 @@
 /**
  * @file presets_loader.h
+ * @brief Defines data structures and functions for loading application presets.
  */
 
 #ifndef PRESETS_LOADER_H_

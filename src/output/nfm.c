@@ -1,5 +1,6 @@
 /**
  * @file output/nfm.c
+ * @brief Narrowband FM demodulator output module.
  */
 
 #include "app_context.h"

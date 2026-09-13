@@ -1,5 +1,6 @@
 /**
  * @file input/bladerf.c
+ * @brief Input source module for BladeRF SDR devices.
  */
 
 #include "app_context.h"

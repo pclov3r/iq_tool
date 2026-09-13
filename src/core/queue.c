@@ -1,5 +1,6 @@
 /**
  * @file queue.c
+ * @brief Bounded, blocking, thread-safe queue implementation.
  */
 
 #include "queue.h"

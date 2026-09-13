@@ -833,7 +833,7 @@ input_spyserver_client_push_samples_to_queue(ModuleContext *context,
   SpyServerClientContext *client =
       (SpyServerClientContext *)app->module.input_private_data;
 
-  // The process_chain_thread_reader in process_chain_stages.c handles pulling
+  // The process_chain_thread_reader in process_chain_io.c handles pulling
   // chunks from source_input_buffer and performing the CF32 conversion. The
   // producer thread writes directly to source_input_buffer in the background.
   // This function simply idles to keep the source module "running" until

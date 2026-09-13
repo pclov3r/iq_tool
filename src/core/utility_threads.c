@@ -21,15 +21,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-/**
- * @brief The Source watchdog thread's main function.
- *
- * This thread periodically checks a heartbeat from the source reader to detect
- * deadlocks or driver hangs, forcing a shutdown if the source becomes
- * unresponsive.
- *
- * @param arg A void pointer to the ProcessChainContext struct.
- * @return NULL.
+/*
+ * The Source watchdog thread periodically checks a heartbeat from the source
+ * reader to detect deadlocks or driver hangs, forcing a shutdown if the source
+ * becomes unresponsive.
  */
 void *process_chain_thread_watchdog(void *arg) {
   ProcessChainContext *args = (ProcessChainContext *)arg;

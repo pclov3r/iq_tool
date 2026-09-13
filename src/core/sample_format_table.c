@@ -1,5 +1,6 @@
 /**
  * @file sample_format_table.c
+ * @brief Lookup table and conversion metadata for supported I/Q sample formats.
  */
 
 #include "sample_format_table.h"

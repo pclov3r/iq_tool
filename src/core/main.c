@@ -1,5 +1,6 @@
 /**
  * @file main.c
+ * @brief Application entry point and top-level lifecycle orchestrator.
  */
 
 /*

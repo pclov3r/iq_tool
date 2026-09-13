@@ -1,5 +1,6 @@
 /**
- * @file frequency_shift.c
+ * @file freq_shift.c
+ * @brief Implements frequency shifting and translation for I/Q signals.
  */
 
 #include "app_context.h"
