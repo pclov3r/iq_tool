@@ -465,8 +465,8 @@ bool process_chain_execute(ProcessChainContext *context) {
     }
   }
 
-  if (threads_ok && !thread_manager_spawn(&manager, "writer",
-                                          process_chain_thread_writer, context))
+  if (threads_ok && !thread_manager_spawn(&manager, "output",
+                                          process_chain_thread_output, context))
     threads_ok = false;
   if (threads_ok && module_is_live_input(config->input.type_name,
                                          &app->process_chain.setup_arena)) {
@@ -621,18 +621,18 @@ static bool _init_queues_and_buffers(AppConfig *config, AppContext *app) {
       return false;
   }
 
-  // allocate writer input queue
+  // allocate output queue
   if (app->process_chain.num_active_queues > 1) {
-    app->process_chain.writer_input_queue =
+    app->process_chain.output_queue =
         (Queue *)mem_arena_alloc(arena, sizeof(Queue), true);
-    if (!app->process_chain.writer_input_queue ||
-        !queue_init(app->process_chain.writer_input_queue, queue_capacity,
+    if (!app->process_chain.output_queue ||
+        !queue_init(app->process_chain.output_queue, queue_capacity,
                     arena))
       return false;
     app->process_chain.active_queues[app->process_chain.num_active_queues - 1] =
-        app->process_chain.writer_input_queue;
+        app->process_chain.output_queue;
   } else {
-    app->process_chain.writer_input_queue =
+    app->process_chain.output_queue =
         app->process_chain.reader_output_queue;
   }
 

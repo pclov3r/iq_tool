@@ -345,7 +345,7 @@ static bool output_wfm_initialize(ModuleContext *context) {
   float deviation = 75000.0f;
   // Engineering Note: We use the correct modulation index math here (deviation
   // / rate). This results in a "hot" signal (75kHz = 1.0), so we apply
-  // WFM_MPX_SCALING_FACTOR in the writer loop to create headroom for stereo
+  // WFM_MPX_SCALING_FACTOR in the output loop to create headroom for stereo
   // processing.
   float kf = deviation / mpx_rate;
   wfm_decoder->fm_demod = freqdem_create(kf);

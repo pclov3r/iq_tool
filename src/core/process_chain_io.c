@@ -236,8 +236,8 @@ void *process_chain_thread_reader(void *arg) {
   return NULL;
 }
 
-void *process_chain_thread_writer(void *arg) {
-  platform_set_thread_priority(PRIORITY_HIGHEST, "writer");
+void *process_chain_thread_output(void *arg) {
+  platform_set_thread_priority(PRIORITY_HIGHEST, "output");
 
   ProcessChainContext *args = (ProcessChainContext *)arg;
   AppContext *app = args->app;
@@ -251,7 +251,7 @@ void *process_chain_thread_writer(void *arg) {
 
   while (true) {
     SampleChunk *item =
-        (SampleChunk *)queue_dequeue(app->process_chain.writer_input_queue);
+        (SampleChunk *)queue_dequeue(app->process_chain.output_queue);
     if (!item)
       break; // Shutdown signaled
 
@@ -323,7 +323,7 @@ void *process_chain_thread_writer(void *arg) {
 
   // 5. Signal auxiliary threads to shutdown on normal exit
   request_shutdown();
-  log_debug("Generic Writer thread is exiting.");
+  log_debug("Output thread is exiting.");
   return NULL;
 }
 

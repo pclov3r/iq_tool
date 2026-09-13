@@ -150,7 +150,7 @@ typedef struct InputModuleInterface {
 
 /**
  * @struct OutputModuleInterface
- * @brief The "vtable" for output modules (writers).
+ * @brief The "vtable" for output modules.
  */
 typedef struct OutputModuleInterface {
   // Validates module-specific options (e.g., WAV only supports cs16/cu8)
@@ -162,7 +162,7 @@ typedef struct OutputModuleInterface {
                                     double *rate, SampleFormat *format,
                                     float *gain, struct OutputAgcConfig *agc);
 
-  // Performs all one-time setup for the writer (opens files, etc.)
+  // Performs all one-time setup for the output module (opens files, etc.)
   bool (*initialize)(struct ModuleContext *context);
 
   void (*reset)(struct ModuleContext *context);

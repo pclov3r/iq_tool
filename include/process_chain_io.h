@@ -9,7 +9,7 @@
 
 void *process_chain_thread_input(void *arg);
 void *process_chain_thread_reader(void *arg);
-void *process_chain_thread_writer(void *arg);
+void *process_chain_thread_output(void *arg);
 
 // --- DSP Pipeline Stage Interface ---
 struct ThreadManager;
