@@ -12,58 +12,10 @@
 #include <math.h>
 #include "mem_arena.h"
 
-typedef struct {
-  struct msresamp_crcf_s *q;
+typedef struct ResamplerState {
+  msresamp_crcf resamp;
   double target_rate;
-} Resampler;
-
-static Resampler *resampler_create(const AppConfig *config, AppContext *app,
-                                   MemoryArena *arena, float resample_ratio) {
-  // We use liquid-dsp's arbitrary resampler (polyphase filterbank).
-  // We cast the liquid-dsp object to our opaque type.
-  struct msresamp_crcf_s *q =
-      msresamp_crcf_create(resample_ratio, config->dsp.filter.args.attenuation);
-
-  if (!q) {
-    log_fatal("Failed to create liquid-dsp resampler object.");
-    return NULL;
-  }
-  Resampler *resampler =
-      (Resampler *)mem_arena_alloc(arena, sizeof(Resampler), true);
-  if (!resampler) {
-    msresamp_crcf_destroy(q);
-    log_fatal("Failed to allocate Resampler state.");
-    return NULL;
-  }
-  resampler->q = q;
-  resampler->target_rate = (double)app->dsp.process_chain_sample_rate_hz;
-  return resampler;
-}
-
-static void resampler_destroy(Resampler *resampler) {
-  if (resampler) {
-    // Only destroy the liquid-dsp object — the Resampler struct itself is
-    // arena-allocated and freed with the arena.
-    msresamp_crcf_destroy((msresamp_crcf)resampler->q);
-  }
-}
-
-static void resampler_reset(Resampler *resampler) {
-  if (resampler) {
-    msresamp_crcf_reset((msresamp_crcf)resampler->q);
-  }
-}
-
-static void resampler_execute(Resampler *resampler, ComplexFloat *input,
-                              unsigned int num_input_frames,
-                              ComplexFloat *output,
-                              unsigned int *num_output_frames) {
-  if (resampler) {
-    msresamp_crcf_execute((msresamp_crcf)resampler->q,
-                          (liquid_float_complex *)input, num_input_frames,
-                          (liquid_float_complex *)output, num_output_frames);
-  }
-}
+} ResamplerState;
 
 // === DSP Module Interface Implementation ===
 
@@ -75,26 +27,43 @@ static void *dsp_resampler_init(ModuleContext *ctx, double input_rate,
   log_info("Resampling: %.15g Hz -> %.15g Hz (Ratio: %.15g)", input_rate,
            target_output_rate, resample_ratio);
 
-  Resampler *resampler = resampler_create(ctx->config, ctx->app,
-                                          &ctx->app->process_chain.setup_arena,
-                                          resample_ratio);
-  if (resampler)
-    resampler->target_rate = target_output_rate;
-  return resampler;
+  msresamp_crcf q =
+      msresamp_crcf_create(resample_ratio, ctx->config->dsp.filter.args.attenuation);
+  if (!q) {
+    log_fatal("Failed to create liquid-dsp resampler object.");
+    return NULL;
+  }
+
+  ResamplerState *state = (ResamplerState *)mem_arena_alloc(
+      &ctx->app->process_chain.setup_arena, sizeof(ResamplerState), true);
+  if (!state) {
+    msresamp_crcf_destroy(q);
+    log_fatal("Failed to allocate Resampler state.");
+    return NULL;
+  }
+  state->resamp = q;
+  state->target_rate = target_output_rate;
+  return state;
 }
 
 static SampleChunk *dsp_resampler_process(void *state, SampleChunk *chunk) {
-  Resampler *resampler = (Resampler *)state;
+  ResamplerState *resampler = (ResamplerState *)state;
+  if (!resampler)
+    return chunk;
+
   if (chunk->stream_discontinuity_event) {
-    resampler_reset(resampler);
+    msresamp_crcf_reset(resampler->resamp);
   }
 
   unsigned int out_frames = 0;
   ComplexFloat *out_buffer = (chunk->current_buffer == chunk->ping_buffer)
                                  ? chunk->pong_buffer
                                  : chunk->ping_buffer;
-  resampler_execute(resampler, chunk->current_buffer, chunk->frames_read,
-                    out_buffer, &out_frames);
+  msresamp_crcf_execute(resampler->resamp,
+                        (liquid_float_complex *)chunk->current_buffer,
+                        chunk->frames_read,
+                        (liquid_float_complex *)out_buffer,
+                        &out_frames);
   chunk->frames_to_write = out_frames;
   chunk->current_buffer = out_buffer;
   chunk->sample_rate = resampler->target_rate;
@@ -103,11 +72,18 @@ static SampleChunk *dsp_resampler_process(void *state, SampleChunk *chunk) {
 }
 
 static void dsp_resampler_cleanup(void *state) {
-  resampler_destroy((Resampler *)state);
+  ResamplerState *resampler = (ResamplerState *)state;
+  if (resampler && resampler->resamp) {
+    msresamp_crcf_destroy(resampler->resamp);
+    resampler->resamp = NULL;
+  }
 }
 
 static void dsp_resampler_reset_api(void *state) {
-  resampler_reset((Resampler *)state);
+  ResamplerState *resampler = (ResamplerState *)state;
+  if (resampler && resampler->resamp) {
+    msresamp_crcf_reset(resampler->resamp);
+  }
 }
 
 static bool dsp_resampler_is_active(AppContext *app, const char *stage_tag) {

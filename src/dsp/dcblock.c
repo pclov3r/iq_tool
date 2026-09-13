@@ -21,21 +21,25 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// Forward the C interface calls to the new module structure if needed, or
-// implement it here directly.
+// === DSP Module Interface Implementation ===
 
-static void *dc_block_create(AppConfig *config, AppContext *app) {
+static void *dcblock_initialize(ModuleContext *ctx, double input_rate,
+                                double target_output_rate, double *out_rate) {
+  (void)target_output_rate;
+  *out_rate = input_rate;
+
+  AppConfig *config = (AppConfig *)ctx->config;
   if (!config->dsp.dc_block.enable) {
     return NULL;
   }
 
-  if (app->module.input_info.sample_rate <= 0.0) {
+  if (ctx->app->module.input_info.sample_rate <= 0.0) {
     log_error("Cannot initialize with invalid sample rate.");
     return NULL;
   }
 
   float normalized_alpha = (float)(2.0 * M_PI * DC_BLOCK_CUTOFF_HZ /
-                                   app->module.input_info.sample_rate);
+                                   ctx->app->module.input_info.sample_rate);
 
   if (normalized_alpha <= 0.0f) {
     log_error("Calculated normalized alpha (%.6f) is invalid.",
@@ -47,60 +51,45 @@ static void *dc_block_create(AppConfig *config, AppContext *app) {
              normalized_alpha);
   }
 
-  void *dc_block_filter =
-      (void *)iirfilt_crcf_create_dc_blocker(normalized_alpha);
-
-  if (!dc_block_filter) {
+  iirfilt_crcf filter = iirfilt_crcf_create_dc_blocker(normalized_alpha);
+  if (!filter) {
     log_fatal("Failed to create liquid-dsp DC block filter.");
     return NULL;
   }
 
-  return dc_block_filter;
+  log_info("Enabled (High-pass 1st order)");
+  return filter;
 }
 
-static void dc_block_reset(void *state) {
-  if (!state) {
-    return;
+static SampleChunk *dcblock_process(void *state, SampleChunk *chunk) {
+  iirfilt_crcf filter = (iirfilt_crcf)state;
+  if (!filter)
+    return chunk;
+
+  if (chunk->stream_discontinuity_event) {
+    log_debug("DC block filter reset due to stream discontinuity.");
+    iirfilt_crcf_reset(filter);
   }
-  log_debug("DC block filter reset due to stream discontinuity.");
-  iirfilt_crcf_reset((iirfilt_crcf)state);
+
+  iirfilt_crcf_execute_block(filter,
+                             (liquid_float_complex *)chunk->current_buffer,
+                             chunk->frames_read,
+                             (liquid_float_complex *)chunk->current_buffer);
+  return chunk;
 }
 
-static void dc_block_apply(void *state, ComplexFloat *samples,
-                           int num_samples) {
-  if (!state) {
-    return;
-  }
-  iirfilt_crcf_execute_block((iirfilt_crcf)state,
-                             (liquid_float_complex *)samples, num_samples,
-                             (liquid_float_complex *)samples);
-}
-
-static void dc_block_destroy(void *state) {
+static void dcblock_cleanup(void *state) {
   if (state) {
     iirfilt_crcf_destroy((iirfilt_crcf)state);
   }
 }
 
-// === DSP Module Interface Implementation ===
-
-static void *dcblock_initialize(ModuleContext *ctx, double input_rate,
-                                double target_output_rate, double *out_rate) {
-  (void)target_output_rate;
-  *out_rate = input_rate;
-  log_info("Enabled (High-pass 1st order)");
-  return dc_block_create((AppConfig *)ctx->config, ctx->app);
-}
-
-static SampleChunk *dcblock_process(void *state, SampleChunk *chunk) {
-  if (chunk->stream_discontinuity_event) {
-    dc_block_reset(state);
+static void dcblock_reset_api(void *state) {
+  if (state) {
+    log_debug("DC block filter reset due to stream discontinuity.");
+    iirfilt_crcf_reset((iirfilt_crcf)state);
   }
-  dc_block_apply(state, chunk->current_buffer, chunk->frames_read);
-  return chunk;
 }
-
-static void dcblock_cleanup(void *state) { dc_block_destroy(state); }
 
 static bool s_enable_dc_block = false;
 
@@ -122,8 +111,6 @@ static bool dsp_dcblock_validate_options(struct AppContext *app) {
   }
   return true;
 }
-
-static void dcblock_reset_api(void *state) { dc_block_reset(state); }
 
 static bool dcblock_is_active(AppContext *app, const char *stage_tag) {
   (void)stage_tag;
