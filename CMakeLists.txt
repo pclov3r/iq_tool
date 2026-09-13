@@ -230,7 +230,6 @@ set(OTHER_SOURCES
     src/core/queue.c
     src/dsp/resampler.c
     src/core/ring_buffer.c
-    src/core/packet_serializer.c
     src/core/sample_format_table.c
     src/core/signal_handler.c
     src/core/thread_manager.c
