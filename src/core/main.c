@@ -34,7 +34,9 @@
 #include "process_chain_manager.h"
 #include "sample_format_table.h"
 #include "signal_handler.h"
+#include "thread_manager.h"
 #include "utilities.h"
+#include "utility_threads.h"
 #include <errno.h>
 #include <locale.h>
 #include <math.h>
@@ -299,7 +301,30 @@ static bool init_input_source(AppConfig *config, AppContext *app) {
       selected_input_module->default_demod_audio_buffer_size;
 
   log_info("Initializing the '%s' input module...", config->input.type_name);
-  return app->module.input_api->initialize(&context);
+
+  bool is_live_source = module_is_live_source(config->input.type_name,
+                                              &app->process_chain.setup_arena);
+  ThreadManager watchdog_tm;
+  thread_manager_init(&watchdog_tm);
+  SdrInitWatchdogContext watchdog_ctx = {
+      .module_name = config->input.type_name,
+      .is_complete = false,
+  };
+
+  if (is_live_source) {
+    thread_manager_spawn(&watchdog_tm, "watchdog", sdr_init_watchdog_thread,
+                         &watchdog_ctx);
+  }
+
+  bool init_ok = app->module.input_api->initialize(&context);
+
+  if (watchdog_tm.num_threads_started > 0) {
+    atomic_store_explicit(&watchdog_ctx.is_complete, true,
+                          memory_order_relaxed);
+    thread_manager_join_all(&watchdog_tm);
+  }
+
+  return init_ok;
 }
 
 static bool init_output_module(AppConfig *config, AppContext *app) {
