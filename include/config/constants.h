@@ -139,9 +139,6 @@
 // Defines the default sharpness of user-defined FIR filters.
 #define DEFAULT_FILTER_TRANSITION_FACTOR 0.25f
 
-// The number of separate components in a complex sample (I and Q).
-#define COMPLEX_SAMPLE_COMPONENTS 2
-
 // --- Dynamic DSP Filter Attenuation ---
 #define DEFAULT_FILTER_ATTENUATION_8BIT_DB 60.0f
 #define DEFAULT_FILTER_ATTENUATION_16BIT_DB 100.0f
@@ -180,7 +177,7 @@
 // the source heartbeat.
 #define WATCHDOG_INTERVAL_MS 2000
 
-// The maximum time in milliseconds that can elapse without an source heartbeat
+// The maximum time in milliseconds that can elapse without a source heartbeat
 // before the watchdog triggers a shutdown. This must be longer than any
 // source's internal timeouts.
 #define WATCHDOG_TIMEOUT_MS 8000
