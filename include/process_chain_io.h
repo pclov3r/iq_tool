@@ -8,7 +8,7 @@
 #define PROCESS_CHAIN_IO_H_
 
 void *process_chain_thread_input(void *arg);
-void *process_chain_thread_reader(void *arg);
+void *process_chain_thread_chunker(void *arg);
 void *process_chain_thread_output(void *arg);
 
 // --- DSP Pipeline Stage Interface ---

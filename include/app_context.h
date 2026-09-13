@@ -191,7 +191,7 @@ typedef struct ProcessChainInfrastructure {
   size_t input_buffer_size;
 
   Queue *free_sample_chunk_queue;
-  Queue *reader_output_queue;
+  Queue *chunker_output_queue;
   Queue **active_queues;
   int num_active_queues;
   Queue *output_queue;

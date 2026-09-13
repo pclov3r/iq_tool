@@ -1,7 +1,7 @@
 /**
  * @file packet_serializer.h
- * @brief Defines the data protocol for the ring buffer between Source and
- * Reader threads.
+ * @brief Defines the data protocol for the ring buffer between Input and
+ * Chunker threads.
  *
  * This module provides a standardized binary protocol for transmitting I/Q data
  * from hardware drivers (Producers) to the DSP process chain (Consumer)
@@ -12,7 +12,7 @@
  * preserve stream integrity.
  * 2. **Alignment:** The 16-byte header ensures the payload is aligned for SIMD
  * operations.
- * 3. **Stateful Reading:** The reader can "sip" small chunks of data from a
+ * 3. **Stateful Reading:** The chunker can "sip" small chunks of data from a
  * large packet in the buffer, decoupling the hardware transfer size from the
  * DSP block size.
  * 4. **Self-Healing:** Uses a Magic Number to resynchronize if the stream is

@@ -660,7 +660,7 @@ static bool input_spyserver_client_initialize(ModuleContext *context) {
   }
 
   // Expose the internal network buffer to the process_chain so that the
-  // centralized process_chain_thread_reader can dequeue from it and perform the
+  // centralized process_chain_thread_chunker can dequeue from it and perform the
   // CF32 conversion.
   app->process_chain.input_ring_buffer = client->stream_buffer;
 
@@ -833,7 +833,7 @@ input_spyserver_client_push_samples_to_queue(ModuleContext *context,
   SpyServerClientContext *client =
       (SpyServerClientContext *)app->module.input_private_data;
 
-  // The process_chain_thread_reader in process_chain_io.c handles pulling
+  // The process_chain_thread_chunker in process_chain_io.c handles pulling
   // chunks from input_ring_buffer and performing the CF32 conversion. The
   // producer thread writes directly to input_ring_buffer in the background.
   // This function simply idles to keep the input module "running" until

@@ -422,8 +422,8 @@ bool process_chain_execute(ProcessChainContext *context) {
                               context))
       threads_ok = false;
   }
-  if (threads_ok && !thread_manager_spawn(&manager, "reader",
-                                          process_chain_thread_reader, context))
+  if (threads_ok && !thread_manager_spawn(&manager, "chunker",
+                                          process_chain_thread_chunker, context))
     threads_ok = false;
 
   // Start DSP chains
@@ -603,14 +603,14 @@ static bool _init_queues_and_buffers(AppConfig *config, AppContext *app) {
   app->process_chain.active_queues = (Queue **)mem_arena_alloc(
       arena, app->process_chain.num_active_queues * sizeof(Queue *), true);
 
-  // active_queues[0] is reader_output
-  app->process_chain.reader_output_queue =
+  // active_queues[0] is chunker_output
+  app->process_chain.chunker_output_queue =
       (Queue *)mem_arena_alloc(arena, sizeof(Queue), true);
-  if (!app->process_chain.reader_output_queue ||
-      !queue_init(app->process_chain.reader_output_queue, queue_capacity,
+  if (!app->process_chain.chunker_output_queue ||
+      !queue_init(app->process_chain.chunker_output_queue, queue_capacity,
                   arena))
     return false;
-  app->process_chain.active_queues[0] = app->process_chain.reader_output_queue;
+  app->process_chain.active_queues[0] = app->process_chain.chunker_output_queue;
 
   // allocate intermediate queues
   for (int i = 1; i < app->process_chain.num_active_queues - 1; i++) {
@@ -633,7 +633,7 @@ static bool _init_queues_and_buffers(AppConfig *config, AppContext *app) {
         app->process_chain.output_queue;
   } else {
     app->process_chain.output_queue =
-        app->process_chain.reader_output_queue;
+        app->process_chain.chunker_output_queue;
   }
 
   app->process_chain.free_sample_chunk_queue =

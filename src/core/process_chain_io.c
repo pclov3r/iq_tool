@@ -79,8 +79,8 @@ void *process_chain_thread_input(void *arg) {
   return NULL;
 }
 
-void *process_chain_thread_reader(void *arg) {
-  platform_set_thread_priority(PRIORITY_NORMAL, "reader");
+void *process_chain_thread_chunker(void *arg) {
+  platform_set_thread_priority(PRIORITY_NORMAL, "chunker");
 
   ProcessChainContext *args = (ProcessChainContext *)arg;
   AppContext *app = args->app;
@@ -88,7 +88,7 @@ void *process_chain_thread_reader(void *arg) {
 
   switch (app->process_chain_mode) {
   case PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH: {
-    log_debug("Reader thread starting.");
+    log_debug("Chunker thread starting.");
 
     // --- STATEFUL SIPPING LOGIC ---
     // Initialize the serializer state for this thread.
@@ -113,7 +113,7 @@ void *process_chain_thread_reader(void *arg) {
 
       if (frames_read < 0) {
         request_forceful_shutdown(
-            "Reader: Fatal error parsing input buffer stream.", app);
+            "Chunker: Fatal error parsing input buffer stream.", app);
         queue_enqueue(app->process_chain.free_sample_chunk_queue, item);
         break;
       }
@@ -121,7 +121,7 @@ void *process_chain_thread_reader(void *arg) {
       if (frames_read == 0 && !is_reset) {
         item->is_last_chunk = true;
         item->frames_read = 0;
-        queue_enqueue(app->process_chain.reader_output_queue, item);
+        queue_enqueue(app->process_chain.chunker_output_queue, item);
         break;
       }
 
@@ -146,7 +146,7 @@ void *process_chain_thread_reader(void *arg) {
                                   item->frames_read, memory_order_relaxed);
       }
 
-      if (!queue_enqueue(app->process_chain.reader_output_queue, item)) {
+      if (!queue_enqueue(app->process_chain.chunker_output_queue, item)) {
         // The process_chain is shutting down, so we can't send data forward.
         // We drop the data, but we MUST return the memory to the pool.
         // We use forced enqueue to guarantee the pool accepts it.
@@ -162,7 +162,7 @@ void *process_chain_thread_reader(void *arg) {
     InputModuleInterface *in_api = app->module.input_api;
 
     if (!in_api->read_chunk) {
-      request_forceful_shutdown("Reader: File input module missing read_chunk.",
+      request_forceful_shutdown("Chunker: File input module missing read_chunk.",
                                 app);
     } else {
       while (!is_shutdown_requested() &&
@@ -205,7 +205,7 @@ void *process_chain_thread_reader(void *arg) {
                                     item->frames_read, memory_order_relaxed);
         }
 
-        if (!queue_enqueue(app->process_chain.reader_output_queue, item)) {
+        if (!queue_enqueue(app->process_chain.chunker_output_queue, item)) {
           queue_enqueue_forced(app->process_chain.free_sample_chunk_queue,
                                item);
           break;
@@ -219,7 +219,7 @@ void *process_chain_thread_reader(void *arg) {
   }
 
   if (!is_shutdown_requested()) {
-    log_debug("Reader thread finished naturally. End of stream reached.");
+    log_debug("Chunker thread finished naturally. End of stream reached.");
     atomic_store_explicit(&app->stats.end_of_stream_reached, true,
                           memory_order_release);
   } else {
@@ -228,11 +228,11 @@ void *process_chain_thread_reader(void *arg) {
     if (last_item) {
       last_item->is_last_chunk = true;
       last_item->frames_read = 0;
-      queue_enqueue(app->process_chain.reader_output_queue, last_item);
+      queue_enqueue(app->process_chain.chunker_output_queue, last_item);
     }
   }
 
-  log_debug("Reader thread is exiting.");
+  log_debug("Chunker thread is exiting.");
   return NULL;
 }
 

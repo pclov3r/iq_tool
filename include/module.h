@@ -83,7 +83,7 @@ typedef struct InputModuleInterface {
 
   /**
    * @brief Starts the data stream. This is a blocking call that runs in the
-   * reader thread.
+   * input thread.
    * @param context The application context.
    * @return NULL on normal exit.
    */
