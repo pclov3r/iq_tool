@@ -66,8 +66,6 @@ typedef struct AppConfig {
     char *module_name;
     char *path_arg;
     char *sample_format_str;
-    char *type_name;
-    bool type_provided;
     bool format_provided;
     OutputPayload payload;
     SampleFormat sample_format;

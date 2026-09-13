@@ -133,7 +133,7 @@ bool validate_option_combinations(AppConfig *config) {
                 "use --baseband-sample-rate.");
       return false;
     }
-    if (config->output.type_provided) {
+    if (config->output.format_provided) {
       log_error("--output-sample-format cannot be used with demodulators. "
                 "Please use --baseband-sample-format.");
       return false;
