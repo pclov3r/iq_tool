@@ -207,7 +207,7 @@ set(OTHER_SOURCES
     src/core/keyboard_handler.c
     src/core/config.c
     src/dsp/dcblock.c
-    src/dsp/freq_shift.c
+    src/dsp/nco.c
     src/input/rawfile.c
     src/input/stdin.c
     src/input/wav.c

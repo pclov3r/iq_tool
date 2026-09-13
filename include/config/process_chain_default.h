@@ -22,10 +22,10 @@ typedef struct {
 static const ProcessNodeDef DEFAULT_PROCESS_CHAIN[] = {
     {"dc_block",   NULL},
     {"iq_correct", NULL},
-    {"freq_shift", "pre"},
+    {"nco",        "pre"},
     {"filter",     "pre"},
     {"resampler",  NULL},
-    {"freq_shift", "post"},
+    {"nco",        "post"},
     {"filter",     "post"},
     {"agc",        NULL}
 };

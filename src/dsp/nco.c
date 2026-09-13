@@ -1,6 +1,6 @@
 /**
- * @file freq_shift.c
- * @brief Implements frequency shifting and translation for I/Q signals.
+ * @file nco.c
+ * @brief Implements Numerically Controlled Oscillator (NCO) frequency shifting for I/Q signals.
  */
 
 #include "app_context.h"
@@ -18,30 +18,27 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-typedef struct freq_shifter_s FreqShifter;
-
-typedef struct FreqShiftState {
-  FreqShifter *pre_resample_nco;
-  FreqShifter *post_resample_nco;
+typedef struct NcoState {
+  nco_crcf pre_resample_nco;
+  nco_crcf post_resample_nco;
   double nco_shift_hz;
-} FreqShiftState;
+} NcoState;
 
-static void frequency_shift_destroy_ncos(FreqShiftState *state);
-static void frequency_shift_reset_nco(FreqShifter *nco);
-static void frequency_shift_apply(FreqShifter *nco, double shift_hz,
-                                  ComplexFloat *input, ComplexFloat *output,
-                                  unsigned int num_samples);
+static void nco_destroy_ncos(NcoState *state);
+static void nco_reset(nco_crcf nco);
+static void nco_apply(nco_crcf nco, double shift_hz,
+                      ComplexFloat *input, ComplexFloat *output,
+                      unsigned int num_samples);
 
 /**
- * @brief Creates and configures the NCOs (frequency shifters) based on user
- * arguments.
+ * @brief Creates and configures the NCOs based on user arguments.
  */
-static void *frequency_shift_create(AppConfig *config, AppContext *app) {
+static void *nco_create(AppConfig *config, AppContext *app) {
   if (!config || !app)
     return NULL;
 
-  FreqShiftState *state = (FreqShiftState *)mem_arena_alloc(
-      &app->process_chain.setup_arena, sizeof(FreqShiftState), true);
+  NcoState *state = (NcoState *)mem_arena_alloc(
+      &app->process_chain.setup_arena, sizeof(NcoState), true);
   if (!state)
     return NULL;
 
@@ -57,13 +54,11 @@ static void *frequency_shift_create(AppConfig *config, AppContext *app) {
   if (config->dsp.shift_after_resample && fabs(state->nco_shift_hz) < 1e-9) {
     log_error("Option --shift-after-resample was used, but no effective "
               "frequency shift was requested or calculated.");
-    // free(state); // Memory arena handles this
     return NULL;
   }
 
   // If no shift is needed, we're done.
   if (fabs(state->nco_shift_hz) < 1e-9) {
-    // free(state); // Memory arena handles this
     return NULL;
   }
 
@@ -76,20 +71,16 @@ static void *frequency_shift_create(AppConfig *config, AppContext *app) {
                 "of %.1f Hz for the input sample rate of %.1f Hz.",
                 state->nco_shift_hz, nyquist_limit, rate_for_nco);
       log_error("This will cause aliasing and images.");
-      // free(state); // Memory arena handles this
       return NULL;
     }
-    state->pre_resample_nco =
-        (struct freq_shifter_s *)nco_crcf_create(LIQUID_NCO);
+    state->pre_resample_nco = nco_crcf_create(LIQUID_NCO);
     if (!state->pre_resample_nco) {
-      log_error("Failed to create pre-resample NCO (frequency shifter).");
-      // free(state); // Memory arena handles this
+      log_error("Failed to create pre-resample NCO.");
       return NULL;
     }
     float nco_freq_rad_per_sample =
         (float)(2.0 * M_PI * fabs(state->nco_shift_hz) / rate_for_nco);
-    nco_crcf_set_frequency((nco_crcf)state->pre_resample_nco,
-                           nco_freq_rad_per_sample);
+    nco_crcf_set_frequency(state->pre_resample_nco, nco_freq_rad_per_sample);
   }
 
   // --- Create Post-Resample NCO ---
@@ -101,22 +92,18 @@ static void *frequency_shift_create(AppConfig *config, AppContext *app) {
                 "of %.1f Hz for the post-resample rate of %.1f Hz.",
                 state->nco_shift_hz, nyquist_limit, rate_for_nco);
       log_error("This will cause aliasing and images.");
-      frequency_shift_destroy_ncos(
-          state); // Clean up pre-resample NCO if it was created
+      nco_destroy_ncos(state);
       return NULL;
     }
-    state->post_resample_nco =
-        (struct freq_shifter_s *)nco_crcf_create(LIQUID_NCO);
+    state->post_resample_nco = nco_crcf_create(LIQUID_NCO);
     if (!state->post_resample_nco) {
-      log_error("Failed to create post-resample NCO (frequency shifter).");
-      frequency_shift_destroy_ncos(
-          state); // Clean up pre-resample NCO if it was created
+      log_error("Failed to create post-resample NCO.");
+      nco_destroy_ncos(state);
       return NULL;
     }
     float nco_freq_rad_per_sample =
         (float)(2.0 * M_PI * fabs(state->nco_shift_hz) / rate_for_nco);
-    nco_crcf_set_frequency((nco_crcf)state->post_resample_nco,
-                           nco_freq_rad_per_sample);
+    nco_crcf_set_frequency(state->post_resample_nco, nco_freq_rad_per_sample);
   }
 
   return state;
@@ -126,19 +113,19 @@ static void *frequency_shift_create(AppConfig *config, AppContext *app) {
  * @brief Applies the frequency shift to a block of complex samples using a
  * specific NCO.
  */
-static void frequency_shift_apply(FreqShifter *nco, double shift_hz,
-                                  ComplexFloat *input_buffer,
-                                  ComplexFloat *output_buffer,
-                                  unsigned int num_frames) {
+static void nco_apply(nco_crcf nco, double shift_hz,
+                      ComplexFloat *input_buffer,
+                      ComplexFloat *output_buffer,
+                      unsigned int num_frames) {
   if (!nco || num_frames == 0) {
     return;
   }
 
   if (shift_hz >= 0) {
-    nco_crcf_mix_block_up((nco_crcf)nco, (liquid_float_complex *)input_buffer,
+    nco_crcf_mix_block_up(nco, (liquid_float_complex *)input_buffer,
                           (liquid_float_complex *)output_buffer, num_frames);
   } else {
-    nco_crcf_mix_block_down((nco_crcf)nco, (liquid_float_complex *)input_buffer,
+    nco_crcf_mix_block_down(nco, (liquid_float_complex *)input_buffer,
                             (liquid_float_complex *)output_buffer, num_frames);
   }
 }
@@ -147,79 +134,77 @@ static void frequency_shift_apply(FreqShifter *nco, double shift_hz,
  * @brief Resets the NCO's phase accumulator without destroying its frequency.
  * This is the safe way to handle stream discontinuities from SDRs.
  */
-static void frequency_shift_reset_nco(FreqShifter *nco) {
+static void nco_reset(nco_crcf nco) {
   if (nco) {
-    // This only resets the phase, leaving the frequency configuration intact.
-    nco_crcf_set_phase((nco_crcf)nco, 0.0f);
+    nco_crcf_set_phase(nco, 0.0f);
   }
 }
 
 /**
  * @brief Destroys the NCO objects if they were created.
  */
-static void frequency_shift_destroy_ncos(FreqShiftState *state) {
+static void nco_destroy_ncos(NcoState *state) {
   if (state) {
     if (state->pre_resample_nco) {
-      nco_crcf_destroy((nco_crcf)state->pre_resample_nco);
+      nco_crcf_destroy(state->pre_resample_nco);
       state->pre_resample_nco = NULL;
     }
     if (state->post_resample_nco) {
-      nco_crcf_destroy((nco_crcf)state->post_resample_nco);
+      nco_crcf_destroy(state->post_resample_nco);
       state->post_resample_nco = NULL;
     }
-    // free(state); // Memory arena handles this
   }
 }
 
 // === DSP Module Interface Implementation ===
 
-static void *dsp_freq_shift_init(ModuleContext *ctx, double input_rate,
-                                 double target_output_rate, double *out_rate) {
+static void *dsp_nco_init(ModuleContext *ctx, double input_rate,
+                          double target_output_rate, double *out_rate) {
   (void)target_output_rate;
   *out_rate = input_rate;
   AppConfig *config = (AppConfig *)ctx->config;
   log_info("Enabled (Shift: %.0f Hz, NCO: %.0f Hz)",
            config->dsp.frequency_shift_hz, ctx->app->dsp.nco_shift_hz);
-  return frequency_shift_create(config, ctx->app);
+  return nco_create(config, ctx->app);
 }
 
-static SampleChunk *dsp_freq_shift_process(void *state, SampleChunk *chunk) {
-  FreqShiftState *fs = (FreqShiftState *)state;
-  if (!fs)
+static SampleChunk *dsp_nco_process(void *state, SampleChunk *chunk) {
+  NcoState *nco_state = (NcoState *)state;
+  if (!nco_state)
     return chunk;
 
   if (chunk->stream_discontinuity_event) {
-    if (fs->pre_resample_nco)
-      frequency_shift_reset_nco((FreqShifter *)fs->pre_resample_nco);
-    if (fs->post_resample_nco)
-      frequency_shift_reset_nco((FreqShifter *)fs->post_resample_nco);
+    if (nco_state->pre_resample_nco)
+      nco_reset(nco_state->pre_resample_nco);
+    if (nco_state->post_resample_nco)
+      nco_reset(nco_state->post_resample_nco);
   }
 
-  if (fs->pre_resample_nco) {
-    frequency_shift_apply((FreqShifter *)fs->pre_resample_nco, fs->nco_shift_hz,
-                          chunk->current_buffer, chunk->current_buffer,
-                          chunk->frames_read);
+  if (nco_state->pre_resample_nco) {
+    nco_apply(nco_state->pre_resample_nco, nco_state->nco_shift_hz,
+              chunk->current_buffer, chunk->current_buffer,
+              chunk->frames_read);
   }
-  if (fs->post_resample_nco) {
-    frequency_shift_apply((FreqShifter *)fs->post_resample_nco,
-                          fs->nco_shift_hz, chunk->current_buffer,
-                          chunk->current_buffer, chunk->frames_to_write);
+  if (nco_state->post_resample_nco) {
+    nco_apply(nco_state->post_resample_nco, nco_state->nco_shift_hz,
+              chunk->current_buffer, chunk->current_buffer,
+              chunk->frames_to_write);
   }
   return chunk;
 }
 
-static void dsp_freq_shift_cleanup(void *state) {
-  frequency_shift_destroy_ncos((FreqShiftState *)state);
+static void dsp_nco_cleanup(void *state) {
+  nco_destroy_ncos((NcoState *)state);
 }
 
-static void dsp_freq_shift_reset_api(void *state) {
-  FreqShiftState *fs = (FreqShiftState *)state;
-  if (!fs)
+static void dsp_nco_reset_api(void *state) {
+  NcoState *nco_state = (NcoState *)state;
+  if (!nco_state)
     return;
-  if (fs->pre_resample_nco)
-    frequency_shift_reset_nco((FreqShifter *)fs->pre_resample_nco);
-  if (fs->post_resample_nco)
-    frequency_shift_reset_nco((FreqShifter *)fs->post_resample_nco);
+  if (nco_state->pre_resample_nco)
+    nco_reset(nco_state->pre_resample_nco);
+  if (nco_state->post_resample_nco)
+    nco_reset(nco_state->post_resample_nco);
 }
 
 static double s_frequency_shift_hz = 0.0;
@@ -233,13 +218,12 @@ static const struct argparse_option cli_options[] = {
 };
 // clang-format on
 
-static const struct argparse_option *
-dsp_freq_shift_get_cli_options(int *count) {
+static const struct argparse_option *dsp_nco_get_cli_options(int *count) {
   *count = sizeof(cli_options) / sizeof(cli_options[0]);
   return cli_options;
 }
 
-static bool dsp_freq_shift_validate_options(struct AppContext *app) {
+static bool dsp_nco_validate_options(struct AppContext *app) {
   if (app && app->config) {
     ((AppConfig *)app->config)->dsp.frequency_shift_hz = s_frequency_shift_hz;
     ((AppConfig *)app->config)->dsp.shift_after_resample =
@@ -248,7 +232,7 @@ static bool dsp_freq_shift_validate_options(struct AppContext *app) {
   return true;
 }
 
-static bool dsp_freq_shift_is_active(AppContext *app, const char *stage_tag) {
+static bool dsp_nco_is_active(AppContext *app, const char *stage_tag) {
   AppConfig *config = (AppConfig *)app->config;
   if (config->dsp.frequency_shift_hz == 0.0f && app->dsp.nco_shift_hz == 0.0) {
     return false;
@@ -262,23 +246,23 @@ static bool dsp_freq_shift_is_active(AppContext *app, const char *stage_tag) {
   return true; // Default fallback if no tag
 }
 
-static const DspModuleInterface dsp_freq_shift_api = {
-    .name = "freq_shift",
-    .is_active = dsp_freq_shift_is_active,
-    .initialize = dsp_freq_shift_init,
-    .process = dsp_freq_shift_process,
-    .reset = dsp_freq_shift_reset_api,
-    .cleanup = dsp_freq_shift_cleanup,
-    .validate_options = dsp_freq_shift_validate_options,
+static const DspModuleInterface dsp_nco_api = {
+    .name = "nco",
+    .is_active = dsp_nco_is_active,
+    .initialize = dsp_nco_init,
+    .process = dsp_nco_process,
+    .reset = dsp_nco_reset_api,
+    .cleanup = dsp_nco_cleanup,
+    .validate_options = dsp_nco_validate_options,
 };
 
 // --- Auto-Registration ---
 static void __attribute__((constructor)) register_module(void) {
   Module m = {
-      .name = "freq_shift",
+      .name = "nco",
       .type = MODULE_TYPE_DSP,
-      .api = (void *)&dsp_freq_shift_api,
-      .get_cli_options = dsp_freq_shift_get_cli_options,
+      .api = (void *)&dsp_nco_api,
+      .get_cli_options = dsp_nco_get_cli_options,
   };
   module_registry_add(&m);
 }
