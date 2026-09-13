@@ -66,21 +66,14 @@ static void output_wav_get_pipeline_requirements(const struct AppConfig *config,
 
 static OutputModuleInterface s_output_wav_api = {
     .get_pipeline_requirements = output_wav_get_pipeline_requirements,
-    .validate_options =
-        output_wav_common_validate_options, // Use common validation
-    .initialize = output_wav_initialize, // Use our specific initializer
+    .validate_options = output_wav_common_validate_options,
+    .initialize = output_wav_initialize,
     .reset = NULL,
     .flush = NULL,
-    .write_chunk =
-        output_wav_common_write_chunk,    // Use common direct-write function
-    .cleanup = output_wav_common_cleanup, // Use common finalizer
-    .get_summary_info =
-        output_wav_get_summary_info, // Use our specific summary function
+    .write_chunk = output_wav_common_write_chunk,
+    .cleanup = output_wav_common_cleanup,
+    .get_summary_info = output_wav_get_summary_info,
 };
-
-/**
- * @brief Public getter for the WAV output module's interface.
- */
 
 // --- Auto-Registration ---
 static void __attribute__((constructor)) register_module(void) {

@@ -943,7 +943,8 @@ static InputModuleInterface s_input_spyserver_client_api = {
     .get_summary_info = input_spyserver_client_get_summary_info,
     .validate_options = input_spyserver_client_validate_options,
     .validate_generic_options = NULL,
-    .pre_stream_iq_correction = NULL};
+    .pre_stream_iq_correction = NULL,
+};
 
 // --- Auto-Registration ---
 static void __attribute__((constructor)) register_module(void) {

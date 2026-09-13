@@ -156,8 +156,6 @@ static OutputModuleInterface s_output_rawfile_api = {
     .get_summary_info = output_rawfile_get_summary_info,
 };
 
-// --- Public Getter ---
-
 // --- Auto-Registration ---
 static void __attribute__((constructor)) register_module(void) {
   Module m = {

@@ -145,7 +145,8 @@ static const DspModuleInterface dsp_resampler_api = {
     .initialize = dsp_resampler_init,
     .process = dsp_resampler_process,
     .reset = dsp_resampler_reset_api,
-    .cleanup = dsp_resampler_cleanup};
+    .cleanup = dsp_resampler_cleanup,
+};
 
 // --- Auto-Registration ---
 static void __attribute__((constructor)) register_module(void) {

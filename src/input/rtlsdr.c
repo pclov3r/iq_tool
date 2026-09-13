@@ -454,7 +454,8 @@ static InputModuleInterface s_input_rtlsdr_api = {
     .get_summary_info = input_rtlsdr_get_summary_info,
     .validate_options = input_rtlsdr_validate_options,
     .validate_generic_options = input_rtlsdr_validate_generic_options,
-    .pre_stream_iq_correction = NULL};
+    .pre_stream_iq_correction = NULL,
+};
 
 // --- Auto-Registration ---
 static void __attribute__((constructor)) register_module(void) {

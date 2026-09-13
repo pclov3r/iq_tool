@@ -697,7 +697,8 @@ static InputModuleInterface s_input_hydrasdr_api = {
     .get_summary_info = input_hydrasdr_get_summary_info,
     .validate_options = input_hydrasdr_validate_options,
     .validate_generic_options = input_hydrasdr_validate_generic_options,
-    .pre_stream_iq_correction = NULL};
+    .pre_stream_iq_correction = NULL,
+};
 
 // --- Auto-Registration ---
 static void __attribute__((constructor)) register_module(void) {

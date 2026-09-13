@@ -115,8 +115,6 @@ static OutputModuleInterface s_output_stdout_api = {
     .get_summary_info = output_stdout_get_summary_info,
 };
 
-// --- Public Getter ---
-
 // --- Auto-Registration ---
 static void __attribute__((constructor)) register_module(void) {
   Module m = {
