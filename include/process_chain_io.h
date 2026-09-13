@@ -7,7 +7,7 @@
 #ifndef PROCESS_CHAIN_IO_H_
 #define PROCESS_CHAIN_IO_H_
 
-void *process_chain_thread_source(void *arg);
+void *process_chain_thread_input(void *arg);
 void *process_chain_thread_reader(void *arg);
 void *process_chain_thread_writer(void *arg);
 

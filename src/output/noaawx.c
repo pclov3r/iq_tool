@@ -143,7 +143,7 @@ static bool output_noaawx_initialize(ModuleContext *context) {
 
   decoder->audio_out =
       audio_output_create(res, NOAAWX_SAMPLE_RATE, NOAAWX_AUDIO_CHANNELS,
-                          res->module.source_info.demod_audio_buffer_size);
+                          res->module.input_info.demod_audio_buffer_size);
   if (!decoder->audio_out)
     return false;
 

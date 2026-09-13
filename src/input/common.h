@@ -15,30 +15,30 @@
 // --- Common Implementations for the InputModuleInterface Interface ---
 
 /**
- * @brief A generic function for sources that have a known, finite length (e.g.,
+ * @brief A generic function for inputs that have a known, finite length (e.g.,
  * files).
  * @return Always returns true.
  */
-static inline bool _input_source_has_known_length_true(void) { return true; }
+static inline bool _input_has_known_length_true(void) { return true; }
 
 /**
- * @brief A generic function for sources that do not have a known length (e.g.,
+ * @brief A generic function for inputs that do not have a known length (e.g.,
  * live streams).
  * @return Always returns false.
  */
-static inline bool _input_source_has_known_length_false(void) { return false; }
+static inline bool _input_has_known_length_false(void) { return false; }
 
 /**
- * @brief Updates the SDR heartbeat timestamp in a thread-safe manner.
+ * @brief Updates the input heartbeat timestamp in a thread-safe manner.
  *
- * This function should be called by a Source module immediately after it
- * successfully receives data from the hardware. This signals to the watchdog
- * thread that the source is alive and not deadlocked.
+ * This function should be called by an Input module immediately after it
+ * successfully receives data. This signals to the watchdog
+ * thread that the input is alive and not deadlocked.
  *
  * @param app A pointer to the application's app.
  */
-static inline void source_update_heartbeat(AppContext *app) {
-  atomic_store_explicit(&app->stats.last_source_heartbeat_time,
+static inline void input_update_heartbeat(AppContext *app) {
+  atomic_store_explicit(&app->stats.last_input_heartbeat_time,
                         utility_get_time(), memory_order_relaxed);
 }
 

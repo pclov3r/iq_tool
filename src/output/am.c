@@ -162,7 +162,7 @@ static bool output_am_initialize(ModuleContext *context) {
 
   am_context->audio_out =
       audio_output_create(res, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS,
-                          res->module.source_info.demod_audio_buffer_size);
+                          res->module.input_info.demod_audio_buffer_size);
   if (!am_context->audio_out)
     return false;
 

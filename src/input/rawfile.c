@@ -211,8 +211,8 @@ static bool input_rawfile_initialize(ModuleContext *context) {
 
   sf_command(private_data->infile, SFC_GET_CURRENT_SF_INFO,
              &private_data->sfinfo, sizeof(private_data->sfinfo));
-  app->module.source_info.sample_rate = private_data->sfinfo.samplerate;
-  app->module.source_info.frames = private_data->sfinfo.frames;
+  app->module.input_info.sample_rate = private_data->sfinfo.samplerate;
+  app->module.input_info.frames = private_data->sfinfo.frames;
 
 #ifdef _WIN32
   log_info("Opening RAW input file: %s", config->input.effective_path_utf8);
@@ -308,7 +308,7 @@ static void input_rawfile_get_summary_info(const ModuleContext *context,
 
   char size_buffer[40];
   long long file_size_bytes =
-      app->module.source_info.frames * app->module.input_bytes_per_iq_sample;
+      app->module.input_info.frames * app->module.input_bytes_per_iq_sample;
   utility_add_summary_item(
       info, "Input File Size", "%s",
       utility_format_size(file_size_bytes, size_buffer, sizeof(size_buffer)));

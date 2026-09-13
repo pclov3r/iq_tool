@@ -209,7 +209,7 @@ static void input_airspyhf_get_summary_info(const ModuleContext *context,
   utility_add_summary_item(info, "Input Source", "Airspy HF+");
   utility_add_summary_item(info, "Input Format", "32-bit Float Complex (cf32)");
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                           (double)app->module.source_info.sample_rate);
+                           (double)app->module.input_info.sample_rate);
 
   // Gain reporting
   if (s_airspyhf_config.agc_mode_provided) {
@@ -436,8 +436,8 @@ static bool input_airspyhf_initialize(ModuleContext *context) {
   }
 
   app->module.input_bytes_per_iq_sample = (get_bytes_per_iq_sample(CF32));
-  app->module.source_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
-  app->module.source_info.frames = -1;
+  app->module.input_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
+  app->module.input_info.frames = -1;
 
   success = true;
 

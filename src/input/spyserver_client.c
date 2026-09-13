@@ -560,7 +560,7 @@ static bool input_spyserver_client_initialize(ModuleContext *context) {
              user_rate, actual_rate);
   }
 
-  app->module.source_info.sample_rate = (int)actual_rate;
+  app->module.input_info.sample_rate = (int)actual_rate;
 
   int format_to_request_int =
       get_spyserver_enum_from_internal_format(final_format);
@@ -662,7 +662,7 @@ static bool input_spyserver_client_initialize(ModuleContext *context) {
   // Expose the internal network buffer to the process_chain so that the
   // centralized process_chain_thread_reader can dequeue from it and perform the
   // CF32 conversion.
-  app->process_chain.source_input_buffer = client->stream_buffer;
+  app->process_chain.input_ring_buffer = client->stream_buffer;
 
   // Start stream!
   if (!send_setting(client, SPYSERVER_SETTING_STREAMING_ENABLED, 1)) {
@@ -784,7 +784,7 @@ static void *input_spyserver_client_producer_thread(void *arg) {
         if (!packet_serializer_write_packet(
                 client->stream_buffer, samples_in_chunk, client->rx_buffer,
                 client->active_format,
-                (double)app->module.source_info.sample_rate)) {
+                (double)app->module.input_info.sample_rate)) {
           static double last_drop_log_time = 0.0;
           static size_t accumulated_drops = 0;
 
@@ -834,9 +834,9 @@ input_spyserver_client_push_samples_to_queue(ModuleContext *context,
       (SpyServerClientContext *)app->module.input_private_data;
 
   // The process_chain_thread_reader in process_chain_io.c handles pulling
-  // chunks from source_input_buffer and performing the CF32 conversion. The
-  // producer thread writes directly to source_input_buffer in the background.
-  // This function simply idles to keep the source module "running" until
+  // chunks from input_ring_buffer and performing the CF32 conversion. The
+  // producer thread writes directly to input_ring_buffer in the background.
+  // This function simply idles to keep the input module "running" until
   // shutdown.
   while (!is_shutdown_requested()) {
     if (app->stats.error_occurred)
@@ -923,7 +923,7 @@ input_spyserver_client_get_summary_info(const ModuleContext *context,
             ? get_format_info_by_enum(app->module.input_format)->description_str
             : "Unknown");
     utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                             (double)app->module.source_info.sample_rate);
+                             (double)app->module.input_info.sample_rate);
 
     if (s_spyserver_client_config.gain_provided) {
       utility_add_summary_item(info, "Gain", "%d (Manual)",

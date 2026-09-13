@@ -432,8 +432,8 @@ bool iq_correction_run_initial_calibration(
   if (((AppConfig *)app->config)->dsp.dc_block.enable && dc_block_api) {
     double dummy_rate;
     dc_block_state = dc_block_api->initialize(
-        context, app->module.source_info.sample_rate,
-        app->module.source_info.sample_rate, &dummy_rate);
+        context, app->module.input_info.sample_rate,
+        app->module.input_info.sample_rate, &dummy_rate);
   }
 
   void *st = iq_correction_init((AppConfig *)context->config, app,

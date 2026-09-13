@@ -654,7 +654,7 @@ static bool output_nrsc5_initialize(ModuleContext *context) {
 
   nrsc5_decoder->audio_out =
       audio_output_create(app, NRSC5_AUDIO_SAMPLE_RATE, NRSC5_AUDIO_CHANNELS,
-                          app->module.source_info.demod_audio_buffer_size);
+                          app->module.input_info.demod_audio_buffer_size);
   if (!nrsc5_decoder->audio_out)
     return false;
   log_info("NRSC5: Audio device initialized (%d Hz, %d Channels).",

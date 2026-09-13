@@ -196,7 +196,7 @@ typedef struct ProcessChainInfrastructure {
   int num_active_queues;
   Queue *writer_input_queue;
 
-  struct RingBuffer *source_input_buffer;
+  struct RingBuffer *input_ring_buffer;
 
   WaitEvent *shutdown_event;
 } ProcessChainInfrastructure;
@@ -205,7 +205,7 @@ typedef struct ProcessChainInfrastructure {
 typedef struct ModuleState {
   InputModuleInterface *input_api;
   void *input_private_data;
-  InputSourceInfo source_info;
+  InputInfo input_info;
   SampleFormat input_format;
   size_t input_bytes_per_iq_sample;
 
@@ -238,7 +238,7 @@ typedef void (*ProgressUpdateFn)(unsigned long long current_output_frames,
 
 typedef struct RuntimeState {
 
-  _Atomic double last_source_heartbeat_time;
+  _Atomic double last_input_heartbeat_time;
   atomic_bool error_occurred;
   atomic_bool end_of_stream_reached;
 

@@ -84,7 +84,7 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
   // --- Step 2: Handle Smart Default (Missing Rate) ---
   // If the user didn't specify a rate (0), use the hardware/file input rate.
   if (target_rate_hz <= 0.0) {
-    target_rate_hz = (double)app->module.source_info.sample_rate;
+    target_rate_hz = (double)app->module.input_info.sample_rate;
     log_info(
         "No explicit output sample rate specified. Defaulting to native "
         "input rate: %.15g Hz",
@@ -101,7 +101,7 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
     if (config->output.format_provided &&
         config->output.sample_format != app->module.input_format) {
       log_error("Option --raw-passthrough cannot be used with an explicit "
-                "--output-sample-format that differs from the input source.");
+                "--output-sample-format that differs from the input module.");
       return false;
     }
     app->dsp.process_chain_sample_format = app->module.input_format;
@@ -114,7 +114,7 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
   app->dsp.process_chain_agc = target_agc;
 
   // --- Step 3: Calculate Ratio ---
-  double input_rate_d = (double)app->module.source_info.sample_rate;
+  double input_rate_d = (double)app->module.input_info.sample_rate;
   float r = (float)(app->dsp.process_chain_sample_rate_hz / input_rate_d);
 
   // --- Step 4: Check for Passthrough Conditions ---
@@ -137,10 +137,10 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
   }
   *out_ratio = r;
 
-  if (app->module.source_info.frames > 0) {
+  if (app->module.input_info.frames > 0) {
     atomic_store_explicit(
         &app->stats.expected_total_output_frames,
-        (long long)round((double)app->module.source_info.frames * (double)r),
+        (long long)round((double)app->module.input_info.frames * (double)r),
         memory_order_relaxed);
   } else {
     app->stats.expected_total_output_frames = -1;
@@ -257,7 +257,7 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
   // -------------------------------------------------------------------------
   // 4. Calculate Dynamic ProcessChain Depth ("Trays")
   // -------------------------------------------------------------------------
-  double input_rate = (double)app->module.source_info.sample_rate;
+  double input_rate = (double)app->module.input_info.sample_rate;
 
   // FAIL FAST: If the input rate is unknown or invalid, we cannot safely
   // configure the process_chain.
@@ -265,7 +265,7 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
     log_fatal("Input sample rate is invalid (%.15g Hz). Cannot "
               "calculate buffer depth.",
               input_rate);
-    log_error("Please check the input source configuration.");
+    log_error("Please check the input configuration.");
     return false;
   }
 
@@ -418,7 +418,7 @@ bool process_chain_execute(ProcessChainContext *context) {
   log_debug("Spawning process_chain threads...");
   bool threads_ok = true;
   if (app->process_chain_mode != PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL) {
-    if (!thread_manager_spawn(&manager, "source", process_chain_thread_source,
+    if (!thread_manager_spawn(&manager, "input", process_chain_thread_input,
                               context))
       threads_ok = false;
   }
@@ -468,9 +468,9 @@ bool process_chain_execute(ProcessChainContext *context) {
   if (threads_ok && !thread_manager_spawn(&manager, "writer",
                                           process_chain_thread_writer, context))
     threads_ok = false;
-  if (threads_ok && module_is_live_source(config->input.type_name,
-                                          &app->process_chain.setup_arena)) {
-    if (!thread_manager_spawn(&manager, "source watchdog",
+  if (threads_ok && module_is_live_input(config->input.type_name,
+                                         &app->process_chain.setup_arena)) {
+    if (!thread_manager_spawn(&manager, "input watchdog",
                               process_chain_thread_watchdog, context))
       threads_ok = false;
   }
@@ -535,7 +535,7 @@ bool process_chain_init_dsp_modules(ProcessChainContext *context) {
     return app->process_chain.shutdown_event != NULL;
   }
 
-  double current_stream_rate = app->module.source_info.sample_rate;
+  double current_stream_rate = app->module.input_info.sample_rate;
   for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
     app->dsp.states[i] = NULL;
     const struct DspModuleInterface *module = get_dsp_module(
@@ -651,10 +651,10 @@ static bool _init_queues_and_buffers(AppConfig *config, AppContext *app) {
   }
 
   if (app->process_chain_mode != PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL) {
-    if (app->process_chain.source_input_buffer == NULL) {
-      app->process_chain.source_input_buffer =
+    if (app->process_chain.input_ring_buffer == NULL) {
+      app->process_chain.input_ring_buffer =
           ring_buffer_create(app->process_chain.input_buffer_size, arena);
-      if (!app->process_chain.source_input_buffer)
+      if (!app->process_chain.input_ring_buffer)
         return false;
     }
   }
@@ -669,8 +669,8 @@ static void _destroy_queues_and_buffers(AppContext *app) {
     wait_event_destroy(app->process_chain.shutdown_event);
   }
 
-  if (app->process_chain.source_input_buffer)
-    ring_buffer_destroy(app->process_chain.source_input_buffer);
+  if (app->process_chain.input_ring_buffer)
+    ring_buffer_destroy(app->process_chain.input_ring_buffer);
 
   if (app->process_chain.free_sample_chunk_queue)
     queue_destroy(app->process_chain.free_sample_chunk_queue);

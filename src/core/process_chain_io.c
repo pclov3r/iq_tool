@@ -36,14 +36,14 @@ static bool process_chain_queue_samples(void *context, const void *data,
                                         size_t num_samples,
                                         SampleFormat format) {
   AppContext *app = (AppContext *)context;
-  source_update_heartbeat(app);
+  input_update_heartbeat(app);
   if (is_shutdown_requested() ||
       atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed))
     return false;
 
-  if (!packet_serializer_write_packet(app->process_chain.source_input_buffer,
+  if (!packet_serializer_write_packet(app->process_chain.input_ring_buffer,
                                       num_samples, data, format,
-                                      app->module.source_info.sample_rate)) {
+                                      app->module.input_info.sample_rate)) {
     static double last_drop_log_time = 0.0;
     static size_t accumulated_drops = 0;
 
@@ -61,8 +61,8 @@ static bool process_chain_queue_samples(void *context, const void *data,
   return true;
 }
 
-void *process_chain_thread_source(void *arg) {
-  platform_set_thread_priority(PRIORITY_REALTIME, "source");
+void *process_chain_thread_input(void *arg) {
+  platform_set_thread_priority(PRIORITY_REALTIME, "input");
 
   ProcessChainContext *args = (ProcessChainContext *)arg;
   AppContext *app = args->app;
@@ -71,11 +71,11 @@ void *process_chain_thread_source(void *arg) {
   app->module.input_api->push_samples_to_queue(
       &context, process_chain_queue_samples, app);
 
-  if (app->process_chain.source_input_buffer) {
-    ring_buffer_signal_end_of_stream(app->process_chain.source_input_buffer);
+  if (app->process_chain.input_ring_buffer) {
+    ring_buffer_signal_end_of_stream(app->process_chain.input_ring_buffer);
   }
 
-  log_debug("Source capture thread is exiting.");
+  log_debug("Input capture thread is exiting.");
   return NULL;
 }
 
@@ -108,12 +108,12 @@ void *process_chain_thread_reader(void *arg) {
       // Call the serializer with the state and the calculated elastic request
       // size
       int64_t frames_read = packet_serializer_read_packet(
-          app->process_chain.source_input_buffer, item, &state, &is_reset,
+          app->process_chain.input_ring_buffer, item, &state, &is_reset,
           app->process_chain.read_chunk_size);
 
       if (frames_read < 0) {
         request_forceful_shutdown(
-            "Reader: Fatal error parsing source buffer stream.", app);
+            "Reader: Fatal error parsing input buffer stream.", app);
         queue_enqueue(app->process_chain.free_sample_chunk_queue, item);
         break;
       }

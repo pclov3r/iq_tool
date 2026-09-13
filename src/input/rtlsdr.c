@@ -267,7 +267,7 @@ static bool input_rtlsdr_initialize(ModuleContext *context) {
   log_info(
       "RTL-SDR: Requested sample rate %.15g Hz, actual rate set to %.15g Hz.",
       config->sdr_general.sample_rate_hz, (double)actual_rate);
-  app->module.source_info.sample_rate = actual_rate;
+  app->module.input_info.sample_rate = actual_rate;
 
   result = rtlsdr_set_center_freq(private_data->dev,
                                   (uint32_t)config->sdr_general.rf_freq_hz);
@@ -350,7 +350,7 @@ static bool input_rtlsdr_initialize(ModuleContext *context) {
   app->module.input_format = CU8;
   app->module.input_bytes_per_iq_sample =
       get_bytes_per_iq_sample(app->module.input_format);
-  app->module.source_info.frames = -1;
+  app->module.input_info.frames = -1;
 
   // Force the process_chain into BUFFERED_INPUT mode.
   // This ensures we use the Async callback (rtlsdr_read_async) and the large
@@ -431,7 +431,7 @@ static void input_rtlsdr_get_summary_info(const ModuleContext *context,
   utility_add_summary_item(info, "Input Format",
                            "8-bit Unsigned Complex (cu8)");
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                           (double)app->module.source_info.sample_rate);
+                           (double)app->module.input_info.sample_rate);
   if (s_rtlsdr_config.gain_provided) {
     utility_add_summary_item(info, "Gain", "%.1f dB (Manual)",
                              (float)s_rtlsdr_config.gain / 10.0f);

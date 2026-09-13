@@ -29,13 +29,13 @@ static void *dc_block_create(AppConfig *config, AppContext *app) {
     return NULL;
   }
 
-  if (app->module.source_info.sample_rate <= 0.0) {
+  if (app->module.input_info.sample_rate <= 0.0) {
     log_error("Cannot initialize with invalid sample rate.");
     return NULL;
   }
 
   float normalized_alpha = (float)(2.0 * M_PI * DC_BLOCK_CUTOFF_HZ /
-                                   app->module.source_info.sample_rate);
+                                   app->module.input_info.sample_rate);
 
   if (normalized_alpha <= 0.0f) {
     log_error("Calculated normalized alpha (%.6f) is invalid.",

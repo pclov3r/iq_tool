@@ -329,7 +329,7 @@ static bool output_wfm_initialize(ModuleContext *context) {
 
   wfm_decoder->audio_out =
       audio_output_create(res, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS,
-                          res->module.source_info.demod_audio_buffer_size);
+                          res->module.input_info.demod_audio_buffer_size);
   if (!wfm_decoder->audio_out)
     return false;
 

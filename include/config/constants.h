@@ -96,7 +96,7 @@
 
 /**
  * @def PROCESS_CHAIN_MIN_READ_SAMPLES
- * @brief The minimum number of samples to read from the source per cycle.
+ * @brief The minimum number of samples to read from the input per cycle.
  *
  * Prevents excessive mutex locking overhead during extreme upsampling scenarios
  * (e.g. where the calculated input requirement might be < 10 samples).
@@ -174,12 +174,12 @@
 #define SDR_INITIALIZE_TIMEOUT_MS 10000
 
 // The interval in milliseconds at which the watchdog thread wakes up to check
-// the source heartbeat.
+// the input heartbeat.
 #define WATCHDOG_INTERVAL_MS 2000
 
-// The maximum time in milliseconds that can elapse without a source heartbeat
+// The maximum time in milliseconds that can elapse without an input heartbeat
 // before the watchdog triggers a shutdown. This must be longer than any
-// source's internal timeouts.
+// input module's internal timeouts.
 #define WATCHDOG_TIMEOUT_MS 8000
 
 /**

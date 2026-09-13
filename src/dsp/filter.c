@@ -76,7 +76,7 @@ static bool _configure_filter_stage(AppConfig *config, AppContext *app) {
     return true;
   }
 
-  double input_rate = (double)app->module.source_info.sample_rate;
+  double input_rate = (double)app->module.input_info.sample_rate;
   double output_sample_rate = app->dsp.process_chain_sample_rate_hz;
 
   // This optimization is only relevant if we are downsampling.
@@ -434,7 +434,7 @@ static void *filter_create(AppConfig *config, AppContext *app,
 
   double sample_rate = config->dsp.filter.apply_post_resample
                            ? app->dsp.process_chain_sample_rate_hz
-                           : (double)app->module.source_info.sample_rate;
+                           : (double)app->module.input_info.sample_rate;
 
   int master_length = 0;
   bool is_complex = false, norm_peak = false;

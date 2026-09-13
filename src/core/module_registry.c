@@ -113,7 +113,7 @@ const Module *module_get_all(int *count, MemoryArena *arena) {
   return all_modules;
 }
 
-bool module_is_live_source(const char *name, MemoryArena *arena) {
+bool module_is_live_input(const char *name, MemoryArena *arena) {
   const Module *module =
       _find_module_by_name_and_type(name, MODULE_TYPE_INPUT, arena);
   return (module != NULL &&

@@ -71,8 +71,8 @@ void *sdr_init_watchdog_thread(void *arg) {
 }
 
 /*
- * The Input watchdog thread periodically checks a heartbeat from the source
- * reader to detect deadlocks or driver hangs, forcing a shutdown if the source
+ * The Input watchdog thread periodically checks a heartbeat from the input
+ * reader to detect deadlocks or driver hangs, forcing a shutdown if the input
  * becomes unresponsive.
  */
 void *process_chain_thread_watchdog(void *arg) {
@@ -98,7 +98,7 @@ void *process_chain_thread_watchdog(void *arg) {
     bool timed_out = false;
 
     double last_heartbeat = atomic_load_explicit(
-        &app->stats.last_source_heartbeat_time, memory_order_relaxed);
+        &app->stats.last_input_heartbeat_time, memory_order_relaxed);
     if (last_heartbeat > 0 &&
         (current_time - last_heartbeat) > (WATCHDOG_TIMEOUT_MS / 1000.0)) {
       timed_out = true;

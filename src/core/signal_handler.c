@@ -165,8 +165,8 @@ void request_shutdown(void) {
     }
 
     // Signal all ring buffers to wake up any waiting threads
-    if (r->process_chain.source_input_buffer)
-      ring_buffer_signal_shutdown(r->process_chain.source_input_buffer);
+    if (r->process_chain.input_ring_buffer)
+      ring_buffer_signal_shutdown(r->process_chain.input_ring_buffer);
   }
 }
 

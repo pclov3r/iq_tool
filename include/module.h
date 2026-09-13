@@ -4,7 +4,7 @@
  *
  * This file is the cornerstone of the modular pipeline system. It defines
  * generic interfaces (`InputModuleInterface`, `OutputModuleInterface`, and
- * `DspModuleInterface`) using function pointer vtables. Concrete input sources,
+ * `DspModuleInterface`) using function pointer vtables. Concrete input modules,
  * demodulators/writers, and DSP filters implement these interfaces.
  *
  * It also defines the common data structures used to describe module
@@ -42,20 +42,20 @@ struct ThreadManager;
 // --- Data Structures ---
 
 /**
- * @struct InputSourceInfo
- * @brief Holds basic, essential information about the input source.
+ * @struct InputInfo
+ * @brief Holds basic, essential information about the input.
  */
-typedef struct InputSourceInfo {
-  int64_t frames;  ///< Total number of I/Q frames in the source. -1 for a live
+typedef struct InputInfo {
+  int64_t frames;  ///< Total number of I/Q frames in the input. -1 for a live
                    ///< stream.
-  int sample_rate; ///< The native sample rate of the source in Hz.
+  int sample_rate; ///< The native sample rate of the input in Hz.
   size_t demod_audio_buffer_size; ///< Downstream demodulator audio buffer size
-                                  ///< dictated by this input source.
-} InputSourceInfo;
+                                  ///< dictated by this input module.
+} InputInfo;
 
 /**
  * @struct ModuleContext
- * @brief A container passing the main application state to input source
+ * @brief A container passing the main application state to module
  * functions.
  */
 typedef struct ModuleContext {
@@ -92,7 +92,7 @@ typedef struct InputModuleInterface {
                                  void *process_chain_context);
 
   /**
-   * @brief Reads a chunk of data synchronously from a file-based source.
+   * @brief Reads a chunk of data synchronously from a file-based input.
    */
   size_t (*read_chunk)(struct ModuleContext *context, void *buffer,
                        size_t bytes_to_read);
@@ -104,14 +104,14 @@ typedef struct InputModuleInterface {
   void (*stop_sample_queue_push)(struct ModuleContext *context);
 
   /**
-   * @brief Releases all app allocated by the input source.
+   * @brief Releases all resources allocated by the input module.
    * @param context The application context.
    */
   void (*cleanup)(struct ModuleContext *context);
 
   /**
    * @brief Populates a summary struct with details specific to this input
-   * source.
+   * module.
    * @param context A read-only pointer to the application context.
    * @param info A pointer to the summary struct to be populated.
    */
@@ -143,7 +143,7 @@ typedef struct InputModuleInterface {
    */
   bool (*validate_generic_options)(const struct AppConfig *config);
 
-  // Optional function for file-based sources to perform initial I/Q correction.
+  // Optional function for file-based inputs to perform initial I/Q correction.
   bool (*pre_stream_iq_correction)(struct ModuleContext *context);
 
 } InputModuleInterface;

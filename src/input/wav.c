@@ -681,7 +681,7 @@ static bool _probe_split_sequence(WavInputContext *wav_input,
   }
 
   // Overwrite global frames with the true, cumulative sequence total
-  app->module.source_info.frames = cumulative_frames;
+  app->module.input_info.frames = cumulative_frames;
 
   log_info("Found %d split WAV files.", wav_input->total_files);
   log_debug("Cumulative frames: %lld", (long long)cumulative_frames);
@@ -852,10 +852,10 @@ static bool input_wav_initialize(ModuleContext *context) {
     return false;
   }
 
-  app->module.source_info.sample_rate = private_data->sfinfo.samplerate;
+  app->module.input_info.sample_rate = private_data->sfinfo.samplerate;
 
   if (!private_data->split_enabled) {
-    app->module.source_info.frames = private_data->sfinfo.frames;
+    app->module.input_info.frames = private_data->sfinfo.frames;
   }
 
   if (s_wav_config.center_target_hz_arg != 0.0f) {
@@ -948,13 +948,13 @@ static size_t input_wav_read_chunk(ModuleContext *context, void *buffer,
         }
 
         // Strict format validation across boundaries
-        if (new_sfinfo.samplerate != app->module.source_info.sample_rate ||
+        if (new_sfinfo.samplerate != app->module.input_info.sample_rate ||
             (new_sfinfo.channels == 1 && !wav_input->is_real) ||
             (new_sfinfo.channels == 2 && wav_input->is_real) ||
             (new_sfinfo.channels != 1 && new_sfinfo.channels != 2)) {
           log_fatal(
               "Next split file format mismatch! (Expected Rate: %d, Chans: %d)",
-              app->module.source_info.sample_rate, wav_input->is_real ? 1 : 2);
+              app->module.input_info.sample_rate, wav_input->is_real ? 1 : 2);
           request_forceful_shutdown("Format mismatch during rollover.", app);
           return 0;
         }
@@ -985,13 +985,13 @@ static size_t input_wav_read_chunk(ModuleContext *context, void *buffer,
         }
 
         // Strict format validation across boundaries
-        if (new_sfinfo.samplerate != app->module.source_info.sample_rate ||
+        if (new_sfinfo.samplerate != app->module.input_info.sample_rate ||
             (new_sfinfo.channels == 1 && !wav_input->is_real) ||
             (new_sfinfo.channels == 2 && wav_input->is_real) ||
             (new_sfinfo.channels != 1 && new_sfinfo.channels != 2)) {
           log_fatal(
               "Format mismatch on loop reopen! (Expected Rate: %d, Chans: %d)",
-              app->module.source_info.sample_rate, wav_input->is_real ? 1 : 2);
+              app->module.input_info.sample_rate, wav_input->is_real ? 1 : 2);
           request_forceful_shutdown("Format mismatch during loop.", app);
           return 0;
         }
@@ -1108,7 +1108,7 @@ static void input_wav_get_summary_info(const ModuleContext *context,
 
     // Exact mathematical calculation of the total cumulative file sizes
     // combined
-    long long combined_bytes = (long long)app->module.source_info.frames *
+    long long combined_bytes = (long long)app->module.input_info.frames *
                                app->module.input_bytes_per_iq_sample;
     char size_buffer[40];
     utility_add_summary_item(
@@ -1117,8 +1117,8 @@ static void input_wav_get_summary_info(const ModuleContext *context,
 
     // Reuse existing utilities.c duration parser for combined HH:MM:SS
     // formatting
-    double total_seconds = (double)app->module.source_info.frames /
-                           (double)app->module.source_info.sample_rate;
+    double total_seconds = (double)app->module.input_info.frames /
+                           (double)app->module.input_info.sample_rate;
     char duration_buffer[40];
     utility_format_duration(total_seconds, duration_buffer,
                             sizeof(duration_buffer));
@@ -1157,7 +1157,7 @@ static void input_wav_get_summary_info(const ModuleContext *context,
   }
   utility_add_summary_item(info, "Input Format", "%s", format_str);
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                           (double)app->module.source_info.sample_rate);
+                           (double)app->module.input_info.sample_rate);
 
   if (private_data->sdr_metadata_present) {
     if (private_data->sdr_metadata.timestamp_unix_present) {

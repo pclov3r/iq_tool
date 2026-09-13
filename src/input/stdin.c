@@ -122,8 +122,8 @@ static bool input_stdin_initialize(ModuleContext *context) {
   app->module.input_bytes_per_iq_sample =
       get_bytes_per_iq_sample(app->module.input_format);
 
-  app->module.source_info.sample_rate = (int)s_stdin_config.sample_rate_hz;
-  app->module.source_info.frames = -1;
+  app->module.input_info.sample_rate = (int)s_stdin_config.sample_rate_hz;
+  app->module.input_info.frames = -1;
 
   log_info("Reading raw I/Q data from standard input (stdin)...");
   return true;

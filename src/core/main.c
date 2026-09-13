@@ -72,9 +72,9 @@ static void console_lock_function(bool lock, void *udata);
 static void application_progress_callback(
     unsigned long long current_output_frames, long long total_output_frames,
     unsigned long long current_bytes_written, void *udata);
-static bool init_input_source(AppConfig *config, AppContext *app);
+static bool init_input_module(AppConfig *config, AppContext *app);
 static bool init_output_module(AppConfig *config, AppContext *app);
-static void close_input_source(AppConfig *config, AppContext *app);
+static void close_input_module(AppConfig *config, AppContext *app);
 static void close_output_module(AppConfig *config, AppContext *app);
 
 // --- Main Application Entry Point ---
@@ -191,10 +191,10 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if (!init_input_source(&config, &app)) {
+  if (!init_input_module(&config, &app)) {
     goto cleanup;
   }
-  // Perform pre-stream calibration if needed (requires open source)
+  // Perform pre-stream calibration if needed (requires open input module)
   if (app.module.input_api->pre_stream_iq_correction) {
     ModuleContext context = {.config = &config, .app = &app};
     if (!app.module.input_api->pre_stream_iq_correction(&context))
@@ -218,7 +218,7 @@ int main(int argc, char *argv[]) {
   print_configuration_summary(&config, &app);
 
   if (app.process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH) {
-    log_info("Starting %s live source capture...", config.input.type_name);
+    log_info("Starting %s live input capture...", config.input.type_name);
   } else {
     log_info("Starting %s file processing...", config.input.type_name);
   }
@@ -254,12 +254,12 @@ cleanup:
 
   if (app.module.input_api) {
     if (app.process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH) {
-      log_info("Stopping %s live source capture...", config.input.type_name);
+      log_info("Stopping %s live input capture...", config.input.type_name);
     } else {
       log_info("Finished %s file processing.", config.input.type_name);
     }
     log_info("Closing %s input module...", config.input.type_name);
-    close_input_source(&config, &app);
+    close_input_module(&config, &app);
   }
 
   // Print summary AFTER all buffers are flushed and files are closed
@@ -281,7 +281,7 @@ cleanup:
 
 // --- Input/Output Lifecycle Management ---
 
-static bool init_input_source(AppConfig *config, AppContext *app) {
+static bool init_input_module(AppConfig *config, AppContext *app) {
   app->config = config;
   app->dsp.config = config;
   ModuleContext context = {.config = config, .app = app};
@@ -297,13 +297,13 @@ static bool init_input_source(AppConfig *config, AppContext *app) {
   app->module.input_api = (InputModuleInterface *)selected_input_module->api;
   app->process_chain_mode = selected_input_module->process_chain_mode;
 
-  app->module.source_info.demod_audio_buffer_size =
+  app->module.input_info.demod_audio_buffer_size =
       selected_input_module->default_demod_audio_buffer_size;
 
   log_info("Initializing the '%s' input module...", config->input.type_name);
 
-  bool is_live_source = module_is_live_source(config->input.type_name,
-                                              &app->process_chain.setup_arena);
+  bool is_live_input = module_is_live_input(config->input.type_name,
+                                            &app->process_chain.setup_arena);
   ThreadManager watchdog_tm;
   thread_manager_init(&watchdog_tm);
   SdrInitWatchdogContext watchdog_ctx = {
@@ -311,7 +311,7 @@ static bool init_input_source(AppConfig *config, AppContext *app) {
       .is_complete = false,
   };
 
-  if (is_live_source) {
+  if (is_live_input) {
     thread_manager_spawn(&watchdog_tm, "watchdog", sdr_init_watchdog_thread,
                          &watchdog_ctx);
   }
@@ -344,7 +344,7 @@ static bool init_output_module(AppConfig *config, AppContext *app) {
   return app->module.output_api->initialize(&context);
 }
 
-static void close_input_source(AppConfig *config, AppContext *app) {
+static void close_input_module(AppConfig *config, AppContext *app) {
   if (!app || !app->module.input_api)
     return;
   ModuleContext context = {.config = config, .app = app};
@@ -553,7 +553,7 @@ static void print_final_summary(const AppConfig *config, const AppContext *app,
     fprintf(stderr, "%-*s %llu / %lld (100.0%%)\n", label_width,
             "Input Frames Read:",
             (unsigned long long)atomic_load(&app->stats.total_frames_read),
-            (long long)app->module.source_info.frames);
+            (long long)app->module.input_info.frames);
     fprintf(stderr, "%-*s %llu\n", label_width,
             "Input Samples Read:", total_input_samples);
     fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:",
@@ -565,9 +565,9 @@ static void print_final_summary(const AppConfig *config, const AppContext *app,
     fprintf(stderr, "%-*s %.2f MB/s\n", label_width,
             "Average Write Speed:", avg_write_speed_mbps);
   } else if (is_shutdown_requested()) {
-    bool source_has_known_length =
+    bool input_has_known_length =
         (app->process_chain_mode == PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL);
-    if (!source_has_known_length) {
+    if (!input_has_known_length) {
       fprintf(stderr, "%-*s %s\n", label_width,
               "Status:", "Capture Stopped by User");
     } else {
@@ -575,25 +575,25 @@ static void print_final_summary(const AppConfig *config, const AppContext *app,
               "Status:", "Processing Cancelled by User");
     }
     const char *duration_label =
-        !source_has_known_length ? "Capture Duration:" : "Processing Duration:";
+        !input_has_known_length ? "Capture Duration:" : "Processing Duration:";
     fprintf(stderr, "%-*s %s\n", label_width, duration_label, duration_buffer);
-    if (!source_has_known_length) {
+    if (!input_has_known_length) {
       fprintf(stderr, "%-*s %llu\n", label_width, "Input Frames Read:",
               (unsigned long long)atomic_load(&app->stats.total_frames_read));
       fprintf(stderr, "%-*s %llu\n", label_width,
               "Input Samples Read:", total_input_samples);
     } else {
       double percentage = 0.0;
-      if (app->module.source_info.frames > 0) {
+      if (app->module.input_info.frames > 0) {
         percentage = ((double)(unsigned long long)atomic_load(
                           &app->stats.total_frames_read) /
-                      (double)app->module.source_info.frames) *
+                      (double)app->module.input_info.frames) *
                      100.0;
       }
       fprintf(stderr, "%-*s %llu / %lld (%.1f%%)\n", label_width,
               "Input Frames Read:",
               (unsigned long long)atomic_load(&app->stats.total_frames_read),
-              (long long)app->module.source_info.frames, percentage);
+              (long long)app->module.input_info.frames, percentage);
       fprintf(stderr, "%-*s %llu\n", label_width,
               "Input Samples Read:", total_input_samples);
     }

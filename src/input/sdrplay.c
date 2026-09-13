@@ -478,7 +478,7 @@ static void input_sdrplay_buffered_stream_callback(
 
   if (reset) {
     log_info("SDRplay stream reset detected, sending event.");
-    packet_serializer_write_reset_event(app->process_chain.source_input_buffer);
+    packet_serializer_write_reset_event(app->process_chain.input_ring_buffer);
   }
 
   if (numSamples > 0) {
@@ -575,7 +575,7 @@ static void input_sdrplay_get_summary_info(const ModuleContext *context,
   utility_add_summary_item(info, "Input Format",
                            "16-bit Signed Complex (cs16)");
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                           (double)app->module.source_info.sample_rate);
+                           (double)app->module.input_info.sample_rate);
 
   utility_add_summary_item(info, "Bandwidth", "%.15g Hz",
                            s_sdrplay_config.bandwidth_hz);
@@ -959,8 +959,8 @@ static bool input_sdrplay_initialize(ModuleContext *context) {
   app->module.input_format = CS16;
   app->module.input_bytes_per_iq_sample =
       (get_bytes_per_iq_sample(app->module.input_format));
-  app->module.source_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
-  app->module.source_info.frames = -1;
+  app->module.input_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
+  app->module.input_info.frames = -1;
 
   success = true;
 

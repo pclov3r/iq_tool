@@ -134,7 +134,7 @@ static bool output_nfm_initialize(ModuleContext *context) {
 
   nfm_decoder->audio_out =
       audio_output_create(res, NFM_AUDIO_RATE, NFM_AUDIO_CHANNELS,
-                          res->module.source_info.demod_audio_buffer_size);
+                          res->module.input_info.demod_audio_buffer_size);
   if (!nfm_decoder->audio_out)
     return false;
 

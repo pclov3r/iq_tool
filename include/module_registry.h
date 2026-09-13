@@ -33,7 +33,7 @@ typedef struct Module {
   void *api; ///< Generic pointer to the module's interface (e.g.,
              ///< InputModuleInterface* or OutputModuleInterface*).
   ProcessChainMode
-      process_chain_mode; ///< Flag to indicate if this is a live source source.
+      process_chain_mode; ///< Flag to indicate if this is a live input module.
   void (*set_default_config)(
       struct AppConfig *config); ///< Pointer to the default config function.
   const struct argparse_option *(*get_cli_options)(
@@ -46,7 +46,7 @@ typedef struct Module {
   float default_filter_attenuation_db;
   size_t
       default_demod_audio_buffer_size; ///< Downstream demodulator audio buffer
-                                       ///< size dictated by this input source.
+                                       ///< size dictated by this input module.
 } Module;
 
 // --- Function Declarations ---
@@ -95,14 +95,14 @@ const Module *module_get_all(int *count, struct MemoryArena *arena);
 void module_apply_defaults(struct AppConfig *config, struct MemoryArena *arena);
 
 /**
- * @brief Checks if a given module name corresponds to a live source requiring a
+ * @brief Checks if a given module name corresponds to a live input requiring a
  * watchdog.
  * @param name The name of the module to check.
  * @param arena The memory arena, needed to initialize the module list on first
  * call.
- * @return true if the module exists and is a live source, false otherwise.
+ * @return true if the module exists and is a live input, false otherwise.
  */
-bool module_is_live_source(const char *name, struct MemoryArena *arena);
+bool module_is_live_input(const char *name, struct MemoryArena *arena);
 
 /**
  * @brief Populates a buffer with the CLI options from all registered modules.

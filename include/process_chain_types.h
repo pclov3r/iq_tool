@@ -35,7 +35,7 @@
  */
 typedef struct SampleChunk {
   // --- Data Buffers ---
-  void *raw_input_data; ///< Buffer for raw data from the source.
+  void *raw_input_data; ///< Buffer for raw data from the input.
   ComplexFloat *ping_buffer;
   ComplexFloat *pong_buffer;
   ComplexFloat *current_buffer;
@@ -51,18 +51,18 @@ typedef struct SampleChunk {
                                           ///< buffer in bytes.
 
   // --- ProcessChain State ---
-  int64_t frames_read; ///< Number of valid frames read from the source.
+  int64_t frames_read; ///< Number of valid frames read from the input.
   SampleFormat packet_sample_format; ///< Original format of the raw data (for
-                                     ///< live sources).
+                                     ///< live inputs).
   unsigned int
       frames_to_write; ///< Number of valid frames to be written to output.
   double sample_rate;  ///< The sample rate of this data chunk in Hz.
   size_t
-      input_bytes_per_iq_sample; ///< Size of a single I/Q pair from the source.
+      input_bytes_per_iq_sample; ///< Size of a single I/Q pair from the input.
 
   // --- Stream Flags ---
   bool is_last_chunk; ///< Flag indicating the end of the stream (EOF).
-  bool stream_discontinuity_event; ///< Flag indicating a source reset (e.g.,
+  bool stream_discontinuity_event; ///< Flag indicating an input reset (e.g.,
                                    ///< SDR overrun).
 
 } __attribute__((aligned(MEM_ARENA_ALIGNMENT))) SampleChunk;
