@@ -300,10 +300,12 @@ _compound_filter_stages(AppConfig *config, double sample_rate,
   return master_taps;
 }
 
-static bool _compile_filter_object(
-    AppConfig *config, FilterState *state, liquid_float_complex *master_taps,
-    int master_taps_length, bool is_final_filter_complex,
-    bool normalize_by_peak, MemoryArena *arena, size_t alloc_size_samples) {
+static bool _compile_filter_object(AppConfig *config, FilterState *state,
+                                   liquid_float_complex *master_taps,
+                                   int master_taps_length,
+                                   bool is_final_filter_complex,
+                                   bool normalize_by_peak, MemoryArena *arena,
+                                   size_t alloc_size_samples) {
   if (normalize_by_peak || is_final_filter_complex) {
     log_info("Normalizing filter gain (this may be slow for large filters)...");
     float max_mag = 0.0f;
@@ -342,7 +344,7 @@ static bool _compile_filter_object(
     log_info(is_final_filter_complex
                  ? "Automatically choosing efficient FFT method by default."
                  : "Symmetric filter detected. Using default low-latency FIR "
-                    "method.");
+                   "method.");
   }
 
   if (final_choice == FILTER_TYPE_FFT) {
@@ -363,8 +365,8 @@ static bool _compile_filter_object(
 
     if (is_final_filter_complex) {
       state->type_actual = FILTER_IMPL_FFT_ASYMMETRIC;
-      state->fft_cccf = fftfilt_cccf_create(
-          master_taps, master_taps_length, block_size);
+      state->fft_cccf =
+          fftfilt_cccf_create(master_taps, master_taps_length, block_size);
       if (!state->fft_cccf)
         return false;
     } else {
@@ -373,8 +375,8 @@ static bool _compile_filter_object(
       for (int i = 0; i < master_taps_length; i++)
         real_taps[i] = crealf(master_taps[i]);
       state->type_actual = FILTER_IMPL_FFT_SYMMETRIC;
-      state->fft_crcf = fftfilt_crcf_create(
-          real_taps, master_taps_length, block_size);
+      state->fft_crcf =
+          fftfilt_crcf_create(real_taps, master_taps_length, block_size);
       if (!state->fft_crcf)
         return false;
     }
@@ -388,8 +390,7 @@ static bool _compile_filter_object(
     log_info("Preparing FIR (time-domain) filter object...");
     if (is_final_filter_complex) {
       state->type_actual = FILTER_IMPL_FIR_ASYMMETRIC;
-      state->fir_cccf = firfilt_cccf_create(
-          master_taps, master_taps_length);
+      state->fir_cccf = firfilt_cccf_create(master_taps, master_taps_length);
       if (!state->fir_cccf)
         return false;
     } else {
@@ -398,8 +399,7 @@ static bool _compile_filter_object(
       for (int i = 0; i < master_taps_length; i++)
         real_taps[i] = crealf(master_taps[i]);
       state->type_actual = FILTER_IMPL_FIR_SYMMETRIC;
-      state->fir_crcf = firfilt_crcf_create(
-          real_taps, master_taps_length);
+      state->fir_crcf = firfilt_crcf_create(real_taps, master_taps_length);
       if (!state->fir_crcf)
         return false;
     }
@@ -407,11 +407,13 @@ static bool _compile_filter_object(
   return true;
 }
 
-static unsigned int _execute_fft_filter_pass(
-    FilterState *state, const ComplexFloat *input_buffer,
-    unsigned int frames_in, ComplexFloat *output_buffer,
-    ComplexFloat *remainder_buffer, unsigned int *remainder_length_ptr,
-    bool is_last_chunk) {
+static unsigned int _execute_fft_filter_pass(FilterState *state,
+                                             const ComplexFloat *input_buffer,
+                                             unsigned int frames_in,
+                                             ComplexFloat *output_buffer,
+                                             ComplexFloat *remainder_buffer,
+                                             unsigned int *remainder_length_ptr,
+                                             bool is_last_chunk) {
   unsigned int old_remainder_length = *remainder_length_ptr;
   unsigned int total_frames_to_process = old_remainder_length + frames_in;
 
@@ -426,12 +428,14 @@ static unsigned int _execute_fft_filter_pass(
     if (state->type_actual == FILTER_IMPL_FFT_SYMMETRIC) {
       fftfilt_crcf_execute(
           state->fft_crcf,
-          (liquid_float_complex *)(state->fft_scratch_buffer + processed_frames),
+          (liquid_float_complex *)(state->fft_scratch_buffer +
+                                   processed_frames),
           (liquid_float_complex *)(output_buffer + total_output_frames));
     } else {
       fftfilt_cccf_execute(
           state->fft_cccf,
-          (liquid_float_complex *)(state->fft_scratch_buffer + processed_frames),
+          (liquid_float_complex *)(state->fft_scratch_buffer +
+                                   processed_frames),
           (liquid_float_complex *)(output_buffer + total_output_frames));
     }
     processed_frames += state->block_size;
@@ -450,12 +454,14 @@ static unsigned int _execute_fft_filter_pass(
     if (state->type_actual == FILTER_IMPL_FFT_SYMMETRIC) {
       fftfilt_crcf_execute(
           state->fft_crcf,
-          (liquid_float_complex *)(state->fft_scratch_buffer + processed_frames),
+          (liquid_float_complex *)(state->fft_scratch_buffer +
+                                   processed_frames),
           (liquid_float_complex *)(output_buffer + total_output_frames));
     } else {
       fftfilt_cccf_execute(
           state->fft_cccf,
-          (liquid_float_complex *)(state->fft_scratch_buffer + processed_frames),
+          (liquid_float_complex *)(state->fft_scratch_buffer +
+                                   processed_frames),
           (liquid_float_complex *)(output_buffer + total_output_frames));
     }
 
@@ -859,16 +865,16 @@ static SampleChunk *dsp_filter_process(void *state, SampleChunk *chunk) {
   case FILTER_IMPL_FIR_SYMMETRIC:
     if (fs->fir_crcf) {
       firfilt_crcf_execute_block(
-          fs->fir_crcf, (liquid_float_complex *)target_buffer,
-          frames_in, (liquid_float_complex *)target_buffer);
+          fs->fir_crcf, (liquid_float_complex *)target_buffer, frames_in,
+          (liquid_float_complex *)target_buffer);
     }
     break;
 
   case FILTER_IMPL_FIR_ASYMMETRIC:
     if (fs->fir_cccf) {
       firfilt_cccf_execute_block(
-          fs->fir_cccf, (liquid_float_complex *)target_buffer,
-          frames_in, (liquid_float_complex *)target_buffer);
+          fs->fir_cccf, (liquid_float_complex *)target_buffer, frames_in,
+          (liquid_float_complex *)target_buffer);
     }
     break;
 

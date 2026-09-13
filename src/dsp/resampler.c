@@ -5,12 +5,12 @@
 
 #include "app_context.h"
 #include "log.h"
+#include "mem_arena.h"
 #include "module.h"
 #include "module_registry.h"
 #include "process_chain_types.h"
 #include <liquid.h>
 #include <math.h>
-#include "mem_arena.h"
 
 typedef struct ResamplerState {
   msresamp_crcf resamp;
@@ -27,8 +27,8 @@ static void *dsp_resampler_init(ModuleContext *ctx, double input_rate,
   log_info("Resampling: %.15g Hz -> %.15g Hz (Ratio: %.15g)", input_rate,
            target_output_rate, resample_ratio);
 
-  msresamp_crcf q =
-      msresamp_crcf_create(resample_ratio, ctx->config->dsp.filter.args.attenuation);
+  msresamp_crcf q = msresamp_crcf_create(
+      resample_ratio, ctx->config->dsp.filter.args.attenuation);
   if (!q) {
     log_fatal("Failed to create liquid-dsp resampler object.");
     return NULL;
@@ -59,11 +59,9 @@ static SampleChunk *dsp_resampler_process(void *state, SampleChunk *chunk) {
   ComplexFloat *out_buffer = (chunk->current_buffer == chunk->ping_buffer)
                                  ? chunk->pong_buffer
                                  : chunk->ping_buffer;
-  msresamp_crcf_execute(resampler->resamp,
-                        (liquid_float_complex *)chunk->current_buffer,
-                        chunk->frames_read,
-                        (liquid_float_complex *)out_buffer,
-                        &out_frames);
+  msresamp_crcf_execute(
+      resampler->resamp, (liquid_float_complex *)chunk->current_buffer,
+      chunk->frames_read, (liquid_float_complex *)out_buffer, &out_frames);
   chunk->frames_to_write = out_frames;
   chunk->current_buffer = out_buffer;
   chunk->sample_rate = resampler->target_rate;

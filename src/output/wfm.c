@@ -454,7 +454,7 @@ static bool output_wfm_initialize(ModuleContext *context) {
     wfm_decoder->redsea = NULL;
   }
 
-    wfm_decoder->first_run = true;
+  wfm_decoder->first_run = true;
   return true;
 }
 
@@ -476,7 +476,7 @@ static size_t output_wfm_write_chunk(ModuleContext *context, const void *buffer,
   AppContext *res = context->app;
   WfmContext *wfm_decoder = (WfmContext *)res->module.output_private_data;
 
-// Statics moved to Context struct
+  // Statics moved to Context struct
   if (wfm_decoder->first_run) {
     wfm_decoder->stat_rate_threshold =
         (size_t)(wfm_decoder->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC);
@@ -884,22 +884,26 @@ static size_t output_wfm_write_chunk(ModuleContext *context, const void *buffer,
   }
 
   if (wfm_decoder->stat_counter >= wfm_decoder->stat_rate_threshold) {
-    double avg_power = wfm_decoder->accum_mag_sq_sum / (double)wfm_decoder->stat_counter;
+    double avg_power =
+        wfm_decoder->accum_mag_sq_sum / (double)wfm_decoder->stat_counter;
     float dbfs = utility_calculate_dbfs((float)avg_power);
 
-    double mean_mag = wfm_decoder->accum_mag_sum / (double)wfm_decoder->stat_counter;
+    double mean_mag =
+        wfm_decoder->accum_mag_sum / (double)wfm_decoder->stat_counter;
     float snr_db =
         10.0f * log10f((float)((mean_mag * mean_mag) /
                                fmax(1e-10, avg_power - (mean_mag * mean_mag))));
-    float avg_pilot_mse =
-        (wfm_decoder->accum_pilot_count > 0)
-            ? (float)(wfm_decoder->accum_pilot_err_sq_sum / (double)wfm_decoder->accum_pilot_count)
-            : 0.0f;
+    float avg_pilot_mse = (wfm_decoder->accum_pilot_count > 0)
+                              ? (float)(wfm_decoder->accum_pilot_err_sq_sum /
+                                        (double)wfm_decoder->accum_pilot_count)
+                              : 0.0f;
     float raw_pilot_err = sqrtf(avg_pilot_mse) * 100.0f;
     float pilot_pct = fminf(raw_pilot_err, 100.0f);
-    double avg_pilot = wfm_decoder->accum_pilot_mag_sum / (double)wfm_decoder->stat_counter;
+    double avg_pilot =
+        wfm_decoder->accum_pilot_mag_sum / (double)wfm_decoder->stat_counter;
     bool is_mono_station = (avg_pilot < 0.001) || (raw_pilot_err > 100.0f);
-    float avg_stereo_pct = (float)(wfm_decoder->accum_stereo_pct_sum / (double)wfm_decoder->stat_counter);
+    float avg_stereo_pct = (float)(wfm_decoder->accum_stereo_pct_sum /
+                                   (double)wfm_decoder->stat_counter);
     if (avg_stereo_pct > 1.0f)
       is_mono_station = false;
 

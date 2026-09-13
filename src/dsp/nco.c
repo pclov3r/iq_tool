@@ -1,6 +1,7 @@
 /**
  * @file nco.c
- * @brief Implements Numerically Controlled Oscillator (NCO) frequency shifting for I/Q signals.
+ * @brief Implements Numerically Controlled Oscillator (NCO) frequency shifting
+ * for I/Q signals.
  */
 
 #include "app_context.h"
@@ -26,9 +27,8 @@ typedef struct NcoState {
 
 static void nco_destroy_ncos(NcoState *state);
 static void nco_reset(nco_crcf nco);
-static void nco_apply(nco_crcf nco, double shift_hz,
-                      ComplexFloat *input, ComplexFloat *output,
-                      unsigned int num_samples);
+static void nco_apply(nco_crcf nco, double shift_hz, ComplexFloat *input,
+                      ComplexFloat *output, unsigned int num_samples);
 
 /**
  * @brief Creates and configures the NCOs based on user arguments.
@@ -37,8 +37,8 @@ static void *nco_create(AppConfig *config, AppContext *app) {
   if (!config || !app)
     return NULL;
 
-  NcoState *state = (NcoState *)mem_arena_alloc(
-      &app->process_chain.setup_arena, sizeof(NcoState), true);
+  NcoState *state = (NcoState *)mem_arena_alloc(&app->process_chain.setup_arena,
+                                                sizeof(NcoState), true);
   if (!state)
     return NULL;
 
@@ -113,10 +113,8 @@ static void *nco_create(AppConfig *config, AppContext *app) {
  * @brief Applies the frequency shift to a block of complex samples using a
  * specific NCO.
  */
-static void nco_apply(nco_crcf nco, double shift_hz,
-                      ComplexFloat *input_buffer,
-                      ComplexFloat *output_buffer,
-                      unsigned int num_frames) {
+static void nco_apply(nco_crcf nco, double shift_hz, ComplexFloat *input_buffer,
+                      ComplexFloat *output_buffer, unsigned int num_frames) {
   if (!nco || num_frames == 0) {
     return;
   }
@@ -182,8 +180,7 @@ static SampleChunk *dsp_nco_process(void *state, SampleChunk *chunk) {
 
   if (nco_state->pre_resample_nco) {
     nco_apply(nco_state->pre_resample_nco, nco_state->nco_shift_hz,
-              chunk->current_buffer, chunk->current_buffer,
-              chunk->frames_read);
+              chunk->current_buffer, chunk->current_buffer, chunk->frames_read);
   }
   if (nco_state->post_resample_nco) {
     nco_apply(nco_state->post_resample_nco, nco_state->nco_shift_hz,

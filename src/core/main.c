@@ -461,8 +461,7 @@ static void print_configuration_summary(const AppConfig *config,
   const char *agc_label = is_audio_output ? "Baseband AGC" : "Output AGC";
 
   if (app->dsp.process_chain_agc.enable) {
-    utility_add_summary_item(&output_info, agc_label,
-                             "Enabled (Target: %.2f)",
+    utility_add_summary_item(&output_info, agc_label, "Enabled (Target: %.2f)",
                              app->dsp.process_chain_agc.target_level);
   } else {
     utility_add_summary_item(&output_info, agc_label, "Disabled");

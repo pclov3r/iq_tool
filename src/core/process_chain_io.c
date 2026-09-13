@@ -51,8 +51,7 @@ static bool process_chain_queue_samples(void *context, const void *data,
     double current_time = utility_get_time();
 
     if (current_time - last_drop_log_time >= CONSOLE_UPDATE_INTERVAL_SEC) {
-      log_warn("Input buffer overrun! Dropped %zu samples.",
-               accumulated_drops);
+      log_warn("Input buffer overrun! Dropped %zu samples.", accumulated_drops);
       accumulated_drops = 0;
       last_drop_log_time = current_time;
     }
@@ -162,8 +161,8 @@ void *process_chain_thread_chunker(void *arg) {
     InputModuleInterface *in_api = app->module.input_api;
 
     if (!in_api->read_chunk) {
-      request_forceful_shutdown("Chunker: File input module missing read_chunk.",
-                                app);
+      request_forceful_shutdown(
+          "Chunker: File input module missing read_chunk.", app);
     } else {
       while (!is_shutdown_requested() &&
              !atomic_load_explicit(&app->stats.error_occurred,

@@ -85,10 +85,9 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
   // If the user didn't specify a rate (0), use the hardware/file input rate.
   if (target_rate_hz <= 0.0) {
     target_rate_hz = (double)app->module.input_info.sample_rate;
-    log_info(
-        "No explicit output sample rate specified. Defaulting to native "
-        "input rate: %.15g Hz",
-        target_rate_hz);
+    log_info("No explicit output sample rate specified. Defaulting to native "
+             "input rate: %.15g Hz",
+             target_rate_hz);
   }
 
   config->output_sample_rate.rate_hz = target_rate_hz;
@@ -285,12 +284,11 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
 
   app->process_chain.num_chunks = calculated_chunks;
 
-  log_info(
-      "Buffer sizing: Read=%zu samples, Alloc=%zu samples, Depth=%zu "
-      "chunks (%.2f sec buffer at %.15g Hz)",
-      app->process_chain.read_chunk_size, app->process_chain.alloc_size_samples,
-      app->process_chain.num_chunks,
-      app->process_chain.num_chunks * seconds_per_chunk, input_rate);
+  log_info("Buffer sizing: Read=%zu samples, Alloc=%zu samples, Depth=%zu "
+           "chunks (%.2f sec buffer at %.15g Hz)",
+           app->process_chain.read_chunk_size,
+           app->process_chain.alloc_size_samples, app->process_chain.num_chunks,
+           app->process_chain.num_chunks * seconds_per_chunk, input_rate);
 
   // --- Monolithic Tray Allocation (Contiguous Metadata + Data) ---
   size_t raw_stride = ALIGN_UP(app->process_chain.alloc_size_samples *
@@ -422,8 +420,9 @@ bool process_chain_execute(ProcessChainContext *context) {
                               context))
       threads_ok = false;
   }
-  if (threads_ok && !thread_manager_spawn(&manager, "chunker",
-                                          process_chain_thread_chunker, context))
+  if (threads_ok &&
+      !thread_manager_spawn(&manager, "chunker", process_chain_thread_chunker,
+                            context))
     threads_ok = false;
 
   // Start DSP chains
@@ -626,14 +625,12 @@ static bool _init_queues_and_buffers(AppConfig *config, AppContext *app) {
     app->process_chain.output_queue =
         (Queue *)mem_arena_alloc(arena, sizeof(Queue), true);
     if (!app->process_chain.output_queue ||
-        !queue_init(app->process_chain.output_queue, queue_capacity,
-                    arena))
+        !queue_init(app->process_chain.output_queue, queue_capacity, arena))
       return false;
     app->process_chain.active_queues[app->process_chain.num_active_queues - 1] =
         app->process_chain.output_queue;
   } else {
-    app->process_chain.output_queue =
-        app->process_chain.chunker_output_queue;
+    app->process_chain.output_queue = app->process_chain.chunker_output_queue;
   }
 
   app->process_chain.free_sample_chunk_queue =

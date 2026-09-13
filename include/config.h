@@ -37,7 +37,6 @@ bool validate_output_destination(struct AppConfig *config);
  */
 bool validate_output_type_and_sample_format(struct AppConfig *config);
 
-
 /**
  * @brief Performs high-level validation, checking for logical conflicts between
  * different options.

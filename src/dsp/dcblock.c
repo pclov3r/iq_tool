@@ -71,10 +71,9 @@ static SampleChunk *dcblock_process(void *state, SampleChunk *chunk) {
     iirfilt_crcf_reset(filter);
   }
 
-  iirfilt_crcf_execute_block(filter,
-                             (liquid_float_complex *)chunk->current_buffer,
-                             chunk->frames_read,
-                             (liquid_float_complex *)chunk->current_buffer);
+  iirfilt_crcf_execute_block(
+      filter, (liquid_float_complex *)chunk->current_buffer, chunk->frames_read,
+      (liquid_float_complex *)chunk->current_buffer);
   return chunk;
 }
 

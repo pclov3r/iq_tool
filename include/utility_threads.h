@@ -18,12 +18,14 @@
  * @brief Context passed to the SDR initialization watchdog thread.
  */
 typedef struct SdrInitWatchdogContext {
-  const char *module_name;  ///< Name of the input module being initialized.
-  atomic_bool is_complete;  ///< Flag set by the caller when initialization completes.
+  const char *module_name; ///< Name of the input module being initialized.
+  atomic_bool
+      is_complete; ///< Flag set by the caller when initialization completes.
 } SdrInitWatchdogContext;
 
 /**
- * @brief Watchdog thread that forces application exit if SDR initialization hangs.
+ * @brief Watchdog thread that forces application exit if SDR initialization
+ * hangs.
  * @param arg A pointer to the SdrInitWatchdogContext struct.
  * @return NULL.
  */

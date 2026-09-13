@@ -27,8 +27,8 @@ struct MemoryArena;
  * @brief A container for all the components that define a single module.
  */
 typedef struct Module {
-  const char
-      *name; ///< The module identifier (e.g., "wav", "rtlsdr", "wfm", "filter").
+  const char *
+      name; ///< The module identifier (e.g., "wav", "rtlsdr", "wfm", "filter").
   ModuleType type;
   void *api; ///< Generic pointer to the module's interface (e.g.,
              ///< InputModuleInterface* or OutputModuleInterface*).

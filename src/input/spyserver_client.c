@@ -660,8 +660,8 @@ static bool input_spyserver_client_initialize(ModuleContext *context) {
   }
 
   // Expose the internal network buffer to the process_chain so that the
-  // centralized process_chain_thread_chunker can dequeue from it and perform the
-  // CF32 conversion.
+  // centralized process_chain_thread_chunker can dequeue from it and perform
+  // the CF32 conversion.
   app->process_chain.input_ring_buffer = client->stream_buffer;
 
   // Start stream!

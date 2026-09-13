@@ -1,6 +1,7 @@
 /**
  * @file module_registry.c
- * @brief Central module registry maintaining compiled input, output, and DSP modules.
+ * @brief Central module registry maintaining compiled input, output, and DSP
+ * modules.
  */
 
 #include "module_registry.h"

@@ -23,7 +23,8 @@
 
 /*
  * The SDR initialization watchdog thread monitors device initialization and
- * forces an immediate application exit if the hardware driver deadlocks or hangs.
+ * forces an immediate application exit if the hardware driver deadlocks or
+ * hangs.
  */
 void *sdr_init_watchdog_thread(void *arg) {
   SdrInitWatchdogContext *ctx = (SdrInitWatchdogContext *)arg;

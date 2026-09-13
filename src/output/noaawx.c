@@ -213,7 +213,7 @@ static bool output_noaawx_initialize(ModuleContext *context) {
   decoder->pcm_out = mem_arena_alloc(&res->process_chain.setup_arena,
                                      in_samples * sizeof(int16_t), false);
 
-    decoder->first_run = true;
+  decoder->first_run = true;
   return true;
 }
 
@@ -3880,7 +3880,7 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
   AppContext *res = context->app;
   NoaawxContext *decoder = (NoaawxContext *)res->module.output_private_data;
 
-// Statics moved to Context struct
+  // Statics moved to Context struct
   if (decoder->first_run) {
     decoder->stat_rate_threshold =
         (size_t)(decoder->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC);
@@ -3917,7 +3917,8 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
   // 4. Periodic console logging (unchanged, rates aligned to
   // CONSOLE_UPDATE_INTERVAL)
   if (decoder->stat_counter >= decoder->stat_rate_threshold) {
-    double avg_power = decoder->accum_mag_sq_sum / (double)decoder->stat_counter;
+    double avg_power =
+        decoder->accum_mag_sq_sum / (double)decoder->stat_counter;
     double mean_mag = decoder->accum_mag_sum / (double)decoder->stat_counter;
     double variance = avg_power - (mean_mag * mean_mag);
 

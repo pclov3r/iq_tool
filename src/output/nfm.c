@@ -128,8 +128,8 @@ static bool output_nfm_validate_options(AppContext *app) {
 
 static bool output_nfm_initialize(ModuleContext *context) {
   AppContext *res = context->app;
-  NfmContext *nfm_decoder = (NfmContext *)mem_arena_alloc(&res->process_chain.setup_arena,
-                                                sizeof(NfmContext), true);
+  NfmContext *nfm_decoder = (NfmContext *)mem_arena_alloc(
+      &res->process_chain.setup_arena, sizeof(NfmContext), true);
   res->module.output_private_data = nfm_decoder;
 
   nfm_decoder->audio_out =
@@ -139,8 +139,10 @@ static bool output_nfm_initialize(ModuleContext *context) {
     return false;
 
   // 3. DSP Setup
-  nfm_decoder->input_samplerate = (float)context->config->baseband_sample_rate.rate_hz;
-  nfm_decoder->output_ratio = (float)NFM_AUDIO_RATE / nfm_decoder->input_samplerate;
+  nfm_decoder->input_samplerate =
+      (float)context->config->baseband_sample_rate.rate_hz;
+  nfm_decoder->output_ratio =
+      (float)NFM_AUDIO_RATE / nfm_decoder->input_samplerate;
 
   // A. Determine Deviation (Modulation Index)
   float selected_dev = s_nfm_config.is_narrow ? DEV_NARROW : DEV_STANDARD;
@@ -148,12 +150,12 @@ static bool output_nfm_initialize(ModuleContext *context) {
   nfm_decoder->fm_demod = freqdem_create(kf);
 
   // B. De-emphasis Filter (75us)
-  nfm_decoder->deemph_filter =
-      iirfilt_rrrf_create_lowpass(1, NFM_DEEMPH_FREQ / nfm_decoder->input_samplerate);
+  nfm_decoder->deemph_filter = iirfilt_rrrf_create_lowpass(
+      1, NFM_DEEMPH_FREQ / nfm_decoder->input_samplerate);
 
   // C. Audio Cleanup Filter (4kHz)
-  nfm_decoder->audio_lpf =
-      iirfilt_rrrf_create_lowpass(4, NFM_AUDIO_CUTOFF / nfm_decoder->input_samplerate);
+  nfm_decoder->audio_lpf = iirfilt_rrrf_create_lowpass(
+      4, NFM_AUDIO_CUTOFF / nfm_decoder->input_samplerate);
 
   // D. Output Resampler
   nfm_decoder->resampler = msresamp_rrrf_create(
@@ -174,22 +176,25 @@ static bool output_nfm_initialize(ModuleContext *context) {
 
   // 4. Buffers
   size_t in_samples = res->process_chain.alloc_size_samples;
-  size_t out_samples = (size_t)ceil(in_samples * nfm_decoder->output_ratio) + 64;
+  size_t out_samples =
+      (size_t)ceil(in_samples * nfm_decoder->output_ratio) + 64;
 
   nfm_decoder->mono_buffer = mem_arena_alloc(&res->process_chain.setup_arena,
-                                   in_samples * sizeof(float), false);
-  nfm_decoder->resamp_buffer = mem_arena_alloc(&res->process_chain.setup_arena,
-                                     out_samples * sizeof(float), false);
-  nfm_decoder->pcm_out = mem_arena_alloc(&res->process_chain.setup_arena,
-                               out_samples * 2 * sizeof(int16_t), false);
+                                             in_samples * sizeof(float), false);
+  nfm_decoder->resamp_buffer = mem_arena_alloc(
+      &res->process_chain.setup_arena, out_samples * sizeof(float), false);
+  nfm_decoder->pcm_out =
+      mem_arena_alloc(&res->process_chain.setup_arena,
+                      out_samples * 2 * sizeof(int16_t), false);
 
-    nfm_decoder->first_run = true;
+  nfm_decoder->first_run = true;
   return true;
 }
 
 static void output_nfm_reset(ModuleContext *context) { (void)context; }
 static void output_nfm_flush(ModuleContext *context) {
-  NfmContext *nfm_decoder = (NfmContext *)context->app->module.output_private_data;
+  NfmContext *nfm_decoder =
+      (NfmContext *)context->app->module.output_private_data;
   if (is_shutdown_requested()) {
     audio_output_clear(nfm_decoder->audio_out);
   } else {
@@ -201,7 +206,7 @@ static size_t output_nfm_write_chunk(ModuleContext *context, const void *buffer,
   AppContext *res = context->app;
   NfmContext *nfm_decoder = (NfmContext *)res->module.output_private_data;
 
-// Statics moved to Context struct
+  // Statics moved to Context struct
   if (nfm_decoder->first_run) {
     nfm_decoder->stat_rate_threshold =
         (size_t)(nfm_decoder->input_samplerate * CONSOLE_UPDATE_INTERVAL_SEC);
@@ -264,11 +269,13 @@ static size_t output_nfm_write_chunk(ModuleContext *context, const void *buffer,
   // 4. Periodic console logging (unchanged, rates aligned to
   // CONSOLE_UPDATE_INTERVAL)
   if (nfm_decoder->stat_counter >= nfm_decoder->stat_rate_threshold) {
-    double avg_power = nfm_decoder->accum_mag_sq_sum / (double)nfm_decoder->stat_counter;
+    double avg_power =
+        nfm_decoder->accum_mag_sq_sum / (double)nfm_decoder->stat_counter;
     float dbfs = utility_calculate_dbfs((float)avg_power);
 
     if (nfm_decoder->squelch_open) {
-      double mean_mag = nfm_decoder->accum_mag_sum / (double)nfm_decoder->stat_counter;
+      double mean_mag =
+          nfm_decoder->accum_mag_sum / (double)nfm_decoder->stat_counter;
       float snr_db =
           10.0f *
           log10f((float)((mean_mag * mean_mag) /
@@ -283,7 +290,8 @@ static size_t output_nfm_write_chunk(ModuleContext *context, const void *buffer,
   }
 
   // 5. Demodulate and apply DSP filters
-  freqdem_demodulate_block(nfm_decoder->fm_demod, iq, n, nfm_decoder->mono_buffer);
+  freqdem_demodulate_block(nfm_decoder->fm_demod, iq, n,
+                           nfm_decoder->mono_buffer);
   for (unsigned int i = 0; i < n; i++) {
     float sample = nfm_decoder->mono_buffer[i];
     if (!s_nfm_config.disable_discriminator_filter) {
@@ -298,10 +306,10 @@ static size_t output_nfm_write_chunk(ModuleContext *context, const void *buffer,
 
   // 6. Resample to 48kHz audio and output
   unsigned int num_resampled;
-  msresamp_rrrf_execute(nfm_decoder->resampler, nfm_decoder->mono_buffer, n, nfm_decoder->resamp_buffer,
-                        &num_resampled);
-  interleave_f32_to_s16(nfm_decoder->resamp_buffer, nfm_decoder->resamp_buffer, nfm_decoder->pcm_out,
-                        num_resampled);
+  msresamp_rrrf_execute(nfm_decoder->resampler, nfm_decoder->mono_buffer, n,
+                        nfm_decoder->resamp_buffer, &num_resampled);
+  interleave_f32_to_s16(nfm_decoder->resamp_buffer, nfm_decoder->resamp_buffer,
+                        nfm_decoder->pcm_out, num_resampled);
   audio_output_write(nfm_decoder->audio_out, nfm_decoder->pcm_out,
                      num_resampled * 2 * sizeof(int16_t),
                      res->process_chain_mode);

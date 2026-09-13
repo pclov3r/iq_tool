@@ -104,8 +104,8 @@ AudioOutputContext *audio_output_create(AppContext *app, int sample_rate,
 
   double bytes_per_sec = (double)sample_rate * channels * sizeof(int16_t);
   double duration = (double)buffer_size_bytes / bytes_per_sec;
-  log_info("Ring Buffer created: %zu bytes (%.2f seconds)",
-           buffer_size_bytes, duration);
+  log_info("Ring Buffer created: %zu bytes (%.2f seconds)", buffer_size_bytes,
+           duration);
 
   // 2. Setup Miniaudio
   ma_device_config deviceConfig =
