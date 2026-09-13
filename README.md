@@ -27,7 +27,7 @@ Second, it's worth knowing that this was a learning project for me. I chose to u
 
 ### What It Can Do
 
-*   **Multi-Threaded Pipeline:** Uses a Reader -> Pre-Processor -> Resampler -> Post-Processor -> Writer model.
+*   **Multi-Threaded Pipeline:** Uses an Input -> Chunker -> Dynamic DSP -> Output architecture.
 *   **Flexible Inputs:**
     *   **WAV Files:** Reads standard 8-bit and 16-bit complex (I/Q) WAV files.
     *   **Raw I/Q Files:** Just point it at a headerless file, but you have to tell it the sample rate and format.
@@ -436,32 +436,32 @@ This section provides a high-level overview of the tool's internal design for th
 
 #### The Data Flow Pipeline
 
-`iq_tool` processes data through a pipeline of concurrent, decoupled stages. Each major task runs in its own dedicated thread, using thread-safe lock-free ring buffers to hand off data from one stage to the next. To maximize throughput and minimize latency, the pipeline utilizes a pre-allocated memory arena of `SampleChunk` structures, allowing for high-speed data flow without the overhead of dynamic memory allocation.
+`iq_tool` processes data through a pipeline of concurrent, decoupled stages. Each major task runs in its own dedicated thread, using thread-safe lock-free ring buffers and queues to hand off data from one stage to the next. To maximize throughput and minimize latency, the pipeline utilizes a pre-allocated memory arena of `SampleChunk` structures, allowing for high-speed data flow without the overhead of dynamic memory allocation.
 
 The sequence of threads and their responsibilities are as follows:
 
-1.  **Source Thread (Optional / Live Mode Only):**
-    This thread is active when using live inputs (SDR hardware, network streams, or OS pipes). Its sole responsibility is to acquire data from the hardware or protocol and write it into a lock-free ring buffer. It uses a structured packet format (Header + Payload) which allows it to communicate stream events, such as hardware overruns or resets, to the rest of the pipeline. This thread separates real-time data acquisition from downstream DSP processing.
+1.  **Input Thread (Optional / Live Mode Only):**
+    This thread is active when using live inputs (SDR hardware, network streams, or OS pipes). Its sole responsibility is to acquire data from the hardware or protocol and write it into a lock-free ring buffer (`input_ring_buffer`). It uses a structured packet format (Header + Payload) which allows it to communicate stream events, such as hardware overruns or resets, to the rest of the pipeline. This thread runs at real-time priority to separate real-time data acquisition from downstream DSP processing.
 
-2.  **Reader Thread:**
+2.  **Chunker Thread:**
     The bridge between raw data and the DSP chain. 
-    *   **In Live Mode:** It "sips" data from the Source Ring Buffer, parses the packet headers, and populates `SampleChunk` structures.
-    *   **In File Mode:** It reads raw data directly from the disk.
-    Once a `SampleChunk` is filled with raw bytes, the Reader thread pushes it into the DSP queue.
+    *   **In Live Mode:** It "sips" data from the lock-free input ring buffer, parses packet headers, performs format conversion to complex float (`cf32`), and populates `SampleChunk` structures.
+    *   **In File Mode:** It reads raw data directly from the disk and formats chunks.
+    Once a `SampleChunk` is filled, the Chunker thread pushes it into the DSP queue (`chunker_output_queue`).
 
 3.  **Dynamic DSP Thread(s):**
     The core mathematical engine. Rather than a hardcoded pipeline, `iq_tool` uses a Dynamic DSP Process Chain. During initialization, the orchestrator evaluates the user's config and constructs an array of active `DspModuleInterface` blocks (e.g. AGC, DC Block, Resampler, Filter). The DSP thread rapidly passes the `SampleChunk` through this chain. Disabled modules are physically excluded from the chain, resulting in zero-overhead routing.
 
-4.  **Writer Thread:**
-    The final stage in the pipeline. It dequeues formatted buffers and writes them to the destination.
-    *   **Synchronous Output (File/Stdout):** It manages backpressure; if the destination is slow, the writer will block the pipeline to ensure no data is lost.
-    *   **Real-time Output (Audio/Live):** For audio modules (AM, NFM, WFM), the writer interacts with the OS sound driver. If the pipeline runs faster than real-time, the writer manages the timing to synchronize output timing.
+4.  **Output Thread:**
+    The final stage in the pipeline. It dequeues formatted buffers from `output_queue` and delivers them to the destination.
+    *   **Synchronous Output (File/Stdout):** It manages backpressure; if the destination is slow, the output thread will block the pipeline to ensure no data is lost.
+    *   **Real-time Output (Audio/Live):** For demodulator and audio modules (AM, NFM, WFM, NOAAWX, NRSC5), the output thread interacts with the OS sound driver or decoders. If the pipeline runs faster than real-time, the output thread manages timing to synchronize playback.
 
 #### The Modular System
 
 The tool features a fully modular architecture designed to support additional data sources, DSP algorithms, and sinks. By strictly enforcing the Open-Closed Principle, hardware and format-specific logic is entirely decoupled from the core pipeline.
 
-*   **The Core Interfaces (`module.h`):** All modules are built upon three primary virtual method tables (v-tables) defined in `include/core/module.h`:
+*   **The Core Interfaces (`module.h`):** All modules are built upon three primary virtual method tables (v-tables) defined in `include/module.h`:
     *   **`InputModuleInterface`**: Standardizes how the pipeline initializes hardware and starts data acquisition.
     *   **`DspModuleInterface`**: Standardizes how mathematical algorithms process chunks of samples, ensuring they maintain their own private memory states (encapsulated via `void*`).
     *   **`OutputModuleInterface`**: Standardizes how data is delivered to a destination.
