@@ -274,7 +274,7 @@ static HarrisAgc *agc_create(AppConfig *config, AppContext *app) {
   HarrisAgc *agc = (HarrisAgc *)mem_arena_alloc(&app->process_chain.setup_arena,
                                                 sizeof(HarrisAgc), true);
   if (!agc) {
-    log_fatal("AGC: Failed to allocate Harris AGC state.");
+    log_fatal("Failed to allocate Harris AGC state.");
     return NULL;
   }
 
@@ -294,14 +294,14 @@ static HarrisAgc *agc_create(AppConfig *config, AppContext *app) {
         20.0f * log10f(app->dsp.process_chain_agc.target_level_arg);
   }
 
-  log_info("AGC: Enabled (Harris/LMS Block Tracker).");
-  log_info("AGC:   Algorithm:  Harris/LMS, dB domain, block-level.");
-  log_info("AGC:   Target:     %.1f dBFS", agc->target_db);
-  log_info("AGC:   Deadband:   ±%.1f dB", agc->deadband_db);
-  log_info("AGC:   Alpha:      %.2f", agc->alpha);
-  log_info("AGC:   Gain range: [%.1f dB .. %.1f dB]", agc->gain_min_db,
+  log_info("Enabled (Harris/LMS Block Tracker).");
+  log_info("  Algorithm:  Harris/LMS, dB domain, block-level.");
+  log_info("  Target:     %.1f dBFS", agc->target_db);
+  log_info("  Deadband:   ±%.1f dB", agc->deadband_db);
+  log_info("  Alpha:      %.2f", agc->alpha);
+  log_info("  Gain range: [%.1f dB .. %.1f dB]", agc->gain_min_db,
            agc->gain_max_db);
-  log_info("AGC:   Blanker:    threshold magnitude > %.1f",
+  log_info("  Blanker:    threshold magnitude > %.1f",
            (double)AGC_BLANKER_THRESHOLD);
 
   return agc;
@@ -323,7 +323,7 @@ static void agc_apply(HarrisAgc *agc, ComplexFloat *samples,
 
   /* Log on first block. */
   if (agc->samples_seen == num_samples) {
-    log_info("AGC: First block - gain: %.2f dB (%.4fx).", agc->gain_db,
+    log_info("First block - gain: %.2f dB (%.4fx).", agc->gain_db,
              agc->gain_linear);
   }
 
@@ -333,7 +333,7 @@ static void agc_apply(HarrisAgc *agc, ComplexFloat *samples,
 
   if (period > 0 && (prev / period) != (agc->samples_seen / period)) {
     bool in_deadband = (fabsf(agc->gain_db - gain_db_before) < 1e-6f);
-    log_debug("AGC: gain=%.2f dB  %s", agc->gain_db,
+    log_debug("Gain=%.2f dB  %s", agc->gain_db,
               in_deadband ? "(deadband — passing through unchanged)"
                           : "(adjusting)");
   }

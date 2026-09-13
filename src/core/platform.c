@@ -238,11 +238,11 @@ void platform_check_cpu_features(void) {
 #if defined(__AVX2__)
   if (!__builtin_cpu_supports("avx2")) {
 #ifdef _WIN32
-    log_fatal("Error: This binary uses AVX2 instructions, but your processor "
+    log_fatal("This binary uses AVX2 instructions, but your processor "
               "only supports AVX. Please download the AVX release build.");
 #else
     log_fatal(
-        "Error: This binary uses AVX2 instructions, but your processor only "
+        "This binary uses AVX2 instructions, but your processor only "
         "supports AVX. Please recompile the software using the default Release "
         "build option without passing any custom CPU optimization flags.");
 #endif
@@ -255,11 +255,11 @@ void platform_check_cpu_features(void) {
   if (!__builtin_cpu_supports("avx")) {
 #ifdef _WIN32
     log_fatal(
-        "Error: This build of the application uses AVX instructions, which "
+        "This build of the application uses AVX instructions, which "
         "your processor does not support. Please rebuild the software yourself "
         "without AVX optimizations to run on this machine.");
 #else
-    log_fatal("Error: This build of the application uses AVX instructions, "
+    log_fatal("This build of the application uses AVX instructions, "
               "which your processor does not support. Please recompile the "
               "software using the default Release build option without passing "
               "any custom CPU optimization flags.");
@@ -268,11 +268,11 @@ void platform_check_cpu_features(void) {
   }
   if (__builtin_cpu_supports("avx2")) {
 #ifdef _WIN32
-    log_warn("Notice: Your processor supports AVX2 instructions, but you are "
+    log_warn("Your processor supports AVX2 instructions, but you are "
              "using the AVX build. Download the AVX2 release build for better "
              "performance.");
 #else
-    log_warn("Notice: Your processor supports AVX2 instructions, but this "
+    log_warn("Your processor supports AVX2 instructions, but this "
              "binary is only using AVX instructions. Consider recompiling the "
              "software using the default Release build option without passing "
              "any custom CPU optimization flags for better performance.");
@@ -283,24 +283,24 @@ void platform_check_cpu_features(void) {
 #else
   if (__builtin_cpu_supports("avx2")) {
 #ifdef _WIN32
-    log_warn("Notice: Your processor supports AVX2 instructions, but this "
+    log_warn("Your processor supports AVX2 instructions, but this "
              "binary is not using any AVX optimizations. Download the AVX2 "
              "release build for better performance.");
 #else
     log_warn(
-        "Notice: Your processor supports AVX2 instructions, but this binary is "
+        "Your processor supports AVX2 instructions, but this binary is "
         "not using any AVX optimizations. Consider recompiling the software "
         "using the default Release build option without passing any custom CPU "
         "optimization flags for better performance.");
 #endif
   } else if (__builtin_cpu_supports("avx")) {
 #ifdef _WIN32
-    log_warn("Notice: Your processor supports AVX instructions, but this "
+    log_warn("Your processor supports AVX instructions, but this "
              "binary is not using any AVX optimizations. Download the AVX "
              "release build for better performance.");
 #else
     log_warn(
-        "Notice: Your processor supports AVX instructions, but this binary is "
+        "Your processor supports AVX instructions, but this binary is "
         "not using any AVX optimizations. Consider recompiling the software "
         "using the default Release build option without passing any custom CPU "
         "optimization flags for better performance.");
@@ -312,11 +312,11 @@ void platform_check_cpu_features(void) {
 #elif defined(__aarch64__)
 #ifndef __ARM_NEON
 #ifdef _WIN32
-  log_warn("Notice: Your processor supports NEON instructions, but this binary "
+  log_warn("Your processor supports NEON instructions, but this binary "
            "is not using any NEON optimizations. Download the native ARM NEON "
            "release build for better performance.");
 #else
-  log_warn("Notice: Your processor supports NEON instructions, but this binary "
+  log_warn("Your processor supports NEON instructions, but this binary "
            "is not using any NEON optimizations. Consider recompiling the "
            "software using the default Release build option without passing "
            "any custom CPU optimization flags for better performance.");

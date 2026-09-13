@@ -76,20 +76,19 @@ AudioOutputContext *audio_output_create(AppContext *app, int sample_rate,
     context->wav_writer =
         sf_wchar_open(config->audio.effective_path_w, SFM_WRITE, &sfinfo);
     if (!context->wav_writer)
-      log_error("AudioOutput: Failed to open audio writer file.");
+      log_error("Failed to open audio writer file.");
   }
 #else
   if (config->audio.effective_path) {
     context->wav_writer =
         sf_open(config->audio.effective_path, SFM_WRITE, &sfinfo);
     if (!context->wav_writer)
-      log_error("AudioOutput: Failed to open audio writer file.");
+      log_error("Failed to open audio writer file.");
   }
 #endif
 
   if (config->audio.mute) {
-    log_info(
-        "AudioOutput: Playback muted. ProcessChain will run at maximum speed.");
+    log_info("Playback muted. Running at maximum speed.");
     context->audio_device_initialized = false;
     context->audio_ring_buffer = NULL;
     return context;
@@ -99,13 +98,13 @@ AudioOutputContext *audio_output_create(AppContext *app, int sample_rate,
   context->audio_ring_buffer =
       ring_buffer_create(buffer_size_bytes, &app->process_chain.setup_arena);
   if (!context->audio_ring_buffer) {
-    log_fatal("AudioOutput: Failed to create ring buffer.");
+    log_fatal("Failed to create ring buffer.");
     return NULL;
   }
 
   double bytes_per_sec = (double)sample_rate * channels * sizeof(int16_t);
   double duration = (double)buffer_size_bytes / bytes_per_sec;
-  log_info("AudioOutput: Ring Buffer created: %zu bytes (%.2f seconds)",
+  log_info("Ring Buffer created: %zu bytes (%.2f seconds)",
            buffer_size_bytes, duration);
 
   // 2. Setup Miniaudio
@@ -120,7 +119,7 @@ AudioOutputContext *audio_output_create(AppContext *app, int sample_rate,
   ma_result init_res =
       ma_device_init(NULL, &deviceConfig, &context->audio_device);
   if (init_res != MA_SUCCESS) {
-    log_fatal("AudioOutput: Failed to initialize audio device: %s",
+    log_fatal("Failed to initialize audio device: %s",
               ma_result_description(init_res));
     ring_buffer_destroy(context->audio_ring_buffer);
     return NULL;
@@ -130,7 +129,7 @@ AudioOutputContext *audio_output_create(AppContext *app, int sample_rate,
   // 3. Start Audio Hardware
   ma_result start_res = ma_device_start(&context->audio_device);
   if (start_res != MA_SUCCESS) {
-    log_fatal("AudioOutput: Failed to open audio device: %s",
+    log_fatal("Failed to open audio device: %s",
               ma_result_description(start_res));
     ma_device_uninit(&context->audio_device);
     ring_buffer_destroy(context->audio_ring_buffer);

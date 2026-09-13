@@ -86,7 +86,7 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
   if (target_rate_hz <= 0.0) {
     target_rate_hz = (double)app->module.source_info.sample_rate;
     log_info(
-        "No explicit process_chain output rate specified. Defaulting to native "
+        "No explicit output sample rate specified. Defaulting to native "
         "input rate: %.15g Hz",
         target_rate_hz);
   }
@@ -130,7 +130,7 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
   // --- Step 4: Validate Ratio ---
   if (!isfinite(r) || r < PROCESS_CHAIN_MIN_RATE_SCALAR ||
       r > PROCESS_CHAIN_MAX_RATE_SCALAR) {
-    log_error("Error: Calculated resampling ratio (%.6f) is invalid or outside "
+    log_error("Calculated resampling ratio (%.6f) is invalid or outside "
               "acceptable range.",
               r);
     return false;
@@ -262,7 +262,7 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
   // FAIL FAST: If the input rate is unknown or invalid, we cannot safely
   // configure the process_chain.
   if (input_rate <= 0.0) {
-    log_fatal("Internal Error: Input sample rate is invalid (%.15g Hz). Cannot "
+    log_fatal("Input sample rate is invalid (%.15g Hz). Cannot "
               "calculate buffer depth.",
               input_rate);
     log_error("Please check the input source configuration.");
@@ -286,7 +286,7 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
   app->process_chain.num_chunks = calculated_chunks;
 
   log_info(
-      "ProcessChain Sizing: Read=%zu samples, Alloc=%zu samples, Depth=%zu "
+      "Buffer sizing: Read=%zu samples, Alloc=%zu samples, Depth=%zu "
       "chunks (%.2f sec buffer at %.15g Hz)",
       app->process_chain.read_chunk_size, app->process_chain.alloc_size_samples,
       app->process_chain.num_chunks,
@@ -313,7 +313,7 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
   app->process_chain.chunk_data_pool = aligned_alloc(
       MEM_ARENA_ALIGNMENT, app->process_chain.num_chunks * total_tray_size);
   if (!app->process_chain.chunk_data_pool) {
-    log_fatal("Error: Failed to allocate process_chain chunk data pool.");
+    log_fatal("Failed to allocate chunk data pool.");
     return false;
   }
 

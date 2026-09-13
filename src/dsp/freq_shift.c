@@ -178,7 +178,7 @@ static void *dsp_freq_shift_init(ModuleContext *ctx, double input_rate,
   (void)target_output_rate;
   *out_rate = input_rate;
   AppConfig *config = (AppConfig *)ctx->config;
-  log_info("FreqShift: Enabled (Shift: %.0f Hz, NCO: %.0f Hz)",
+  log_info("Enabled (Shift: %.0f Hz, NCO: %.0f Hz)",
            config->dsp.frequency_shift_hz, ctx->app->dsp.nco_shift_hz);
   return frequency_shift_create(config, ctx->app);
 }

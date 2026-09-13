@@ -25,7 +25,7 @@ static Resampler *resampler_create(const AppConfig *config, AppContext *app,
       msresamp_crcf_create(resample_ratio, config->dsp.filter.args.attenuation);
 
   if (!q) {
-    log_fatal("Error: Failed to create liquid-dsp resampler object.");
+    log_fatal("Failed to create liquid-dsp resampler object.");
     return NULL;
   }
   Resampler *resampler =

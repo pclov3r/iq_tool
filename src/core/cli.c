@@ -140,7 +140,7 @@ static int build_cli_options(struct argparse_option *options_buffer,
           "Apply a linear gain multiplier to OUTPUT samples before saving.",
           NULL, 0, 0),
 
-      OPT_GROUP("General ProcessChain Options"),
+      OPT_GROUP("General Options"),
       OPT_BOOLEAN(
           0, "raw-passthrough", &config->dsp.raw_passthrough,
           "Bypass all processing. Copies raw input bytes directly to output.",

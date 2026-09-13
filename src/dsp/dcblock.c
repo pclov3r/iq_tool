@@ -30,7 +30,7 @@ static void *dc_block_create(AppConfig *config, AppContext *app) {
   }
 
   if (app->module.source_info.sample_rate <= 0.0) {
-    log_error("DC Block: Cannot initialize with invalid sample rate.");
+    log_error("Cannot initialize with invalid sample rate.");
     return NULL;
   }
 
@@ -38,12 +38,12 @@ static void *dc_block_create(AppConfig *config, AppContext *app) {
                                    app->module.source_info.sample_rate);
 
   if (normalized_alpha <= 0.0f) {
-    log_error("DC Block: Calculated normalized alpha (%.6f) is invalid.",
+    log_error("Calculated normalized alpha (%.6f) is invalid.",
               normalized_alpha);
     return NULL;
   }
   if (normalized_alpha > 1.0f) {
-    log_warn("DC Block: Calculated normalized alpha (%.6f) is very large.",
+    log_warn("Calculated normalized alpha (%.6f) is very large.",
              normalized_alpha);
   }
 
@@ -55,7 +55,6 @@ static void *dc_block_create(AppConfig *config, AppContext *app) {
     return NULL;
   }
 
-  log_info("DC Block enabled");
   return dc_block_filter;
 }
 
@@ -89,7 +88,7 @@ static void *dcblock_initialize(ModuleContext *ctx, double input_rate,
                                 double target_output_rate, double *out_rate) {
   (void)target_output_rate;
   *out_rate = input_rate;
-  log_info("DC Blocker: Enabled (High-pass 1st order)");
+  log_info("Enabled (High-pass 1st order)");
   return dc_block_create((AppConfig *)ctx->config, ctx->app);
 }
 

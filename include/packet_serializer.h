@@ -4,7 +4,7 @@
  * Reader threads.
  *
  * This module provides a standardized binary protocol for transmitting I/Q data
- * from hardware drivers (Producers) to the processing process_chain (Consumer)
+ * from hardware drivers (Producers) to the DSP process chain (Consumer)
  * via a lock-free Ring Buffer.
  *
  * Key Features:

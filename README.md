@@ -178,7 +178,7 @@ I/Q Output Options
     --output-sample-format=<str>              Sample format for output data {cs8|cu8|cs16|...}.
     --output-gain-multiplier=<flt>            Apply a linear gain multiplier to OUTPUT samples before saving.
 
-General ProcessChain Options
+General Options
     --raw-passthrough                         Bypass all processing. Copies raw input bytes directly to output.
     --preset=<str>                            Use a preset for a common target.
 

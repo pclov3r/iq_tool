@@ -7,7 +7,7 @@
  * the initial command-line parsing is complete. These functions are responsible
  * for checking for logical inconsistencies between options, resolving presets,
  * and ensuring the final configuration is valid and ready for use by the
- * processing process_chain.
+ * DSP process chain.
  */
 
 #ifndef CONFIG_H_

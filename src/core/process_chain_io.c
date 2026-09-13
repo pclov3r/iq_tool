@@ -51,7 +51,7 @@ static bool process_chain_queue_samples(void *context, const void *data,
     double current_time = utility_get_time();
 
     if (current_time - last_drop_log_time >= CONSOLE_UPDATE_INTERVAL_SEC) {
-      log_warn("ProcessChain input overrun! Dropped %zu samples.",
+      log_warn("Input buffer overrun! Dropped %zu samples.",
                accumulated_drops);
       accumulated_drops = 0;
       last_drop_log_time = current_time;

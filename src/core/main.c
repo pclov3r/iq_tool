@@ -229,7 +229,7 @@ int main(int argc, char *argv[]) {
   setup_keyboard_handler(&app);
 
   if (!process_chain_execute(&process_chain_context)) {
-    log_fatal("ProcessChain execution failed.");
+    log_fatal("Processing execution failed.");
   }
 
   bool processing_ok =
@@ -432,17 +432,21 @@ static void print_configuration_summary(const AppConfig *config,
 
   process_chain_get_summary_info(app, &output_info);
 
+  bool is_audio_output = (config->output.payload == PAYLOAD_AUDIO);
+  const char *agc_label = is_audio_output ? "Baseband AGC" : "Output AGC";
+
   if (app->dsp.process_chain_agc.enable) {
-    utility_add_summary_item(&output_info, "ProcessChain AGC",
+    utility_add_summary_item(&output_info, agc_label,
                              "Enabled (Target: %.2f)",
                              app->dsp.process_chain_agc.target_level);
   } else {
-    utility_add_summary_item(&output_info, "ProcessChain AGC", "Disabled");
+    utility_add_summary_item(&output_info, agc_label, "Disabled");
   }
 
-  if (app->dsp.process_chain_gain != 1.0f)
-    utility_add_summary_item(&output_info, "ProcessChain Gain", "%.2fx",
+  if (is_audio_output && app->dsp.process_chain_gain != 1.0f) {
+    utility_add_summary_item(&output_info, "Baseband Gain", "%.2fx",
                              app->dsp.process_chain_gain);
+  }
 
   if (config->output.path_arg != NULL) {
 #ifdef _WIN32
