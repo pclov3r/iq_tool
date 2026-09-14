@@ -33,11 +33,6 @@
 #include <sys/stat.h>
 #include <time.h>
 
-#ifdef _WIN32
-#define strcasecmp _stricmp
-#else
-#include <strings.h>
-#endif
 #include "dsp/iq_correction.h"
 
 // --- Default Configuration ---

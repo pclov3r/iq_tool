@@ -5,13 +5,8 @@
 
 #include "sample_format_table.h"
 #include "config/constants.h"
+#include "platform.h"
 #include <string.h>
-
-#ifdef _WIN32
-#define strcasecmp _stricmp
-#else
-#include <strings.h>
-#endif
 
 // --- The Master Table ---
 static const SampleFormatInfo MASTER_FORMAT_TABLE[] = {

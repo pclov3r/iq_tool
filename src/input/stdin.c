@@ -25,7 +25,6 @@
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
-#define strcasecmp _stricmp
 #endif
 
 // --- CLI Config ---

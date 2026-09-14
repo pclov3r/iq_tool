@@ -28,7 +28,6 @@
 #include <libbladeRF.h>
 
 #ifdef _WIN32
-#define strcasecmp _stricmp
 #include <knownfolders.h>
 #include <pathcch.h>
 #include <shlobj.h>

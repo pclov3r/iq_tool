@@ -14,6 +14,7 @@
 #include "module.h"
 #include "module_registry.h"
 #include "packet_serializer.h"
+#include "platform.h"
 #include "queue.h"
 #include "ring_buffer.h"
 #include "sample_format_table.h"
@@ -43,13 +44,10 @@
 #define SDRPLAY_TARGET_VERSION 3.15f
 
 #if defined(_WIN32)
-#include "platform.h"
 #include <io.h>
 #include <shlwapi.h> // For PathAppendW
 #include <windows.h>
-#define strcasecmp _stricmp
 #else
-#include <strings.h>
 #include <time.h>
 #include <unistd.h>
 #endif

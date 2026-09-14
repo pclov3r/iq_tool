@@ -8,15 +8,10 @@
 #include "app_context.h"
 #include "log.h"
 #include "mem_arena.h"
+#include "platform.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef _WIN32
-#define strcasecmp _stricmp
-#else
-#include <strings.h>
-#endif
 
 // --- Private struct and forward declarations ---
 typedef struct {

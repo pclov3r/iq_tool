@@ -23,11 +23,9 @@
 #include <shlobj.h>
 #include <shlwapi.h>
 #include <windows.h>
-#define strcasecmp _stricmp
 #else
 #include <libgen.h>
 #include <limits.h>
-#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #endif

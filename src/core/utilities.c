@@ -12,16 +12,15 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "platform.h"
 #include <string.h>
 #include <time.h>
 
 #ifdef _WIN32
 #include <shlwapi.h>
 #include <windows.h>
-#define strcasecmp _stricmp
 #else
 #include <libgen.h>
-#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #endif

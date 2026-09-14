@@ -11,12 +11,14 @@
 // Includes required for Windows-specific function signatures below
 #include <malloc.h>
 #include <windows.h>
+#define strcasecmp _stricmp
 // MinGW doesn't expose aligned_alloc - provide a compatibility shim via macro.
 // Note: _aligned_malloc argument order is (size, alignment), opposite of
 // aligned_alloc.
 #define aligned_alloc(alignment, size) _aligned_malloc((size), (alignment))
 #define aligned_free(ptr) _aligned_free((ptr))
 #elif defined(__GNUC__) || defined(__clang__)
+#include <strings.h>
 #include <unistd.h>
 // GCC/Clang (Linux/macOS) implementation
 #define aligned_free(ptr) free((ptr))

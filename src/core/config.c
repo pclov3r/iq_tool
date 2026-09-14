@@ -10,6 +10,7 @@
 #include "log.h"
 #include "module_registry.h"
 #include "sample_format_table.h"
+#include "platform.h"
 #include "utilities.h"
 #include <ctype.h>
 #include <errno.h>
@@ -17,12 +18,6 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef _WIN32
-#define strcasecmp _stricmp
-#else
-#include <strings.h>
-#endif
 
 bool validate_output_type_and_sample_format(AppConfig *config) {
   const Module *out_mod =

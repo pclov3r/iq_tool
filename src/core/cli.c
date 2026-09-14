@@ -23,12 +23,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
-#define strcasecmp _stricmp
-#else
-#include <strings.h>
-#endif
-
 // Store original command-line arguments for improved error reporting.
 static int g_original_argc = 0;
 static const char **g_original_argv = NULL;
