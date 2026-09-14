@@ -35,7 +35,7 @@
  */
 typedef struct SampleChunk {
   // --- Data Buffers ---
-  void *raw_input_data; ///< Buffer for raw data from the input.
+  alignas(MEM_ARENA_ALIGNMENT) void *raw_input_data; ///< Buffer for raw data from the input.
   ComplexFloat *ping_buffer;
   ComplexFloat *pong_buffer;
   ComplexFloat *current_buffer;
@@ -65,7 +65,7 @@ typedef struct SampleChunk {
   bool stream_discontinuity_event; ///< Flag indicating an input reset (e.g.,
                                    ///< SDR overrun).
 
-} __attribute__((aligned(MEM_ARENA_ALIGNMENT))) SampleChunk;
+} SampleChunk;
 
 /**
  * @struct Queue
