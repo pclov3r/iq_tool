@@ -231,7 +231,7 @@ bool cli_parse(int argc, char *argv[], AppContext *app) {
       pre_output = argv[i + 1];
   }
   if (pre_input) {
-    const Module *module = module_get(pre_input, MODULE_TYPE_INPUT, arena);
+    const Module *module = module_get(pre_input, MODULE_TYPE_INPUT);
     if (module) {
       if (module->set_default_config)
         module->set_default_config(config);
@@ -240,7 +240,7 @@ bool cli_parse(int argc, char *argv[], AppContext *app) {
     }
   }
   if (pre_output) {
-    const Module *module = module_get(pre_output, MODULE_TYPE_OUTPUT, arena);
+    const Module *module = module_get(pre_output, MODULE_TYPE_OUTPUT);
     if (module) {
       if (module->set_default_config)
         module->set_default_config(config);
@@ -442,7 +442,7 @@ static bool validate_and_process_args(AppContext *app, int non_opt_argc,
     return false;
   }
   const Module *selected_input_module =
-      module_get(config->input.type_name, MODULE_TYPE_INPUT, arena);
+      module_get(config->input.type_name, MODULE_TYPE_INPUT);
   if (!selected_input_module) {
     log_error("Invalid input type '%s'.", config->input.type_name);
     return false;
@@ -468,7 +468,7 @@ static bool validate_and_process_args(AppContext *app, int non_opt_argc,
     return false;
   }
   const Module *selected_output_module =
-      module_get(config->output.module_name, MODULE_TYPE_OUTPUT, arena);
+      module_get(config->output.module_name, MODULE_TYPE_OUTPUT);
   if (!selected_output_module) {
     log_error("Invalid value for --output: '%s'.", config->output.module_name);
     return false;
@@ -536,7 +536,7 @@ static bool validate_and_process_args(AppContext *app, int non_opt_argc,
 
   // Validate options for ALL DSP modules (they are all always initialized)
   int num_modules;
-  const Module *modules = module_get_all(&num_modules, arena);
+  const Module *modules = module_get_all(&num_modules);
   for (int i = 0; i < num_modules; ++i) {
     if (modules[i].type == MODULE_TYPE_DSP) {
       const DspModuleInterface *dsp_mod =
@@ -557,7 +557,7 @@ static bool validate_and_process_args(AppContext *app, int non_opt_argc,
     return false;
 
   const Module *out_mod_val =
-      module_get(config->output.module_name, MODULE_TYPE_OUTPUT, arena);
+      module_get(config->output.module_name, MODULE_TYPE_OUTPUT);
   if (out_mod_val) {
     OutputModuleInterface *out_api = (OutputModuleInterface *)out_mod_val->api;
     if (out_api && out_api->validate_options) {

@@ -284,8 +284,7 @@ static bool init_input_module(AppConfig *config, AppContext *app) {
   ModuleContext context = {.config = config, .app = app};
 
   const Module *selected_input_module =
-      module_get(config->input.type_name, MODULE_TYPE_INPUT,
-                 &app->process_chain.setup_arena);
+      module_get(config->input.type_name, MODULE_TYPE_INPUT);
   if (!selected_input_module) {
     log_error("Input type '%s' is not supported or enabled in this build.",
               config->input.type_name);
@@ -299,8 +298,7 @@ static bool init_input_module(AppConfig *config, AppContext *app) {
 
   log_info("Initializing the '%s' input module...", config->input.type_name);
 
-  bool is_live_input = module_is_live_input(config->input.type_name,
-                                            &app->process_chain.setup_arena);
+  bool is_live_input = module_is_live_input(config->input.type_name);
   ThreadManager watchdog_tm;
   thread_manager_init(&watchdog_tm);
   SdrInitWatchdogContext watchdog_ctx = {
@@ -328,8 +326,7 @@ static bool init_output_module(AppConfig *config, AppContext *app) {
   ModuleContext context = {.config = config, .app = app};
 
   const Module *selected_output_module =
-      module_get(config->output.module_name, MODULE_TYPE_OUTPUT,
-                 &app->process_chain.setup_arena);
+      module_get(config->output.module_name, MODULE_TYPE_OUTPUT);
   if (!selected_output_module) {
     log_fatal("Internal error: Could not retrieve selected output module.");
     return false;

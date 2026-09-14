@@ -629,7 +629,7 @@ static bool dsp_filter_validate_options(struct AppContext *app) {
     if (config->dsp.filter.args.attenuation == 0.0f) {
       float resolved_attenuation = 60.0f;
       const Module *in_mod =
-          module_get(config->input.type_name, MODULE_TYPE_INPUT, NULL);
+          module_get(config->input.type_name, MODULE_TYPE_INPUT);
       if (in_mod) {
         resolved_attenuation =
             (in_mod->default_filter_attenuation_db > 0.0f)

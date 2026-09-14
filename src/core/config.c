@@ -26,7 +26,7 @@
 
 bool validate_output_type_and_sample_format(AppConfig *config) {
   const Module *out_mod =
-      module_get(config->output.module_name, MODULE_TYPE_OUTPUT, NULL);
+      module_get(config->output.module_name, MODULE_TYPE_OUTPUT);
   if (out_mod) {
     config->output.payload = out_mod->payload;
   }

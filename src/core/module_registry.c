@@ -44,15 +44,8 @@ void module_registry_add(const Module *m) {
   }
 }
 
-static void initialize_modules_list(MemoryArena *arena) {
-  // No-op. Modules register themselves before main().
-  (void)arena;
-}
-
 static const Module *_find_module_by_name_and_type(const char *name,
-                                                   ModuleType type,
-                                                   MemoryArena *arena) {
-  initialize_modules_list(arena);
+                                                   ModuleType type) {
   if (!name) {
     return NULL;
   }
@@ -67,14 +60,12 @@ static const Module *_find_module_by_name_and_type(const char *name,
 
 // --- Public Module Getters ---
 
-const Module *module_get(const char *name, ModuleType type,
-                         MemoryArena *arena) {
-  return _find_module_by_name_and_type(name, type, arena);
+const Module *module_get(const char *name, ModuleType type) {
+  return _find_module_by_name_and_type(name, type);
 }
 
-const struct DspModuleInterface *get_dsp_module(const char *name,
-                                                MemoryArena *arena) {
-  const Module *module = module_get(name, MODULE_TYPE_DSP, arena);
+const struct DspModuleInterface *get_dsp_module(const char *name) {
+  const Module *module = module_get(name, MODULE_TYPE_DSP);
   if (module)
     return (const struct DspModuleInterface *)module->api;
   return NULL;
@@ -82,15 +73,13 @@ const struct DspModuleInterface *get_dsp_module(const char *name,
 
 // --- Public Queries & Actions ---
 
-const Module *module_get_all(int *count, MemoryArena *arena) {
-  initialize_modules_list(arena);
+const Module *module_get_all(int *count) {
   *count = num_all_modules;
   return all_modules;
 }
 
-bool module_is_live_input(const char *name, MemoryArena *arena) {
-  const Module *module =
-      _find_module_by_name_and_type(name, MODULE_TYPE_INPUT, arena);
+bool module_is_live_input(const char *name) {
+  const Module *module = _find_module_by_name_and_type(name, MODULE_TYPE_INPUT);
   return (module != NULL &&
           module->process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH);
 }
@@ -102,7 +91,6 @@ void module_populate_cli_options(struct argparse_option *dest_buffer,
                                  const char *active_input_type,
                                  const char *active_output_type,
                                  struct MemoryArena *arena) {
-  initialize_modules_list(arena);
 
   for (int i = 0; i < num_all_modules; ++i) {
     const struct argparse_option *(*get_opts_fn)(int *) =

@@ -55,15 +55,11 @@ typedef struct Module {
  * @brief Finds a module by name and type.
  * @param name The name of the module to find (e.g., "wav", "dc_block").
  * @param type The type of the module (INPUT, OUTPUT, or DSP).
- * @param arena The memory arena, needed to initialize the module list on first
- * call.
  * @return A pointer to the corresponding Module struct, or NULL if not found.
  */
-const Module *module_get(const char *name, ModuleType type,
-                         struct MemoryArena *arena);
+const Module *module_get(const char *name, ModuleType type);
 
-const struct DspModuleInterface *get_dsp_module(const char *name,
-                                                struct MemoryArena *arena);
+const struct DspModuleInterface *get_dsp_module(const char *name);
 
 /**
  * @brief Registers a module dynamically at startup.
@@ -75,21 +71,17 @@ void module_registry_add(const Module *m);
  * @brief Gets a list of all registered and compiled-in modules.
  * @param[out] count A pointer to an integer that will be filled with the number
  * of modules.
- * @param arena The memory arena, needed to initialize the module list on first
- * call.
  * @return A constant pointer to the array of Module structs.
  */
-const Module *module_get_all(int *count, struct MemoryArena *arena);
+const Module *module_get_all(int *count);
 
 /**
  * @brief Checks if a given module name corresponds to a live input requiring a
  * watchdog.
  * @param name The name of the module to check.
- * @param arena The memory arena, needed to initialize the module list on first
- * call.
  * @return true if the module exists and is a live input, false otherwise.
  */
-bool module_is_live_input(const char *name, struct MemoryArena *arena);
+bool module_is_live_input(const char *name);
 
 /**
  * @brief Populates a buffer with the CLI options from all registered modules.

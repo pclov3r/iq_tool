@@ -66,8 +66,7 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app) {
   OutputAgcConfig target_agc = {0};
 
   const Module *out_mod =
-      module_get(config->output.module_name, MODULE_TYPE_OUTPUT,
-                 &app->process_chain.setup_arena);
+      module_get(config->output.module_name, MODULE_TYPE_OUTPUT);
   const struct OutputModuleInterface *out_api =
       out_mod ? (const struct OutputModuleInterface *)out_mod->api : NULL;
   if (out_api && out_api->get_pipeline_requirements) {
@@ -158,8 +157,7 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
   if (!config->dsp.raw_passthrough) {
     for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
       const struct DspModuleInterface *module =
-          get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name,
-                         &app->process_chain.setup_arena);
+          get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name);
       if (module &&
           module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag) &&
           module->get_required_chunk_size) {
@@ -187,8 +185,7 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
   if (!config->dsp.raw_passthrough) {
     for (int i = DEFAULT_PROCESS_CHAIN_LENGTH - 1; i >= 0; i--) {
       const struct DspModuleInterface *module =
-          get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name,
-                         &app->process_chain.setup_arena);
+          get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name);
       if (module &&
           module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
         if (module->get_ideal_input_size) {
@@ -214,8 +211,7 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
   if (!config->dsp.raw_passthrough) {
     for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
       const struct DspModuleInterface *module =
-          get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name,
-                         &app->process_chain.setup_arena);
+          get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name);
       if (module &&
           module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
         if (module->get_max_output_size) {
@@ -419,13 +415,12 @@ bool process_chain_execute(ProcessChainContext *context) {
 
   // Start DSP chains
   if (threads_ok && !config->dsp.raw_passthrough) {
-    MemoryArena *arena = &app->process_chain.setup_arena;
     const struct DspModuleInterface *dsp_modules[16];
     void *dsp_states[16];
     int num_dsp_modules = 0;
     for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
       const struct DspModuleInterface *module =
-          get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name, arena);
+          get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name);
       if (module &&
           module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
         dsp_modules[num_dsp_modules] = module;
@@ -459,8 +454,7 @@ bool process_chain_execute(ProcessChainContext *context) {
   if (threads_ok && !thread_manager_spawn(&manager, "output",
                                           process_chain_thread_output, context))
     threads_ok = false;
-  if (threads_ok && module_is_live_input(config->input.type_name,
-                                         &app->process_chain.setup_arena)) {
+  if (threads_ok && module_is_live_input(config->input.type_name)) {
     if (!thread_manager_spawn(&manager, "watchdog",
                               process_chain_thread_watchdog, context))
       threads_ok = false;
@@ -492,7 +486,7 @@ void process_chain_get_summary_info(const AppContext *app,
                                     OutputSummaryInfo *info) {
   for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
     const struct DspModuleInterface *module =
-        get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name, NULL);
+        get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name);
     if (module &&
         module->is_active((AppContext *)app,
                           DEFAULT_PROCESS_CHAIN[i].stage_tag) &&
@@ -519,8 +513,8 @@ bool process_chain_init_dsp_modules(ProcessChainContext *context) {
   double current_stream_rate = app->module.input_info.sample_rate;
   for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
     app->dsp.states[i] = NULL;
-    const struct DspModuleInterface *module = get_dsp_module(
-        DEFAULT_PROCESS_CHAIN[i].module_name, &app->process_chain.setup_arena);
+    const struct DspModuleInterface *module =
+        get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name);
     if (module && module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
       if (module->initialize) {
         app->dsp.states[i] = module->initialize(
@@ -551,8 +545,8 @@ void process_chain_close_dsp_modules(ProcessChainContext *context) {
     // may return false after shutdown even if the module was initialized.
     if (!app->dsp.states[i])
       continue;
-    const struct DspModuleInterface *module = get_dsp_module(
-        DEFAULT_PROCESS_CHAIN[i].module_name, &app->process_chain.setup_arena);
+    const struct DspModuleInterface *module =
+        get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name);
     if (module && module->cleanup) {
       module->cleanup(app->dsp.states[i]);
       app->dsp.states[i] = NULL;
@@ -570,8 +564,7 @@ static bool _init_queues_and_buffers(AppConfig *config, AppContext *app) {
   if (!config->dsp.raw_passthrough) {
     for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
       const struct DspModuleInterface *module =
-          get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name,
-                         &app->process_chain.setup_arena);
+          get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name);
       if (module &&
           module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
         num_dsp_modules++;
