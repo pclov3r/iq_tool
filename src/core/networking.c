@@ -222,12 +222,14 @@ void networking_disconnect(NetworkingContext *context) {
     shutdown(context->socket_fd, SD_BOTH);
     closesocket(context->socket_fd);
     context->socket_fd = INVALID_SOCKET; // Mark as closed
+    networking_cleanup();
   }
 #else
   if (context->socket_fd >= 0) {
     shutdown(context->socket_fd, SHUT_RDWR);
     close(context->socket_fd);
     context->socket_fd = -1; // Mark as closed
+    networking_cleanup();
   }
 #endif
   // No free(context), as the memory is managed by the arena.

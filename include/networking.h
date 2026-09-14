@@ -38,9 +38,9 @@ NetworkingContext *networking_connect(const char *hostname, int port,
                                       struct MemoryArena *arena);
 
 /**
- * @brief Disconnects a network connection.
- * This function ONLY closes the socket. It does NOT free the context handle,
- * as its memory is managed by the memory arena.
+ * @brief Disconnects a network connection and releases its subsystem reference.
+ * This function closes the socket and decrements the subsystem reference count.
+ * It does NOT free the context handle, as its memory is managed by the memory arena.
  * @param context The context handle to disconnect.
  */
 void networking_disconnect(NetworkingContext *context);
