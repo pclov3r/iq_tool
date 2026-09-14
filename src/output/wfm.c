@@ -63,13 +63,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
-#include <fcntl.h>
-#include <io.h>
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -311,12 +304,10 @@ static bool output_wfm_initialize(ModuleContext *context) {
   // I/Q data. We must forcefully set it to binary if the user requested raw
   // output.
   if (s_wfm_config.raw_mpx_stdout) {
-#ifdef _WIN32
-    if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
+    if (!platform_set_binary_mode(stdout)) {
       log_error("WFM: Failed to set stdout to binary mode.");
       return false;
     }
-#endif
   }
 
   WfmContext *wfm_decoder = (WfmContext *)mem_arena_alloc(

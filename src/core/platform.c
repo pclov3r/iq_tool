@@ -36,6 +36,20 @@ void platform_sleep(unsigned int ms) {
 #endif
 }
 
+bool platform_set_binary_mode(FILE *stream) {
+#ifdef _WIN32
+  if (!stream)
+    return false;
+  int fd = _fileno(stream);
+  if (fd == -1)
+    return false;
+  return _setmode(fd, _O_BINARY) != -1;
+#else
+  (void)stream;
+  return true;
+#endif
+}
+
 void platform_set_thread_priority(ThreadPriority priority,
                                   const char *thread_name) {
 #ifdef _WIN32

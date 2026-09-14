@@ -8,17 +8,12 @@
 #include "mem_arena.h"
 #include "module.h"
 #include "module_registry.h"
+#include "platform.h"
 #include "utilities.h"
 #include <errno.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
-
-// --- Windows Specifics for Binary Mode ---
-#ifdef _WIN32
-#include <fcntl.h>
-#include <io.h>
-#endif
 
 // --- Private Data ---
 typedef struct {
@@ -36,15 +31,11 @@ static bool output_stdout_initialize(ModuleContext *context) {
     return false;
   }
 
-#ifdef _WIN32
-  // Windows: stdout defaults to text mode (\n -> \r\n), which corrupts binary
-  // I/Q data. We must forcefully set it to binary.
-  if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
+  if (!platform_set_binary_mode(stdout)) {
     log_error("Output (stdout): Failed to set binary mode: %s",
               strerror(errno));
     return false;
   }
-#endif
 
   app->module.output_private_data = data;
   return true;

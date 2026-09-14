@@ -6,6 +6,7 @@
 #define PLATFORM_H_
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #ifdef _WIN32
 // Includes required for Windows-specific function signatures below
@@ -31,6 +32,14 @@
  * @param ms Duration to sleep in milliseconds.
  */
 void platform_sleep(unsigned int ms);
+
+/**
+ * @brief Sets a standard file stream to binary mode on Windows.
+ * On POSIX systems, streams are always binary, so this is a no-op returning true.
+ * @param stream File stream to configure (e.g. stdin, stdout).
+ * @return true on success or if unneeded, false on error.
+ */
+bool platform_set_binary_mode(FILE *stream);
 
 // --- Thread Priority Abstraction ---
 

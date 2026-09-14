@@ -22,11 +22,6 @@
 // --- Default Configuration ---
 #define STDIN_DEMOD_AUDIO_BUFFER_SIZE (128 * 1024)
 
-#ifdef _WIN32
-#include <fcntl.h>
-#include <io.h>
-#endif
-
 // --- CLI Config ---
 static struct {
   double sample_rate_hz;
@@ -86,12 +81,10 @@ static bool input_stdin_initialize(ModuleContext *context) {
   (void)config;
   AppContext *app = context->app;
 
-#ifdef _WIN32
-  if (_setmode(_fileno(stdin), _O_BINARY) == -1) {
+  if (!platform_set_binary_mode(stdin)) {
     log_fatal("Failed to set stdin to binary mode.");
     return false;
   }
-#endif
 
   // 1. Allocate the context and the read buffer from the Memory Arena
   StdinContext *p = (StdinContext *)mem_arena_alloc(
