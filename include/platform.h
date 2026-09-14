@@ -10,9 +10,11 @@
 
 #ifdef _WIN32
 // Includes required for Windows-specific function signatures below
+#include <io.h>
 #include <malloc.h>
 #include <windows.h>
 #define strcasecmp _stricmp
+#define platform_write(fd, buf, count) _write((fd), (buf), (unsigned int)(count))
 // MinGW doesn't expose aligned_alloc - provide a compatibility shim via macro.
 // Note: _aligned_malloc argument order is (size, alignment), opposite of
 // aligned_alloc.
@@ -23,6 +25,7 @@
 #include <unistd.h>
 // GCC/Clang (Linux/macOS) implementation
 #define aligned_free(ptr) free((ptr))
+#define platform_write(fd, buf, count) write((fd), (buf), (count))
 #else
 #error "Compiler not supported for lock-free primitives."
 #endif

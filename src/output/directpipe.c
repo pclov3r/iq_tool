@@ -8,22 +8,14 @@
 #include "mem_arena.h"
 #include "module.h"
 #include "module_registry.h"
+#include "platform.h"
 #include "utilities.h"
 #include <errno.h>
+#include <fcntl.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <string.h>
-
-#ifdef _WIN32
-#include <fcntl.h>
-#include <io.h>
-#define WRITE _write
-#else
-#include <fcntl.h>
 #include <sys/types.h>
-#include <unistd.h>
-#define WRITE write
-#endif
 
 // Using 10 to guarantee no collision with default OS file descriptors (0-9)
 #define TARGET_FD 10
@@ -74,7 +66,7 @@ static size_t output_directpipe_write_chunk(ModuleContext *context,
    * Handles partial writes, signals, and full pipes seamlessly.
    */
   while (bytes_left > 0) {
-    ssize_t written = WRITE(TARGET_FD, output_bytes, bytes_left);
+    ssize_t written = platform_write(TARGET_FD, output_bytes, bytes_left);
 
     if (written > 0) {
       output_bytes += written;
