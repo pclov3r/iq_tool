@@ -576,6 +576,8 @@ static bool _init_queues_and_buffers(AppConfig *config, AppContext *app) {
       (num_dsp_modules > 0) ? num_dsp_modules + 1 : 1;
   app->process_chain.active_queues = (Queue **)mem_arena_alloc(
       arena, app->process_chain.num_active_queues * sizeof(Queue *), true);
+  if (!app->process_chain.active_queues)
+    return false;
 
   // active_queues[0] is chunker_output
   app->process_chain.chunker_output_queue =
@@ -610,7 +612,8 @@ static bool _init_queues_and_buffers(AppConfig *config, AppContext *app) {
 
   app->process_chain.free_sample_chunk_queue =
       (Queue *)mem_arena_alloc(arena, sizeof(Queue), true);
-  if (!queue_init(app->process_chain.free_sample_chunk_queue, queue_capacity,
+  if (!app->process_chain.free_sample_chunk_queue ||
+      !queue_init(app->process_chain.free_sample_chunk_queue, queue_capacity,
                   arena))
     return false;
 
