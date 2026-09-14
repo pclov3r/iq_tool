@@ -506,10 +506,15 @@ void process_chain_get_summary_info(const AppContext *app,
 }
 
 void *process_chain_get_module_state(const AppContext *app,
-                                     const char *module_name) {
+                                     const char *module_name,
+                                     const char *stage_tag) {
   for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
     if (strcmp(DEFAULT_PROCESS_CHAIN[i].module_name, module_name) == 0) {
-      return app->dsp.states[i];
+      if (!stage_tag ||
+          (DEFAULT_PROCESS_CHAIN[i].stage_tag &&
+           strcmp(DEFAULT_PROCESS_CHAIN[i].stage_tag, stage_tag) == 0)) {
+        return app->dsp.states[i];
+      }
     }
   }
   return NULL;
