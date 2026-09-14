@@ -191,7 +191,7 @@ static float adjust_benchmark(complex float *iq, float phase, float amplitude);
 // Updated signature to accept current values and return new values via
 // pointers. This allows the calculation to happen without holding the main
 // mutex.
-static void estimate_imbalance(IqState *st, const complex float *restrict iq,
+static void estimate_imbalance(IqState *state, const complex float *restrict iq,
                                int length, float current_phase,
                                float current_amp, float *out_phase,
                                float *out_amp);
@@ -208,41 +208,41 @@ static void *iq_correction_init(AppConfig *config, AppContext *app,
   if (!config->dsp.iq_correction.enable)
     return NULL;
 
-  IqState *st = (IqState *)mem_arena_alloc(arena, sizeof(IqState), true);
-  if (!st) {
+  IqState *state = (IqState *)mem_arena_alloc(arena, sizeof(IqState), true);
+  if (!state) {
     log_fatal("Failed to allocate memory for I/Q Correction state.");
     return NULL;
   }
 
   // Default configuration
-  st->optimal_bin = FFTBins / 2;
-  st->fft_integration = 4;
-  st->fft_overlap = 2;
-  st->correlation_integration = 32; // Reduced from 64 for faster convergence
-  st->reset_flag = 1;
+  state->optimal_bin = FFTBins / 2;
+  state->fft_integration = 4;
+  state->fft_overlap = 2;
+  state->correlation_integration = 32; // Reduced from 64 for faster convergence
+  state->reset_flag = 1;
 
   // Allocate Buffers
-  st->corr = (complex float *)mem_arena_alloc(
+  state->corr = (complex float *)mem_arena_alloc(
       arena, FFTBins * sizeof(complex float), true);
-  st->corr_plus = (complex float *)mem_arena_alloc(
+  state->corr_plus = (complex float *)mem_arena_alloc(
       arena, FFTBins * sizeof(complex float), true);
-  st->boost = (float *)mem_arena_alloc(arena, FFTBins * sizeof(float), true);
-  st->power_flag =
-      (int *)mem_arena_alloc(arena, st->fft_integration * sizeof(int), true);
+  state->boost = (float *)mem_arena_alloc(arena, FFTBins * sizeof(float), true);
+  state->power_flag =
+      (int *)mem_arena_alloc(arena, state->fft_integration * sizeof(int), true);
 
   // Allocate app for Liquid-DSP FFT
-  st->fft_buffer = (complex float *)mem_arena_alloc(
+  state->fft_buffer = (complex float *)mem_arena_alloc(
       arena, FFTBins * sizeof(complex float), false);
-  st->window_func =
+  state->window_func =
       (float *)mem_arena_alloc(arena, FFTBins * sizeof(float), false);
 
-  if (!st->corr || !st->corr_plus || !st->boost || !st->fft_buffer ||
-      !st->window_func) {
+  if (!state->corr || !state->corr_plus || !state->boost ||
+      !state->fft_buffer || !state->window_func) {
     return false;
   }
 
   // Initialize the window function (Blackman-Nuttall)
-  init_window(st->window_func, FFTBins);
+  init_window(state->window_func, FFTBins);
 
   // Initialize the global boost window if not already done
   if (!__boost_initialized) {
@@ -251,58 +251,58 @@ static void *iq_correction_init(AppConfig *config, AppContext *app,
   }
 
   // Create Liquid-DSP Plan (In-Place Forward FFT)
-  st->fft_plan = fft_create_plan(
-      FFTBins, (liquid_float_complex *)st->fft_buffer,
-      (liquid_float_complex *)st->fft_buffer, LIQUID_FFT_FORWARD, 0);
+  state->fft_plan = fft_create_plan(
+      FFTBins, (liquid_float_complex *)state->fft_buffer,
+      (liquid_float_complex *)state->fft_buffer, LIQUID_FFT_FORWARD, 0);
 
-  if (!st->fft_plan) {
+  if (!state->fft_plan) {
     log_fatal("Failed to create liquid-dsp FFT plan for I/Q correction.");
     return false;
   }
 
-  st->last_optimization_time = 0.0;
-  st->app = app;
-  st->last_phase = s_calibrated_phase;
-  st->last_amplitude = s_calibrated_amplitude;
+  state->last_optimization_time = 0.0;
+  state->app = app;
+  state->last_phase = s_calibrated_phase;
+  state->last_amplitude = s_calibrated_amplitude;
 
   // Also pack the initial state into the atomic variable so other threads see
   // it
   uint64_t initial_packed =
       pack_iq_state(s_calibrated_phase, s_calibrated_amplitude);
-  atomic_store_explicit(&st->packed_state, initial_packed,
+  atomic_store_explicit(&state->packed_state, initial_packed,
                         memory_order_relaxed);
 
-  if (!queue_init(&st->data_queue, 32, arena) ||
-      !queue_init(&st->free_queue, 32, arena)) {
+  if (!queue_init(&state->data_queue, 32, arena) ||
+      !queue_init(&state->free_queue, 32, arena)) {
     log_fatal("Failed to initialize queues for I/Q Correction.");
     return NULL;
   }
   for (int i = 0; i < 16; i++) {
     void *buffer = malloc(4096 * sizeof(ComplexFloat));
     if (buffer) {
-      queue_enqueue(&st->free_queue, buffer);
+      queue_enqueue(&state->free_queue, buffer);
     }
   }
 
   log_info("I/Q Correction Enabled");
-  return st;
+  return state;
 }
 
-static void iq_correction_apply(IqState *st, ComplexFloat *samples,
+static void iq_correction_apply(IqState *state, ComplexFloat *samples,
                                 int num_samples) {
-  if (!st)
+  if (!state)
     return;
 
   // Lock briefly to read shared values.
   // This allows the optimizer to update them safely without tearing.
   uint64_t packed =
-      atomic_load_explicit(&st->packed_state, memory_order_relaxed);
+      atomic_load_explicit(&state->packed_state, memory_order_relaxed);
   float current_phase, current_amp;
   unpack_iq_state(packed, &current_phase, &current_amp);
 
   float scale = 1.0f / (num_samples - 1);
-  float last_phase = st->last_phase;
-  float last_amp = st->last_amplitude;
+  float last_phase = state->last_phase;
+  float last_amp = state->last_amplitude;
 
   for (int i = 0; i < num_samples; i++) {
     // Interpolate parameters across the buffer to prevent phase discontinuities
@@ -323,8 +323,8 @@ static void iq_correction_apply(IqState *st, ComplexFloat *samples,
     samples[i] = new_re + I * new_im;
   }
 
-  st->last_phase = current_phase;
-  st->last_amplitude = current_amp;
+  state->last_phase = current_phase;
+  state->last_amplitude = current_amp;
 }
 
 void iq_correction_run_estimation(void *state,
@@ -332,17 +332,17 @@ void iq_correction_run_estimation(void *state,
   if (!state)
     return;
 
-  IqState *st = (IqState *)state;
+  IqState *iq_state = (IqState *)state;
 
-  if (!st->app->config->dsp.iq_correction.enable)
+  if (!iq_state->app->config->dsp.iq_correction.enable)
     return;
 
-  atomic_store_explicit(&st->last_optimization_time, utility_get_time(),
+  atomic_store_explicit(&iq_state->last_optimization_time, utility_get_time(),
                         memory_order_relaxed);
 
   // Snapshot current values lock-free.
   uint64_t packed_start =
-      atomic_load_explicit(&st->packed_state, memory_order_relaxed);
+      atomic_load_explicit(&iq_state->packed_state, memory_order_relaxed);
   float start_phase, start_amp;
   unpack_iq_state(packed_start, &start_phase, &start_amp);
 
@@ -351,21 +351,23 @@ void iq_correction_run_estimation(void *state,
   float new_phase = start_phase;
   float new_amp = start_amp;
 
-  estimate_imbalance(st, optimization_data, FFTBins, start_phase, start_amp,
-                     &new_phase, &new_amp);
+  estimate_imbalance(iq_state, optimization_data, FFTBins, start_phase,
+                     start_amp, &new_phase, &new_amp);
 
   // Lock-free commit.
   uint64_t new_packed = pack_iq_state(new_phase, new_amp);
-  atomic_store_explicit(&st->packed_state, new_packed, memory_order_relaxed);
+  atomic_store_explicit(&iq_state->packed_state, new_packed,
+                        memory_order_relaxed);
 
   // Debug logging (rate limited)
   static double last_debug_log_time = 0.0;
-  double current_opt_time =
-      atomic_load_explicit(&st->last_optimization_time, memory_order_relaxed);
+  double current_opt_time = atomic_load_explicit(
+      &iq_state->last_optimization_time, memory_order_relaxed);
   if (current_opt_time - last_debug_log_time >= CONSOLE_UPDATE_INTERVAL_SEC) {
     float phase_deg = new_phase * (180.0f / (float)M_PI);
     float amp_pct = new_amp * 100.0f;
-    float image_db = 10.0f * log10f((float)st->integrated_image_power + 1e-12f);
+    float image_db =
+        10.0f * log10f((float)iq_state->integrated_image_power + 1e-12f);
 
     log_debug(
         "IQ Correct: Phase: %+.3f deg | Amp: %+.3f %% | Image Pwr: %.1f dBFS",
@@ -374,26 +376,26 @@ void iq_correction_run_estimation(void *state,
   }
 }
 
-static void iq_correction_destroy(IqState *st) {
-  if (st) {
+static void iq_correction_destroy(IqState *state) {
+  if (state) {
     // Free the partially-filled estimation buffer if it was never enqueued
     // (happens when the file ends before FFTBins samples are accumulated).
-    if (st->current_estimation_buffer) {
-      free(st->current_estimation_buffer);
-      st->current_estimation_buffer = NULL;
+    if (state->current_estimation_buffer) {
+      free(state->current_estimation_buffer);
+      state->current_estimation_buffer = NULL;
     }
     void *buffer;
-    while ((buffer = queue_try_dequeue(&st->free_queue)) != NULL) {
+    while ((buffer = queue_try_dequeue(&state->free_queue)) != NULL) {
       free(buffer);
     }
-    while ((buffer = queue_try_dequeue(&st->data_queue)) != NULL) {
+    while ((buffer = queue_try_dequeue(&state->data_queue)) != NULL) {
       free(buffer);
     }
-    queue_destroy(&st->free_queue);
-    queue_destroy(&st->data_queue);
+    queue_destroy(&state->free_queue);
+    queue_destroy(&state->data_queue);
 
-    if (st->fft_plan)
-      fft_destroy_plan(st->fft_plan);
+    if (state->fft_plan)
+      fft_destroy_plan(state->fft_plan);
     // Arena handles memory free
   }
 }
@@ -436,8 +438,8 @@ bool iq_correction_run_initial_calibration(
         app->module.input_info.sample_rate, &dummy_rate);
   }
 
-  void *st = iq_correction_init((AppConfig *)context->config, app,
-                                &app->process_chain.setup_arena);
+  void *state = iq_correction_init((AppConfig *)context->config, app,
+                                   &app->process_chain.setup_arena);
 
   for (int i = 0; i < 64; i++) {
     size_t bytes_read = read_cb(user_data, raw_buffer, num_bytes);
@@ -455,16 +457,16 @@ bool iq_correction_run_initial_calibration(
       dc_block_api->process(dc_block_state, &temp_chunk);
     }
 
-    iq_correction_run_estimation(st, temp_chunk.current_buffer);
-    if (st) {
-      ((IqState *)st)->last_optimization_time = 0.0;
+    iq_correction_run_estimation(state, temp_chunk.current_buffer);
+    if (state) {
+      ((IqState *)state)->last_optimization_time = 0.0;
     }
   }
 
-  if (st) {
-    s_calibrated_phase = ((IqState *)st)->last_phase;
-    s_calibrated_amplitude = ((IqState *)st)->last_amplitude;
-    iq_correction_destroy(st);
+  if (state) {
+    s_calibrated_phase = ((IqState *)state)->last_phase;
+    s_calibrated_amplitude = ((IqState *)state)->last_amplitude;
+    iq_correction_destroy(state);
   }
   if (dc_block_state) {
     dc_block_api->cleanup(dc_block_state);
@@ -521,7 +523,7 @@ static float adjust_benchmark(complex float *iq, float phase, float amplitude) {
   return sum;
 }
 
-static complex float utility(IqState *st, complex float *ccorr) {
+static complex float utility(IqState *state, complex float *ccorr) {
   int i, j;
   float invskip = 1.0f / EdgeBinsToSkip;
   complex float acc = 0;
@@ -533,10 +535,10 @@ static complex float utility(IqState *st, complex float *ccorr) {
     int distance = abs(i - FFTBins / 2);
     if (distance > CenterBinsToSkip) {
       float weight = (distance > EdgeBinsToSkip) ? 1.0f : (distance * invskip);
-      if (st->optimal_bin != FFTBins / 2) {
-        weight *= __boost_window[abs(st->optimal_bin - i)];
+      if (state->optimal_bin != FFTBins / 2) {
+        weight *= __boost_window[abs(state->optimal_bin - i)];
       }
-      weight *= st->boost[j] / (st->boost[i] + EPSILON);
+      weight *= state->boost[j] / (state->boost[i] + EPSILON);
       acc += ccorr[i] * weight;
     }
   }
@@ -545,7 +547,7 @@ static complex float utility(IqState *st, complex float *ccorr) {
 
 // Updated signature to accept params and return results via pointers.
 // This decouples calculation from shared state.
-static void estimate_imbalance(IqState *st, const complex float *restrict iq,
+static void estimate_imbalance(IqState *state, const complex float *restrict iq,
                                int length, float current_phase,
                                float current_amp, float *out_phase,
                                float *out_amp) {
@@ -557,28 +559,28 @@ static void estimate_imbalance(IqState *st, const complex float *restrict iq,
   float amplitude, phase, mu;
   complex float a, b;
 
-  if (st->reset_flag) {
-    st->reset_flag = 0;
-    st->no_of_avg = -BuffersToSkipOnReset;
-    st->maximum_image_power = 0;
+  if (state->reset_flag) {
+    state->reset_flag = 0;
+    state->no_of_avg = -BuffersToSkipOnReset;
+    state->maximum_image_power = 0;
   }
 
-  if (st->no_of_avg < 0) {
-    st->no_of_avg++;
+  if (state->no_of_avg < 0) {
+    state->no_of_avg++;
     return;
-  } else if (st->no_of_avg == 0) {
-    st->integrated_image_power = 0;
-    st->integrated_total_power = 0;
-    memset(st->boost, 0, FFTBins * sizeof(float));
-    memset(st->corr, 0, FFTBins * sizeof(complex float));
-    memset(st->corr_plus, 0, FFTBins * sizeof(complex float));
+  } else if (state->no_of_avg == 0) {
+    state->integrated_image_power = 0;
+    state->integrated_total_power = 0;
+    memset(state->boost, 0, FFTBins * sizeof(float));
+    memset(state->corr, 0, FFTBins * sizeof(complex float));
+    memset(state->corr_plus, 0, FFTBins * sizeof(complex float));
   }
 
-  st->maximum_image_power *= MaxPowerDecay;
+  state->maximum_image_power *= MaxPowerDecay;
 
   // Use the persistent buffer for FFT operations to avoid stack thrashing
   // Safe because this function is only called from one thread (Optimizer)
-  complex float *fftPtr = st->fft_buffer;
+  complex float *fftPtr = state->fft_buffer;
 
   // 1. Compute Correlation (Current Parameters)
   int count = 0;
@@ -588,78 +590,78 @@ static void estimate_imbalance(IqState *st, const complex float *restrict iq,
   if (length >= FFTBins) {
     memcpy(fftPtr, iq, FFTBins * sizeof(complex float));
 
-    // Use passed-in values, not st->phase/amp
+    // Use passed-in values, not state->phase/amp
     float power = adjust_benchmark(fftPtr, current_phase, current_amp);
 
     if (power > MinimumPower) {
-      apply_window(fftPtr, st->window_func, FFTBins);
+      apply_window(fftPtr, state->window_func, FFTBins);
 
       // Execute Liquid-DSP FFT (In-Place)
-      fft_execute(st->fft_plan);
+      fft_execute(state->fft_plan);
 
       for (i = EdgeBinsToSkip, j = FFTBins - EdgeBinsToSkip;
            i <= FFTBins - EdgeBinsToSkip; i++, j--) {
-        st->corr[i] += fftPtr[i] * fftPtr[j];
-        st->corr[j] = st->corr[i];
+        state->corr[i] += fftPtr[i] * fftPtr[j];
+        state->corr[j] = state->corr[i];
       }
 
       // Calculate boost (spectral power density)
       for (i = EdgeBinsToSkip; i <= FFTBins - EdgeBinsToSkip; i++) {
         float bin_power = crealf(fftPtr[i]) * crealf(fftPtr[i]) +
                           cimagf(fftPtr[i]) * cimagf(fftPtr[i]);
-        st->boost[i] += bin_power;
-        if (st->optimal_bin == FFTBins / 2)
-          st->integrated_image_power += bin_power;
+        state->boost[i] += bin_power;
+        if (state->optimal_bin == FFTBins / 2)
+          state->integrated_image_power += bin_power;
         else
-          st->integrated_image_power +=
-              bin_power * __boost_window[abs(FFTBins - i - st->optimal_bin)];
+          state->integrated_image_power +=
+              bin_power * __boost_window[abs(FFTBins - i - state->optimal_bin)];
       }
-      st->integrated_total_power += power;
+      state->integrated_total_power += power;
       count++;
     }
   }
 
   if (count == 0)
     return;
-  st->no_of_avg += count;
+  state->no_of_avg += count;
 
   // 2. Compute Correlation (Perturbed Parameters) - Re-use buffer
   memcpy(fftPtr, iq, FFTBins * sizeof(complex float));
   // Use passed-in values for perturbation base
   adjust_benchmark(fftPtr, current_phase + PhaseStep,
                    current_amp + AmplitudeStep);
-  apply_window(fftPtr, st->window_func, FFTBins);
-  fft_execute(st->fft_plan);
+  apply_window(fftPtr, state->window_func, FFTBins);
+  fft_execute(state->fft_plan);
 
   for (i = EdgeBinsToSkip, j = FFTBins - EdgeBinsToSkip;
        i <= FFTBins - EdgeBinsToSkip; i++, j--) {
-    st->corr_plus[i] += fftPtr[i] * fftPtr[j];
-    st->corr_plus[j] = st->corr_plus[i];
+    state->corr_plus[i] += fftPtr[i] * fftPtr[j];
+    state->corr_plus[j] = state->corr_plus[i];
   }
 
   // Check integration limit
-  if (st->no_of_avg <= st->correlation_integration)
+  if (state->no_of_avg <= state->correlation_integration)
     return;
-  st->no_of_avg = 0;
+  state->no_of_avg = 0;
 
   // Power Threshold Check
-  if (st->optimal_bin == FFTBins / 2) {
-    if (st->integrated_total_power < st->maximum_image_power)
+  if (state->optimal_bin == FFTBins / 2) {
+    if (state->integrated_total_power < state->maximum_image_power)
       return;
-    st->maximum_image_power = (float)st->integrated_total_power;
+    state->maximum_image_power = (float)state->integrated_total_power;
   } else {
-    if (st->integrated_image_power -
-            st->integrated_total_power * BoostWindowNorm <
-        st->maximum_image_power * PowerThreshold)
+    if (state->integrated_image_power -
+            state->integrated_total_power * BoostWindowNorm <
+        state->maximum_image_power * PowerThreshold)
       return;
-    st->maximum_image_power =
-        (float)(st->integrated_image_power -
-                st->integrated_total_power * BoostWindowNorm);
+    state->maximum_image_power =
+        (float)(state->integrated_image_power -
+                state->integrated_total_power * BoostWindowNorm);
   }
 
   // Calculate utility vectors
-  a = utility(st, st->corr);
-  b = utility(st, st->corr_plus);
+  a = utility(state, state->corr);
+  b = utility(state, state->corr_plus);
 
   // Update Phase
   mu = cimagf(a) - cimagf(b);
@@ -688,26 +690,27 @@ static void estimate_imbalance(IqState *st, const complex float *restrict iq,
   amplitude = current_amp + AmplitudeStep * mu;
 
   // History Smoothing
-  if (st->no_of_raw < MaxLookback)
-    st->no_of_raw++;
+  if (state->no_of_raw < MaxLookback)
+    state->no_of_raw++;
 
-  st->raw_amplitudes[st->raw_ptr] = amplitude;
-  st->raw_phases[st->raw_ptr] = phase;
+  state->raw_amplitudes[state->raw_ptr] = amplitude;
+  state->raw_phases[state->raw_ptr] = phase;
 
-  i = st->raw_ptr;
+  i = state->raw_ptr;
   // Note: Reset accumulators for smoothing calc
   phase = 0;
   amplitude = 0;
 
-  for (j = 0; j < st->no_of_raw; j++) // Correction: Loop over valid raw entries
+  for (j = 0; j < state->no_of_raw;
+       j++) // Correction: Loop over valid raw entries
   {
-    int index = (st->raw_ptr + MaxLookback - j) & (MaxLookback - 1);
-    phase += st->raw_phases[index];
-    amplitude += st->raw_amplitudes[index];
+    int index = (state->raw_ptr + MaxLookback - j) & (MaxLookback - 1);
+    phase += state->raw_phases[index];
+    amplitude += state->raw_amplitudes[index];
   }
-  phase /= st->no_of_raw;
-  amplitude /= st->no_of_raw;
-  st->raw_ptr = (st->raw_ptr + 1) & (MaxLookback - 1);
+  phase /= state->no_of_raw;
+  amplitude /= state->no_of_raw;
+  state->raw_ptr = (state->raw_ptr + 1) & (MaxLookback - 1);
 
   // Commit new parameters to output pointers
   *out_phase = phase;
@@ -717,15 +720,15 @@ static void estimate_imbalance(IqState *st, const complex float *restrict iq,
 // === DSP Module Interface Implementation ===
 
 static void *iq_estimation_thread(void *arg) {
-  IqState *st = (IqState *)arg;
-  if (!st)
+  IqState *state = (IqState *)arg;
+  if (!state)
     return NULL;
 
   while (!is_shutdown_requested()) {
-    void *buffer = queue_try_dequeue(&st->data_queue);
+    void *buffer = queue_try_dequeue(&state->data_queue);
     if (buffer) {
-      iq_correction_run_estimation(st, (ComplexFloat *)buffer);
-      queue_enqueue(&st->free_queue, buffer);
+      iq_correction_run_estimation(state, (ComplexFloat *)buffer);
+      queue_enqueue(&state->free_queue, buffer);
     } else {
       usleep(1000);
     }
@@ -758,39 +761,42 @@ static SampleChunk *dsp_iq_correct_process(void *state, SampleChunk *chunk) {
   if (chunk->stream_discontinuity_event) {
     // no-op for now
   }
-  IqState *st = (IqState *)state;
-  iq_correction_apply(st, chunk->current_buffer, chunk->frames_read);
+  IqState *iq_state = (IqState *)state;
+  iq_correction_apply(iq_state, chunk->current_buffer, chunk->frames_read);
 
   // Asynchronous estimation logic
-  if (st) {
+  if (iq_state) {
     unsigned int frames_remaining = chunk->frames_read;
     unsigned int read_ptr = 0;
 
     while (frames_remaining > 0) {
-      if (!st->current_estimation_buffer) {
-        st->current_estimation_buffer =
-            (ComplexFloat *)queue_try_dequeue(&st->free_queue);
-        if (!st->current_estimation_buffer)
+      if (!iq_state->current_estimation_buffer) {
+        iq_state->current_estimation_buffer =
+            (ComplexFloat *)queue_try_dequeue(&iq_state->free_queue);
+        if (!iq_state->current_estimation_buffer)
           break; // If no free buffers, skip estimation (drops frames)
-        st->current_estimation_collected = 0;
+        iq_state->current_estimation_collected = 0;
       }
 
-      unsigned int to_copy = FFTBins - st->current_estimation_collected;
+      unsigned int to_copy = FFTBins - iq_state->current_estimation_collected;
       if (to_copy > frames_remaining)
         to_copy = frames_remaining;
 
-      memcpy(st->current_estimation_buffer + st->current_estimation_collected,
+      memcpy(iq_state->current_estimation_buffer +
+                 iq_state->current_estimation_collected,
              chunk->current_buffer + read_ptr, to_copy * sizeof(ComplexFloat));
 
-      st->current_estimation_collected += to_copy;
+      iq_state->current_estimation_collected += to_copy;
       read_ptr += to_copy;
       frames_remaining -= to_copy;
 
-      if (st->current_estimation_collected == FFTBins) {
-        if (!queue_enqueue(&st->data_queue, st->current_estimation_buffer)) {
-          queue_enqueue_forced(&st->free_queue, st->current_estimation_buffer);
+      if (iq_state->current_estimation_collected == FFTBins) {
+        if (!queue_enqueue(&iq_state->data_queue,
+                           iq_state->current_estimation_buffer)) {
+          queue_enqueue_forced(&iq_state->free_queue,
+                               iq_state->current_estimation_buffer);
         }
-        st->current_estimation_buffer = NULL;
+        iq_state->current_estimation_buffer = NULL;
       }
     }
   }

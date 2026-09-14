@@ -86,28 +86,28 @@ static void dsp_resampler_reset_api(void *state) {
 
 static bool dsp_resampler_is_active(AppContext *app, const char *stage_tag) {
   (void)stage_tag;
-  float r = (float)(app->dsp.process_chain_sample_rate_hz /
-                    (double)app->module.input_info.sample_rate);
+  float resample_ratio = (float)(app->dsp.process_chain_sample_rate_hz /
+                                 (double)app->module.input_info.sample_rate);
   AppConfig *config = (AppConfig *)app->config;
-  return !(fabs(r - 1.0f) < 1e-6 || config->dsp.raw_passthrough);
+  return !(fabs(resample_ratio - 1.0f) < 1e-6 || config->dsp.raw_passthrough);
 }
 
 static size_t dsp_resampler_get_max_output_size(struct AppContext *app,
                                                 size_t input_size) {
-  float r = (float)(app->dsp.process_chain_sample_rate_hz /
-                    (double)app->module.input_info.sample_rate);
-  if (fabs(r - 1.0f) < 1e-6) {
+  float resample_ratio = (float)(app->dsp.process_chain_sample_rate_hz /
+                                 (double)app->module.input_info.sample_rate);
+  if (fabs(resample_ratio - 1.0f) < 1e-6) {
     return input_size;
   }
-  return (size_t)ceil((double)(input_size + 32) * r) + 64;
+  return (size_t)ceil((double)(input_size + 32) * resample_ratio) + 64;
 }
 
 static size_t dsp_resampler_get_ideal_input_size(struct AppContext *app,
                                                  size_t target_output_size) {
-  float r = (float)(app->dsp.process_chain_sample_rate_hz /
-                    (double)app->module.input_info.sample_rate);
-  if (r > 1.0f) {
-    return (size_t)(target_output_size / r);
+  float resample_ratio = (float)(app->dsp.process_chain_sample_rate_hz /
+                                 (double)app->module.input_info.sample_rate);
+  if (resample_ratio > 1.0f) {
+    return (size_t)(target_output_size / resample_ratio);
   }
   return target_output_size;
 }

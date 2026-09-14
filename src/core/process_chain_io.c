@@ -259,9 +259,9 @@ void *process_chain_thread_output(void *arg) {
     if (item->frames_to_write > 0 && !item->stream_discontinuity_event) {
       if (!args->config->dsp.raw_passthrough) {
         if (app->dsp.process_chain_gain != 1.0f) {
-          float g = app->dsp.process_chain_gain;
+          float gain = app->dsp.process_chain_gain;
           for (unsigned int i = 0; i < item->frames_to_write; i++) {
-            item->current_buffer[i] *= g;
+            item->current_buffer[i] *= gain;
           }
         }
         sample_convert_cf32_to_block(

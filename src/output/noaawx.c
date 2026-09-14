@@ -136,14 +136,14 @@ static bool output_noaawx_validate_options(AppContext *app) {
 }
 
 static bool output_noaawx_initialize(ModuleContext *context) {
-  AppContext *res = context->app;
+  AppContext *app = context->app;
   NoaawxContext *decoder = (NoaawxContext *)mem_arena_alloc(
-      &res->process_chain.setup_arena, sizeof(NoaawxContext), true);
-  res->module.output_private_data = decoder;
+      &app->process_chain.setup_arena, sizeof(NoaawxContext), true);
+  app->module.output_private_data = decoder;
 
   decoder->audio_out =
-      audio_output_create(res, NOAAWX_SAMPLE_RATE, NOAAWX_AUDIO_CHANNELS,
-                          res->module.input_info.demod_audio_buffer_size);
+      audio_output_create(app, NOAAWX_SAMPLE_RATE, NOAAWX_AUDIO_CHANNELS,
+                          app->module.input_info.demod_audio_buffer_size);
   if (!decoder->audio_out)
     return false;
 
@@ -207,10 +207,10 @@ static bool output_noaawx_initialize(ModuleContext *context) {
   }
 
   // 4. Buffers
-  size_t in_samples = res->process_chain.alloc_size_samples;
-  decoder->mono_buffer = mem_arena_alloc(&res->process_chain.setup_arena,
+  size_t in_samples = app->process_chain.alloc_size_samples;
+  decoder->mono_buffer = mem_arena_alloc(&app->process_chain.setup_arena,
                                          in_samples * sizeof(float), false);
-  decoder->pcm_out = mem_arena_alloc(&res->process_chain.setup_arena,
+  decoder->pcm_out = mem_arena_alloc(&app->process_chain.setup_arena,
                                      in_samples * sizeof(int16_t), false);
 
   decoder->first_run = true;
@@ -3877,8 +3877,8 @@ static void run_bit_wise_voting(NoaawxContext *decoder) {
 static size_t output_noaawx_write_chunk(ModuleContext *context,
                                         const void *buffer,
                                         size_t input_bytes) {
-  AppContext *res = context->app;
-  NoaawxContext *decoder = (NoaawxContext *)res->module.output_private_data;
+  AppContext *app = context->app;
+  NoaawxContext *decoder = (NoaawxContext *)app->module.output_private_data;
 
   // Statics moved to Context struct
   if (decoder->first_run) {
@@ -3889,11 +3889,11 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
   if (input_bytes == 0)
     return 0;
 
-  int n = input_bytes / sizeof(liquid_float_complex);
+  unsigned int frame_count = input_bytes / sizeof(liquid_float_complex);
   liquid_float_complex *iq = (liquid_float_complex *)buffer;
 
   // Timeout logic for byte-wise voting
-  decoder->samples_since_last_burst += n;
+  decoder->samples_since_last_burst += frame_count;
   if (decoder->num_bursts > 0 &&
       decoder->samples_since_last_burst >
           (size_t)(decoder->input_samplerate * 5.0f)) {
@@ -3903,7 +3903,7 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
   // 1. Calculate block-level sum of magnitudes and sum of squares
   float block_mag_sum = 0.0f;
   float block_mag_sq_sum = 0.0f;
-  for (int i = 0; i < n; i++) {
+  for (unsigned int i = 0; i < frame_count; i++) {
     float mag2 = crealf(iq[i]) * crealf(iq[i]) + cimagf(iq[i]) * cimagf(iq[i]);
     block_mag_sq_sum += mag2;
     block_mag_sum += sqrtf(mag2);
@@ -3912,7 +3912,7 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
   // Accumulate for periodic status logging
   decoder->accum_mag_sum += block_mag_sum;
   decoder->accum_mag_sq_sum += block_mag_sq_sum;
-  decoder->stat_counter += n;
+  decoder->stat_counter += frame_count;
 
   // 4. Periodic console logging (unchanged, rates aligned to
   // CONSOLE_UPDATE_INTERVAL)
@@ -3945,15 +3945,15 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
   if (s_noaawx_config.audio_in) {
     // Pure Audio Mode: Bypass FM Demodulator. Mix Left (I) and Right (Q)
     // channels.
-    for (int i = 0; i < n; i++) {
+    for (unsigned int i = 0; i < frame_count; i++) {
       decoder->mono_buffer[i] = 0.5f * (crealf(iq[i]) + cimagf(iq[i]));
     }
   } else {
     // SDR Mode: FM Demodulator
-    freqdem_demodulate_block(decoder->fm_demod, iq, n, decoder->mono_buffer);
+    freqdem_demodulate_block(decoder->fm_demod, iq, frame_count, decoder->mono_buffer);
   }
 
-  for (int i = 0; i < n; i++) {
+  for (unsigned int i = 0; i < frame_count; i++) {
     float sample = decoder->mono_buffer[i];
 
     if (!s_noaawx_config.audio_in) {
@@ -3966,7 +3966,7 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
   }
 
   // --- AFSK SAME Decoder ProcessChain (Runs at 24kHz) ---
-  for (int i = 0; i < n; i++) {
+  for (unsigned int i = 0; i < frame_count; i++) {
     float unmuted_sample = decoder->mono_buffer[i];
 
     // 1. Mix to Baseband
@@ -4061,7 +4061,7 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
 
   // --- SAME Alert Repetition Logic ---
   if (decoder->same_alert_repeat_counter > 0) {
-    decoder->same_alert_samples_until_next_print -= n;
+    decoder->same_alert_samples_until_next_print -= frame_count;
     if (decoder->same_alert_samples_until_next_print <= 0) {
       decoder->same_alert_is_repeat = true;
       parse_same_header(decoder->same_alert_saved_header);
@@ -4076,7 +4076,7 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
   // Mix in Alert Tone if active
   if (decoder->alert_tone_delay_samples > 0 ||
       decoder->alert_tone_samples_remaining > 0) {
-    for (int i = 0; i < n; i++) {
+    for (unsigned int i = 0; i < frame_count; i++) {
       if (decoder->alert_tone_delay_samples > 0) {
         decoder->alert_tone_delay_samples--;
         continue;
@@ -4139,7 +4139,7 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
     }
   }
 
-  for (int i = 0; i < n; i++) {
+  for (unsigned int i = 0; i < frame_count; i++) {
     float val = decoder->mono_buffer[i] * 32767.0f;
     if (val > 32767.0f)
       val = 32767.0f;
@@ -4148,17 +4148,17 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
     decoder->pcm_out[i] = (int16_t)val;
   }
 
-  audio_output_write(decoder->audio_out, decoder->pcm_out, n * sizeof(int16_t),
-                     res->process_chain_mode);
+  audio_output_write(decoder->audio_out, decoder->pcm_out, frame_count * sizeof(int16_t),
+                     app->process_chain_mode);
 
   return input_bytes;
 }
 
 static void output_noaawx_cleanup(ModuleContext *context) {
-  AppContext *res = context->app;
-  if (!res->module.output_private_data)
+  AppContext *app = context->app;
+  if (!app->module.output_private_data)
     return;
-  NoaawxContext *decoder = (NoaawxContext *)res->module.output_private_data;
+  NoaawxContext *decoder = (NoaawxContext *)app->module.output_private_data;
 
   audio_output_destroy(decoder->audio_out);
   if (decoder->fm_demod)

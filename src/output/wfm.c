@@ -307,7 +307,7 @@ static bool output_wfm_validate_options(AppContext *app) {
 }
 
 static bool output_wfm_initialize(ModuleContext *context) {
-  AppContext *res = context->app;
+  AppContext *app = context->app;
 
   // Windows: stdout defaults to text mode (\n -> \r\n), which corrupts binary
   // I/Q data. We must forcefully set it to binary if the user requested raw
@@ -322,14 +322,14 @@ static bool output_wfm_initialize(ModuleContext *context) {
   }
 
   WfmContext *wfm_decoder = (WfmContext *)mem_arena_alloc(
-      &res->process_chain.setup_arena, sizeof(WfmContext), true);
+      &app->process_chain.setup_arena, sizeof(WfmContext), true);
   if (!wfm_decoder)
     return false;
-  res->module.output_private_data = wfm_decoder;
+  app->module.output_private_data = wfm_decoder;
 
   wfm_decoder->audio_out =
-      audio_output_create(res, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS,
-                          res->module.input_info.demod_audio_buffer_size);
+      audio_output_create(app, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS,
+                          app->module.input_info.demod_audio_buffer_size);
   if (!wfm_decoder->audio_out)
     return false;
 
@@ -404,22 +404,22 @@ static bool output_wfm_initialize(ModuleContext *context) {
   // We calculate the maximum buffer size required for ANY stage of this
   // specific module. If upsampling (e.g. 32k -> 48k), the output buffer needs
   // more space than the input.
-  size_t buffer_samples = res->process_chain.alloc_size_samples;
+  size_t buffer_samples = app->process_chain.alloc_size_samples;
   size_t out_buf_samples =
       (size_t)ceil(buffer_samples * wfm_decoder->output_resample_ratio) + 128;
   size_t max_dsp_samples =
       (buffer_samples > out_buf_samples) ? buffer_samples : out_buf_samples;
 
   wfm_decoder->mpx_buffer = mem_arena_alloc(
-      &res->process_chain.setup_arena, max_dsp_samples * sizeof(float), false);
+      &app->process_chain.setup_arena, max_dsp_samples * sizeof(float), false);
   wfm_decoder->audio_out_l = mem_arena_alloc(
-      &res->process_chain.setup_arena, max_dsp_samples * sizeof(float), false);
+      &app->process_chain.setup_arena, max_dsp_samples * sizeof(float), false);
   wfm_decoder->audio_out_r = mem_arena_alloc(
-      &res->process_chain.setup_arena, max_dsp_samples * sizeof(float), false);
+      &app->process_chain.setup_arena, max_dsp_samples * sizeof(float), false);
 
   // Interleaved buffer is always sized for the output
   wfm_decoder->interleaved_pcm =
-      mem_arena_alloc(&res->process_chain.setup_arena,
+      mem_arena_alloc(&app->process_chain.setup_arena,
                       out_buf_samples * 2 * sizeof(int16_t), false);
 
   if (!wfm_decoder->mpx_buffer || !wfm_decoder->audio_out_l ||
@@ -429,7 +429,7 @@ static bool output_wfm_initialize(ModuleContext *context) {
   // Optional: Allocate S16 buffer for MPX stdout if requested
   if (s_wfm_config.raw_mpx_stdout) {
     wfm_decoder->mpx_s16_buffer =
-        mem_arena_alloc(&res->process_chain.setup_arena,
+        mem_arena_alloc(&app->process_chain.setup_arena,
                         max_dsp_samples * sizeof(int16_t), false);
     if (!wfm_decoder->mpx_s16_buffer)
       return false;
@@ -440,7 +440,7 @@ static bool output_wfm_initialize(ModuleContext *context) {
     // The `is_rbds` parameter for redsea is determined by our final enum state.
     bool is_rbds = (s_wfm_config.rds_standard == RDS_STANDARD_RBDS);
     wfm_decoder->redsea = libredsea_init(wfm_decoder->input_samplerate, is_rbds,
-                                         &res->process_chain.setup_arena);
+                                         &app->process_chain.setup_arena);
     memset(&wfm_decoder->last_rds_state, 0, sizeof(RdsState));
 
     wfm_decoder->rds_display_counter = 0;
@@ -473,8 +473,8 @@ static void output_wfm_flush(ModuleContext *context) {
 }
 static size_t output_wfm_write_chunk(ModuleContext *context, const void *buffer,
                                      size_t input_bytes) {
-  AppContext *res = context->app;
-  WfmContext *wfm_decoder = (WfmContext *)res->module.output_private_data;
+  AppContext *app = context->app;
+  WfmContext *wfm_decoder = (WfmContext *)app->module.output_private_data;
 
   // Statics moved to Context struct
   if (wfm_decoder->first_run) {
@@ -487,7 +487,7 @@ static size_t output_wfm_write_chunk(ModuleContext *context, const void *buffer,
     return 0;
 
   unsigned int num_frames =
-      input_bytes / res->module.output_bytes_per_iq_sample;
+      input_bytes / app->module.output_bytes_per_iq_sample;
   ComplexFloat *iq_in = (ComplexFloat *)buffer;
   liquid_float_complex *iq_ptr = (liquid_float_complex *)iq_in;
 
@@ -960,15 +960,15 @@ static size_t output_wfm_write_chunk(ModuleContext *context, const void *buffer,
                         wfm_decoder->interleaved_pcm, num_resampled);
   audio_output_write(wfm_decoder->audio_out, wfm_decoder->interleaved_pcm,
                      num_resampled * 2 * sizeof(int16_t),
-                     res->process_chain_mode);
+                     app->process_chain_mode);
   return input_bytes;
 }
 
 static void output_wfm_cleanup(ModuleContext *context) {
-  AppContext *res = context->app;
-  if (!res->module.output_private_data)
+  AppContext *app = context->app;
+  if (!app->module.output_private_data)
     return;
-  WfmContext *wfm_decoder = (WfmContext *)res->module.output_private_data;
+  WfmContext *wfm_decoder = (WfmContext *)app->module.output_private_data;
 
   audio_output_destroy(wfm_decoder->audio_out);
 

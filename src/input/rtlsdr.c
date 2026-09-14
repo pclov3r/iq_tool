@@ -86,12 +86,12 @@ static bool input_rtlsdr_validate_generic_options(const AppConfig *config);
 static int rtlsdr_find_nearest_gain(rtlsdr_dev_t *dev,
                                     int requested_gain_tenths,
                                     MemoryArena *arena) {
-  int n = rtlsdr_get_tuner_gains(dev, NULL);
-  if (n <= 0)
+  int gain_count = rtlsdr_get_tuner_gains(dev, NULL);
+  if (gain_count <= 0)
     return requested_gain_tenths;
 
   // Allocate gains[] array from the memory arena
-  int *gains = mem_arena_alloc(arena, sizeof(int) * n, false);
+  int *gains = mem_arena_alloc(arena, sizeof(int) * gain_count, false);
   if (!gains) {
     // Arena exhausted → fallback to no snapping
     return requested_gain_tenths;
@@ -102,7 +102,7 @@ static int rtlsdr_find_nearest_gain(rtlsdr_dev_t *dev,
   int best_gain = gains[0];
   int best_delta = abs(requested_gain_tenths - best_gain);
 
-  for (int i = 1; i < n; i++) {
+  for (int i = 1; i < gain_count; i++) {
     int delta = abs(requested_gain_tenths - gains[i]);
     if (delta < best_delta) {
       best_delta = delta;

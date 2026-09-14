@@ -569,9 +569,9 @@ static double calculate_buffer_power(const float complex *samples,
                                      unsigned int frames) {
   double accum_mag_sq_sum = 0.0;
   for (unsigned int i = 0; i < frames; i++) {
-    float r = crealf(samples[i]);
+    float re = crealf(samples[i]);
     float im = cimagf(samples[i]);
-    accum_mag_sq_sum += (double)(r * r + im * im);
+    accum_mag_sq_sum += (double)(re * re + im * im);
   }
   return accum_mag_sq_sum;
 }
@@ -724,11 +724,12 @@ static size_t output_nrsc5_write_chunk(ModuleContext *context,
   if (input_bytes == 0)
     return 0;
 
-  unsigned int n = input_bytes / app->module.output_bytes_per_iq_sample;
+  unsigned int frame_count =
+      input_bytes / app->module.output_bytes_per_iq_sample;
   const float complex *iq = (const float complex *)buffer;
 
-  nrsc5_decoder->accum_mag_sq_sum += calculate_buffer_power(iq, n);
-  nrsc5_decoder->stat_counter += n;
+  nrsc5_decoder->accum_mag_sq_sum += calculate_buffer_power(iq, frame_count);
+  nrsc5_decoder->stat_counter += frame_count;
 
   if (nrsc5_decoder->stat_rate_threshold > 0 &&
       nrsc5_decoder->stat_counter >= nrsc5_decoder->stat_rate_threshold) {
@@ -743,7 +744,7 @@ static size_t output_nrsc5_write_chunk(ModuleContext *context,
   }
 
   int res_code = nrsc5_pipe_samples_cf32(nrsc5_decoder->nrsc5_instance,
-                                         (const float *)iq, n * 2);
+                                         (const float *)iq, frame_count * 2);
   if (res_code != 0) {
     log_error("NRSC5: Failed to pipe samples to decoder.");
   }

@@ -127,14 +127,14 @@ static bool output_nfm_validate_options(AppContext *app) {
 }
 
 static bool output_nfm_initialize(ModuleContext *context) {
-  AppContext *res = context->app;
+  AppContext *app = context->app;
   NfmContext *nfm_decoder = (NfmContext *)mem_arena_alloc(
-      &res->process_chain.setup_arena, sizeof(NfmContext), true);
-  res->module.output_private_data = nfm_decoder;
+      &app->process_chain.setup_arena, sizeof(NfmContext), true);
+  app->module.output_private_data = nfm_decoder;
 
   nfm_decoder->audio_out =
-      audio_output_create(res, NFM_AUDIO_RATE, NFM_AUDIO_CHANNELS,
-                          res->module.input_info.demod_audio_buffer_size);
+      audio_output_create(app, NFM_AUDIO_RATE, NFM_AUDIO_CHANNELS,
+                          app->module.input_info.demod_audio_buffer_size);
   if (!nfm_decoder->audio_out)
     return false;
 
@@ -175,16 +175,16 @@ static bool output_nfm_initialize(ModuleContext *context) {
            s_nfm_config.disable_discriminator_filter ? "Disabled" : "Enabled");
 
   // 4. Buffers
-  size_t in_samples = res->process_chain.alloc_size_samples;
+  size_t in_samples = app->process_chain.alloc_size_samples;
   size_t out_samples =
       (size_t)ceil(in_samples * nfm_decoder->output_ratio) + 64;
 
-  nfm_decoder->mono_buffer = mem_arena_alloc(&res->process_chain.setup_arena,
+  nfm_decoder->mono_buffer = mem_arena_alloc(&app->process_chain.setup_arena,
                                              in_samples * sizeof(float), false);
   nfm_decoder->resamp_buffer = mem_arena_alloc(
-      &res->process_chain.setup_arena, out_samples * sizeof(float), false);
+      &app->process_chain.setup_arena, out_samples * sizeof(float), false);
   nfm_decoder->pcm_out =
-      mem_arena_alloc(&res->process_chain.setup_arena,
+      mem_arena_alloc(&app->process_chain.setup_arena,
                       out_samples * 2 * sizeof(int16_t), false);
 
   nfm_decoder->first_run = true;
@@ -203,8 +203,8 @@ static void output_nfm_flush(ModuleContext *context) {
 }
 static size_t output_nfm_write_chunk(ModuleContext *context, const void *buffer,
                                      size_t input_bytes) {
-  AppContext *res = context->app;
-  NfmContext *nfm_decoder = (NfmContext *)res->module.output_private_data;
+  AppContext *app = context->app;
+  NfmContext *nfm_decoder = (NfmContext *)app->module.output_private_data;
 
   // Statics moved to Context struct
   if (nfm_decoder->first_run) {
@@ -215,13 +215,13 @@ static size_t output_nfm_write_chunk(ModuleContext *context, const void *buffer,
   if (input_bytes == 0)
     return 0;
 
-  unsigned int n = input_bytes / res->module.output_bytes_per_iq_sample;
+  unsigned int frame_count = input_bytes / app->module.output_bytes_per_iq_sample;
   liquid_float_complex *iq = (liquid_float_complex *)buffer;
 
   // 1. Calculate block-level sum of magnitudes and sum of squares
   float block_mag_sum = 0.0f;
   float block_mag_sq_sum = 0.0f;
-  for (unsigned int i = 0; i < n; i++) {
+  for (unsigned int i = 0; i < frame_count; i++) {
     float mag2 = crealf(iq[i]) * crealf(iq[i]) + cimagf(iq[i]) * cimagf(iq[i]);
     block_mag_sq_sum += mag2;
     block_mag_sum += sqrtf(mag2);
@@ -230,11 +230,11 @@ static size_t output_nfm_write_chunk(ModuleContext *context, const void *buffer,
   // Accumulate for periodic status logging
   nfm_decoder->accum_mag_sum += block_mag_sum;
   nfm_decoder->accum_mag_sq_sum += block_mag_sq_sum;
-  nfm_decoder->stat_counter += n;
+  nfm_decoder->stat_counter += frame_count;
 
   // 2. Calculate exact block-level SNR
-  float block_mean_mag = block_mag_sum / (float)n;
-  float block_avg_power = block_mag_sq_sum / (float)n;
+  float block_mean_mag = block_mag_sum / (float)frame_count;
+  float block_avg_power = block_mag_sq_sum / (float)frame_count;
   float block_variance = block_avg_power - (block_mean_mag * block_mean_mag);
 
   float block_snr_db = 0.0f;
@@ -255,7 +255,7 @@ static size_t output_nfm_write_chunk(ModuleContext *context, const void *buffer,
     }
     // If signal drops, count down the squelch tail (hang-time)
     else if (nfm_decoder->squelch_hang_counter > 0) {
-      nfm_decoder->squelch_hang_counter -= n;
+      nfm_decoder->squelch_hang_counter -= frame_count;
     }
     // Close squelch only if SNR drops below threshold minus hysteresis
     // (e.g., 10.0 - 2.0 = 8.0 dB)
@@ -290,9 +290,9 @@ static size_t output_nfm_write_chunk(ModuleContext *context, const void *buffer,
   }
 
   // 5. Demodulate and apply DSP filters
-  freqdem_demodulate_block(nfm_decoder->fm_demod, iq, n,
+  freqdem_demodulate_block(nfm_decoder->fm_demod, iq, frame_count,
                            nfm_decoder->mono_buffer);
-  for (unsigned int i = 0; i < n; i++) {
+  for (unsigned int i = 0; i < frame_count; i++) {
     float sample = nfm_decoder->mono_buffer[i];
     if (!s_nfm_config.disable_discriminator_filter) {
       iirfilt_rrrf_execute(nfm_decoder->deemph_filter, sample, &sample);
@@ -306,22 +306,22 @@ static size_t output_nfm_write_chunk(ModuleContext *context, const void *buffer,
 
   // 6. Resample to 48kHz audio and output
   unsigned int num_resampled;
-  msresamp_rrrf_execute(nfm_decoder->resampler, nfm_decoder->mono_buffer, n,
+  msresamp_rrrf_execute(nfm_decoder->resampler, nfm_decoder->mono_buffer, frame_count,
                         nfm_decoder->resamp_buffer, &num_resampled);
   interleave_f32_to_s16(nfm_decoder->resamp_buffer, nfm_decoder->resamp_buffer,
                         nfm_decoder->pcm_out, num_resampled);
   audio_output_write(nfm_decoder->audio_out, nfm_decoder->pcm_out,
                      num_resampled * 2 * sizeof(int16_t),
-                     res->process_chain_mode);
+                     app->process_chain_mode);
 
   return input_bytes;
 }
 
 static void output_nfm_cleanup(ModuleContext *context) {
-  AppContext *res = context->app;
-  if (!res->module.output_private_data)
+  AppContext *app = context->app;
+  if (!app->module.output_private_data)
     return;
-  NfmContext *nfm_decoder = (NfmContext *)res->module.output_private_data;
+  NfmContext *nfm_decoder = (NfmContext *)app->module.output_private_data;
 
   audio_output_destroy(nfm_decoder->audio_out);
   if (nfm_decoder->fm_demod)

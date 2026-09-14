@@ -152,17 +152,17 @@ static bool output_am_validate_options(AppContext *app) {
 }
 
 static bool output_am_initialize(ModuleContext *context) {
-  AppContext *res = context->app;
+  AppContext *app = context->app;
 
   AmContext *am_context = (AmContext *)mem_arena_alloc(
-      &res->process_chain.setup_arena, sizeof(AmContext), true);
+      &app->process_chain.setup_arena, sizeof(AmContext), true);
   if (!am_context)
     return false;
-  res->module.output_private_data = am_context;
+  app->module.output_private_data = am_context;
 
   am_context->audio_out =
-      audio_output_create(res, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS,
-                          res->module.input_info.demod_audio_buffer_size);
+      audio_output_create(app, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS,
+                          app->module.input_info.demod_audio_buffer_size);
   if (!am_context->audio_out)
     return false;
 
@@ -243,21 +243,21 @@ static bool output_am_initialize(ModuleContext *context) {
   am_context->audio_lpf = firfilt_rrrf_create(h, h_length);
 
   // 3. Scratch Buffers for Block Processing
-  size_t buffer_samples = res->process_chain.alloc_size_samples;
+  size_t buffer_samples = app->process_chain.alloc_size_samples;
   size_t out_buf_samples =
       (size_t)ceil(buffer_samples * output_resample_ratio) + 128;
 
   am_context->filtered_baseband =
-      mem_arena_alloc(&res->process_chain.setup_arena,
+      mem_arena_alloc(&app->process_chain.setup_arena,
                       buffer_samples * sizeof(liquid_float_complex), false);
   am_context->mono_buffer = mem_arena_alloc(
-      &res->process_chain.setup_arena, buffer_samples * sizeof(float), false);
+      &app->process_chain.setup_arena, buffer_samples * sizeof(float), false);
   am_context->resamp_buffer = mem_arena_alloc(
-      &res->process_chain.setup_arena, out_buf_samples * sizeof(float), false);
+      &app->process_chain.setup_arena, out_buf_samples * sizeof(float), false);
   am_context->final_audio_buffer = mem_arena_alloc(
-      &res->process_chain.setup_arena, out_buf_samples * sizeof(float), false);
+      &app->process_chain.setup_arena, out_buf_samples * sizeof(float), false);
   am_context->interleaved_pcm =
-      mem_arena_alloc(&res->process_chain.setup_arena,
+      mem_arena_alloc(&app->process_chain.setup_arena,
                       out_buf_samples * 2 * sizeof(int16_t), false);
 
   if (!am_context->filtered_baseband || !am_context->mono_buffer ||
@@ -281,15 +281,15 @@ static void output_am_flush(ModuleContext *context) {
 
 static size_t output_am_write_chunk(ModuleContext *context, const void *buffer,
                                     size_t input_bytes) {
-  AppContext *res = context->app;
-  AmContext *am_context = (AmContext *)res->module.output_private_data;
+  AppContext *app = context->app;
+  AmContext *am_context = (AmContext *)app->module.output_private_data;
 
   const float pcm_scale = 32767.0f;
 
   if (input_bytes == 0)
     return 0;
   unsigned int num_frames =
-      input_bytes / res->module.output_bytes_per_iq_sample;
+      input_bytes / app->module.output_bytes_per_iq_sample;
   liquid_float_complex *iq_ptr = (liquid_float_complex *)buffer;
 
   // 1. SIMD Block Processing: Baseband Channel Filter
@@ -485,15 +485,15 @@ static size_t output_am_write_chunk(ModuleContext *context, const void *buffer,
 
   audio_output_write(am_context->audio_out, am_context->interleaved_pcm,
                      num_resampled * 2 * sizeof(int16_t),
-                     res->process_chain_mode);
+                     app->process_chain_mode);
   return input_bytes;
 }
 
 static void output_am_cleanup(ModuleContext *context) {
-  AppContext *res = context->app;
-  if (!res->module.output_private_data)
+  AppContext *app = context->app;
+  if (!app->module.output_private_data)
     return;
-  AmContext *am_context = (AmContext *)res->module.output_private_data;
+  AmContext *am_context = (AmContext *)app->module.output_private_data;
 
   audio_output_destroy(am_context->audio_out);
 

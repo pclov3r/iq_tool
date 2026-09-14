@@ -114,32 +114,35 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
 
   // --- Step 3: Calculate Ratio ---
   double input_rate_d = (double)app->module.input_info.sample_rate;
-  float r = (float)(app->dsp.process_chain_sample_rate_hz / input_rate_d);
+  float resample_ratio =
+      (float)(app->dsp.process_chain_sample_rate_hz / input_rate_d);
 
   // --- Step 4: Check for Passthrough Conditions ---
   if (config->dsp.raw_passthrough) {
     log_info("Raw Passthrough mode enabled: Bypassing all DSP blocks.");
-    r = 1.0f; // Force ratio to 1.0 for buffer calcs
+    resample_ratio = 1.0f; // Force ratio to 1.0 for buffer calcs
     app->dsp.process_chain_sample_format = app->module.input_format;
     app->dsp.process_chain_sample_rate_hz = input_rate_d;
-  } else if (fabs(r - 1.0f) < 1e-6) {
-    r = 1.0f; // Snap to exact 1.0
+  } else if (fabs(resample_ratio - 1.0f) < 1e-6) {
+    resample_ratio = 1.0f; // Snap to exact 1.0
   }
 
   // --- Step 4: Validate Ratio ---
-  if (!isfinite(r) || r < PROCESS_CHAIN_MIN_RATE_SCALAR ||
-      r > PROCESS_CHAIN_MAX_RATE_SCALAR) {
+  if (!isfinite(resample_ratio) ||
+      resample_ratio < PROCESS_CHAIN_MIN_RATE_SCALAR ||
+      resample_ratio > PROCESS_CHAIN_MAX_RATE_SCALAR) {
     log_error("Calculated resampling ratio (%.6f) is invalid or outside "
               "acceptable range.",
-              r);
+              resample_ratio);
     return false;
   }
-  *out_ratio = r;
+  *out_ratio = resample_ratio;
 
   if (app->module.input_info.frames > 0) {
     atomic_store_explicit(
         &app->stats.expected_total_output_frames,
-        (long long)round((double)app->module.input_info.frames * (double)r),
+        (long long)round((double)app->module.input_info.frames *
+                         (double)resample_ratio),
         memory_order_relaxed);
   } else {
     app->stats.expected_total_output_frames = -1;
