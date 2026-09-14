@@ -161,6 +161,16 @@ find_package(LiquidDSP REQUIRED)
 find_package(EXPAT REQUIRED)
 find_package(Threads REQUIRED)
 
+include(CheckSymbolExists)
+set(CMAKE_REQUIRED_LIBRARIES Threads::Threads)
+set(CMAKE_REQUIRED_DEFINITIONS "-D_GNU_SOURCE")
+check_symbol_exists(pthread_setname_np "pthread.h" HAVE_PTHREAD_SETNAME_NP)
+if(HAVE_PTHREAD_SETNAME_NP)
+    add_compile_definitions(HAVE_PTHREAD_SETNAME_NP)
+endif()
+unset(CMAKE_REQUIRED_LIBRARIES)
+unset(CMAKE_REQUIRED_DEFINITIONS)
+
 #=======================================================================
 # Sources
 #=======================================================================
