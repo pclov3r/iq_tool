@@ -103,12 +103,16 @@ void platform_set_thread_priority(ThreadPriority priority,
             thread_name, prio_desc, strerror(fifo_err));
 
   // 2. Attempt Nice fallback
+#if defined(__linux__) && defined(SYS_gettid)
   pid_t tid = (pid_t)syscall(SYS_gettid);
   if (setpriority(PRIO_PROCESS, tid, nice_val) == 0) {
     log_debug("Set '%s' thread scheduling priority to %s (Nice Fallback).",
               thread_name, prio_desc);
     return;
   }
+#else
+  (void)nice_val;
+#endif
 
   // 3. Both failed - print a single, clean warning
   log_warn("Failed to elevate '%s' thread scheduling priority to %s: %s",

@@ -346,7 +346,7 @@ target_link_libraries(iq_tool PRIVATE
 if(WIN32)
     target_link_libraries(iq_tool PRIVATE shlwapi pathcch shell32 ws2_32 ole32)
 else()
-    target_link_libraries(iq_tool PRIVATE m)
+    target_link_libraries(iq_tool PRIVATE m ${CMAKE_DL_LIBS})
 endif()
 
 if(MODULE_LIBRARIES)
