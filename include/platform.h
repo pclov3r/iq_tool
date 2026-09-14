@@ -44,6 +44,14 @@ void platform_sleep(unsigned int ms);
  */
 bool platform_set_binary_mode(FILE *stream);
 
+/**
+ * @brief Returns high-resolution monotonic time in seconds.
+ *
+ * Uses QueryPerformanceCounter on Windows and clock_gettime(CLOCK_MONOTONIC)
+ * on POSIX.
+ */
+double platform_get_time(void);
+
 // --- Thread Priority Abstraction ---
 
 /**

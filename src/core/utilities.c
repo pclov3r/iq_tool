@@ -26,21 +26,7 @@
 #endif
 
 double utility_get_time(void) {
-#ifdef _WIN32
-  LARGE_INTEGER freq, count;
-  if (QueryPerformanceFrequency(&freq) && QueryPerformanceCounter(&count)) {
-    return (double)count.QuadPart / (double)freq.QuadPart;
-  }
-  // Fallback to a lower-resolution timer if QPC fails
-  return (double)GetTickCount64() / 1000.0;
-#else
-  struct timespec ts;
-  if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
-  }
-  // Fallback for systems without clock_gettime
-  return (double)time(NULL);
-#endif
+  return platform_get_time();
 }
 
 void utility_clear_stdin(void) {
