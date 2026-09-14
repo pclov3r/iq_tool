@@ -48,16 +48,15 @@ static bool _init_queues_and_buffers(AppConfig *config, AppContext *app);
 static void _destroy_queues_and_buffers(AppContext *app);
 
 /**
- * @brief Resolves process chain rates, formats, and calculates resample ratio.
+ * @brief Resolves process chain rates, formats, and validates overall rate
+ * scalar.
  *
  * @param config Pointer to the application configuration.
  * @param app Pointer to the application context.
- * @param[out] out_ratio Output pointer for the calculated resample ratio.
  * @return true on success, false if configuration is invalid.
  */
-static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
-                                         float *out_ratio) {
-  if (!config || !app || !out_ratio)
+static bool resolve_process_chain_config(AppConfig *config, AppContext *app) {
+  if (!config || !app)
     return false;
 
   // --- Step 1: Determine Target Rate ---
@@ -112,37 +111,31 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app,
   app->dsp.process_chain_gain = target_gain;
   app->dsp.process_chain_agc = target_agc;
 
-  // --- Step 3: Calculate Ratio ---
+  // --- Step 3: Validate Rate Scalar ---
   double input_rate_d = (double)app->module.input_info.sample_rate;
-  float resample_ratio =
-      (float)(app->dsp.process_chain_sample_rate_hz / input_rate_d);
+  double rate_scalar = app->dsp.process_chain_sample_rate_hz / input_rate_d;
 
-  // --- Step 4: Check for Passthrough Conditions ---
   if (config->dsp.raw_passthrough) {
     log_info("Raw Passthrough mode enabled: Bypassing all DSP blocks.");
-    resample_ratio = 1.0f; // Force ratio to 1.0 for buffer calcs
+    rate_scalar = 1.0;
     app->dsp.process_chain_sample_format = app->module.input_format;
     app->dsp.process_chain_sample_rate_hz = input_rate_d;
-  } else if (fabs(resample_ratio - 1.0f) < 1e-6) {
-    resample_ratio = 1.0f; // Snap to exact 1.0
+  } else if (fabs(rate_scalar - 1.0) < 1e-6) {
+    rate_scalar = 1.0;
   }
 
-  // --- Step 4: Validate Ratio ---
-  if (!isfinite(resample_ratio) ||
-      resample_ratio < PROCESS_CHAIN_MIN_RATE_SCALAR ||
-      resample_ratio > PROCESS_CHAIN_MAX_RATE_SCALAR) {
-    log_error("Calculated resampling ratio (%.6f) is invalid or outside "
+  if (!isfinite(rate_scalar) || rate_scalar < PROCESS_CHAIN_MIN_RATE_SCALAR ||
+      rate_scalar > PROCESS_CHAIN_MAX_RATE_SCALAR) {
+    log_error("Calculated rate scalar (%.6f) is invalid or outside "
               "acceptable range.",
-              resample_ratio);
+              rate_scalar);
     return false;
   }
-  *out_ratio = resample_ratio;
 
   if (app->module.input_info.frames > 0) {
     atomic_store_explicit(
         &app->stats.expected_total_output_frames,
-        (long long)round((double)app->module.input_info.frames *
-                         (double)resample_ratio),
+        (long long)round((double)app->module.input_info.frames * rate_scalar),
         memory_order_relaxed);
   } else {
     app->stats.expected_total_output_frames = -1;
@@ -380,9 +373,8 @@ bool process_chain_setup_buffers(ProcessChainContext *context) {
   AppConfig *config = context->config;
   AppContext *app = context->app;
 
-  // --- Step 0: Calculate Ratios & Allocate Memory Pools ---
-  float resample_ratio;
-  if (!resolve_process_chain_config(config, app, &resample_ratio))
+  // --- Step 0: Resolve Config & Allocate Memory Pools ---
+  if (!resolve_process_chain_config(config, app))
     return false;
   if (!allocate_processing_buffers(config, app))
     return false;
