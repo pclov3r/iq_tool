@@ -16,9 +16,6 @@
  * the 'make clean' command.
  */
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
 
 #include "app_context.h"
 #include "cli.h"

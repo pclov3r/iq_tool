@@ -19,11 +19,6 @@
 #include <string.h>
 #include <time.h>
 
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
 
 // --- Constants ---
 #define NOAAWX_SAMPLE_RATE 24000

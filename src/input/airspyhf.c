@@ -25,13 +25,6 @@
 // Module-specific includes
 #include <airspyhf.h>
 
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <strings.h>
-#include <time.h>
-#include <unistd.h>
-#endif
 
 // --- Default Configuration ---
 #define AIRSPYHF_DEFAULT_FILTER_ATTENUATION_DB 100.0f

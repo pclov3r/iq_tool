@@ -18,10 +18,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#ifdef _WIN32
-#else
-#include <sys/stat.h>
-#endif
 
 // --- Private Helper ---
 // This helper remains private to the common implementation.

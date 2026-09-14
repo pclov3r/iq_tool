@@ -25,13 +25,6 @@
 // Module-specific includes
 #include <hydrasdr.h>
 
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <strings.h>
-#include <time.h>
-#include <unistd.h>
-#endif
 
 // --- Default Configuration ---
 #define HYDRASDR_DEFAULT_FILTER_ATTENUATION_DB 80.0f
