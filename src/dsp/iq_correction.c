@@ -68,13 +68,13 @@
 #include "signal_handler.h"
 #include "thread_manager.h"
 #include "utilities.h"
+#include "platform.h"
 #include <complex.h>
 #include <liquid.h>
 #include <math.h>
 #include <stdatomic.h> // Needed for byte size calculations
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 // --- Default Configuration ---
 #define IQ_CORRECTION_FFT_SIZE 4096
@@ -731,7 +731,7 @@ static void *iq_estimation_thread(void *arg) {
       iq_correction_run_estimation(state, (ComplexFloat *)buffer);
       queue_enqueue(&state->free_queue, buffer);
     } else {
-      usleep(1000);
+      platform_sleep(1);
     }
   }
   log_debug("I/Q optimization thread is exiting.");

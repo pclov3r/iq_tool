@@ -28,6 +28,14 @@
 #include <unistd.h>
 #endif
 
+void platform_sleep(unsigned int ms) {
+#ifdef _WIN32
+  Sleep(ms);
+#else
+  usleep((useconds_t)ms * 1000);
+#endif
+}
+
 void platform_set_thread_priority(ThreadPriority priority,
                                   const char *thread_name) {
 #ifdef _WIN32

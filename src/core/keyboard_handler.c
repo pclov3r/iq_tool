@@ -6,6 +6,7 @@
 #include "keyboard_handler.h"
 #include "log.h"
 #include "module.h"
+#include "platform.h"
 #include "signal_handler.h"
 #include <errno.h>
 #include <pthread.h>
@@ -81,11 +82,7 @@ static void *keyboard_listener_thread(void *arg) {
       }
     }
 
-#ifdef _WIN32
-    Sleep(50);
-#else
-    usleep(50 * 1000); // 50ms sleep to keep CPU at 0%
-#endif
+    platform_sleep(50); // 50ms sleep to keep CPU at 0%
   }
 
 #ifndef _WIN32

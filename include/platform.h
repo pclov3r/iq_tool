@@ -11,8 +11,6 @@
 // Includes required for Windows-specific function signatures below
 #include <malloc.h>
 #include <windows.h>
-// Windows implementation
-#define SLEEP_MS(x) Sleep(x)
 // MinGW doesn't expose aligned_alloc - provide a compatibility shim via macro.
 // Note: _aligned_malloc argument order is (size, alignment), opposite of
 // aligned_alloc.
@@ -21,11 +19,16 @@
 #elif defined(__GNUC__) || defined(__clang__)
 #include <unistd.h>
 // GCC/Clang (Linux/macOS) implementation
-#define SLEEP_MS(x) usleep((x) * 1000)
 #define aligned_free(ptr) free((ptr))
 #else
 #error "Compiler not supported for lock-free primitives."
 #endif
+
+/**
+ * @brief Suspends execution of the calling thread for the specified duration.
+ * @param ms Duration to sleep in milliseconds.
+ */
+void platform_sleep(unsigned int ms);
 
 // --- Thread Priority Abstraction ---
 

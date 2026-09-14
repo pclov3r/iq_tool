@@ -797,11 +797,7 @@ static void input_bladerf_stop_sample_queue_push(ModuleContext *context) {
                           memory_order_release);
 
     // Give the stream thread time to exit cleanly
-#ifdef _WIN32
-    Sleep(200);
-#else
-    usleep(200000);
-#endif
+    platform_sleep(200);
 
     bladerf_channel rx_channel;
     if (strcmp(private_data->board_name, "bladerf2") == 0) {

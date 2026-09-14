@@ -6,13 +6,13 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
-#include <time.h>
 #include <unistd.h>
 #endif
 
 #include "app_context.h"
 #include "config/constants.h"
 #include "log.h"
+#include "platform.h"
 #include "process_chain_context.h"
 #include "queue.h"
 #include "signal_handler.h"
@@ -32,12 +32,7 @@ void *sdr_init_watchdog_thread(void *arg) {
   int elapsed_ms = 0;
 
   while (!atomic_load_explicit(&ctx->is_complete, memory_order_relaxed)) {
-#ifdef _WIN32
-    Sleep(interval_ms);
-#else
-    struct timespec ts = {0, interval_ms * 1000000L};
-    nanosleep(&ts, NULL);
-#endif
+    platform_sleep(interval_ms);
     elapsed_ms += interval_ms;
     if (elapsed_ms >= SDR_INITIALIZE_TIMEOUT_MS) {
       if (!atomic_load_explicit(&ctx->is_complete, memory_order_relaxed)) {
@@ -82,18 +77,10 @@ void *process_chain_thread_watchdog(void *arg) {
   AppConfig *config = args->config;
 
   // Give the SDR a moment to start up before we start checking
-#ifdef _WIN32
-  Sleep(WATCHDOG_TIMEOUT_MS);
-#else
-  sleep(WATCHDOG_TIMEOUT_MS / 1000);
-#endif
+  platform_sleep(WATCHDOG_TIMEOUT_MS);
 
   while (!is_shutdown_requested()) {
-#ifdef _WIN32
-    Sleep(WATCHDOG_INTERVAL_MS);
-#else
-    sleep(WATCHDOG_INTERVAL_MS / 1000);
-#endif
+    platform_sleep(WATCHDOG_INTERVAL_MS);
 
     double current_time = utility_get_time();
     bool timed_out = false;

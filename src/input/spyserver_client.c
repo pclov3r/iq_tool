@@ -688,11 +688,7 @@ static bool input_spyserver_client_initialize(ModuleContext *context) {
          ring_buffer_get_size(client->stream_buffer) < high_water_mark) {
     if (input_has_error(app))
       break;
-#ifdef _WIN32
-    Sleep(100);
-#else
-    usleep(100000);
-#endif
+    platform_sleep(100);
   }
 
   if (is_shutdown_requested() || input_has_error(app)) {
@@ -841,11 +837,7 @@ input_spyserver_client_push_samples_to_queue(ModuleContext *context,
   while (!is_shutdown_requested()) {
     if (input_has_error(app))
       break;
-#ifdef _WIN32
-    Sleep(100);
-#else
-    usleep(100000);
-#endif
+    platform_sleep(100);
   }
 
   if (!is_shutdown_requested()) {

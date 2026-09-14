@@ -13,11 +13,7 @@
 #include <sndfile.h>
 #include <string.h>
 
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
+#include "platform.h"
 
 struct AudioOutputContext {
   ma_device audio_device;
@@ -222,18 +218,10 @@ void audio_output_drain(AudioOutputContext *context) {
       last_size = curr_size;
     }
 
-#ifdef _WIN32
-    Sleep(poll_interval_ms);
-#else
-    usleep(poll_interval_ms * 1000);
-#endif
+    platform_sleep(poll_interval_ms);
   }
 
-#ifdef _WIN32
-  Sleep(hardware_padding_ms);
-#else
-  usleep(hardware_padding_ms * 1000);
-#endif
+  platform_sleep(hardware_padding_ms);
 }
 
 void audio_output_clear(AudioOutputContext *context) {
