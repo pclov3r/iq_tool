@@ -241,7 +241,8 @@ int main(int argc, char *argv[]) {
 cleanup:
   pthread_mutex_lock(&g_console_mutex);
 
-  bool final_ok = !app.stats.error_occurred;
+  bool final_ok =
+      !atomic_load_explicit(&app.stats.error_occurred, memory_order_relaxed);
 
   if (app.module.output_api) {
     log_info("Closing %s output module...", config.output.module_name);

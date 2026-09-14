@@ -12,6 +12,8 @@
 #include "config/constants.h" // Added for NETWORK_SOCKET_TIMEOUT_MS
 #include "log.h"
 #include "mem_arena.h"
+#include <pthread.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -31,8 +33,12 @@
 #endif
 
 // --- Private State ---
-// This reference counter makes the library's lifecycle self-managing.
-static int g_networking_ref_count = 0;
+// Mutex protecting subsystem lifecycle transitions.
+static pthread_mutex_t g_networking_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Atomic reference counter to track active consumers of the networking
+// subsystem.
+static atomic_int g_networking_ref_count = 0;
 
 // The private, internal definition of our opaque handle.
 struct NetworkingContext {
@@ -46,10 +52,14 @@ struct NetworkingContext {
 // --- Public API Implementation ---
 
 bool networking_init(void) {
-  if (g_networking_ref_count > 0) {
-    g_networking_ref_count++;
+  pthread_mutex_lock(&g_networking_mutex);
+  int count =
+      atomic_load_explicit(&g_networking_ref_count, memory_order_relaxed);
+  if (count > 0) {
+    atomic_fetch_add_explicit(&g_networking_ref_count, 1, memory_order_relaxed);
     log_debug("Networking subsystem reference count increased to %d.",
-              g_networking_ref_count);
+              count + 1);
+    pthread_mutex_unlock(&g_networking_mutex);
     return true; // Already initialized, just increment count.
   }
 
@@ -58,31 +68,38 @@ bool networking_init(void) {
   int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
   if (result != 0) {
     log_fatal("WSAStartup failed with error: %d", result);
+    pthread_mutex_unlock(&g_networking_mutex);
     return false;
   }
 #endif
 
   log_debug("Networking subsystem initialized for the first time.");
-  g_networking_ref_count = 1;
+  atomic_store_explicit(&g_networking_ref_count, 1, memory_order_release);
+  pthread_mutex_unlock(&g_networking_mutex);
   return true;
 }
 
 void networking_cleanup(void) {
-  if (g_networking_ref_count <= 0) {
+  pthread_mutex_lock(&g_networking_mutex);
+  int count =
+      atomic_load_explicit(&g_networking_ref_count, memory_order_relaxed);
+  if (count <= 0) {
+    pthread_mutex_unlock(&g_networking_mutex);
     return; // Nothing to clean up or already cleaned up.
   }
 
-  g_networking_ref_count--;
-  log_debug("Networking subsystem reference count decreased to %d.",
-            g_networking_ref_count);
+  atomic_fetch_sub_explicit(&g_networking_ref_count, 1, memory_order_acq_rel);
+  int remaining = count - 1;
+  log_debug("Networking subsystem reference count decreased to %d.", remaining);
 
-  if (g_networking_ref_count == 0) {
+  if (remaining == 0) {
 #ifdef _WIN32
     WSACleanup();
 #endif
     log_debug(
         "Networking subsystem cleaned up as last reference was released.");
   }
+  pthread_mutex_unlock(&g_networking_mutex);
 }
 
 NetworkingContext *networking_connect(const char *hostname, int port,
