@@ -656,11 +656,7 @@ static void _destroy_queues_and_buffers(AppContext *app) {
 
   if (app->process_chain.active_queues) {
     for (int i = 0; i < app->process_chain.num_active_queues; i++) {
-      if (app->process_chain.active_queues[i] &&
-          (i != app->process_chain.num_active_queues - 1 ||
-           app->process_chain.num_active_queues == 1 ||
-           app->process_chain.active_queues[i] !=
-               app->process_chain.active_queues[0])) {
+      if (app->process_chain.active_queues[i]) {
         queue_destroy(app->process_chain.active_queues[i]);
       }
     }
