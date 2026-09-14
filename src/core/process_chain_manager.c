@@ -465,7 +465,7 @@ bool process_chain_execute(ProcessChainContext *context) {
     threads_ok = false;
   if (threads_ok && module_is_live_input(config->input.type_name,
                                          &app->process_chain.setup_arena)) {
-    if (!thread_manager_spawn(&manager, "input watchdog",
+    if (!thread_manager_spawn(&manager, "watchdog",
                               process_chain_thread_watchdog, context))
       threads_ok = false;
   }
