@@ -9,8 +9,8 @@
 #include "config/constants.h"
 #include "log.h"
 #include "module_registry.h"
-#include "sample_format_table.h"
 #include "platform.h"
+#include "sample_format_table.h"
 #include "utilities.h"
 #include <ctype.h>
 #include <errno.h>

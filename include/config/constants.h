@@ -52,14 +52,16 @@
 
 /**
  * @def DSP_MAX_MODULES
- * @brief Hard cap for the DspContext states[] array. Must always be >= chain length.
+ * @brief Hard cap for the DspContext states[] array. Must always be >= chain
+ * length.
  */
 #define DSP_MAX_MODULES 16
 
 /**
  * @def MAX_MANAGED_THREADS
  * @brief Maximum number of concurrent threads managed by ThreadManager.
- * Must accommodate input, chunker, output, watchdog, background, and DSP stages.
+ * Must accommodate input, chunker, output, watchdog, background, and DSP
+ * stages.
  */
 #define MAX_MANAGED_THREADS 32
 
@@ -216,7 +218,8 @@
 
 /**
  * @def NETWORK_MAX_CHUNK_BYTES
- * @brief Maximum chunk size (1 MB) for socket send/recv calls to prevent 32-bit cast overflow.
+ * @brief Maximum chunk size (1 MB) for socket send/recv calls to prevent 32-bit
+ * cast overflow.
  */
 #define NETWORK_MAX_CHUNK_BYTES (1024 * 1024)
 

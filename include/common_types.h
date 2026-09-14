@@ -20,7 +20,6 @@ _Static_assert(sizeof(ComplexFloat) == 8,
 
 // --- Enumerations ---
 
-
 typedef enum {
   FORMAT_UNKNOWN,
   U8,

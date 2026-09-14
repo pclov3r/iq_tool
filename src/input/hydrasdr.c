@@ -25,7 +25,6 @@
 // Module-specific includes
 #include <hydrasdr.h>
 
-
 // --- Default Configuration ---
 #define HYDRASDR_DEFAULT_FILTER_ATTENUATION_DB 80.0f
 #define HYDRASDR_DEFAULT_SAMPLE_RATE 2500000.0

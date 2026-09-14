@@ -147,7 +147,8 @@ void request_shutdown(void) {
     // Generic shutdown: If the active input module has a stop function, call
     // it. This handles blocking input drivers (like RTL-SDR) and background
     // threads.
-    if (app->module.input_api && app->module.input_api->stop_sample_queue_push) {
+    if (app->module.input_api &&
+        app->module.input_api->stop_sample_queue_push) {
       ModuleContext context = {.config = app->config, .app = app};
       app->module.input_api->stop_sample_queue_push(&context);
     }

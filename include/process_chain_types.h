@@ -35,7 +35,8 @@
  */
 typedef struct SampleChunk {
   // --- Data Buffers ---
-  alignas(MEM_ARENA_ALIGNMENT) void *raw_input_data; ///< Buffer for raw data from the input.
+  alignas(MEM_ARENA_ALIGNMENT) void
+      *raw_input_data; ///< Buffer for raw data from the input.
   ComplexFloat *ping_buffer;
   ComplexFloat *pong_buffer;
   ComplexFloat *current_buffer;

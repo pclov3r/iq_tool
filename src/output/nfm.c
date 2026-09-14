@@ -19,7 +19,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 // --- Constants ---
 #define NFM_AUDIO_RATE 48000
 #define NFM_AUDIO_CHANNELS 2 // Output is Stereo (Mono duplicated)
@@ -208,7 +207,8 @@ static size_t output_nfm_write_chunk(ModuleContext *context, const void *buffer,
   if (input_bytes == 0)
     return 0;
 
-  unsigned int frame_count = input_bytes / app->module.output_bytes_per_iq_sample;
+  unsigned int frame_count =
+      input_bytes / app->module.output_bytes_per_iq_sample;
   liquid_float_complex *iq = (liquid_float_complex *)buffer;
 
   // 1. Calculate block-level sum of magnitudes and sum of squares
@@ -299,8 +299,9 @@ static size_t output_nfm_write_chunk(ModuleContext *context, const void *buffer,
 
   // 6. Resample to 48kHz audio and output
   unsigned int num_resampled;
-  msresamp_rrrf_execute(nfm_decoder->resampler, nfm_decoder->mono_buffer, frame_count,
-                        nfm_decoder->resamp_buffer, &num_resampled);
+  msresamp_rrrf_execute(nfm_decoder->resampler, nfm_decoder->mono_buffer,
+                        frame_count, nfm_decoder->resamp_buffer,
+                        &num_resampled);
   interleave_f32_to_s16(nfm_decoder->resamp_buffer, nfm_decoder->resamp_buffer,
                         nfm_decoder->pcm_out, num_resampled);
   audio_output_write(nfm_decoder->audio_out, nfm_decoder->pcm_out,

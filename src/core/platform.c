@@ -499,8 +499,7 @@ size_t platform_get_config_search_paths(const char **paths, size_t max_paths,
 
   const char *xdg_config_home = getenv("XDG_CONFIG_HOME");
   char *xdg_path =
-      arena ? (char *)mem_arena_alloc(arena, APP_MAX_PATH_BUFFER, false)
-            : NULL;
+      arena ? (char *)mem_arena_alloc(arena, APP_MAX_PATH_BUFFER, false) : NULL;
   if (xdg_path) {
     bool xdg_path_set = false;
     if (xdg_config_home && xdg_config_home[0] != '\0') {

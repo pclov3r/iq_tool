@@ -19,7 +19,6 @@
 #include <string.h>
 #include <time.h>
 
-
 // --- Constants ---
 #define NOAAWX_SAMPLE_RATE 24000
 #define NOAAWX_AUDIO_CHANNELS                                                  \
@@ -3942,7 +3941,8 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
     }
   } else {
     // SDR Mode: FM Demodulator
-    freqdem_demodulate_block(decoder->fm_demod, iq, frame_count, decoder->mono_buffer);
+    freqdem_demodulate_block(decoder->fm_demod, iq, frame_count,
+                             decoder->mono_buffer);
   }
 
   for (unsigned int i = 0; i < frame_count; i++) {
@@ -4140,8 +4140,8 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
     decoder->pcm_out[i] = (int16_t)val;
   }
 
-  audio_output_write(decoder->audio_out, decoder->pcm_out, frame_count * sizeof(int16_t),
-                     app->process_chain_mode);
+  audio_output_write(decoder->audio_out, decoder->pcm_out,
+                     frame_count * sizeof(int16_t), app->process_chain_mode);
 
   return input_bytes;
 }

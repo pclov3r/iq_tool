@@ -25,7 +25,6 @@
 // Module-specific includes
 #include <airspyhf.h>
 
-
 // --- Default Configuration ---
 #define AIRSPYHF_DEFAULT_FILTER_ATTENUATION_DB 100.0f
 #define AIRSPYHF_DEFAULT_SAMPLE_RATE 768000

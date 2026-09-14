@@ -14,7 +14,8 @@ static void set_os_thread_name(pthread_t thread, const char *name) {
   if (!name) {
     return;
   }
-#if defined(HAVE_PTHREAD_SETNAME_NP) && (defined(__linux__) || defined(__MINGW32__))
+#if defined(HAVE_PTHREAD_SETNAME_NP) &&                                        \
+    (defined(__linux__) || defined(__MINGW32__))
   char buf[16];
   strncpy(buf, name, sizeof(buf) - 1);
   buf[sizeof(buf) - 1] = '\0';

@@ -63,7 +63,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -1004,6 +1003,7 @@ static void output_wfm_get_summary_info(const ModuleContext *context,
   utility_add_summary_item(info, "Stereo Mode", "%s", mode);
 }
 
+// clang-format off
 const struct argparse_option output_wfm_cli_options[] = {
     OPT_GROUP("WFM Output (wfm)"),
     OPT_FLOAT(
@@ -1026,6 +1026,7 @@ const struct argparse_option output_wfm_cli_options[] = {
                 "Use World RDS standard (Default is US RBDS).", NULL, 0, 0),
 
 };
+// clang-format on
 
 static const struct argparse_option *output_wfm_get_cli_options(int *count) {
   *count = sizeof(output_wfm_cli_options) / sizeof(output_wfm_cli_options[0]);

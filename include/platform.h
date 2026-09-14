@@ -14,7 +14,8 @@
 #include <malloc.h>
 #include <windows.h>
 #define strcasecmp _stricmp
-#define platform_write(fd, buf, count) _write((fd), (buf), (unsigned int)(count))
+#define platform_write(fd, buf, count)                                         \
+  _write((fd), (buf), (unsigned int)(count))
 // MinGW doesn't expose aligned_alloc - provide a compatibility shim via macro.
 // Note: _aligned_malloc argument order is (size, alignment), opposite of
 // aligned_alloc.
@@ -38,7 +39,8 @@ void platform_sleep(unsigned int ms);
 
 /**
  * @brief Sets a standard file stream to binary mode on Windows.
- * On POSIX systems, streams are always binary, so this is a no-op returning true.
+ * On POSIX systems, streams are always binary, so this is a no-op returning
+ * true.
  * @param stream File stream to configure (e.g. stdin, stdout).
  * @return true on success or if unneeded, false on error.
  */
@@ -125,7 +127,8 @@ bool platform_get_executable_dir(char *buffer, size_t buffer_size);
 struct MemoryArena;
 
 /**
- * @brief Retrieves platform-specific directory search paths for configuration files.
+ * @brief Retrieves platform-specific directory search paths for configuration
+ * files.
  *
  * @param paths Array of string pointers to populate.
  * @param max_paths Maximum number of paths that can be stored in the array.

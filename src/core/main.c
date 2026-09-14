@@ -16,7 +16,6 @@
  * the 'make clean' command.
  */
 
-
 #include "app_context.h"
 #include "cli.h"
 #include "config/constants.h"

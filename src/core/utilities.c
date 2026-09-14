@@ -7,12 +7,12 @@
 #include "app_context.h"
 #include "log.h"
 #include "mem_arena.h"
+#include "platform.h"
 #include <ctype.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "platform.h"
 #include <string.h>
 #include <time.h>
 
@@ -25,9 +25,7 @@
 #include <unistd.h>
 #endif
 
-double utility_get_time(void) {
-  return platform_get_time();
-}
+double utility_get_time(void) { return platform_get_time(); }
 
 void utility_clear_stdin(void) {
   int c;

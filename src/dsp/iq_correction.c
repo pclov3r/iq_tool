@@ -61,6 +61,7 @@
 #include "mem_arena.h"
 #include "module.h"
 #include "module_registry.h"
+#include "platform.h"
 #include "process_chain_context.h"
 #include "process_chain_manager.h"
 #include "queue.h"
@@ -68,7 +69,6 @@
 #include "signal_handler.h"
 #include "thread_manager.h"
 #include "utilities.h"
-#include "platform.h"
 #include <complex.h>
 #include <liquid.h>
 #include <math.h>

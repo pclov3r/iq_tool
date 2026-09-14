@@ -22,7 +22,6 @@
 // Module-specific includes
 #include <rtl-sdr.h>
 
-
 // --- Default Configuration ---
 #define RTLSDR_DEFAULT_FILTER_ATTENUATION_DB 60.0f
 #define RTLSDR_DEFAULT_SAMPLE_RATE 2400000.0
