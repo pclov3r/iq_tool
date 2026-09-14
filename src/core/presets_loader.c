@@ -20,8 +20,6 @@
 
 #ifdef _WIN32
 #include <io.h>
-#include <shlobj.h>
-#include <shlwapi.h>
 #include <windows.h>
 #else
 #include <libgen.h>
@@ -117,81 +115,11 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
   int num_found_files = 0;
 
   const char *search_paths_list[10];
-  int current_path_idx = 0;
+  size_t num_search_paths = platform_get_config_search_paths(
+      search_paths_list,
+      sizeof(search_paths_list) / sizeof(search_paths_list[0]), arena);
 
-#ifdef _WIN32
-  char exe_dir[APP_MAX_PATH_BUFFER];
-  if (platform_get_executable_dir(exe_dir, sizeof(exe_dir))) {
-    search_paths_list[current_path_idx++] = exe_dir;
-  }
-  wchar_t *appdata_path_w = NULL;
-  if (SHGetKnownFolderPath(&FOLDERID_RoamingAppData, 0, NULL,
-                           &appdata_path_w) == S_OK) {
-    wchar_t full_appdata_path_w[APP_MAX_PATH_BUFFER];
-    wcsncpy(full_appdata_path_w, appdata_path_w, APP_MAX_PATH_BUFFER - 1);
-    full_appdata_path_w[APP_MAX_PATH_BUFFER - 1] = L'\0';
-    CoTaskMemFree(appdata_path_w);
-    PathAppendW(full_appdata_path_w, L"\\" APP_NAME);
-
-    char *appdata_path_utf8 =
-        (char *)mem_arena_alloc(arena, APP_MAX_PATH_BUFFER, false);
-    if (appdata_path_utf8) {
-      if (WideCharToMultiByte(CP_UTF8, 0, full_appdata_path_w, -1,
-                              appdata_path_utf8, APP_MAX_PATH_BUFFER, NULL,
-                              NULL) > 0) {
-        search_paths_list[current_path_idx++] = appdata_path_utf8;
-      }
-    }
-  }
-  wchar_t *programdata_path_w = NULL;
-  if (SHGetKnownFolderPath(&FOLDERID_ProgramData, 0, NULL,
-                           &programdata_path_w) == S_OK) {
-    wchar_t full_programdata_path_w[APP_MAX_PATH_BUFFER];
-    wcsncpy(full_programdata_path_w, programdata_path_w,
-            APP_MAX_PATH_BUFFER - 1);
-    full_programdata_path_w[APP_MAX_PATH_BUFFER - 1] = L'\0';
-    CoTaskMemFree(programdata_path_w);
-    PathAppendW(full_programdata_path_w, L"\\" APP_NAME);
-
-    char *programdata_path_utf8 =
-        (char *)mem_arena_alloc(arena, APP_MAX_PATH_BUFFER, false);
-    if (programdata_path_utf8) {
-      if (WideCharToMultiByte(CP_UTF8, 0, full_programdata_path_w, -1,
-                              programdata_path_utf8, APP_MAX_PATH_BUFFER, NULL,
-                              NULL) > 0) {
-        search_paths_list[current_path_idx++] = programdata_path_utf8;
-      }
-    }
-  }
-#else // POSIX
-  search_paths_list[current_path_idx++] = ".";
-  const char *xdg_config_home = getenv("XDG_CONFIG_HOME");
-
-  char *xdg_path = (char *)mem_arena_alloc(arena, APP_MAX_PATH_BUFFER, false);
-  if (xdg_path) {
-    bool xdg_path_set = false;
-    if (xdg_config_home && xdg_config_home[0] != '\0') {
-      snprintf(xdg_path, APP_MAX_PATH_BUFFER, "%s/%s", xdg_config_home,
-               APP_NAME);
-      xdg_path_set = true;
-    } else {
-      const char *home_dir = getenv("HOME");
-      if (home_dir) {
-        snprintf(xdg_path, APP_MAX_PATH_BUFFER, "%s/.config/%s", home_dir,
-                 APP_NAME);
-        xdg_path_set = true;
-      }
-    }
-    if (xdg_path_set) {
-      search_paths_list[current_path_idx++] = xdg_path;
-    }
-  }
-
-  search_paths_list[current_path_idx++] = "/etc/" APP_NAME;
-  search_paths_list[current_path_idx++] = "/usr/local/etc/" APP_NAME;
-#endif
-
-  for (int i = 0; i < current_path_idx; ++i) {
+  for (size_t i = 0; i < num_search_paths; ++i) {
     const char *base_dir = search_paths_list[i];
     if (base_dir == NULL)
       continue;

@@ -114,4 +114,17 @@ bool get_absolute_path_windows(const char *path_arg_mbcs, wchar_t *out_path_w,
 bool platform_get_executable_dir(char *buffer, size_t buffer_size);
 #endif // _WIN32
 
+struct MemoryArena;
+
+/**
+ * @brief Retrieves platform-specific directory search paths for configuration files.
+ *
+ * @param paths Array of string pointers to populate.
+ * @param max_paths Maximum number of paths that can be stored in the array.
+ * @param arena Memory arena to allocate path strings from.
+ * @return Number of search paths added to the array.
+ */
+size_t platform_get_config_search_paths(const char **paths, size_t max_paths,
+                                        struct MemoryArena *arena);
+
 #endif // PLATFORM_H_
