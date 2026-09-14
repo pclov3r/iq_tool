@@ -28,15 +28,15 @@ struct RingBuffer {
   size_t capacity;
 
   // C11 Lock-Free Implementation:
-  // alignas(128) pushes 'write_pos' and 'read_pos' into completely different
-  // cache lines (and prevents spatial prefetcher collisions).
-  // This permanently eliminates False Sharing between Producer and Consumer
-  // cores.
-  alignas(128) atomic_size_t write_pos;
-  alignas(128) atomic_size_t read_pos;
+  // alignas(CACHE_LINE_PADDING) pushes 'write_pos' and 'read_pos' into
+  // completely different cache lines (and prevents spatial prefetcher
+  // collisions). This permanently eliminates False Sharing between Producer and
+  // Consumer cores.
+  alignas(CACHE_LINE_PADDING) atomic_size_t write_pos;
+  alignas(CACHE_LINE_PADDING) atomic_size_t read_pos;
 
   // Isolates the reader index from the flags and mutexes below.
-  alignas(128) atomic_bool end_of_stream;
+  alignas(CACHE_LINE_PADDING) atomic_bool end_of_stream;
   atomic_bool shutting_down;
   atomic_bool is_consumer_sleeping;
 

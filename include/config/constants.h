@@ -41,6 +41,16 @@
 #define MEM_ARENA_ALIGNMENT 128
 
 /**
+ * @def CACHE_LINE_PADDING
+ * @brief Byte boundary used to isolate atomic variables across cache lines.
+ *
+ * Purpose: Pushes shared variables (e.g. ring buffer read/write indices) into
+ * separate cache lines and accounts for adjacent cache line prefetchers (128
+ * bytes total) to eliminate false sharing between CPU cores.
+ */
+#define CACHE_LINE_PADDING 128
+
+/**
  * @def MEM_ARENA_SIZE_BYTES
  * @brief The size of the single memory arena for all startup and buffer
  * allocations.
