@@ -6,10 +6,9 @@
 #ifndef THREAD_MANAGER_H_
 #define THREAD_MANAGER_H_
 
+#include "config/constants.h"
 #include <pthread.h>
 #include <stdbool.h>
-
-#define MAX_MANAGED_THREADS 16
 
 typedef struct ThreadManager {
   pthread_t thread_handles[MAX_MANAGED_THREADS];

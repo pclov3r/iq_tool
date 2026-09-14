@@ -415,8 +415,8 @@ bool process_chain_execute(ProcessChainContext *context) {
 
   // Start DSP chains
   if (threads_ok && !config->dsp.raw_passthrough) {
-    const struct DspModuleInterface *dsp_modules[16];
-    void *dsp_states[16];
+    const struct DspModuleInterface *dsp_modules[DSP_MAX_MODULES];
+    void *dsp_states[DSP_MAX_MODULES];
     int num_dsp_modules = 0;
     for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
       const struct DspModuleInterface *module =

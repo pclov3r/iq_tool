@@ -57,6 +57,13 @@
 #define DSP_MAX_MODULES 16
 
 /**
+ * @def MAX_MANAGED_THREADS
+ * @brief Maximum number of concurrent threads managed by ThreadManager.
+ * Must accommodate input, chunker, output, watchdog, background, and DSP stages.
+ */
+#define MAX_MANAGED_THREADS 32
+
+/**
  * @def MEM_ARENA_SIZE_BYTES
  * @brief The size of the single memory arena for all startup and buffer
  * allocations.
@@ -206,5 +213,11 @@
  * without closing the TCP connection (half-open socket).
  */
 #define NETWORK_SOCKET_TIMEOUT_MS 5000
+
+/**
+ * @def NETWORK_MAX_CHUNK_BYTES
+ * @brief Maximum chunk size (1 MB) for socket send/recv calls to prevent 32-bit cast overflow.
+ */
+#define NETWORK_MAX_CHUNK_BYTES (1024 * 1024)
 
 #endif // CONSTANTS_H_

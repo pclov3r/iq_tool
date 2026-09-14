@@ -240,8 +240,8 @@ bool networking_send_all(NetworkingContext *context, const void *data,
   size_t total_sent = 0;
   while (total_sent < length) {
     size_t to_send = length - total_sent;
-    if (to_send > 1048576)
-      to_send = 1048576; // Clamp to 1MB chunks to prevent 32-bit cast overflow
+    if (to_send > NETWORK_MAX_CHUNK_BYTES)
+      to_send = NETWORK_MAX_CHUNK_BYTES;
     int sent = send(context->socket_fd, (const char *)data + total_sent,
                     (int)to_send, 0);
     if (sent <= 0) {
@@ -271,8 +271,8 @@ bool networking_recv_all(NetworkingContext *context, void *data,
   size_t total_recv = 0;
   while (total_recv < length) {
     size_t to_recv = length - total_recv;
-    if (to_recv > 1048576)
-      to_recv = 1048576; // Clamp to 1MB chunks to prevent 32-bit cast overflow
+    if (to_recv > NETWORK_MAX_CHUNK_BYTES)
+      to_recv = NETWORK_MAX_CHUNK_BYTES;
     int recvd =
         recv(context->socket_fd, (char *)data + total_recv, (int)to_recv, 0);
     if (recvd <= 0) {
