@@ -98,21 +98,25 @@ void platform_set_thread_priority(ThreadPriority priority,
     return;
   }
 
-  // Report why we are falling back
-  log_debug("Failed to set '%s' to %s (%s). Attempting Nice fallback...",
-            thread_name, prio_desc, strerror(fifo_err));
-
   // 2. Attempt Nice fallback
+  bool nice_ok = false;
 #if defined(__linux__) && defined(SYS_gettid)
   pid_t tid = (pid_t)syscall(SYS_gettid);
-  if (setpriority(PRIO_PROCESS, tid, nice_val) == 0) {
-    log_debug("Set '%s' thread scheduling priority to %s (Nice Fallback).",
-              thread_name, prio_desc);
-    return;
-  }
+  nice_ok = (setpriority(PRIO_PROCESS, (id_t)tid, nice_val) == 0);
+#elif defined(__APPLE__) && defined(PRIO_DARWIN_THREAD)
+  nice_ok = (setpriority(PRIO_DARWIN_THREAD, 0, nice_val) == 0);
+#elif defined(__FreeBSD__)
+  nice_ok = (setpriority(PRIO_PROCESS, (id_t)pthread_getthreadid_np(),
+                         nice_val) == 0);
 #else
   (void)nice_val;
 #endif
+
+  if (nice_ok) {
+    log_debug("Set '%s' thread scheduling priority to %s.", thread_name,
+              prio_desc);
+    return;
+  }
 
   // 3. Both failed - print a single, clean warning
   log_warn("Failed to elevate '%s' thread scheduling priority to %s: %s",
