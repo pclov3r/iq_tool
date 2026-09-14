@@ -53,12 +53,12 @@ static const SampleFormatInfo MASTER_FORMAT_TABLE[] = {
               DEFAULT_FILTER_ATTENUATION_32BIT_DB},
 };
 
-static const int NUM_MASTER_FORMATS =
+static const size_t NUM_MASTER_FORMATS =
     sizeof(MASTER_FORMAT_TABLE) / sizeof(MASTER_FORMAT_TABLE[0]);
 
 // --- Function Implementations ---
 const SampleFormatInfo *get_format_info_by_enum(SampleFormat format) {
-  if (format > FORMAT_UNKNOWN && format < NUM_MASTER_FORMATS) {
+  if (format > FORMAT_UNKNOWN && (size_t)format < NUM_MASTER_FORMATS) {
     if (MASTER_FORMAT_TABLE[format].name_str != NULL) {
       return &MASTER_FORMAT_TABLE[format];
     }
@@ -69,7 +69,7 @@ const SampleFormatInfo *get_format_info_by_enum(SampleFormat format) {
 const SampleFormatInfo *get_format_info_by_name(const char *name) {
   if (!name)
     return NULL;
-  for (int i = 0; i < NUM_MASTER_FORMATS; ++i) {
+  for (size_t i = 0; i < NUM_MASTER_FORMATS; ++i) {
     if (MASTER_FORMAT_TABLE[i].name_str &&
         strcasecmp(name, MASTER_FORMAT_TABLE[i].name_str) == 0) {
       return &MASTER_FORMAT_TABLE[i];
