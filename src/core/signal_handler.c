@@ -10,6 +10,7 @@
 #include "queue.h"       // Provides queue_signal_shutdown
 #include "ring_buffer.h" // Provides ring_buffer_signal_shutdown
 #include "wait_event.h"
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,7 +29,6 @@
 extern pthread_mutex_t g_console_mutex;
 
 static AppContext *g_app_context_for_signal_handler = NULL;
-#include <stdatomic.h>
 static atomic_bool g_shutdown_flag = ATOMIC_VAR_INIT(false);
 
 #ifdef _WIN32
