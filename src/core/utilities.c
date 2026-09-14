@@ -162,40 +162,6 @@ void utility_format_duration(double total_seconds, char *buffer,
   snprintf(buffer, buffer_size, "%02d:%02d:%02d", hours, minutes, seconds);
 }
 
-bool utility_check_nyquist_warning(double freq_to_check_hz,
-                                   double sample_rate_hz,
-                                   const char *context_str) {
-  if (!context_str || sample_rate_hz <= 0) {
-    return true; // Cannot perform check, so allow continuation.
-  }
-
-  double nyquist_freq = sample_rate_hz / 2.0;
-
-  if (fabs(freq_to_check_hz) > nyquist_freq) {
-    log_warn("The '%s' of %.15g Hz exceeds the Nyquist frequency of %.15g Hz "
-             "for the current sample rate.",
-             context_str, freq_to_check_hz, nyquist_freq);
-    log_warn("This may cause aliasing and corrupt the signal.");
-
-    int response;
-    do {
-      fprintf(stderr, "Continue anyway? (y/n): ");
-      response = getchar();
-      if (response == EOF) {
-        fprintf(stderr, "\nEOF detected. Cancelling.\n");
-        return false;
-      }
-      utility_clear_stdin();
-      response = tolower(response);
-      if (response == 'n') {
-        log_info("Operation cancelled by user.");
-        return false;
-      }
-    } while (response != 'y');
-  }
-  return true;
-}
-
 bool utility_check_file_exists(const char *full_path) {
 #ifdef _WIN32
   wchar_t w_path[MAX_PATH];

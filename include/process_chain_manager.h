@@ -32,8 +32,4 @@ void process_chain_teardown_buffers(struct ProcessChainContext *context);
 void process_chain_get_summary_info(const struct AppContext *app,
                                     OutputSummaryInfo *info);
 
-void *process_chain_get_module_state(const struct AppContext *app,
-                                     const char *module_name,
-                                     const char *stage_tag);
-
 #endif // PROCESS_CHAIN_MANAGER_H_

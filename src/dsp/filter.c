@@ -125,13 +125,6 @@ static inline void _normalize_filter_dc_gain(float *taps, unsigned int length) {
   }
 }
 
-static inline void _invert_filter_spectrum(float *taps, unsigned int length) {
-  for (unsigned int k = 0; k < length; k++) {
-    taps[k] = -taps[k];
-  }
-  taps[(length - 1) / 2] += 1.0f;
-}
-
 static liquid_float_complex *
 convolve_complex_taps(const liquid_float_complex *h1, int length1,
                       const liquid_float_complex *h2, int length2,

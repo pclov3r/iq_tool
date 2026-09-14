@@ -64,12 +64,6 @@ void platform_set_thread_priority(ThreadPriority priority,
  */
 void platform_check_cpu_features(void);
 
-/**
- * @brief Ensures stdin and stdout are set to binary mode on Windows.
- * Does nothing on POSIX platforms where binary mode is the default.
- */
-void platform_set_binary_mode(void);
-
 // --- Dynamic Library Loading ---
 
 void *platform_dll_load(const char *dll_path);

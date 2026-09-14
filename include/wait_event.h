@@ -36,11 +36,6 @@ void wait_event_destroy(WaitEvent *ev);
 void wait_event_signal(WaitEvent *ev);
 
 /**
- * @brief Resets the event to the unsignaled state.
- */
-void wait_event_reset(WaitEvent *ev);
-
-/**
  * @brief Blocks the calling thread until the event is signaled.
  * If the event is already signaled, this returns immediately.
  */

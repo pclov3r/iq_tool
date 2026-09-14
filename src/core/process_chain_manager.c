@@ -246,10 +246,6 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
     return false;
   }
 
-  // Update legacy field used by some filters
-  app->process_chain.max_out_samples =
-      (unsigned int)app->process_chain.alloc_size_samples;
-
   // -------------------------------------------------------------------------
   // 4. Calculate Dynamic ProcessChain Depth ("Trays")
   // -------------------------------------------------------------------------
@@ -504,21 +500,6 @@ void process_chain_get_summary_info(const AppContext *app,
       module->get_summary_info(app->dsp.states[i], info);
     }
   }
-}
-
-void *process_chain_get_module_state(const AppContext *app,
-                                     const char *module_name,
-                                     const char *stage_tag) {
-  for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
-    if (strcmp(DEFAULT_PROCESS_CHAIN[i].module_name, module_name) == 0) {
-      if (!stage_tag ||
-          (DEFAULT_PROCESS_CHAIN[i].stage_tag &&
-           strcmp(DEFAULT_PROCESS_CHAIN[i].stage_tag, stage_tag) == 0)) {
-        return app->dsp.states[i];
-      }
-    }
-  }
-  return NULL;
 }
 
 // --- Private Helper Function Implementations ---

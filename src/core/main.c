@@ -62,7 +62,6 @@ pthread_mutex_t g_console_mutex;
 
 // --- Forward Declarations for Static Helper Functions ---
 static void initialize_resource_struct(AppConfig *config, AppContext *app);
-static bool validate_configuration(AppConfig *config, const AppContext *app);
 static void print_configuration_summary(const AppConfig *config,
                                         const AppContext *app);
 static void print_summary_section(const char *header,
@@ -166,10 +165,6 @@ int main(int argc, char *argv[]) {
   }
 
   if (!cli_parse(argc, argv, &app)) {
-    goto cleanup;
-  }
-
-  if (!validate_configuration(&config, &app)) {
     goto cleanup;
   }
 
@@ -385,12 +380,6 @@ static void initialize_resource_struct(AppConfig *config, AppContext *app) {
 
   config->dsp.iq_correction.enable = false;
   config->dsp.dc_block.enable = false;
-}
-
-static bool validate_configuration(AppConfig *config, const AppContext *app) {
-  (void)config;
-  (void)app;
-  return true;
 }
 
 static void print_configuration_summary(const AppConfig *config,

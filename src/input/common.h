@@ -15,20 +15,6 @@
 // --- Common Implementations for the InputModuleInterface Interface ---
 
 /**
- * @brief A generic function for inputs that have a known, finite length (e.g.,
- * files).
- * @return Always returns true.
- */
-static inline bool _input_has_known_length_true(void) { return true; }
-
-/**
- * @brief A generic function for inputs that do not have a known length (e.g.,
- * live streams).
- * @return Always returns false.
- */
-static inline bool _input_has_known_length_false(void) { return false; }
-
-/**
  * @brief Updates the input heartbeat timestamp in a thread-safe manner.
  *
  * This function should be called by an Input module immediately after it

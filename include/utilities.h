@@ -105,18 +105,6 @@ void utility_format_duration(double total_seconds, char *buffer,
                              size_t buffer_size);
 
 /**
- * @brief Checks if a given frequency exceeds the Nyquist frequency for a sample
- * rate and warns the user.
- * @param freq_to_check_hz The frequency in Hz to check.
- * @param sample_rate_hz The sample rate in Hz.
- * @param context_str A string describing the context (e.g., "Filter Cutoff").
- * @return true to continue, false if the user chose to cancel.
- */
-bool utility_check_nyquist_warning(double freq_to_check_hz,
-                                   double sample_rate_hz,
-                                   const char *context_str);
-
-/**
  * @brief Checks if a file exists at the given path and is accessible for
  * reading.
  * @param full_path The full path to the file.

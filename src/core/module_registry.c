@@ -98,16 +98,6 @@ const struct DspModuleInterface *get_dsp_module(const char *name,
 
 // --- Public Queries & Actions ---
 
-void module_apply_defaults(AppConfig *config, MemoryArena *arena) {
-  initialize_modules_list(arena);
-
-  for (int i = 0; i < num_all_modules; ++i) {
-    if (all_modules[i].set_default_config) {
-      all_modules[i].set_default_config(config);
-    }
-  }
-}
-
 const Module *module_get_all(int *count, MemoryArena *arena) {
   initialize_modules_list(arena);
   *count = num_all_modules;

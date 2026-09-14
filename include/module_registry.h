@@ -86,15 +86,6 @@ void module_registry_add(const Module *m);
 const Module *module_get_all(int *count, struct MemoryArena *arena);
 
 /**
- * @brief Iterates through all registered modules and applies their default
- * settings.
- * @param config The application configuration struct to be modified.
- * @param arena The memory arena, needed to initialize the module list on first
- * call.
- */
-void module_apply_defaults(struct AppConfig *config, struct MemoryArena *arena);
-
-/**
  * @brief Checks if a given module name corresponds to a live input requiring a
  * watchdog.
  * @param name The name of the module to check.

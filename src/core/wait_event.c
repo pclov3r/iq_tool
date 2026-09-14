@@ -83,18 +83,6 @@ void wait_event_signal(WaitEvent *ev) {
 #endif
 }
 
-void wait_event_reset(WaitEvent *ev) {
-  if (!ev)
-    return;
-#ifdef _WIN32
-  ResetEvent(ev->handle);
-#else
-  pthread_mutex_lock(&ev->mutex);
-  ev->signaled = false;
-  pthread_mutex_unlock(&ev->mutex);
-#endif
-}
-
 void wait_event_wait(WaitEvent *ev) {
   if (!ev)
     return;

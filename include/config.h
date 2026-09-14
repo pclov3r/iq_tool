@@ -23,14 +23,6 @@ struct AppConfig;
 // --- Function Declarations ---
 
 /**
- * @brief Validates that the user has not specified conflicting output
- * destinations.
- * @param config The application configuration struct.
- * @return true if valid, false otherwise.
- */
-bool validate_output_destination(struct AppConfig *config);
-
-/**
  * @brief Resolves presets and validates the final output format choices.
  * @param config The application configuration struct.
  * @return true if valid, false otherwise.

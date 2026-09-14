@@ -114,11 +114,8 @@ typedef struct AppConfig {
   // --- DSP Configuration ---
   struct {
     float input_gain;
-    bool input_gain_provided;
     float output_gain;
-    bool output_gain_provided;
     float baseband_gain;
-    bool baseband_gain_provided;
     double frequency_shift_hz;
     bool shift_after_resample;
     bool raw_passthrough;
@@ -168,7 +165,6 @@ typedef struct AppConfig {
 
   // --- Global / Misc ---
   char *preset_name;
-  bool help_requested;
   PresetDefinition *presets;
   int num_presets;
 } AppConfig;
@@ -186,7 +182,6 @@ typedef struct ProcessChainInfrastructure {
   size_t alloc_size_samples;
   size_t read_chunk_size;
   size_t num_chunks;
-  unsigned int max_out_samples;
 
   size_t input_buffer_size;
 
