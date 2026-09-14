@@ -31,11 +31,23 @@
 #error "Compiler not supported for lock-free primitives."
 #endif
 
+// --- Timing & Execution Delay ---
+
 /**
  * @brief Suspends execution of the calling thread for the specified duration.
  * @param ms Duration to sleep in milliseconds.
  */
 void platform_sleep(unsigned int ms);
+
+/**
+ * @brief Returns high-resolution monotonic time in seconds.
+ *
+ * Uses QueryPerformanceCounter on Windows and clock_gettime(CLOCK_MONOTONIC)
+ * on POSIX.
+ */
+double platform_get_time(void);
+
+// --- File Stream & Descriptor I/O ---
 
 /**
  * @brief Sets a standard file stream to binary mode on Windows.
@@ -45,14 +57,6 @@ void platform_sleep(unsigned int ms);
  * @return true on success or if unneeded, false on error.
  */
 bool platform_set_binary_mode(FILE *stream);
-
-/**
- * @brief Returns high-resolution monotonic time in seconds.
- *
- * Uses QueryPerformanceCounter on Windows and clock_gettime(CLOCK_MONOTONIC)
- * on POSIX.
- */
-double platform_get_time(void);
 
 // --- Thread Priority Abstraction ---
 
@@ -80,16 +84,6 @@ typedef enum {
  */
 void platform_set_thread_priority(ThreadPriority priority,
                                   const char *thread_name);
-
-/**
- * @brief Safely checks if the host CPU meets the binary's compiler-enforced
- * requirements.
- *
- * If the binary was compiled for AVX or AVX2, this validates that both the
- * hardware and OS support the required instruction sets at runtime to prevent
- * Illegal Instruction crashes.
- */
-void platform_check_cpu_features(void);
 
 // --- Dynamic Library Loading ---
 
@@ -124,6 +118,8 @@ bool get_absolute_path_windows(const char *path_arg_mbcs, wchar_t *out_path_w,
 bool platform_get_executable_dir(char *buffer, size_t buffer_size);
 #endif // _WIN32
 
+// --- Configuration & Search Paths ---
+
 struct MemoryArena;
 
 /**
@@ -137,5 +133,17 @@ struct MemoryArena;
  */
 size_t platform_get_config_search_paths(const char **paths, size_t max_paths,
                                         struct MemoryArena *arena);
+
+// --- CPU Feature Diagnostics ---
+
+/**
+ * @brief Safely checks if the host CPU meets the binary's compiler-enforced
+ * requirements.
+ *
+ * If the binary was compiled for AVX or AVX2, this validates that both the
+ * hardware and OS support the required instruction sets at runtime to prevent
+ * Illegal Instruction crashes.
+ */
+void platform_check_cpu_features(void);
 
 #endif // PLATFORM_H_
