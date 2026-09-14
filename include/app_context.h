@@ -9,7 +9,6 @@
 
 #include "common_types.h"
 #include "config/constants.h"
-#include "config/process_chain_default.h"
 #include "mem_arena.h"
 #include "module.h"
 #include "presets_loader.h"
@@ -248,7 +247,7 @@ typedef struct RuntimeState {
 } RuntimeState;
 
 // =========================================================
-// == The Main Container (formerly AppResources)
+// == The Main Application State Container
 // =========================================================
 typedef struct AppContext {
   const struct AppConfig *config;

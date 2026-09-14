@@ -72,22 +72,6 @@ const Module *module_get(const char *name, ModuleType type,
   return _find_module_by_name_and_type(name, type, arena);
 }
 
-const struct InputModuleInterface *get_input_module(const char *name,
-                                                    MemoryArena *arena) {
-  const Module *module = module_get(name, MODULE_TYPE_INPUT, arena);
-  if (module)
-    return (const struct InputModuleInterface *)module->api;
-  return NULL;
-}
-
-const struct OutputModuleInterface *get_output_module(const char *name,
-                                                      MemoryArena *arena) {
-  const Module *module = module_get(name, MODULE_TYPE_OUTPUT, arena);
-  if (module)
-    return (const struct OutputModuleInterface *)module->api;
-  return NULL;
-}
-
 const struct DspModuleInterface *get_dsp_module(const char *name,
                                                 MemoryArena *arena) {
   const Module *module = module_get(name, MODULE_TYPE_DSP, arena);

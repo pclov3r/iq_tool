@@ -301,7 +301,7 @@ void *process_chain_thread_output(void *arg) {
       }
     }
 
-    // 2. Handle Reset Event (Source Overrun)
+    // 2. Handle Reset Event (Input Overrun)
     if (item->stream_discontinuity_event) {
       if (out_api->reset)
         out_api->reset(&context);

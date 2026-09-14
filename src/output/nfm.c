@@ -10,8 +10,6 @@
 #include "log.h"
 #include "module.h"
 #include "module_registry.h"
-#include "queue.h"
-#include "ring_buffer.h"
 #include "signal_handler.h"
 #include "utilities.h"
 #include <complex.h>

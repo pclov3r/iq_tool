@@ -27,7 +27,7 @@
 
 extern pthread_mutex_t g_console_mutex;
 
-static AppContext *g_resources_for_signal_handler = NULL;
+static AppContext *g_app_context_for_signal_handler = NULL;
 #include <stdatomic.h>
 static atomic_bool g_shutdown_flag = ATOMIC_VAR_INIT(false);
 
@@ -99,7 +99,7 @@ void *signal_handler_thread(void *arg) {
 #endif
 
 void setup_signal_handlers(AppContext *app) {
-  g_resources_for_signal_handler = app;
+  g_app_context_for_signal_handler = app;
 #ifdef _WIN32
   if (!SetConsoleCtrlHandler(console_ctrl_handler, TRUE)) {
     log_warn("Failed to register console control handler.");
@@ -127,7 +127,7 @@ void reset_shutdown_flag(void) {
 }
 
 void signal_handler_clear_context(void) {
-  g_resources_for_signal_handler = NULL;
+  g_app_context_for_signal_handler = NULL;
 }
 
 void request_shutdown(void) {
@@ -136,37 +136,37 @@ void request_shutdown(void) {
     return;
   }
 
-  if (g_resources_for_signal_handler) {
-    AppContext *r = g_resources_for_signal_handler;
+  if (g_app_context_for_signal_handler) {
+    AppContext *app = g_app_context_for_signal_handler;
 
     // Signal the global shutdown event to wake up any sleeping input threads
-    if (r->process_chain.shutdown_event) {
-      wait_event_signal(r->process_chain.shutdown_event);
+    if (app->process_chain.shutdown_event) {
+      wait_event_signal(app->process_chain.shutdown_event);
     }
 
     // Generic shutdown: If the active input module has a stop function, call
     // it. This handles blocking input drivers (like RTL-SDR) and background
     // threads.
-    if (r->module.input_api && r->module.input_api->stop_sample_queue_push) {
-      ModuleContext context = {.config = r->config, .app = r};
-      r->module.input_api->stop_sample_queue_push(&context);
+    if (app->module.input_api && app->module.input_api->stop_sample_queue_push) {
+      ModuleContext context = {.config = app->config, .app = app};
+      app->module.input_api->stop_sample_queue_push(&context);
     }
 
     // Signal all queues to wake up any waiting threads.
-    if (r->process_chain.free_sample_chunk_queue)
-      queue_signal_shutdown(r->process_chain.free_sample_chunk_queue);
+    if (app->process_chain.free_sample_chunk_queue)
+      queue_signal_shutdown(app->process_chain.free_sample_chunk_queue);
 
-    if (r->process_chain.active_queues) {
-      for (int i = 0; i < r->process_chain.num_active_queues; i++) {
-        if (r->process_chain.active_queues[i]) {
-          queue_signal_shutdown(r->process_chain.active_queues[i]);
+    if (app->process_chain.active_queues) {
+      for (int i = 0; i < app->process_chain.num_active_queues; i++) {
+        if (app->process_chain.active_queues[i]) {
+          queue_signal_shutdown(app->process_chain.active_queues[i]);
         }
       }
     }
 
     // Signal all ring buffers to wake up any waiting threads
-    if (r->process_chain.input_ring_buffer)
-      ring_buffer_signal_shutdown(r->process_chain.input_ring_buffer);
+    if (app->process_chain.input_ring_buffer)
+      ring_buffer_signal_shutdown(app->process_chain.input_ring_buffer);
   }
 }
 

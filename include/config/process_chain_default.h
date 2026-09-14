@@ -6,12 +6,9 @@
 #ifndef PROCESS_CHAIN_DEFAULT_H_
 #define PROCESS_CHAIN_DEFAULT_H_
 
+#include "config/constants.h"
 #include <assert.h>
 #include <stddef.h>
-
-// Hard cap for the DspContext states[] array. Must always be >= chain length.
-// Raise this if you add more modules to DEFAULT_PROCESS_CHAIN.
-#define DSP_MAX_MODULES 16
 
 typedef struct {
   const char *module_name;

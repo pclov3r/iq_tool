@@ -16,7 +16,6 @@
 #endif
 #include "argparse.h"
 #include "module_registry.h"
-#include "sample_format_table.h"
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>

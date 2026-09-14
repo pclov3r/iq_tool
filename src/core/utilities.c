@@ -7,8 +7,6 @@
 #include "app_context.h"
 #include "log.h"
 #include "mem_arena.h"
-#include "ring_buffer.h"
-#include "signal_handler.h"
 #include <ctype.h>
 #include <math.h>
 #include <stdarg.h>

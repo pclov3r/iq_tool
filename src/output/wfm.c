@@ -53,8 +53,6 @@
 #include "module.h"
 #include "module_registry.h"
 #include "platform.h"
-#include "queue.h"
-#include "ring_buffer.h"
 #include "signal_handler.h"
 #include "utilities.h"
 #include <complex.h>

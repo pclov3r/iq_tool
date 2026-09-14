@@ -154,9 +154,10 @@ static int input_hackrf_buffered_stream_callback(hackrf_transfer *transfer) {
   // --- NEW ARCHITECTURE: DUMP THE WHOLE BLOCK ---
   // HackRF provides interleaved CS8 (2 bytes per sample).
   // valid_length is in bytes.
-  if (!app->module.queue_samples(
-          app->module.process_chain_context, // num_samples
-          transfer->buffer, transfer->valid_length / 2, CS8)) {
+  if (!app->module.queue_samples(app->module.process_chain_context,
+                                 transfer->buffer,
+                                 transfer->valid_length / 2 /* num_samples */,
+                                 CS8)) {
     /* Warning handled internally by process_chain */
   }
 

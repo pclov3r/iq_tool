@@ -6,12 +6,9 @@
 #include "app_context.h"
 #include "audio_output_functions.h"
 #include "config/constants.h"
-#include "interleave_functions.h"
 #include "log.h"
 #include "module.h"
 #include "module_registry.h"
-#include "queue.h"
-#include "ring_buffer.h"
 #include "signal_handler.h"
 #include "utilities.h"
 #include <complex.h>

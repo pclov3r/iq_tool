@@ -61,7 +61,7 @@
 pthread_mutex_t g_console_mutex;
 
 // --- Forward Declarations for Static Helper Functions ---
-static void initialize_resource_struct(AppConfig *config, AppContext *app);
+static void initialize_app_context(AppConfig *config, AppContext *app);
 static void print_configuration_summary(const AppConfig *config,
                                         const AppContext *app);
 static void print_summary_section(const char *header,
@@ -123,7 +123,7 @@ int main(int argc, char *argv[]) {
   // Verify CPU hardware requirements immediately before starting
   platform_check_cpu_features();
 
-  initialize_resource_struct(&config, &app);
+  initialize_app_context(&config, &app);
   reset_shutdown_flag();
   setup_signal_handlers(&app);
 
@@ -369,7 +369,7 @@ static void print_summary_section(const char *header,
             info->items[i].value);
 }
 
-static void initialize_resource_struct(AppConfig *config, AppContext *app) {
+static void initialize_app_context(AppConfig *config, AppContext *app) {
   memset(app, 0, sizeof(AppContext));
   app->config = config;
 

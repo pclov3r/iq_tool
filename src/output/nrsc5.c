@@ -20,8 +20,6 @@
 #include "log.h"
 #include "module.h"
 #include "platform.h"
-#include "queue.h"
-#include "ring_buffer.h"
 #include "sample_format_table.h"
 #include "signal_handler.h"
 #include "utilities.h"

@@ -61,10 +61,6 @@ typedef struct Module {
  */
 const Module *module_get(const char *name, ModuleType type,
                          struct MemoryArena *arena);
-const struct InputModuleInterface *get_input_module(const char *name,
-                                                    struct MemoryArena *arena);
-const struct OutputModuleInterface *
-get_output_module(const char *name, struct MemoryArena *arena);
 
 const struct DspModuleInterface *get_dsp_module(const char *name,
                                                 struct MemoryArena *arena);

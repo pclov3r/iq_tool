@@ -51,6 +51,12 @@
 #define CACHE_LINE_PADDING 128
 
 /**
+ * @def DSP_MAX_MODULES
+ * @brief Hard cap for the DspContext states[] array. Must always be >= chain length.
+ */
+#define DSP_MAX_MODULES 16
+
+/**
  * @def MEM_ARENA_SIZE_BYTES
  * @brief The size of the single memory arena for all startup and buffer
  * allocations.

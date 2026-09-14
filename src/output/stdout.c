@@ -8,7 +8,6 @@
 #include "mem_arena.h"
 #include "module.h"
 #include "module_registry.h"
-#include "signal_handler.h"
 #include "utilities.h"
 #include <errno.h>
 #include <stdatomic.h>
@@ -41,7 +40,7 @@ static bool output_stdout_initialize(ModuleContext *context) {
   // Windows: stdout defaults to text mode (\n -> \r\n), which corrupts binary
   // I/Q data. We must forcefully set it to binary.
   if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
-    log_error("Writer (stdout): Failed to set binary mode: %s",
+    log_error("Output (stdout): Failed to set binary mode: %s",
               strerror(errno));
     return false;
   }

@@ -34,10 +34,10 @@
  * @brief Abstract priority levels to map to OS-specific scheduling policies.
  */
 typedef enum {
-  PRIORITY_NORMAL,  // Default scheduling (e.g., Reader thread)
+  PRIORITY_NORMAL,  // Default scheduling (e.g., Chunker thread)
   PRIORITY_HIGH,    // Latency-sensitive DSP (e.g., Pre/Post Processor)
   PRIORITY_HIGHEST, // Critical I/O (e.g., Disk Writer)
-  PRIORITY_REALTIME // Hardware Timing (e.g., Source)
+  PRIORITY_REALTIME // Hardware Timing (e.g., Input SDR driver)
 } ThreadPriority;
 
 /**

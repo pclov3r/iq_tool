@@ -10,7 +10,7 @@
  * Key Features:
  * 1. **Atomic Writes:** Packets are either written entirely or dropped to
  * preserve stream integrity.
- * 2. **Alignment:** The 16-byte header ensures the payload is aligned for SIMD
+ * 2. **Alignment:** The 32-byte header ensures the payload is aligned for SIMD
  * operations.
  * 3. **Stateful Reading:** The chunker can "sip" small chunks of data from a
  * large packet in the buffer, decoupling the hardware transfer size from the
@@ -79,7 +79,7 @@ static_assert(sizeof(PacketHeader) == 32,
 /**
  * @brief Tracks the state of the current packet being read by the consumer.
  *
- * Since the Reader thread may request data in smaller chunks than the hardware
+ * Since the Chunker thread may request data in smaller chunks than the hardware
  * provides, this struct tracks how much of the current packet in the ring
  * buffer remains to be read.
  */

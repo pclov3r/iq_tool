@@ -8,7 +8,6 @@
 #include "module.h"
 #include "module_registry.h"
 #include "platform.h"
-#include "signal_handler.h"
 #include "utilities.h"
 #include <ctype.h>
 #include <errno.h>
