@@ -1,5 +1,5 @@
 /**
- * @file dsp/dcblock.c
+ * @file dsp/dc_block.c
  * @brief DC offset blocking filter module.
  */
 
@@ -23,8 +23,8 @@
 
 // === DSP Module Interface Implementation ===
 
-static void *dcblock_initialize(ModuleContext *ctx, double input_rate,
-                                double target_output_rate, double *out_rate) {
+static void *dc_block_initialize(ModuleContext *ctx, double input_rate,
+                                 double target_output_rate, double *out_rate) {
   (void)target_output_rate;
   *out_rate = input_rate;
 
@@ -61,7 +61,7 @@ static void *dcblock_initialize(ModuleContext *ctx, double input_rate,
   return filter;
 }
 
-static SampleChunk *dcblock_process(void *state, SampleChunk *chunk) {
+static SampleChunk *dc_block_process(void *state, SampleChunk *chunk) {
   iirfilt_crcf filter = (iirfilt_crcf)state;
   if (!filter)
     return chunk;
@@ -77,13 +77,13 @@ static SampleChunk *dcblock_process(void *state, SampleChunk *chunk) {
   return chunk;
 }
 
-static void dcblock_cleanup(void *state) {
+static void dc_block_cleanup(void *state) {
   if (state) {
     iirfilt_crcf_destroy((iirfilt_crcf)state);
   }
 }
 
-static void dcblock_reset_api(void *state) {
+static void dc_block_reset_api(void *state) {
   if (state) {
     log_debug("DC block filter reset due to stream discontinuity.");
     iirfilt_crcf_reset((iirfilt_crcf)state);
@@ -99,31 +99,31 @@ static const struct argparse_option cli_options[] = {
 };
 // clang-format on
 
-static const struct argparse_option *dsp_dcblock_get_cli_options(int *count) {
+static const struct argparse_option *dsp_dc_block_get_cli_options(int *count) {
   *count = sizeof(cli_options) / sizeof(cli_options[0]);
   return cli_options;
 }
 
-static bool dsp_dcblock_validate_options(struct AppContext *app) {
+static bool dsp_dc_block_validate_options(struct AppContext *app) {
   if (app && app->config) {
     ((AppConfig *)app->config)->dsp.dc_block.enable = s_enable_dc_block;
   }
   return true;
 }
 
-static bool dcblock_is_active(AppContext *app, const char *stage_tag) {
+static bool dc_block_is_active(AppContext *app, const char *stage_tag) {
   (void)stage_tag;
   return ((AppConfig *)app->config)->dsp.dc_block.enable;
 }
 
-static const DspModuleInterface dsp_dcblock_api = {
+static const DspModuleInterface dsp_dc_block_api = {
     .name = "dc_block",
-    .is_active = dcblock_is_active,
-    .initialize = dcblock_initialize,
-    .process = dcblock_process,
-    .reset = dcblock_reset_api,
-    .validate_options = dsp_dcblock_validate_options,
-    .cleanup = dcblock_cleanup,
+    .is_active = dc_block_is_active,
+    .initialize = dc_block_initialize,
+    .process = dc_block_process,
+    .reset = dc_block_reset_api,
+    .validate_options = dsp_dc_block_validate_options,
+    .cleanup = dc_block_cleanup,
 };
 
 // --- Auto-Registration ---
@@ -131,8 +131,8 @@ static void __attribute__((constructor)) register_module(void) {
   Module m = {
       .name = "dc_block",
       .type = MODULE_TYPE_DSP,
-      .api = (void *)&dsp_dcblock_api,
-      .get_cli_options = dsp_dcblock_get_cli_options,
+      .api = (void *)&dsp_dc_block_api,
+      .get_cli_options = dsp_dc_block_get_cli_options,
   };
   module_registry_add(&m);
 }

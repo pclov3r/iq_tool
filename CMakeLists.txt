@@ -206,7 +206,7 @@ set(OTHER_SOURCES
     src/core/cli.c
     src/core/keyboard_handler.c
     src/core/config.c
-    src/dsp/dcblock.c
+    src/dsp/dc_block.c
     src/dsp/nco.c
     src/input/rawfile.c
     src/input/stdin.c

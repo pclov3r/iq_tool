@@ -430,7 +430,7 @@ bool iq_correction_run_initial_calibration(
 
   void *dc_block_state = NULL;
   const DspModuleInterface *dc_block_api =
-      get_dsp_module("dcblock", &app->process_chain.setup_arena);
+      get_dsp_module("dc_block", &app->process_chain.setup_arena);
   if (((AppConfig *)app->config)->dsp.dc_block.enable && dc_block_api) {
     double dummy_rate;
     dc_block_state = dc_block_api->initialize(
