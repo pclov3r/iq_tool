@@ -179,7 +179,7 @@ set(COMPILE_WITH_FFAST_MATH_SOURCES
     ${MODULE_FFAST_MATH_SOURCES}
     src/dsp/agc.c
     src/dsp/filter.c
-    src/dsp/iq_correct.c
+    src/dsp/iq_correction.c
     src/output/am.c
     src/output/nfm.c
     src/output/noaawx.c

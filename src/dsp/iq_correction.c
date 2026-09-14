@@ -1,5 +1,5 @@
 /**
- * @file iq_correct.c
+ * @file iq_correction.c
  * @brief Real-time automatic I/Q phase and amplitude imbalance correction.
  */
 
@@ -54,9 +54,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "dsp/iq_correction.h"
 #include "app_context.h"
 #include "config/constants.h"
-#include "dsp/iq_correction.h"
 #include "log.h"
 #include "mem_arena.h"
 #include "module.h"
@@ -737,14 +737,16 @@ static void *iq_estimation_thread(void *arg) {
   return NULL;
 }
 
-static bool dsp_iq_correct_start_background_threads(void *state,
-                                                    struct ThreadManager *tm) {
+static bool
+dsp_iq_correction_start_background_threads(void *state,
+                                           struct ThreadManager *tm) {
   (void)state;
   return thread_manager_spawn(tm, "I/Q Optimizer", iq_estimation_thread, state);
 }
 
-static void *dsp_iq_correct_init(ModuleContext *ctx, double input_rate,
-                                 double target_output_rate, double *out_rate) {
+static void *dsp_iq_correction_init(ModuleContext *ctx, double input_rate,
+                                    double target_output_rate,
+                                    double *out_rate) {
   (void)target_output_rate;
   *out_rate = input_rate;
   AppConfig *config = (AppConfig *)ctx->config;
@@ -757,7 +759,7 @@ static void *dsp_iq_correct_init(ModuleContext *ctx, double input_rate,
                             &ctx->app->process_chain.setup_arena);
 }
 
-static SampleChunk *dsp_iq_correct_process(void *state, SampleChunk *chunk) {
+static SampleChunk *dsp_iq_correction_process(void *state, SampleChunk *chunk) {
   if (chunk->stream_discontinuity_event) {
     // no-op for now
   }
@@ -803,7 +805,7 @@ static SampleChunk *dsp_iq_correct_process(void *state, SampleChunk *chunk) {
   return chunk;
 }
 
-static void dsp_iq_correct_cleanup(void *state) {
+static void dsp_iq_correction_cleanup(void *state) {
   iq_correction_destroy((IqState *)state);
 }
 
@@ -819,12 +821,12 @@ static const struct argparse_option cli_options[] = {
 // clang-format on
 
 static const struct argparse_option *
-dsp_iq_correct_get_cli_options(int *count) {
+dsp_iq_correction_get_cli_options(int *count) {
   *count = sizeof(cli_options) / sizeof(cli_options[0]);
   return cli_options;
 }
 
-static bool dsp_iq_correct_validate_options(struct AppContext *app) {
+static bool dsp_iq_correction_validate_options(struct AppContext *app) {
   if (app && app->config) {
     AppConfig *config = (AppConfig *)app->config;
     config->dsp.iq_correction.enable = s_enable_iq_correction;
@@ -832,29 +834,30 @@ static bool dsp_iq_correct_validate_options(struct AppContext *app) {
   return true;
 }
 
-static bool dsp_iq_correct_is_active(AppContext *app, const char *stage_tag) {
+static bool dsp_iq_correction_is_active(AppContext *app,
+                                        const char *stage_tag) {
   (void)stage_tag;
   return ((AppConfig *)app->config)->dsp.iq_correction.enable;
 }
 
-static const DspModuleInterface dsp_iq_correct_api = {
-    .name = "iq_correct",
-    .is_active = dsp_iq_correct_is_active,
-    .start_background_threads = dsp_iq_correct_start_background_threads,
-    .initialize = dsp_iq_correct_init,
-    .process = dsp_iq_correct_process,
+static const DspModuleInterface dsp_iq_correction_api = {
+    .name = "iq_correction",
+    .is_active = dsp_iq_correction_is_active,
+    .start_background_threads = dsp_iq_correction_start_background_threads,
+    .initialize = dsp_iq_correction_init,
+    .process = dsp_iq_correction_process,
     .reset = NULL,
-    .cleanup = dsp_iq_correct_cleanup,
-    .validate_options = dsp_iq_correct_validate_options,
+    .cleanup = dsp_iq_correction_cleanup,
+    .validate_options = dsp_iq_correction_validate_options,
 };
 
 // --- Auto-Registration ---
 static void __attribute__((constructor)) register_module(void) {
   Module m = {
-      .name = "iq_correct",
+      .name = "iq_correction",
       .type = MODULE_TYPE_DSP,
-      .api = (void *)&dsp_iq_correct_api,
-      .get_cli_options = dsp_iq_correct_get_cli_options,
+      .api = (void *)&dsp_iq_correction_api,
+      .get_cli_options = dsp_iq_correction_get_cli_options,
   };
   module_registry_add(&m);
 }

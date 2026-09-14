@@ -21,7 +21,7 @@ typedef struct {
 // clang-format off
 static const ProcessNodeDef DEFAULT_PROCESS_CHAIN[] = {
     {"dc_block",   NULL},
-    {"iq_correct", NULL},
+    {"iq_correction", NULL},
     {"nco",        "pre"},
     {"filter",     "pre"},
     {"resampler",  NULL},

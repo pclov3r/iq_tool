@@ -730,7 +730,7 @@ IN THE SOFTWARE.
 
 -------------------------------------------------------------------------------
 
-**SDR# I/Q Correction Algorithm (ported to C in iq_correct.c)**
+**SDR# I/Q Correction Algorithm (ported to C in iq_correction.c)**
 License: MIT
 
 Copyright (c) 2012 Youssef Touil and other contributors
