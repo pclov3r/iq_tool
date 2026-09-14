@@ -14,6 +14,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <sndfile.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -282,5 +283,7 @@ void output_wav_common_cleanup(ModuleContext *context) {
     sf_close(data->handle);
     data->handle = NULL;
   }
-  app->stats.final_output_size_bytes = data->total_bytes_written;
+  atomic_store_explicit(&app->stats.final_output_size_bytes,
+                        (int_least64_t)data->total_bytes_written,
+                        memory_order_relaxed);
 }

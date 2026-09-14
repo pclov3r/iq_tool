@@ -686,7 +686,7 @@ static bool input_spyserver_client_initialize(ModuleContext *context) {
   log_info("Pre-buffering SpyServer data...");
   while (!is_shutdown_requested() &&
          ring_buffer_get_size(client->stream_buffer) < high_water_mark) {
-    if (app->stats.error_occurred)
+    if (input_has_error(app))
       break;
 #ifdef _WIN32
     Sleep(100);
@@ -695,7 +695,7 @@ static bool input_spyserver_client_initialize(ModuleContext *context) {
 #endif
   }
 
-  if (is_shutdown_requested() || app->stats.error_occurred) {
+  if (is_shutdown_requested() || input_has_error(app)) {
     log_warn("Shutdown requested during pre-buffering phase.");
   } else {
     log_info("Pre-buffering complete.");
@@ -839,7 +839,7 @@ input_spyserver_client_push_samples_to_queue(ModuleContext *context,
   // This function simply idles to keep the input module "running" until
   // shutdown.
   while (!is_shutdown_requested()) {
-    if (app->stats.error_occurred)
+    if (input_has_error(app))
       break;
 #ifdef _WIN32
     Sleep(100);

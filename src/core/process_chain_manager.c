@@ -138,7 +138,8 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app) {
         (long long)round((double)app->module.input_info.frames * rate_scalar),
         memory_order_relaxed);
   } else {
-    app->stats.expected_total_output_frames = -1;
+    atomic_store_explicit(&app->stats.expected_total_output_frames, -1,
+                          memory_order_relaxed);
   }
 
   return true;

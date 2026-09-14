@@ -180,7 +180,7 @@ static void input_rtlsdr_stream_callback(unsigned char *buffer, uint32_t length,
 
   // --- HEARTBEAT ---
 
-  if (is_shutdown_requested() || app->stats.error_occurred) {
+  if (is_shutdown_requested() || input_has_error(app)) {
     return;
   }
 

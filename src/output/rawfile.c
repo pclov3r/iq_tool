@@ -12,6 +12,7 @@
 #include "utilities.h"
 #include <ctype.h>
 #include <errno.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -112,7 +113,9 @@ static void output_rawfile_cleanup(ModuleContext *context) {
     fclose(data->handle);
     data->handle = NULL;
   }
-  app->stats.final_output_size_bytes = data->total_bytes_written;
+  atomic_store_explicit(&app->stats.final_output_size_bytes,
+                        (int_least64_t)data->total_bytes_written,
+                        memory_order_relaxed);
 }
 
 static void output_rawfile_get_summary_info(const ModuleContext *context,

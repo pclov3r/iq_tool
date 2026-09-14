@@ -147,7 +147,7 @@ static int input_hackrf_buffered_stream_callback(hackrf_transfer *transfer) {
 
   // --- HEARTBEAT ---
 
-  if (is_shutdown_requested() || app->stats.error_occurred) {
+  if (is_shutdown_requested() || input_has_error(app)) {
     return -1;
   }
 

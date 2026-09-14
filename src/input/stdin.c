@@ -135,7 +135,7 @@ static void *input_stdin_push_samples_to_queue(ModuleContext *context,
   AppContext *app = context->app;
   StdinContext *p = (StdinContext *)app->module.input_private_data;
 
-  while (!is_shutdown_requested() && !app->stats.error_occurred) {
+  while (!is_shutdown_requested() && !input_has_error(app)) {
     // Read into the pre-allocated arena buffer
     size_t bytes_read = fread(p->rx_buffer, 1, p->rx_buffer_size, stdin);
 

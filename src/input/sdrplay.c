@@ -472,7 +472,7 @@ static void input_sdrplay_buffered_stream_callback(
 
   // --- HEARTBEAT ---
 
-  if (is_shutdown_requested() || app->stats.error_occurred) {
+  if (is_shutdown_requested() || input_has_error(app)) {
     return;
   }
 
@@ -509,7 +509,7 @@ static void input_sdrplay_event_callback(sdrplay_api_EventT eventId,
   SdrplayContext *private_data =
       (SdrplayContext *)app->module.input_private_data;
 
-  if (is_shutdown_requested() || app->stats.error_occurred) {
+  if (is_shutdown_requested() || input_has_error(app)) {
     return;
   }
 

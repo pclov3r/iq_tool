@@ -41,6 +41,7 @@
 #include <locale.h>
 #include <math.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -518,8 +519,10 @@ static void print_final_summary(const AppConfig *config, const AppContext *app,
   char size_buffer[40];
   char duration_buffer[40];
 
-  utility_format_size(app->stats.final_output_size_bytes, size_buffer,
-                      sizeof(size_buffer));
+  utility_format_size(
+      (long long)atomic_load_explicit(&app->stats.final_output_size_bytes,
+                                      memory_order_relaxed),
+      size_buffer, sizeof(size_buffer));
   double duration_secs = difftime(time(NULL), app->stats.start_time);
   utility_format_duration(duration_secs, duration_buffer,
                           sizeof(duration_buffer));
@@ -531,8 +534,10 @@ static void print_final_summary(const AppConfig *config, const AppContext *app,
 
   double avg_write_speed_mbps = 0.0;
   if (duration_secs > 0.001) {
-    avg_write_speed_mbps = (double)app->stats.final_output_size_bytes /
-                           (1024.0 * 1024.0) / duration_secs;
+    avg_write_speed_mbps =
+        (double)atomic_load_explicit(&app->stats.final_output_size_bytes,
+                                     memory_order_relaxed) /
+        (1024.0 * 1024.0) / duration_secs;
   }
 
   fprintf(stderr, "\n--- Final Summary ---\n");
@@ -545,7 +550,8 @@ static void print_final_summary(const AppConfig *config, const AppContext *app,
     }
     fprintf(stderr, "%-*s %s (possibly incomplete)\n", label_width,
             "Output File Size:", size_buffer);
-  } else if (app->stats.end_of_stream_reached) {
+  } else if (atomic_load_explicit(&app->stats.end_of_stream_reached,
+                                  memory_order_relaxed)) {
     fprintf(stderr, "%-*s %s\n", label_width,
             "Status:", "Completed Successfully");
     fprintf(stderr, "%-*s %s\n", label_width,

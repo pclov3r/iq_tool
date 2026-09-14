@@ -661,7 +661,7 @@ static void *bladerf_rx_stream_callback(struct bladerf *dev,
     return BLADERF_STREAM_NO_DATA;
   }
 
-  if (is_shutdown_requested() || app->stats.error_occurred ||
+  if (is_shutdown_requested() || input_has_error(app) ||
       atomic_load_explicit(&private_data->stream_error, memory_order_acquire)) {
     return BLADERF_STREAM_SHUTDOWN;
   }

@@ -260,7 +260,8 @@ static void *iq_correction_init(AppConfig *config, AppContext *app,
     return false;
   }
 
-  state->last_optimization_time = 0.0;
+  atomic_store_explicit(&state->last_optimization_time, 0.0,
+                        memory_order_relaxed);
   state->app = app;
   state->last_phase = s_calibrated_phase;
   state->last_amplitude = s_calibrated_amplitude;
@@ -459,7 +460,8 @@ bool iq_correction_run_initial_calibration(
 
     iq_correction_run_estimation(state, temp_chunk.current_buffer);
     if (state) {
-      ((IqState *)state)->last_optimization_time = 0.0;
+      atomic_store_explicit(&((IqState *)state)->last_optimization_time, 0.0,
+                            memory_order_relaxed);
     }
   }
 

@@ -247,7 +247,7 @@ static int
 input_hydrasdr_buffered_stream_callback(hydrasdr_transfer *transfer) {
   AppContext *app = (AppContext *)transfer->ctx;
 
-  if (is_shutdown_requested() || app->stats.error_occurred) {
+  if (is_shutdown_requested() || input_has_error(app)) {
     return -1;
   }
 

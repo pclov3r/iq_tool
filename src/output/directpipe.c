@@ -10,6 +10,7 @@
 #include "module_registry.h"
 #include "utilities.h"
 #include <errno.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <string.h>
 
@@ -107,7 +108,9 @@ static void output_directpipe_cleanup(ModuleContext *context) {
   DirectPipeContext *data =
       (DirectPipeContext *)context->app->module.output_private_data;
   if (data) {
-    context->app->stats.final_output_size_bytes = data->total_bytes_written;
+    atomic_store_explicit(&context->app->stats.final_output_size_bytes,
+                          (int_least64_t)data->total_bytes_written,
+                          memory_order_relaxed);
   }
 }
 

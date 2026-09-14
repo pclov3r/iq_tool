@@ -11,6 +11,7 @@
 #include "signal_handler.h"
 #include "utilities.h"
 #include <errno.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -72,7 +73,9 @@ static void output_stdout_cleanup(ModuleContext *context) {
   StdoutContext *data = (StdoutContext *)app->module.output_private_data;
 
   fflush(stdout);
-  app->stats.final_output_size_bytes = data->total_bytes_written;
+  atomic_store_explicit(&app->stats.final_output_size_bytes,
+                        (int_least64_t)data->total_bytes_written,
+                        memory_order_relaxed);
 }
 
 static void output_stdout_get_summary_info(const ModuleContext *context,

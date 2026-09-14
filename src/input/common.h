@@ -42,4 +42,15 @@ static inline void input_update_heartbeat(AppContext *app) {
                         utility_get_time(), memory_order_relaxed);
 }
 
+/**
+ * @brief Checks if an error has occurred in the application in a thread-safe
+ * manner.
+ * @param app A pointer to the application's context.
+ * @return True if an error occurred, false otherwise.
+ */
+static inline bool input_has_error(const AppContext *app) {
+  return app &&
+         atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed);
+}
+
 #endif // INPUT_COMMON_H_
