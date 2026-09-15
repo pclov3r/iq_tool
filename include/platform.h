@@ -210,16 +210,27 @@ void platform_dll_unload(void *handle);
 #ifdef _WIN32
 void print_win_error(const char *context, DWORD error_code);
 
-bool get_absolute_path_windows(const char *path_arg_mbcs, wchar_t *out_path_w,
-                               size_t out_path_w_size, char *out_path_utf8,
-                               size_t out_path_utf8_size);
-
 bool platform_get_executable_dir(char *buffer, size_t buffer_size);
 #endif // _WIN32
 
-// --- Configuration & Search Paths ---
-
 struct MemoryArena;
+
+/**
+ * @brief Resolves a relative or user-supplied file path into a canonical
+ * absolute path string allocated from the provided arena.
+ *
+ * For input files (is_input = true), verifies that the file exists and is
+ * regular. For output files (is_input = false), verifies that the parent
+ * directory exists.
+ *
+ * @param path The raw user-supplied path string.
+ * @param is_input true if validating an existing input file, false for output
+ * files.
+ * @param arena Memory arena to allocate the resolved path string from.
+ * @return Resolved absolute UTF-8 path string, or NULL on error.
+ */
+char *platform_resolve_path(const char *path, bool is_input,
+                            struct MemoryArena *arena);
 
 /**
  * @brief Retrieves platform-specific directory search paths for configuration

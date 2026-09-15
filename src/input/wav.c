@@ -709,13 +709,8 @@ static bool input_wav_validate_options(AppContext *app) {
   private_data->total_files = 1;
   private_data->file_list = (char **)mem_arena_alloc(
       &app->process_chain.setup_arena, sizeof(char *) * 1, true);
-#ifdef _WIN32
   private_data->file_list[0] =
       arena_strdup(&app->process_chain.setup_arena, input_path);
-#else
-  private_data->file_list[0] =
-      arena_strdup(&app->process_chain.setup_arena, input_path);
-#endif
 
   // Run directory prober if requested
   if (private_data->split_enabled) {
