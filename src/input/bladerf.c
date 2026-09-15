@@ -95,53 +95,55 @@ typedef struct {
 
 static BladerfApiFunctionPointers bladerf_api;
 
-#define LOAD_BLADERF_FUNC(func_name)                                           \
-  DLL_LOAD_FUNCTION(bladerf_api.dll_handle, bladerf_api, "bladerf_", func_name)
-
 static bool bladerf_load_api(void) {
   if (bladerf_api.dll_handle) {
     return true;
   }
-  log_debug("Attempting to load bladeRF.dll...");
-  bladerf_api.dll_handle = platform_dll_load("bladeRF.dll");
+
+  static const WinDllSymbol symbols[] = {
+      {"bladerf_log_set_verbosity", (void **)&bladerf_api.log_set_verbosity},
+      {"bladerf_open", (void **)&bladerf_api.open},
+      {"bladerf_close", (void **)&bladerf_api.close},
+      {"bladerf_get_board_name", (void **)&bladerf_api.get_board_name},
+      {"bladerf_get_serial_struct", (void **)&bladerf_api.get_serial_struct},
+      {"bladerf_is_fpga_configured", (void **)&bladerf_api.is_fpga_configured},
+      {"bladerf_get_fpga_size", (void **)&bladerf_api.get_fpga_size},
+      {"bladerf_load_fpga", (void **)&bladerf_api.load_fpga},
+      {"bladerf_set_sample_rate", (void **)&bladerf_api.set_sample_rate},
+      {"bladerf_set_rational_sample_rate",
+       (void **)&bladerf_api.set_rational_sample_rate},
+      {"bladerf_enable_feature", (void **)&bladerf_api.enable_feature},
+      {"bladerf_set_bandwidth", (void **)&bladerf_api.set_bandwidth},
+      {"bladerf_set_frequency", (void **)&bladerf_api.set_frequency},
+      {"bladerf_set_gain_mode", (void **)&bladerf_api.set_gain_mode},
+      {"bladerf_set_gain", (void **)&bladerf_api.set_gain},
+      {"bladerf_set_bias_tee", (void **)&bladerf_api.set_bias_tee},
+      {"bladerf_sync_config", (void **)&bladerf_api.sync_config},
+      {"bladerf_enable_module", (void **)&bladerf_api.enable_module},
+      {"bladerf_sync_rx", (void **)&bladerf_api.sync_rx},
+      {"bladerf_init_stream", (void **)&bladerf_api.init_stream},
+      {"bladerf_stream", (void **)&bladerf_api.stream},
+      {"bladerf_submit_stream_buffer",
+       (void **)&bladerf_api.submit_stream_buffer},
+      {"bladerf_deinit_stream", (void **)&bladerf_api.deinit_stream},
+      {"bladerf_set_stream_timeout", (void **)&bladerf_api.set_stream_timeout},
+      {"bladerf_strerror", (void **)&bladerf_api.strerror},
+  };
+
+  bladerf_api.dll_handle = platform_win_load_dll(
+      "bladeRF.dll", symbols, sizeof(symbols) / sizeof(symbols[0]));
   if (!bladerf_api.dll_handle) {
     log_error("Please ensure the BladeRF driver/library is installed and its "
               "directory is in the system PATH.");
     return false;
   }
-  log_debug("BladeRF DLL loaded successfully. Loading function pointers...");
-  LOAD_BLADERF_FUNC(log_set_verbosity);
-  LOAD_BLADERF_FUNC(open);
-  LOAD_BLADERF_FUNC(close);
-  LOAD_BLADERF_FUNC(get_board_name);
-  LOAD_BLADERF_FUNC(get_serial_struct);
-  LOAD_BLADERF_FUNC(is_fpga_configured);
-  LOAD_BLADERF_FUNC(get_fpga_size);
-  LOAD_BLADERF_FUNC(load_fpga);
-  LOAD_BLADERF_FUNC(set_sample_rate);
-  LOAD_BLADERF_FUNC(set_rational_sample_rate);
-  LOAD_BLADERF_FUNC(enable_feature);
-  LOAD_BLADERF_FUNC(set_bandwidth);
-  LOAD_BLADERF_FUNC(set_frequency);
-  LOAD_BLADERF_FUNC(set_gain_mode);
-  LOAD_BLADERF_FUNC(set_gain);
-  LOAD_BLADERF_FUNC(set_bias_tee);
-  LOAD_BLADERF_FUNC(sync_config);
-  LOAD_BLADERF_FUNC(enable_module);
-  LOAD_BLADERF_FUNC(sync_rx);
-  LOAD_BLADERF_FUNC(init_stream);
-  LOAD_BLADERF_FUNC(stream);
-  LOAD_BLADERF_FUNC(submit_stream_buffer);
-  LOAD_BLADERF_FUNC(deinit_stream);
-  LOAD_BLADERF_FUNC(set_stream_timeout);
-  LOAD_BLADERF_FUNC(strerror);
-  log_debug("All BladeRF API function pointers loaded.");
+
   return true;
 }
 
 static void bladerf_unload_api(void) {
   if (bladerf_api.dll_handle) {
-    FreeLibrary(bladerf_api.dll_handle);
+    platform_dll_unload(bladerf_api.dll_handle);
     bladerf_api.dll_handle = NULL;
     log_debug("BladeRF API DLL unloaded.");
   }
@@ -167,16 +169,11 @@ static void bladerf_unload_api(void) {
 #define bladerf_enable_module bladerf_api.enable_module
 #define bladerf_sync_rx bladerf_api.sync_rx
 #define bladerf_init_stream bladerf_api.init_stream
+#define bladerf_stream(...) bladerf_api.stream(__VA_ARGS__)
 #define bladerf_submit_stream_buffer bladerf_api.submit_stream_buffer
 #define bladerf_deinit_stream bladerf_api.deinit_stream
 #define bladerf_set_stream_timeout bladerf_api.set_stream_timeout
 #define bladerf_strerror bladerf_api.strerror
-#endif
-
-// Temporarily undefine bladerf_stream macro to allow struct bladerf_stream
-// usage
-#if defined(_WIN32) && defined(WITH_BLADERF)
-#undef bladerf_stream
 #endif
 
 // --- Private Module Configuration ---
@@ -243,9 +240,6 @@ static void *bladerf_rx_stream_callback(struct bladerf *dev,
                                         void *samples, size_t num_samples,
                                         void *user_data);
 
-// Redefine bladerf_stream macro after struct declarations
-#if defined(_WIN32) && defined(WITH_BLADERF)
-#endif
 static bool input_bladerf_validate_options(AppContext *app);
 static bool input_bladerf_validate_generic_options(const AppConfig *config);
 
@@ -769,11 +763,7 @@ static void *input_bladerf_push_samples_to_queue(ModuleContext *context,
   }
 
   bladerf_channel_layout layout = BLADERF_RX_X1;
-#if defined(_WIN32) && defined(WITH_BLADERF)
-  status = bladerf_api.stream(private_data->rx_stream, layout);
-#else
   status = bladerf_stream(private_data->rx_stream, layout);
-#endif
 
   if (status != 0 && !is_shutdown_requested()) {
     char error_buffer[256];

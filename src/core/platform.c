@@ -614,6 +614,64 @@ void platform_dll_unload(void *handle) {
 #endif
 }
 
+#ifdef _WIN32
+static bool platform_win_bind_symbols_internal(void *handle,
+                                               const char *dll_desc,
+                                               const WinDllSymbol symbols[],
+                                               size_t count) {
+  for (size_t i = 0; i < count; i++) {
+    void *proc = platform_dll_get_symbol(handle, symbols[i].name);
+    if (!proc) {
+      log_fatal("Failed to load DLL function '%s' from %s", symbols[i].name,
+                dll_desc);
+      platform_dll_unload(handle);
+      return false;
+    }
+    memcpy(symbols[i].fn, &proc, sizeof(void *));
+  }
+  return true;
+}
+
+void *platform_win_load_dll(const char *dll_name, const WinDllSymbol symbols[],
+                            size_t count) {
+  if (!dll_name || !symbols || count == 0)
+    return NULL;
+
+  void *handle = platform_dll_load(dll_name);
+  if (!handle) {
+    return NULL;
+  }
+
+  if (!platform_win_bind_symbols_internal(handle, dll_name, symbols, count)) {
+    return NULL;
+  }
+
+  log_debug("Successfully loaded '%s' and bound %zu symbols.", dll_name, count);
+  return handle;
+}
+
+void *platform_win_load_dll_wide(const wchar_t *dll_path_wide,
+                                 const WinDllSymbol symbols[], size_t count) {
+  if (!dll_path_wide || !symbols || count == 0)
+    return NULL;
+
+  void *handle = platform_dll_load_w(dll_path_wide);
+  if (!handle) {
+    return NULL;
+  }
+
+  char desc[256];
+  snprintf(desc, sizeof(desc), "%ls", dll_path_wide);
+  if (!platform_win_bind_symbols_internal(handle, desc, symbols, count)) {
+    return NULL;
+  }
+
+  log_debug("Successfully loaded '%ls' and bound %zu symbols.", dll_path_wide,
+            count);
+  return handle;
+}
+#endif
+
 // --- Configuration & Search Paths ---
 
 size_t platform_get_config_search_paths(const char **paths, size_t max_paths,

@@ -249,8 +249,6 @@ typedef enum {
 void platform_set_thread_priority(ThreadPriority priority,
                                   const char *thread_name);
 
-// --- Dynamic Library Loading ---
-
 void *platform_dll_load(const char *dll_path);
 #ifdef _WIN32
 void *platform_dll_load_w(const wchar_t *dll_path);
@@ -258,17 +256,39 @@ void *platform_dll_load_w(const wchar_t *dll_path);
 void *platform_dll_get_symbol(void *handle, const char *symbol_name);
 void platform_dll_unload(void *handle);
 
-#define DLL_LOAD_FUNCTION(dll_handle, api_struct, base_prefix, func_name)      \
-  do {                                                                         \
-    void *proc = platform_dll_get_symbol(dll_handle, base_prefix #func_name);  \
-    if (!proc) {                                                               \
-      log_fatal("Failed to load DLL function: %s%s", base_prefix, #func_name); \
-      platform_dll_unload(dll_handle);                                         \
-      dll_handle = NULL;                                                       \
-      return false;                                                            \
-    }                                                                          \
-    memcpy(&(api_struct).func_name, &proc, sizeof((api_struct).func_name));    \
-  } while (0)
+#ifdef _WIN32
+typedef struct {
+  const char *name;
+  void **fn;
+} WinDllSymbol;
+
+/**
+ * @brief Loads a Windows DLL by UTF-8 name and binds an array of exported
+ * symbols.
+ *
+ * If loading fails or any symbol cannot be resolved, logs an error, unloads
+ * any allocated library handle, and returns NULL.
+ *
+ * @param dll_name Filename or path of the DLL (e.g. "bladeRF.dll").
+ * @param symbols Array of symbol name and function pointer target pairs.
+ * @param count Number of symbols in the array.
+ * @return Library handle on success, NULL on failure.
+ */
+void *platform_win_load_dll(const char *dll_name, const WinDllSymbol symbols[],
+                            size_t count);
+
+/**
+ * @brief Loads a Windows DLL from a wide-character path and binds an array of
+ * exported symbols.
+ *
+ * @param dll_path_wide Wide-character path to the DLL (e.g. from registry).
+ * @param symbols Array of symbol name and function pointer target pairs.
+ * @param count Number of symbols in the array.
+ * @return Library handle on success, NULL on failure.
+ */
+void *platform_win_load_dll_wide(const wchar_t *dll_path_wide,
+                                 const WinDllSymbol symbols[], size_t count);
+#endif
 
 // --- Platform Specific Helpers ---
 

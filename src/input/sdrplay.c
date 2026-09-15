@@ -137,11 +137,6 @@ static wchar_t *get_sdrplay_dll_path(void) {
   return _wcsdup(api_path_buffer);
 }
 
-// clang-format off
-#define LOAD_SDRPLAY_FUNC(func_name) \
-  DLL_LOAD_FUNCTION(sdrplay_api.dll_handle, sdrplay_api, "sdrplay_api_", func_name)
-// clang-format on
-
 static bool sdrplay_load_api(void) {
   if (sdrplay_api.dll_handle) {
     return true;
@@ -151,36 +146,36 @@ static bool sdrplay_load_api(void) {
     log_fatal("Could not determine SDRplay API DLL path.");
     return false;
   }
-  log_debug("Attempting to load SDRplay API from: %ls", dll_path);
-  sdrplay_api.dll_handle = platform_dll_load_w(dll_path);
+  static const WinDllSymbol symbols[] = {
+      {"sdrplay_api_Open", (void **)&sdrplay_api.Open},
+      {"sdrplay_api_Close", (void **)&sdrplay_api.Close},
+      {"sdrplay_api_ApiVersion", (void **)&sdrplay_api.ApiVersion},
+      {"sdrplay_api_GetDevices", (void **)&sdrplay_api.GetDevices},
+      {"sdrplay_api_SelectDevice", (void **)&sdrplay_api.SelectDevice},
+      {"sdrplay_api_ReleaseDevice", (void **)&sdrplay_api.ReleaseDevice},
+      {"sdrplay_api_GetDeviceParams", (void **)&sdrplay_api.GetDeviceParams},
+      {"sdrplay_api_GetErrorString", (void **)&sdrplay_api.GetErrorString},
+      {"sdrplay_api_GetLastError", (void **)&sdrplay_api.GetLastError},
+      {"sdrplay_api_Update", (void **)&sdrplay_api.Update},
+      {"sdrplay_api_Init", (void **)&sdrplay_api.Init},
+      {"sdrplay_api_Uninit", (void **)&sdrplay_api.Uninit},
+      {"sdrplay_api_LockDeviceApi", (void **)&sdrplay_api.LockDeviceApi},
+      {"sdrplay_api_UnlockDeviceApi", (void **)&sdrplay_api.UnlockDeviceApi},
+  };
+
+  sdrplay_api.dll_handle = platform_win_load_dll_wide(
+      dll_path, symbols, sizeof(symbols) / sizeof(symbols[0]));
   free(dll_path);
   if (!sdrplay_api.dll_handle) {
     return false;
   }
-  // clang-format off
-  log_debug("SDRplay API DLL loaded successfully. Loading function pointers...");
-  // clang-format on
-  LOAD_SDRPLAY_FUNC(Open);
-  LOAD_SDRPLAY_FUNC(Close);
-  LOAD_SDRPLAY_FUNC(ApiVersion);
-  LOAD_SDRPLAY_FUNC(GetDevices);
-  LOAD_SDRPLAY_FUNC(SelectDevice);
-  LOAD_SDRPLAY_FUNC(ReleaseDevice);
-  LOAD_SDRPLAY_FUNC(GetDeviceParams);
-  LOAD_SDRPLAY_FUNC(GetErrorString);
-  LOAD_SDRPLAY_FUNC(GetLastError);
-  LOAD_SDRPLAY_FUNC(Update);
-  LOAD_SDRPLAY_FUNC(Init);
-  LOAD_SDRPLAY_FUNC(Uninit);
-  LOAD_SDRPLAY_FUNC(LockDeviceApi);
-  LOAD_SDRPLAY_FUNC(UnlockDeviceApi);
-  log_debug("All SDRplay API function pointers loaded.");
+
   return true;
 }
 
 static void sdrplay_unload_api(void) {
   if (sdrplay_api.dll_handle) {
-    FreeLibrary(sdrplay_api.dll_handle);
+    platform_dll_unload(sdrplay_api.dll_handle);
     sdrplay_api.dll_handle = NULL;
     log_debug("SDRplay API DLL unloaded.");
   }

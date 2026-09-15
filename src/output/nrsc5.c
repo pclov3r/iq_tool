@@ -64,38 +64,32 @@ static bool load_nrsc5_dll(void) {
   if (nrsc5_api.dll_handle)
     return true;
 
-  log_debug("Attempting to dynamically load the NRSC5 library...");
-  nrsc5_api.dll_handle = platform_dll_load("libnrsc5.dll");
+  static const WinDllSymbol symbols[] = {
+      {"nrsc5_get_version", (void **)&nrsc5_api.get_version},
+      {"nrsc5_open_pipe", (void **)&nrsc5_api.open_pipe},
+      {"nrsc5_close", (void **)&nrsc5_api.close},
+      {"nrsc5_set_mode", (void **)&nrsc5_api.set_mode},
+      {"nrsc5_set_callback", (void **)&nrsc5_api.set_callback},
+      {"nrsc5_start", (void **)&nrsc5_api.start},
+      {"nrsc5_stop", (void **)&nrsc5_api.stop},
+      {"nrsc5_pipe_samples_cf32", (void **)&nrsc5_api.pipe_samples_cf32},
+      {"nrsc5_program_type_name", (void **)&nrsc5_api.program_type_name},
+      {"nrsc5_service_data_type_name",
+       (void **)&nrsc5_api.service_data_type_name},
+      {"nrsc5_alert_category_name", (void **)&nrsc5_api.alert_category_name},
+  };
 
+  nrsc5_api.dll_handle = platform_win_load_dll(
+      "libnrsc5.dll", symbols, sizeof(symbols) / sizeof(symbols[0]));
   if (!nrsc5_api.dll_handle) {
     log_error("NRSC5: 'libnrsc5.dll' is missing in the program folder.");
     log_error("NRSC5: To enable the NRSC5 output module, please see "
               "compilation instructions at:");
     log_error(
         "NRSC5:   https://github.com/theori-io/nrsc5#building-for-windows");
-    log_error(
-        "NRSC5: Once compiled, copy 'libnrsc5.dll' into the program folder.");
     return false;
   }
 
-#define BIND_FUNC(func_name)                                                   \
-  DLL_LOAD_FUNCTION(nrsc5_api.dll_handle, nrsc5_api, "nrsc5_", func_name)
-
-  BIND_FUNC(get_version);
-  BIND_FUNC(open_pipe);
-  BIND_FUNC(close);
-  BIND_FUNC(set_mode);
-  BIND_FUNC(set_callback);
-  BIND_FUNC(start);
-  BIND_FUNC(stop);
-  BIND_FUNC(pipe_samples_cf32);
-  BIND_FUNC(program_type_name);
-  BIND_FUNC(service_data_type_name);
-  BIND_FUNC(alert_category_name);
-
-#undef BIND_FUNC
-
-  log_debug("All NRSC5 symbols bound successfully.");
   return true;
 }
 #endif
