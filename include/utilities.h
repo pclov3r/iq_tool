@@ -42,12 +42,6 @@ typedef struct InputSummaryInfo OutputSummaryInfo;
 // --- Function Declarations ---
 
 /**
- * @brief Gets a high-resolution monotonic time in seconds.
- * @return The time in seconds as a double.
- */
-double utility_get_time(void);
-
-/**
  * @brief Clears the standard input buffer up to the next newline or EOF.
  */
 void utility_clear_stdin(void);

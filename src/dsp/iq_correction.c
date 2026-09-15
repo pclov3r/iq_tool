@@ -338,7 +338,7 @@ void iq_correction_run_estimation(void *state,
   if (!iq_state->app->config->dsp.iq_correction.enable)
     return;
 
-  atomic_store_explicit(&iq_state->last_optimization_time, utility_get_time(),
+  atomic_store_explicit(&iq_state->last_optimization_time, platform_get_time(),
                         memory_order_relaxed);
 
   // Snapshot current values lock-free.

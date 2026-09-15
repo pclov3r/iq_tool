@@ -25,8 +25,6 @@
 #include <unistd.h>
 #endif
 
-double utility_get_time(void) { return platform_get_time(); }
-
 void utility_clear_stdin(void) {
   int c;
   while ((c = getchar()) != '\n' && c != EOF)

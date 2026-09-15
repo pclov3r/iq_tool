@@ -785,7 +785,7 @@ static void *input_spyserver_client_producer_thread(void *arg) {
           static size_t accumulated_drops = 0;
 
           accumulated_drops += samples_in_chunk;
-          double current_time = utility_get_time();
+          double current_time = platform_get_time();
 
           if (current_time - last_drop_log_time >=
               CONSOLE_UPDATE_INTERVAL_SEC) {

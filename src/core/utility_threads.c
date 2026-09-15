@@ -82,7 +82,7 @@ void *process_chain_thread_watchdog(void *arg) {
   while (!is_shutdown_requested()) {
     platform_sleep(WATCHDOG_INTERVAL_MS);
 
-    double current_time = utility_get_time();
+    double current_time = platform_get_time();
     bool timed_out = false;
 
     double last_heartbeat = atomic_load_explicit(

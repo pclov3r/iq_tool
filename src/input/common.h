@@ -8,8 +8,8 @@
 #define INPUT_COMMON_H_
 
 #include "app_context.h" // Needed for AppContext
-#include "utilities.h"
-#include <stdatomic.h> // Needed for utility_get_time
+#include "platform.h"
+#include <stdatomic.h>
 #include <stdbool.h>
 
 // --- Common Implementations for the InputModuleInterface Interface ---
@@ -25,7 +25,7 @@
  */
 static inline void input_update_heartbeat(AppContext *app) {
   atomic_store_explicit(&app->stats.last_input_heartbeat_time,
-                        utility_get_time(), memory_order_relaxed);
+                        platform_get_time(), memory_order_relaxed);
 }
 
 /**

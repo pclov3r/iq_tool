@@ -617,7 +617,7 @@ static void application_progress_callback(
   static double last_progress_log_time = 0.0;
   static long long last_bytes_written = 0;
 
-  double current_time = utility_get_time();
+  double current_time = platform_get_time();
 
   if (current_time - last_progress_log_time >= CONSOLE_UPDATE_INTERVAL_SEC) {
     double rate_mb_per_sec = 0.0;
