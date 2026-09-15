@@ -29,6 +29,21 @@ static const char **g_original_argv = NULL;
 
 #define MAX_STATIC_OPTIONS 128
 #define MAX_TOTAL_OPTIONS (MAX_STATIC_OPTIONS + PRESETS_MAX_COUNT)
+#define OPTIONS_COUNT(x) (int)(sizeof(x) / sizeof((x)[0]))
+
+// --- Helper: append a block of options into the flat options buffer ---
+static bool append_argparse_options(struct argparse_option *dest, int *total,
+                                    int capacity,
+                                    const struct argparse_option *src,
+                                    int count) {
+  if (*total + count > capacity) {
+    log_fatal("Internal error: Exceeded maximum number of CLI options.");
+    return false;
+  }
+  memcpy(&dest[*total], src, (size_t)count * sizeof(struct argparse_option));
+  *total += count;
+  return true;
+}
 
 // --- Forward Declarations ---
 static bool validate_and_process_args(AppContext *app, int non_opt_argc,
@@ -84,7 +99,7 @@ static int build_cli_options(struct argparse_option *options_buffer,
                              int max_options, AppConfig *config,
                              MemoryArena *arena, const char *active_input_type,
                              const char *active_output_type) {
-  int total_opts = 0;
+  int total_options = 0;
   struct argparse_option generic_options[] = {
       OPT_GROUP("Required Input & Output"),
       OPT_STRING('i', "input", &config->input.type_name,
@@ -166,32 +181,26 @@ static int build_cli_options(struct argparse_option *options_buffer,
       OPT_END(),
   };
 
-#define APPEND_OPTIONS_MEMCPY(dest, src, n)                                    \
-  do {                                                                         \
-    if ((size_t)(total_opts + (n)) > (size_t)max_options) {                    \
-      log_fatal("Internal error: Exceeded maximum number of CLI options.");    \
-      return -1;                                                               \
-    }                                                                          \
-    memcpy(dest, src, (n) * sizeof(struct argparse_option));                   \
-    total_opts += (n);                                                         \
-  } while (0)
-
-  APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], generic_options,
-                        sizeof(generic_options) / sizeof(generic_options[0]));
-  APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], sdr_general_options,
-                        sizeof(sdr_general_options) /
-                            sizeof(sdr_general_options[0]));
-  module_populate_cli_options(options_buffer, &total_opts, max_options,
+  if (!append_argparse_options(options_buffer, &total_options, max_options,
+                               generic_options, OPTIONS_COUNT(generic_options)))
+    return -1;
+  if (!append_argparse_options(options_buffer, &total_options, max_options,
+                               sdr_general_options,
+                               OPTIONS_COUNT(sdr_general_options)))
+    return -1;
+  module_populate_cli_options(options_buffer, &total_options, max_options,
                               active_input_type, active_output_type, arena);
   if (config->num_presets > 0) {
     struct argparse_option preset_header[] = {OPT_GROUP("Available Presets")};
-    APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], preset_header, 1);
-    struct argparse_option preset_opts[PRESETS_MAX_COUNT];
+    if (!append_argparse_options(options_buffer, &total_options, max_options,
+                                 preset_header, OPTIONS_COUNT(preset_header)))
+      return -1;
+    struct argparse_option preset_options[PRESETS_MAX_COUNT];
     int presets_to_add = (config->num_presets > PRESETS_MAX_COUNT)
                              ? PRESETS_MAX_COUNT
                              : config->num_presets;
     for (int i = 0; i < presets_to_add; i++) {
-      preset_opts[i] =
+      preset_options[i] =
           (struct argparse_option){.type = ARGPARSE_OPT_BOOLEAN,
                                    .long_name = config->presets[i].name,
                                    .help = config->presets[i].description,
@@ -199,12 +208,14 @@ static int build_cli_options(struct argparse_option *options_buffer,
                                    .callback = preset_flag_warning_cb,
                                    .value = NULL};
     }
-    APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], preset_opts,
-                          presets_to_add);
+    if (!append_argparse_options(options_buffer, &total_options, max_options,
+                                 preset_options, presets_to_add))
+      return -1;
   }
-  APPEND_OPTIONS_MEMCPY(&options_buffer[total_opts], final_options,
-                        sizeof(final_options) / sizeof(final_options[0]));
-  return total_opts;
+  if (!append_argparse_options(options_buffer, &total_options, max_options,
+                               final_options, OPTIONS_COUNT(final_options)))
+    return -1;
+  return total_options;
 }
 
 bool cli_parse(int argc, char *argv[], AppContext *app) {
