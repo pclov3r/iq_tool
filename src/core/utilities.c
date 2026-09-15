@@ -142,18 +142,7 @@ void utility_format_duration(double total_seconds, char *buffer,
 }
 
 bool utility_check_file_exists(const char *full_path) {
-#ifdef _WIN32
-  wchar_t w_path[MAX_PATH];
-  MultiByteToWideChar(CP_UTF8, 0, full_path, -1, w_path, MAX_PATH);
-  FILE *fp = _wfopen(w_path, L"r");
-#else
-  FILE *fp = fopen(full_path, "r");
-#endif
-  if (fp) {
-    fclose(fp);
-    return true;
-  }
-  return false;
+  return platform_is_file(full_path);
 }
 
 bool utility_prompt_for_overwrite(const char *path_for_messages) {

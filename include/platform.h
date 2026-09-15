@@ -58,6 +58,58 @@ double platform_get_time(void);
  */
 bool platform_set_binary_mode(FILE *stream);
 
+/**
+ * @brief Opens a file from a UTF-8 path.
+ *
+ * On Windows, converts UTF-8 path and mode to wide characters and uses _wfopen.
+ * On POSIX, calls fopen directly.
+ *
+ * @param path UTF-8 path to the file.
+ * @param mode Open mode string (e.g. "r", "wb").
+ * @return Opened FILE pointer, or NULL on failure.
+ */
+FILE *platform_fopen(const char *path, const char *mode);
+
+/**
+ * @brief Checks if a path exists and points to a safe regular file.
+ *
+ * On Windows, verifies the path exists and is not a directory or reparse point.
+ * On POSIX, uses lstat to ensure the file is a regular file (not a
+ * symlink/dir).
+ *
+ * @param path UTF-8 path to check.
+ * @return true if the file exists and is regular, false otherwise.
+ */
+bool platform_is_file(const char *path);
+
+/**
+ * @brief Checks if a path exists and is a directory.
+ *
+ * @param path UTF-8 path to check.
+ * @return true if the path exists and is a directory, false otherwise.
+ */
+typedef enum {
+  PLATFORM_FILE_OK = 0,
+  PLATFORM_FILE_IS_DIRECTORY,
+  PLATFORM_FILE_STATUS_ERROR
+} PlatformFileStatus;
+
+/**
+ * @brief Returns a human-readable description for a PlatformFileStatus code.
+ */
+const char *platform_file_status_str(PlatformFileStatus status);
+
+/**
+ * @brief Verifies that an open FILE handle represents a regular file.
+ *
+ * Checks that the underlying descriptor is valid and not a directory.
+ *
+ * @param fp An open FILE handle to check.
+ * @return PLATFORM_FILE_OK on success, PLATFORM_FILE_IS_DIRECTORY if a
+ * directory was opened, or PLATFORM_FILE_STATUS_ERROR on stat failure.
+ */
+PlatformFileStatus platform_file_verify(FILE *fp);
+
 // --- Thread Priority Abstraction ---
 
 /**

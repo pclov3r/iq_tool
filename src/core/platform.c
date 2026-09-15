@@ -27,6 +27,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 #endif
@@ -72,6 +73,86 @@ bool platform_set_binary_mode(FILE *stream) {
 #else
   (void)stream;
   return true;
+#endif
+}
+
+FILE *platform_fopen(const char *path, const char *mode) {
+  if (!path || !mode)
+    return NULL;
+#ifdef _WIN32
+  wchar_t path_w[APP_MAX_PATH_BUFFER];
+  wchar_t mode_w[32];
+  if (MultiByteToWideChar(CP_UTF8, 0, path, -1, path_w, APP_MAX_PATH_BUFFER) <=
+      0)
+    return NULL;
+  if (MultiByteToWideChar(CP_UTF8, 0, mode, -1, mode_w, 32) <= 0)
+    return NULL;
+  return _wfopen(path_w, mode_w);
+#else
+  return fopen(path, mode);
+#endif
+}
+
+bool platform_is_file(const char *path) {
+  if (!path || *path == '\0')
+    return false;
+#ifdef _WIN32
+  wchar_t path_w[APP_MAX_PATH_BUFFER];
+  if (MultiByteToWideChar(CP_UTF8, 0, path, -1, path_w, APP_MAX_PATH_BUFFER) <=
+      0)
+    return false;
+  DWORD attrs = GetFileAttributesW(path_w);
+  if (attrs == INVALID_FILE_ATTRIBUTES)
+    return false;
+  return !(attrs & FILE_ATTRIBUTE_DIRECTORY) &&
+         !(attrs & FILE_ATTRIBUTE_REPARSE_POINT);
+#else
+  struct stat st;
+  if (lstat(path, &st) != 0)
+    return false;
+  return S_ISREG(st.st_mode);
+#endif
+}
+
+const char *platform_file_status_str(PlatformFileStatus status) {
+  switch (status) {
+  case PLATFORM_FILE_OK:
+    return "OK";
+  case PLATFORM_FILE_IS_DIRECTORY:
+    return "Path is a directory";
+  case PLATFORM_FILE_STATUS_ERROR:
+    return "Could not retrieve file status";
+  default:
+    return "Unknown file error";
+  }
+}
+
+PlatformFileStatus platform_file_verify(FILE *fp) {
+  if (!fp)
+    return PLATFORM_FILE_STATUS_ERROR;
+#ifdef _WIN32
+  int fd = _fileno(fp);
+  if (fd == -1)
+    return PLATFORM_FILE_STATUS_ERROR;
+  HANDLE hFile = (HANDLE)_get_osfhandle(fd);
+  if (hFile == INVALID_HANDLE_VALUE)
+    return PLATFORM_FILE_STATUS_ERROR;
+  BY_HANDLE_FILE_INFORMATION info;
+  if (!GetFileInformationByHandle(hFile, &info))
+    return PLATFORM_FILE_STATUS_ERROR;
+  if (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+    return PLATFORM_FILE_IS_DIRECTORY;
+  return PLATFORM_FILE_OK;
+#else
+  int fd = fileno(fp);
+  if (fd == -1)
+    return PLATFORM_FILE_STATUS_ERROR;
+  struct stat st;
+  if (fstat(fd, &st) != 0)
+    return PLATFORM_FILE_STATUS_ERROR;
+  if (S_ISDIR(st.st_mode))
+    return PLATFORM_FILE_IS_DIRECTORY;
+  return PLATFORM_FILE_OK;
 #endif
 }
 

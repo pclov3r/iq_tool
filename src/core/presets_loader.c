@@ -18,16 +18,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
-#include <io.h>
-#include <windows.h>
-#else
-#include <libgen.h>
-#include <limits.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#endif
-
 // --- The Dispatch Table ---
 static const PresetKeyHandler key_handlers[] = {
     {"description", PRESET_KEY_STRDUP, offsetof(PresetDefinition, description),
@@ -119,36 +109,14 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
       search_paths_list,
       sizeof(search_paths_list) / sizeof(search_paths_list[0]), arena);
 
-  for (size_t i = 0; i < num_search_paths; ++i) {
-    const char *base_dir = search_paths_list[i];
+  for (size_t path_index = 0; path_index < num_search_paths; ++path_index) {
+    const char *base_dir = search_paths_list[path_index];
     if (base_dir == NULL)
       continue;
     snprintf(full_path_buffer, sizeof(full_path_buffer), "%s/%s", base_dir,
              PRESETS_FILENAME);
 
-    bool file_is_safe_and_exists = false;
-#ifdef _WIN32
-    wchar_t full_path_w[APP_MAX_PATH_BUFFER];
-    if (MultiByteToWideChar(CP_UTF8, 0, full_path_buffer, -1, full_path_w,
-                            APP_MAX_PATH_BUFFER) > 0) {
-      DWORD attrs = GetFileAttributesW(full_path_w);
-      if (attrs != INVALID_FILE_ATTRIBUTES) {
-        if (!(attrs & FILE_ATTRIBUTE_DIRECTORY) &&
-            !(attrs & FILE_ATTRIBUTE_REPARSE_POINT)) {
-          file_is_safe_and_exists = true;
-        }
-      }
-    }
-#else
-    struct stat file_stat;
-    if (lstat(full_path_buffer, &file_stat) == 0) {
-      if (S_ISREG(file_stat.st_mode)) {
-        file_is_safe_and_exists = true;
-      }
-    }
-#endif
-
-    if (file_is_safe_and_exists) {
+    if (platform_is_file(full_path_buffer)) {
       if (num_found_files <
           (int)(sizeof(found_preset_files) / sizeof(found_preset_files[0]))) {
         found_preset_files[num_found_files] =
@@ -169,53 +137,24 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
     return true;
   }
 
-  FILE *fp = NULL;
-#ifdef _WIN32
-  wchar_t preset_file_w[APP_MAX_PATH_BUFFER];
-  if (MultiByteToWideChar(CP_UTF8, 0, found_preset_files[0], -1, preset_file_w,
-                          APP_MAX_PATH_BUFFER) > 0) {
-    fp = _wfopen(preset_file_w, L"r");
-  }
-#else
-  fp = fopen(found_preset_files[0], "r");
-#endif
-
-  if (!fp) {
+  FILE *preset_file = platform_fopen(found_preset_files[0], "r");
+  if (!preset_file) {
     log_error("Error opening presets file '%s': %s", found_preset_files[0],
               strerror(errno));
     return false;
   }
 
-#ifdef _WIN32
-  HANDLE hFile = (HANDLE)_get_osfhandle(_fileno(fp));
-  BY_HANDLE_FILE_INFORMATION fileInfo;
-  if (GetFileInformationByHandle(hFile, &fileInfo)) {
-    if (fileInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-      log_error("Security: Presets file '%s' is a directory. Aborting.",
-                found_preset_files[0]);
-      fclose(fp);
-      return false;
-    }
-  } else {
-    log_fatal("Could not get file status for '%s'", found_preset_files[0]);
-    fclose(fp);
-    return false;
-  }
-#else
-  struct stat file_stat;
-  if (fstat(fileno(fp), &file_stat) != 0) {
-    log_fatal("Could not get file status for '%s': %s", found_preset_files[0],
-              strerror(errno));
-    fclose(fp);
-    return false;
-  }
-  if (!S_ISREG(file_stat.st_mode)) {
-    log_error("Security: Presets file '%s' is not a regular file. Aborting.",
+  PlatformFileStatus status = platform_file_verify(preset_file);
+  if (status == PLATFORM_FILE_IS_DIRECTORY) {
+    log_error("Security: Presets file '%s' is a directory. Aborting.",
               found_preset_files[0]);
-    fclose(fp);
+    fclose(preset_file);
+    return false;
+  } else if (status != PLATFORM_FILE_OK) {
+    log_fatal("Could not get file status for '%s'", found_preset_files[0]);
+    fclose(preset_file);
     return false;
   }
-#endif
 
   char line[PRESETS_MAX_LINE_LENGTH];
   PresetDefinition *current_preset = NULL;
@@ -224,12 +163,12 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
   config->presets = (PresetDefinition *)mem_arena_alloc(
       arena, capacity * sizeof(PresetDefinition), true);
   if (!config->presets) {
-    fclose(fp);
+    fclose(preset_file);
     return false;
   }
 
   int line_num = 0;
-  while (fgets(line, sizeof(line), fp)) {
+  while (fgets(line, sizeof(line), preset_file)) {
     line_num++;
     char *trimmed_line = utility_trim_whitespace(line);
 
@@ -252,7 +191,7 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
         PresetDefinition *new_presets = (PresetDefinition *)mem_arena_alloc(
             arena, capacity * sizeof(PresetDefinition), true);
         if (!new_presets) {
-          fclose(fp);
+          fclose(preset_file);
           return false;
         }
         memcpy(new_presets, config->presets,
@@ -268,7 +207,7 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
         current_preset->name =
             arena_strdup(arena, utility_trim_whitespace(name_start));
         if (!current_preset->name) {
-          fclose(fp);
+          fclose(preset_file);
           return false;
         }
         config->num_presets++;
@@ -299,7 +238,7 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
           case PRESET_KEY_STRDUP:
             *(char **)value_ptr = arena_strdup(arena, value);
             if (!*(char **)value_ptr) {
-              fclose(fp);
+              fclose(preset_file);
               return false;
             }
             break;
@@ -335,6 +274,6 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
     }
   }
 
-  fclose(fp);
+  fclose(preset_file);
   return true;
 }
