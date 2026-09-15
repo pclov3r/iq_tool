@@ -45,12 +45,6 @@
 
 #ifndef _WIN32
 #include <signal.h>
-#include <strings.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#else
-#include <io.h>
-#include <sys/stat.h>
 #endif
 
 // --- Global Variable Definitions ---

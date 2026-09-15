@@ -35,11 +35,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef _WIN32
-#include <time.h>
-#include <unistd.h>
-#endif
-
 // Helper macro to align a size up to the next power of 2 boundary
 #define ALIGN_UP(size, align) (((size) + (align) - 1) & ~((align) - 1))
 

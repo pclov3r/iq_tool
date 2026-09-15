@@ -24,12 +24,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
-
 // --- ProcessChain Thread Function Implementations (Private to this module) ---
 // Universal Ingest Callback
 static bool process_chain_queue_samples(void *context, const void *data,
