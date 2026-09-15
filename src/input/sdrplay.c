@@ -44,12 +44,7 @@
 #define SDRPLAY_TARGET_VERSION 3.15f
 
 #if defined(_WIN32)
-#include <io.h>
 #include <shlwapi.h> // For PathAppendW
-#include <windows.h>
-#else
-#include <time.h>
-#include <unistd.h>
 #endif
 
 // --- Default Configuration ---
@@ -63,7 +58,7 @@
 #if defined(_WIN32) && defined(WITH_SDRPLAY)
 // --- Private Windows Dynamic API Loading ---
 typedef struct {
-  HINSTANCE dll_handle;
+  void *dll_handle;
   sdrplay_api_ErrT (*Open)(void);
   sdrplay_api_ErrT (*Close)(void);
   sdrplay_api_ErrT (*ApiVersion)(float *apiVer); // Added Version Check

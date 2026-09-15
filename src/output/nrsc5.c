@@ -11,7 +11,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <time.h>
 
 #include "app_context.h"
@@ -31,7 +30,7 @@
 
 #ifdef _WIN32
 typedef struct {
-  HINSTANCE dll_handle;
+  void *dll_handle;
   void (*get_version)(const char **version);
   int (*open_pipe)(nrsc5_t **nrsc5);
   void (*close)(nrsc5_t *nrsc5);
@@ -666,8 +665,7 @@ static bool output_nrsc5_initialize(ModuleContext *context) {
   nrsc5_start(nrsc5_decoder->nrsc5_instance);
 
   if (s_nrsc5_config.aas_dir_arg) {
-    struct stat st;
-    if (stat(s_nrsc5_config.aas_dir_arg, &st) != 0 || !S_ISDIR(st.st_mode)) {
+    if (!platform_is_directory(s_nrsc5_config.aas_dir_arg)) {
       log_error("NRSC5: AAS directory '%s' is invalid or not a directory.",
                 s_nrsc5_config.aas_dir_arg);
       return false;

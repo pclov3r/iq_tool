@@ -23,7 +23,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/stat.h>
 
 #include "dsp/iq_correction.h"
 

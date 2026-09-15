@@ -11,11 +11,9 @@
 #include "platform.h"
 #include "utilities.h"
 #include <errno.h>
-#include <fcntl.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <string.h>
-#include <sys/types.h>
 
 // Using 10 to guarantee no collision with default OS file descriptors (0-9)
 #define TARGET_FD 10

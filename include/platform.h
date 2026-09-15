@@ -294,9 +294,9 @@ void *platform_win_load_dll_wide(const wchar_t *dll_path_wide,
 
 #ifdef _WIN32
 void print_win_error(const char *context, DWORD error_code);
+#endif // _WIN32
 
 bool platform_get_executable_dir(char *buffer, size_t buffer_size);
-#endif // _WIN32
 
 struct MemoryArena;
 

@@ -497,6 +497,26 @@ bool platform_get_executable_dir(char *buffer, size_t buffer_size) {
   return true;
 }
 
+#else // !_WIN32
+
+bool platform_get_executable_dir(char *buffer, size_t buffer_size) {
+  if (!buffer || buffer_size == 0)
+    return false;
+
+  ssize_t len = readlink("/proc/self/exe", buffer, buffer_size - 1);
+  if (len > 0) {
+    buffer[len] = '\0';
+    char *last_slash = strrchr(buffer, '/');
+    if (last_slash) {
+      *last_slash = '\0';
+      return true;
+    }
+  }
+
+  snprintf(buffer, buffer_size, ".");
+  return true;
+}
+
 #endif // _WIN32
 
 char *platform_resolve_path(const char *path, bool is_input,

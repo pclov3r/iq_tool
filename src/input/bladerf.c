@@ -21,25 +21,12 @@
 #include <errno.h>
 #include <limits.h>
 #include <stdatomic.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 
 // Module-specific includes
 #include <libbladeRF.h>
-
-#ifdef _WIN32
-#include <knownfolders.h>
-#include <pathcch.h>
-#include <shlobj.h>
-#include <shlwapi.h>
-#include <windows.h>
-#else
-#include <libgen.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <strings.h>
-#include <unistd.h>
-#endif
 
 // --- Default Configuration ---
 #define BLADERF_DEFAULT_FILTER_ATTENUATION_DB 80.0f
@@ -57,7 +44,7 @@
 #if defined(_WIN32) && defined(WITH_BLADERF)
 // --- Private Windows Dynamic API Loading ---
 typedef struct {
-  HINSTANCE dll_handle;
+  void *dll_handle;
   void (*log_set_verbosity)(bladerf_log_level);
   int (*open)(struct bladerf **, const char *);
   void (*close)(struct bladerf *);
@@ -900,76 +887,27 @@ static bool bladerf_find_and_load_fpga_automatically(struct bladerf *dev) {
     return false;
   }
 
-#ifdef _WIN32
-  wchar_t filename_w[64];
-  if (MultiByteToWideChar(CP_UTF8, 0, filename_utf8, -1, filename_w, 64) == 0) {
-    log_error("Failed to convert FPGA filename to wide char.");
-    return false;
-  }
-
-  wchar_t exe_path_w[APP_MAX_PATH_BUFFER];
-  if (GetModuleFileNameW(NULL, exe_path_w, APP_MAX_PATH_BUFFER) == 0) {
-    log_error("Failed to get executable path.");
-    return false;
-  }
-  PathRemoveFileSpecW(exe_path_w);
-
-  wchar_t search_path_w[APP_MAX_PATH_BUFFER];
-  PathCchCombine(search_path_w, APP_MAX_PATH_BUFFER, exe_path_w,
-                 L"fpga\\bladerf");
-
-  wchar_t full_path_w[APP_MAX_PATH_BUFFER];
-  PathCchCombine(full_path_w, APP_MAX_PATH_BUFFER, search_path_w, filename_w);
-
-  if (PathFileExistsW(full_path_w)) {
-    char full_path_utf8[APP_MAX_PATH_BUFFER];
-    if (WideCharToMultiByte(CP_UTF8, 0, full_path_w, -1, full_path_utf8,
-                            sizeof(full_path_utf8), NULL, NULL) > 0) {
-      log_debug("Found FPGA file at: %s", full_path_utf8);
-      status = bladerf_load_fpga(dev, full_path_utf8);
-      if (is_shutdown_requested())
-        return false;
-      if (status == 0) {
-        log_info("Automatic FPGA loading successful.");
-        return true;
-      } else {
-        log_error("Found FPGA file, but failed to load it: %s",
-                  bladerf_strerror(status));
-        return false;
-      }
-    }
-  }
-#else
-  char exe_path_buffer[APP_MAX_PATH_BUFFER] = {0};
   char exe_dir[APP_MAX_PATH_BUFFER] = {0};
-  char parent_dir_buffer[APP_MAX_PATH_BUFFER] = {0};
-
-  ssize_t length =
-      readlink("/proc/self/exe", exe_path_buffer, sizeof(exe_path_buffer) - 1);
-  if (length > 0) {
-    exe_path_buffer[length] = '\0';
-    char temp_path1[APP_MAX_PATH_BUFFER];
-    snprintf(temp_path1, sizeof(temp_path1), "%s", exe_path_buffer);
-    snprintf(exe_dir, sizeof(exe_dir), "%s", dirname(temp_path1));
-    char temp_path2[APP_MAX_PATH_BUFFER];
-    snprintf(temp_path2, sizeof(temp_path2), "%s", exe_path_buffer);
-    dirname(temp_path2);
-    snprintf(parent_dir_buffer, sizeof(parent_dir_buffer), "%s",
-             dirname(temp_path2));
+  char parent_dir[APP_MAX_PATH_BUFFER] = {0};
+  if (platform_get_executable_dir(exe_dir, sizeof(exe_dir))) {
+    snprintf(parent_dir, sizeof(parent_dir), "%s/..", exe_dir);
   } else {
     snprintf(exe_dir, sizeof(exe_dir), ".");
-    snprintf(parent_dir_buffer, sizeof(parent_dir_buffer), "..");
+    snprintf(parent_dir, sizeof(parent_dir), "..");
   }
 
-  const char *search_bases[] = {exe_dir, parent_dir_buffer,
+  const char *search_bases[] = {exe_dir, parent_dir,
+#ifndef _WIN32
                                 "/usr/local/share/" APP_NAME,
-                                "/usr/share/" APP_NAME, NULL};
+                                "/usr/share/" APP_NAME,
+#endif
+                                NULL};
   char full_path[APP_MAX_PATH_BUFFER];
 
   for (int i = 0; search_bases[i] != NULL; i++) {
     snprintf(full_path, sizeof(full_path), "%s/fpga/bladerf/%s",
              search_bases[i], filename_utf8);
-    if (access(full_path, F_OK) == 0) {
+    if (platform_is_file(full_path)) {
       log_info("Found FPGA file at: %s", full_path);
       status = bladerf_load_fpga(dev, full_path);
       if (is_shutdown_requested())
@@ -984,7 +922,6 @@ static bool bladerf_find_and_load_fpga_automatically(struct bladerf *dev) {
       }
     }
   }
-#endif
 
   log_error("Could not automatically find the required FPGA file '%s'.",
             filename_utf8);
