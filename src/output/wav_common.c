@@ -42,31 +42,26 @@ bool output_wav_common_validate_options(AppContext *app) {
 #ifdef _WIN32
   if (config->output.effective_path_utf8[0] == '\0')
     return false;
-  const char *out_path = config->output.effective_path_utf8;
+  const char *path = config->output.effective_path_utf8;
 #else
   if (!config->output.effective_path ||
       config->output.effective_path[0] == '\0')
     return false;
-  const char *out_path = config->output.effective_path;
+  const char *path = config->output.effective_path;
 #endif
 
-  if (!utility_verify_output_path(config, out_path))
+  if (!utility_verify_output_path(config, path))
     return false;
 
-// Fail early if we don't have permission to write to this file
-// We can't write the final libsndfile header until Phase 2, but we CAN probe
-// permissions now!
-#ifdef _WIN32
-  FILE *dummy = _wfopen(config->output.effective_path_w, L"wb");
-#else
-  FILE *dummy = fopen(out_path, "wb");
-#endif
-
-  if (!dummy) {
-    log_error("Error opening output file %s: %s", out_path, strerror(errno));
+  // Fail early if we don't have permission to write to this file
+  // We can't write the final libsndfile header until Phase 2, but we CAN probe
+  // permissions now!
+  FILE *probe_file = platform_file_open_write(path);
+  if (!probe_file) {
+    log_error("Error opening output file %s: %s", path, strerror(errno));
     return false;
   }
-  fclose(dummy);
+  fclose(probe_file);
 
   return true;
 }

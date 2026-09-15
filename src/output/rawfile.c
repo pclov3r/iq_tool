@@ -47,12 +47,12 @@ static bool output_rawfile_validate_options(AppContext *app) {
   }
 
 #ifdef _WIN32
-  const char *out_path = config->output.effective_path_utf8;
+  const char *path = config->output.effective_path_utf8;
 #else
-  const char *out_path = config->output.effective_path;
+  const char *path = config->output.effective_path;
 #endif
 
-  if (!utility_verify_output_path(config, out_path)) {
+  if (!utility_verify_output_path(config, path)) {
     return false;
   }
 
@@ -62,14 +62,10 @@ static bool output_rawfile_validate_options(AppContext *app) {
     return false;
   app->module.output_private_data = data;
 
-#ifdef _WIN32
-  data->handle = _wfopen(config->output.effective_path_w, L"wb");
-#else
-  data->handle = fopen(out_path, "wb");
-#endif
+  data->handle = platform_file_open_write(path);
 
   if (!data->handle) {
-    log_error("Error opening output file %s: %s", out_path, strerror(errno));
+    log_error("Error opening output file %s: %s", path, strerror(errno));
     return false;
   }
 

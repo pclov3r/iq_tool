@@ -137,7 +137,7 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
     return true;
   }
 
-  FILE *preset_file = platform_fopen(found_preset_files[0], "r");
+  FILE *preset_file = platform_file_open_read(found_preset_files[0]);
   if (!preset_file) {
     log_error("Error opening presets file '%s': %s", found_preset_files[0],
               strerror(errno));

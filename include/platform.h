@@ -71,6 +71,27 @@ bool platform_set_binary_mode(FILE *stream);
 FILE *platform_fopen(const char *path, const char *mode);
 
 /**
+ * @brief Opens a file for reading text or binary data.
+ *
+ * Automatically handles UTF-8 path conversion across Windows and POSIX.
+ *
+ * @param path UTF-8 path to the file.
+ * @return Opened FILE handle, or NULL on failure.
+ */
+FILE *platform_file_open_read(const char *path);
+
+/**
+ * @brief Opens or creates a binary file for writing, truncating any existing
+ * content.
+ *
+ * Automatically handles UTF-8 path conversion across Windows and POSIX.
+ *
+ * @param path UTF-8 path to the file.
+ * @return Opened FILE handle, or NULL on failure.
+ */
+FILE *platform_file_open_write(const char *path);
+
+/**
  * @brief Checks if a path exists and points to a safe regular file.
  *
  * On Windows, verifies the path exists and is not a directory or reparse point.

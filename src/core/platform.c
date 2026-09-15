@@ -93,6 +93,14 @@ FILE *platform_fopen(const char *path, const char *mode) {
 #endif
 }
 
+FILE *platform_file_open_read(const char *path) {
+  return platform_fopen(path, "r");
+}
+
+FILE *platform_file_open_write(const char *path) {
+  return platform_fopen(path, "wb");
+}
+
 bool platform_is_file(const char *path) {
   if (!path || *path == '\0')
     return false;

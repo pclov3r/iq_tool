@@ -222,17 +222,10 @@ static void dump_aas_file(nrsc5_context *nrsc5_decoder,
            "%s" PATH_SEPARATOR "%u_%s", s_nrsc5_config.aas_dir_arg, number,
            safe_name);
 
-#ifdef _WIN32
-  wchar_t w_path[APP_MAX_PATH_BUFFER];
-  MultiByteToWideChar(CP_UTF8, 0, nrsc5_decoder->filepath_buffer, -1, w_path,
-                      APP_MAX_PATH_BUFFER);
-  FILE *fp = _wfopen(w_path, L"wb");
-#else
-  FILE *fp = fopen(nrsc5_decoder->filepath_buffer, "wb");
-#endif
-  if (fp) {
-    size_t written = fwrite(data, 1, size, fp);
-    fclose(fp);
+  FILE *image_file = platform_file_open_write(nrsc5_decoder->filepath_buffer);
+  if (image_file) {
+    size_t written = fwrite(data, 1, size, image_file);
+    fclose(image_file);
     if (written == size) {
       log_info("NRSC5: AAS file saved: %s (%u bytes)",
                nrsc5_decoder->filepath_buffer, size);
