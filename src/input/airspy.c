@@ -36,13 +36,7 @@
 #define AIRSPY_BOARD_ID_AIRSPY_MINI 1
 #endif
 
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <strings.h>
-#include <time.h>
-#include <unistd.h>
-#endif
+#include "platform.h"
 
 // --- Default Configuration ---
 #define AIRSPY_DEFAULT_FILTER_ATTENUATION_DB 80.0f

@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <time.h>
 
 #ifdef _WIN32
 // Includes required for Windows-specific function signatures below
@@ -63,6 +64,36 @@ void platform_sleep(unsigned int ms);
  */
 double platform_get_time(void);
 
+/**
+ * @brief Suspends execution of the calling thread for the specified microsecond
+ * duration.
+ * @param us Duration to sleep in microseconds.
+ */
+void platform_sleep_us(unsigned int us);
+
+/**
+ * @brief Converts broken-down time in UTC to calendar time (seconds since Unix
+ * epoch).
+ *
+ * Portable equivalent to POSIX timegm / Windows _mkgmtime.
+ *
+ * @param tm Pointer to broken-down time struct (interpreted as UTC).
+ * @return Time in seconds, or (time_t)-1 on error.
+ */
+time_t platform_timegm(struct tm *tm);
+
+/**
+ * @brief Converts calendar time to broken-down UTC time representation in a
+ * thread-safe manner.
+ *
+ * Portable equivalent to POSIX gmtime_r / Windows gmtime_s.
+ *
+ * @param timep Pointer to time_t to convert.
+ * @param result Pointer to struct tm where result will be written.
+ * @return Pointer to result on success, or NULL on failure.
+ */
+struct tm *platform_gmtime_r(const time_t *timep, struct tm *result);
+
 // --- File Stream & Descriptor I/O ---
 
 /**
@@ -73,6 +104,29 @@ double platform_get_time(void);
  * @return true on success or if unneeded, false on error.
  */
 bool platform_set_binary_mode(FILE *stream);
+
+/**
+ * @brief Sets a file descriptor to binary mode on Windows.
+ * On POSIX systems, descriptors are always binary, so this is a no-op returning
+ * true.
+ * @param fd File descriptor to configure.
+ * @return true on success or if unneeded, false on error.
+ */
+bool platform_set_binary_mode_fd(int fd);
+
+/**
+ * @brief Checks if a file descriptor is open and valid.
+ * @param fd File descriptor to test.
+ * @return true if valid, false if closed or invalid.
+ */
+bool platform_is_fd_valid(int fd);
+
+/**
+ * @brief Writes raw bytes directly to standard error, safe for emergency exits.
+ * @param buffer String buffer to write.
+ * @param len Number of bytes to write.
+ */
+void platform_write_stderr(const char *buffer, size_t len);
 
 /**
  * @brief Opens a file from a UTF-8 path.
@@ -135,6 +189,17 @@ bool platform_is_file(const char *path);
  * @param path UTF-8 path to check.
  * @return true if the path exists and is a directory, false otherwise.
  */
+bool platform_is_directory(const char *path);
+
+/**
+ * @brief Returns a pointer to the filename component of a path, skipping
+ * leading directory components separated by '/' or '\\'.
+ *
+ * @param path Path string.
+ * @return Pointer inside path to the basename, or NULL if path is NULL.
+ */
+const char *platform_get_basename(const char *path);
+
 typedef enum {
   PLATFORM_FILE_OK = 0,
   PLATFORM_FILE_IS_DIRECTORY,

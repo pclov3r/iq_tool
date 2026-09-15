@@ -49,7 +49,6 @@
 #include "queue.h"
 #include "ring_buffer.h"
 #include "sample_format_table.h"
-#include "sample_format_table.h" // Required for standardized packet format
 #include "signal_handler.h"
 #include "utilities.h"
 #include <math.h>
@@ -59,13 +58,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-// --- Platform-Specific Includes ---
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
 
 // --- Default Configuration ---
 #define SPYSERVER_DEFAULT_SAMPLE_RATE_HZ 600000.0

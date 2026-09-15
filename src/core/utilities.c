@@ -16,15 +16,6 @@
 #include <string.h>
 #include <time.h>
 
-#ifdef _WIN32
-#include <shlwapi.h>
-#include <windows.h>
-#else
-#include <libgen.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#endif
-
 void utility_clear_stdin(void) {
   int c;
   while ((c = getchar()) != '\n' && c != EOF)
@@ -63,15 +54,7 @@ const char *utility_get_basename_for_parsing(const AppConfig *config,
   if (!config || !config->input.resolved_path || !buffer || buffer_size == 0) {
     return NULL;
   }
-  const char *path = config->input.resolved_path;
-  const char *last_sep = strrchr(path, '/');
-#ifdef _WIN32
-  const char *last_backslash = strrchr(path, '\\');
-  if (last_backslash && (!last_sep || last_backslash > last_sep)) {
-    last_sep = last_backslash;
-  }
-#endif
-  const char *base = last_sep ? (last_sep + 1) : path;
+  const char *base = platform_get_basename(config->input.resolved_path);
   strncpy(buffer, base, buffer_size - 1);
   buffer[buffer_size - 1] = '\0';
   return buffer;
@@ -158,40 +141,21 @@ bool utility_prompt_for_overwrite(const char *path_for_messages) {
 bool utility_verify_output_path(const AppConfig *config,
                                 const char *out_path_utf8) {
   (void)config;
-#ifdef _WIN32
-  wchar_t wide_path[MAX_PATH];
-  MultiByteToWideChar(CP_UTF8, 0, out_path_utf8, -1, wide_path, MAX_PATH);
-  DWORD attrs = GetFileAttributesW(wide_path);
+  if (!out_path_utf8)
+    return true;
 
-  if (attrs != INVALID_FILE_ATTRIBUTES) {
-    if (attrs & FILE_ATTRIBUTE_DIRECTORY) {
-      log_error("Output path '%s' is a directory. Aborting.", out_path_utf8);
-      return false;
-    }
-    // Windows doesn't have FIFOs or S_ISCHR in the same way, prompt for any
-    // existing file
+  if (platform_is_directory(out_path_utf8)) {
+    log_error("Output path '%s' is a directory. Aborting.", out_path_utf8);
+    return false;
+  }
+
+  // Only trigger the interactive overwrite prompt if it's an existing regular
+  // file. This allows streaming to /dev/null or FIFOs on Linux without prompts.
+  if (platform_is_file(out_path_utf8)) {
     if (!utility_prompt_for_overwrite(out_path_utf8)) {
       return false;
     }
   }
-#else
-  (void)config; // Not needed on Linux where we use out_path_utf8
-  struct stat stat_buffer;
-  if (lstat(out_path_utf8, &stat_buffer) == 0) {
-    // Explicitly reject directories
-    if (S_ISDIR(stat_buffer.st_mode)) {
-      log_error("Output path '%s' is a directory. Aborting.", out_path_utf8);
-      return false;
-    }
 
-    // Only trigger the interactive overwrite prompt if it's a regular file.
-    // This allows /dev/null (S_ISCHR) and FIFOs (S_ISFIFO) to stream seamlessly
-    if (S_ISREG(stat_buffer.st_mode)) {
-      if (!utility_prompt_for_overwrite(out_path_utf8)) {
-        return false;
-      }
-    }
-  }
-#endif
   return true;
 }

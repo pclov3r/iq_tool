@@ -31,20 +31,19 @@ static bool output_directpipe_initialize(ModuleContext *context) {
   if (!data)
     return false;
 
-#ifndef _WIN32
   /*
    * Check if the user routed FD 10 in their shell.
    * Prevents the app from silently throwing data into a void.
    */
-  if (fcntl(TARGET_FD, F_GETFD) == -1 && errno == EBADF) {
+  if (!platform_is_fd_valid(TARGET_FD)) {
     log_error("DirectPipe: File Descriptor %d is not open!", TARGET_FD);
     log_error("Please route it in your shell.");
     return false;
   }
-#else
-  /* Windows: Force binary mode to prevent \n -> \r\n corruption */
-  _setmode(TARGET_FD, _O_BINARY);
-#endif
+
+  /* Force binary mode on Windows to prevent \n -> \r\n corruption (no-op on
+   * POSIX) */
+  platform_set_binary_mode_fd(TARGET_FD);
 
   context->app->module.output_private_data = data;
   return true;
@@ -83,9 +82,7 @@ static size_t output_directpipe_write_chunk(ModuleContext *context,
       }
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         // Pipe is temporarily full. Yield CPU briefly.
-#ifndef _WIN32
-        usleep(100);
-#endif
+        platform_sleep_us(100);
         continue;
       }
       // Fatal error (EPIPE, EBADF). Break the loop.

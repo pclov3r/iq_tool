@@ -3,12 +3,7 @@
  * @brief Implements the entry-point functions for asynchronous service threads.
  */
 
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
-
+#include "utility_threads.h"
 #include "app_context.h"
 #include "config/constants.h"
 #include "log.h"
@@ -17,7 +12,6 @@
 #include "queue.h"
 #include "signal_handler.h"
 #include "utilities.h"
-#include "utility_threads.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -47,17 +41,9 @@ void *sdr_init_watchdog_thread(void *arg) {
             ctx->module_name ? ctx->module_name : "input",
             SDR_INITIALIZE_TIMEOUT_MS / 1000);
 
-#ifndef _WIN32
         if (len > 0) {
-          write(STDERR_FILENO, fatal_message, (size_t)len);
+          platform_write_stderr(fatal_message, (size_t)len);
         }
-#else
-        HANDLE hStdErr = GetStdHandle(STD_ERROR_HANDLE);
-        DWORD written;
-        if (len > 0) {
-          WriteFile(hStdErr, fatal_message, (DWORD)len, &written, NULL);
-        }
-#endif
         _exit(EXIT_FAILURE);
       }
       break;
@@ -105,17 +91,9 @@ void *process_chain_thread_watchdog(void *arg) {
                                               : "input",
           WATCHDOG_TIMEOUT_MS / 1000);
 
-#ifndef _WIN32
       if (len > 0) {
-        write(STDERR_FILENO, fatal_message, (size_t)len);
+        platform_write_stderr(fatal_message, (size_t)len);
       }
-#else
-      HANDLE hStdErr = GetStdHandle(STD_ERROR_HANDLE);
-      DWORD written;
-      if (len > 0) {
-        WriteFile(hStdErr, fatal_message, (DWORD)len, &written, NULL);
-      }
-#endif
 
       // Terminate the entire process immediately. This is the only correct
       // action for an unrecoverable deadlock.

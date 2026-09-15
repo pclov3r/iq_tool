@@ -30,14 +30,6 @@
 #define SAFE_STR(s) ((s) ? (s) : "(null)")
 
 #ifdef _WIN32
-#include <windows.h>
-#define PATH_SEPARATOR "\\"
-#else
-#include <unistd.h>
-#define PATH_SEPARATOR "/"
-#endif
-
-#ifdef _WIN32
 typedef struct {
   HINSTANCE dll_handle;
   void (*get_version)(const char **version);
@@ -199,11 +191,8 @@ static void dump_aas_file(nrsc5_context *nrsc5_decoder,
     data = event_payload->here_image.data;
     size = event_payload->here_image.size;
     if (event_payload->here_image.time_utc) {
-#if defined(_WIN32)
-      number = (unsigned int)_mkgmtime64(event_payload->here_image.time_utc);
-#else
-      number = (unsigned int)timegm(event_payload->here_image.time_utc);
-#endif
+      number =
+          (unsigned int)platform_timegm(event_payload->here_image.time_utc);
     } else {
       number = (unsigned int)time(NULL);
     }
@@ -218,9 +207,8 @@ static void dump_aas_file(nrsc5_context *nrsc5_decoder,
   char safe_name[256];
   sanitize_aas_filename(name_raw, safe_name, sizeof(safe_name));
 
-  snprintf(nrsc5_decoder->filepath_buffer, APP_MAX_PATH_BUFFER,
-           "%s" PATH_SEPARATOR "%u_%s", s_nrsc5_config.aas_dir_arg, number,
-           safe_name);
+  snprintf(nrsc5_decoder->filepath_buffer, APP_MAX_PATH_BUFFER, "%s/%u_%s",
+           s_nrsc5_config.aas_dir_arg, number, safe_name);
 
   FILE *image_file = platform_file_open_write(nrsc5_decoder->filepath_buffer);
   if (image_file) {

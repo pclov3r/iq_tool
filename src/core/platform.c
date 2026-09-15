@@ -24,6 +24,7 @@
 #include <windows.h>
 #else
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <libgen.h>
 #include <limits.h>
 #include <pthread.h>
@@ -62,6 +63,39 @@ double platform_get_time(void) {
 #endif
 }
 
+void platform_sleep_us(unsigned int us) {
+#ifdef _WIN32
+  if (us == 0) {
+    Sleep(0);
+  } else {
+    Sleep((us + 999) / 1000);
+  }
+#else
+  usleep((useconds_t)us);
+#endif
+}
+
+time_t platform_timegm(struct tm *tm) {
+  if (!tm)
+    return (time_t)-1;
+  tm->tm_isdst = 0;
+#ifdef _WIN32
+  return _mkgmtime(tm);
+#else
+  return timegm(tm);
+#endif
+}
+
+struct tm *platform_gmtime_r(const time_t *timep, struct tm *result) {
+  if (!timep || !result)
+    return NULL;
+#ifdef _WIN32
+  return (gmtime_s(result, timep) == 0) ? result : NULL;
+#else
+  return gmtime_r(timep, result);
+#endif
+}
+
 // --- File Stream & Descriptor I/O ---
 
 bool platform_set_binary_mode(FILE *stream) {
@@ -75,6 +109,41 @@ bool platform_set_binary_mode(FILE *stream) {
 #else
   (void)stream;
   return true;
+#endif
+}
+
+bool platform_set_binary_mode_fd(int fd) {
+#ifdef _WIN32
+  if (fd < 0)
+    return false;
+  return _setmode(fd, _O_BINARY) != -1;
+#else
+  (void)fd;
+  return true;
+#endif
+}
+
+bool platform_is_fd_valid(int fd) {
+  if (fd < 0)
+    return false;
+#ifdef _WIN32
+  return _get_osfhandle(fd) != -1;
+#else
+  return !(fcntl(fd, F_GETFD) == -1 && errno == EBADF);
+#endif
+}
+
+void platform_write_stderr(const char *buffer, size_t len) {
+  if (!buffer || len == 0)
+    return;
+#ifdef _WIN32
+  HANDLE hStdErr = GetStdHandle(STD_ERROR_HANDLE);
+  if (hStdErr != INVALID_HANDLE_VALUE && hStdErr != NULL) {
+    DWORD written;
+    WriteFile(hStdErr, buffer, (DWORD)len, &written, NULL);
+  }
+#else
+  (void)write(STDERR_FILENO, buffer, len);
 #endif
 }
 
@@ -142,6 +211,37 @@ bool platform_is_file(const char *path) {
     return false;
   return S_ISREG(st.st_mode);
 #endif
+}
+
+bool platform_is_directory(const char *path) {
+  if (!path || *path == '\0')
+    return false;
+#ifdef _WIN32
+  wchar_t path_w[APP_MAX_PATH_BUFFER];
+  if (MultiByteToWideChar(CP_UTF8, 0, path, -1, path_w, APP_MAX_PATH_BUFFER) <=
+      0)
+    return false;
+  DWORD attrs = GetFileAttributesW(path_w);
+  if (attrs == INVALID_FILE_ATTRIBUTES)
+    return false;
+  return (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
+#else
+  struct stat st;
+  if (lstat(path, &st) != 0)
+    return false;
+  return S_ISDIR(st.st_mode);
+#endif
+}
+
+const char *platform_get_basename(const char *path) {
+  if (!path)
+    return NULL;
+  const char *last_sep = strrchr(path, '/');
+  const char *last_backslash = strrchr(path, '\\');
+  if (last_backslash && (!last_sep || last_backslash > last_sep)) {
+    last_sep = last_backslash;
+  }
+  return last_sep ? (last_sep + 1) : path;
 }
 
 const char *platform_file_status_str(PlatformFileStatus status) {

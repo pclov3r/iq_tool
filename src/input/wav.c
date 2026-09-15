@@ -142,7 +142,6 @@ static bool _parse_auxi_xml_expat(const unsigned char *chunk_data,
 static bool _parse_binary_auxi_data(const unsigned char *chunk_data,
                                     sf_count_t chunk_size,
                                     SdrMetadata *metadata);
-static time_t timegm_portable(struct tm *tm);
 static void init_sdr_metadata(SdrMetadata *metadata);
 static bool parse_sdr_metadata_chunks(SNDFILE *infile, const SF_INFO *sfinfo,
                                       SdrMetadata *metadata,
@@ -302,7 +301,7 @@ static bool parse_sdr_metadata_from_filename(const char *base_filename,
         t.tm_hour = hour;
         t.tm_min = min;
         t.tm_sec = sec;
-        time_t timestamp = timegm_portable(&t);
+        time_t timestamp = platform_timegm(&t);
         if (timestamp != (time_t)-1) {
           metadata->timestamp_unix = timestamp;
           metadata->timestamp_unix_present = true;
@@ -341,28 +340,6 @@ static bool parse_sdr_metadata_from_filename(const char *base_filename,
   return parsed_something_new;
 }
 
-static time_t timegm_portable(struct tm *tm) {
-  if (!tm)
-    return -1;
-  tm->tm_isdst = 0;
-#ifdef _WIN32
-  return _mkgmtime(tm);
-#else
-  time_t result;
-  char *tz_orig = getenv("TZ");
-  setenv("TZ", "", 1);
-  tzset();
-  result = mktime(tm);
-  if (tz_orig) {
-    setenv("TZ", tz_orig, 1);
-  } else {
-    unsetenv("TZ");
-  }
-  tzset();
-  return result;
-#endif
-}
-
 static bool _parse_binary_auxi_data(const unsigned char *chunk_data,
                                     sf_count_t chunk_size,
                                     SdrMetadata *metadata) {
@@ -382,7 +359,7 @@ static bool _parse_binary_auxi_data(const unsigned char *chunk_data,
   t.tm_hour = st.wHour;
   t.tm_min = st.wMinute;
   t.tm_sec = st.wSecond;
-  time_t timestamp = timegm_portable(&t);
+  time_t timestamp = platform_timegm(&t);
   if (timestamp != (time_t)-1 && !metadata->timestamp_unix_present) {
     metadata->timestamp_unix = timestamp;
     metadata->timestamp_unix_present = true;
@@ -487,7 +464,7 @@ static void XMLCALL expat_start_element_handler(void *userData,
             t.tm_hour = hour;
             t.tm_min = min;
             t.tm_sec = sec;
-            time_t timestamp = timegm_portable(&t);
+            time_t timestamp = platform_timegm(&t);
             if (timestamp != (time_t)-1) {
               metadata->timestamp_unix = timestamp;
               metadata->timestamp_unix_present = true;
@@ -1103,20 +1080,12 @@ static void input_wav_get_summary_info(const ModuleContext *context,
     if (private_data->sdr_metadata.timestamp_unix_present) {
       char time_buffer[64];
       struct tm time_info;
-#ifdef _WIN32
-      if (gmtime_s(&time_info, &private_data->sdr_metadata.timestamp_unix) ==
-          0) {
+      if (platform_gmtime_r(&private_data->sdr_metadata.timestamp_unix,
+                            &time_info)) {
         strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S UTC",
                  &time_info);
         utility_add_summary_item(info, "Timestamp", "%s", time_buffer);
       }
-#else
-      if (gmtime_r(&private_data->sdr_metadata.timestamp_unix, &time_info)) {
-        strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S UTC",
-                 &time_info);
-        utility_add_summary_item(info, "Timestamp", "%s", time_buffer);
-      }
-#endif
     } else if (private_data->sdr_metadata.timestamp_str_present) {
       utility_add_summary_item(info, "Timestamp", "%s",
                                private_data->sdr_metadata.timestamp_str);
