@@ -82,6 +82,32 @@ typedef struct {
 
 static BladerfApiFunctionPointers bladerf_api;
 
+#define bladerf_log_set_verbosity bladerf_api.log_set_verbosity
+#define bladerf_open bladerf_api.open
+#define bladerf_close bladerf_api.close
+#define bladerf_get_board_name bladerf_api.get_board_name
+#define bladerf_get_serial_struct bladerf_api.get_serial_struct
+#define bladerf_is_fpga_configured bladerf_api.is_fpga_configured
+#define bladerf_get_fpga_size bladerf_api.get_fpga_size
+#define bladerf_load_fpga bladerf_api.load_fpga
+#define bladerf_set_sample_rate bladerf_api.set_sample_rate
+#define bladerf_set_rational_sample_rate bladerf_api.set_rational_sample_rate
+#define bladerf_enable_feature bladerf_api.enable_feature
+#define bladerf_set_bandwidth bladerf_api.set_bandwidth
+#define bladerf_set_frequency bladerf_api.set_frequency
+#define bladerf_set_gain_mode bladerf_api.set_gain_mode
+#define bladerf_set_gain bladerf_api.set_gain
+#define bladerf_set_bias_tee bladerf_api.set_bias_tee
+#define bladerf_sync_config bladerf_api.sync_config
+#define bladerf_enable_module bladerf_api.enable_module
+#define bladerf_sync_rx bladerf_api.sync_rx
+#define bladerf_init_stream bladerf_api.init_stream
+#define bladerf_stream(...) bladerf_api.stream(__VA_ARGS__)
+#define bladerf_submit_stream_buffer bladerf_api.submit_stream_buffer
+#define bladerf_deinit_stream bladerf_api.deinit_stream
+#define bladerf_set_stream_timeout bladerf_api.set_stream_timeout
+#define bladerf_strerror bladerf_api.strerror
+
 static bool bladerf_load_api(void) {
   if (bladerf_api.dll_handle) {
     return true;
@@ -135,32 +161,6 @@ static void bladerf_unload_api(void) {
     log_debug("BladeRF API DLL unloaded.");
   }
 }
-
-#define bladerf_log_set_verbosity bladerf_api.log_set_verbosity
-#define bladerf_open bladerf_api.open
-#define bladerf_close bladerf_api.close
-#define bladerf_get_board_name bladerf_api.get_board_name
-#define bladerf_get_serial_struct bladerf_api.get_serial_struct
-#define bladerf_is_fpga_configured bladerf_api.is_fpga_configured
-#define bladerf_get_fpga_size bladerf_api.get_fpga_size
-#define bladerf_load_fpga bladerf_api.load_fpga
-#define bladerf_set_sample_rate bladerf_api.set_sample_rate
-#define bladerf_set_rational_sample_rate bladerf_api.set_rational_sample_rate
-#define bladerf_enable_feature bladerf_api.enable_feature
-#define bladerf_set_bandwidth bladerf_api.set_bandwidth
-#define bladerf_set_frequency bladerf_api.set_frequency
-#define bladerf_set_gain_mode bladerf_api.set_gain_mode
-#define bladerf_set_gain bladerf_api.set_gain
-#define bladerf_set_bias_tee bladerf_api.set_bias_tee
-#define bladerf_sync_config bladerf_api.sync_config
-#define bladerf_enable_module bladerf_api.enable_module
-#define bladerf_sync_rx bladerf_api.sync_rx
-#define bladerf_init_stream bladerf_api.init_stream
-#define bladerf_stream(...) bladerf_api.stream(__VA_ARGS__)
-#define bladerf_submit_stream_buffer bladerf_api.submit_stream_buffer
-#define bladerf_deinit_stream bladerf_api.deinit_stream
-#define bladerf_set_stream_timeout bladerf_api.set_stream_timeout
-#define bladerf_strerror bladerf_api.strerror
 #endif
 
 // --- Private Module Configuration ---

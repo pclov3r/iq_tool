@@ -80,6 +80,21 @@ typedef struct {
 
 static SdrplayApiFunctionPointers sdrplay_api;
 
+#define sdrplay_api_Open sdrplay_api.Open
+#define sdrplay_api_Close sdrplay_api.Close
+#define sdrplay_api_ApiVersion sdrplay_api.ApiVersion
+#define sdrplay_api_GetDevices sdrplay_api.GetDevices
+#define sdrplay_api_SelectDevice sdrplay_api.SelectDevice
+#define sdrplay_api_ReleaseDevice sdrplay_api.ReleaseDevice
+#define sdrplay_api_GetDeviceParams sdrplay_api.GetDeviceParams
+#define sdrplay_api_GetErrorString sdrplay_api.GetErrorString
+#define sdrplay_api_GetLastError sdrplay_api.GetLastError
+#define sdrplay_api_Update sdrplay_api.Update
+#define sdrplay_api_Init sdrplay_api.Init
+#define sdrplay_api_Uninit sdrplay_api.Uninit
+#define sdrplay_api_LockDeviceApi sdrplay_api.LockDeviceApi
+#define sdrplay_api_UnlockDeviceApi sdrplay_api.UnlockDeviceApi
+
 static wchar_t *get_sdrplay_dll_path(void) {
   HKEY hKey;
   LONG reg_status;
@@ -175,22 +190,6 @@ static void sdrplay_unload_api(void) {
     log_debug("SDRplay API DLL unloaded.");
   }
 }
-
-#define sdrplay_api_Open sdrplay_api.Open
-#define sdrplay_api_Close sdrplay_api.Close
-#define sdrplay_api_ApiVersion sdrplay_api.ApiVersion
-#define sdrplay_api_GetDevices sdrplay_api.GetDevices
-#define sdrplay_api_SelectDevice sdrplay_api.SelectDevice
-#define sdrplay_api_ReleaseDevice sdrplay_api.ReleaseDevice
-#define sdrplay_api_GetDeviceParams sdrplay_api.GetDeviceParams
-#define sdrplay_api_GetErrorString sdrplay_api.GetErrorString
-#define sdrplay_api_GetLastError sdrplay_api.GetLastError
-#define sdrplay_api_Update sdrplay_api.Update
-#define sdrplay_api_Init sdrplay_api.Init
-#define sdrplay_api_Uninit sdrplay_api.Uninit
-#define sdrplay_api_LockDeviceApi sdrplay_api.LockDeviceApi
-#define sdrplay_api_UnlockDeviceApi sdrplay_api.UnlockDeviceApi
-
 #endif
 
 extern pthread_mutex_t g_console_mutex;
