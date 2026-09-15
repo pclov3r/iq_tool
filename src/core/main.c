@@ -424,13 +424,8 @@ static void print_configuration_summary(const AppConfig *config,
   }
 
   if (config->output.path_arg != NULL) {
-#ifdef _WIN32
     utility_add_summary_item(&output_info, "Output File", "%s",
-                             config->output.effective_path_utf8);
-#else
-    utility_add_summary_item(&output_info, "Output File", "%s",
-                             config->output.effective_path);
-#endif
+                             config->output.resolved_path);
   } else if (config->output.payload == PAYLOAD_AUDIO) {
     utility_add_summary_item(&output_info, "Output Target", "Audio Device");
   }

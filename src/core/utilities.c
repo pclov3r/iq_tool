@@ -59,29 +59,22 @@ const char *utility_format_size(long long size_bytes, char *buffer,
 const char *utility_get_basename_for_parsing(const AppConfig *config,
                                              char *buffer, size_t buffer_size,
                                              MemoryArena *arena) {
-#ifdef _WIN32
-  (void)arena; // arena is unused on Windows, this silences the warning.
-  if (config->input.effective_path_w[0] != L'\0') {
-    const wchar_t *base_w = PathFindFileNameW(config->input.effective_path_w);
-    if (WideCharToMultiByte(CP_UTF8, 0, base_w, -1, buffer, buffer_size, NULL,
-                            NULL) > 0) {
-      return buffer;
-    }
+  (void)arena;
+  if (!config || !config->input.resolved_path || !buffer || buffer_size == 0) {
+    return NULL;
   }
-#else
-  if (config->input.effective_path) {
-    size_t length = strlen(config->input.effective_path) + 1;
-    char *temp_copy = (char *)mem_arena_alloc(arena, length, false);
-    if (temp_copy) {
-      strcpy(temp_copy, config->input.effective_path);
-      char *base = basename(temp_copy);
-      strncpy(buffer, base, buffer_size - 1);
-      buffer[buffer_size - 1] = '\0';
-      return buffer;
-    }
+  const char *path = config->input.resolved_path;
+  const char *last_sep = strrchr(path, '/');
+#ifdef _WIN32
+  const char *last_backslash = strrchr(path, '\\');
+  if (last_backslash && (!last_sep || last_backslash > last_sep)) {
+    last_sep = last_backslash;
   }
 #endif
-  return NULL;
+  const char *base = last_sep ? (last_sep + 1) : path;
+  strncpy(buffer, base, buffer_size - 1);
+  buffer[buffer_size - 1] = '\0';
+  return buffer;
 }
 
 void utility_add_summary_item(InputSummaryInfo *info, const char *label,
@@ -164,15 +157,11 @@ bool utility_prompt_for_overwrite(const char *path_for_messages) {
 
 bool utility_verify_output_path(const AppConfig *config,
                                 const char *out_path_utf8) {
+  (void)config;
 #ifdef _WIN32
-  DWORD attrs;
-  if (config && config->output.effective_path_w[0] != L'\0') {
-    attrs = GetFileAttributesW(config->output.effective_path_w);
-  } else {
-    wchar_t wide_path[MAX_PATH];
-    MultiByteToWideChar(CP_UTF8, 0, out_path_utf8, -1, wide_path, MAX_PATH);
-    attrs = GetFileAttributesW(wide_path);
-  }
+  wchar_t wide_path[MAX_PATH];
+  MultiByteToWideChar(CP_UTF8, 0, out_path_utf8, -1, wide_path, MAX_PATH);
+  DWORD attrs = GetFileAttributesW(wide_path);
 
   if (attrs != INVALID_FILE_ATTRIBUTES) {
     if (attrs & FILE_ATTRIBUTE_DIRECTORY) {

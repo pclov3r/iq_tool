@@ -94,13 +94,8 @@ static bool input_rawfile_validate_options(AppContext *app) {
 
   s_rawfile_config.format_provided = true;
 
-  // Fail early logic
-#ifdef _WIN32
-  if (!config || config->input.effective_path_utf8[0] == '\0') {
-#else
-  if (!config || !config->input.effective_path ||
-      config->input.effective_path[0] == '\0') {
-#endif
+  if (!config || !config->input.resolved_path ||
+      config->input.resolved_path[0] == '\0') {
     log_error("RAW file input requires an input file path.");
     return false;
   }
@@ -159,13 +154,8 @@ static bool input_rawfile_validate_options(AppContext *app) {
   }
   sfinfo.format = format_code;
 
-#ifdef _WIN32
   private_data->infile =
-      sf_wchar_open(config->input.effective_path_w, SFM_READ, &sfinfo);
-#else
-  private_data->infile =
-      sf_open(config->input.effective_path, SFM_READ, &sfinfo);
-#endif
+      sf_open(config->input.resolved_path, SFM_READ, &sfinfo);
 
   if (!private_data->infile) {
     log_error("Error opening RAW input file '%s': %s", config->input.path_arg,
@@ -209,11 +199,7 @@ static bool input_rawfile_initialize(ModuleContext *context) {
   app->module.input_info.sample_rate = private_data->sfinfo.samplerate;
   app->module.input_info.frames = private_data->sfinfo.frames;
 
-#ifdef _WIN32
-  log_info("Opening RAW input file: %s", config->input.effective_path_utf8);
-#else
-  log_info("Opening RAW input file: %s", config->input.effective_path);
-#endif
+  log_info("Opening RAW input file: %s", config->input.resolved_path);
 
   return true;
 }
@@ -287,12 +273,9 @@ static void input_rawfile_get_summary_info(const ModuleContext *context,
                                            InputSummaryInfo *info) {
   const AppConfig *config = context->config;
   const AppContext *app = context->app;
-  const char *display_path = config->input.path_arg;
-#ifdef _WIN32
-  if (config->input.effective_path_utf8[0] != '\0') {
-    display_path = config->input.effective_path_utf8;
-  }
-#endif
+  const char *display_path = config->input.resolved_path
+                                 ? config->input.resolved_path
+                                 : config->input.path_arg;
 
   utility_add_summary_item(info, "Input File", "%s", display_path);
   utility_add_summary_item(info, "Input Type", "RAW FILE");

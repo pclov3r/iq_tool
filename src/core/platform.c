@@ -101,6 +101,26 @@ FILE *platform_file_open_write(const char *path) {
   return platform_fopen(path, "wb");
 }
 
+int64_t platform_file_size(const char *path) {
+  if (!path || *path == '\0')
+    return -1;
+#ifdef _WIN32
+  wchar_t path_w[APP_MAX_PATH_BUFFER];
+  if (MultiByteToWideChar(CP_UTF8, 0, path, -1, path_w, APP_MAX_PATH_BUFFER) <=
+      0)
+    return -1;
+  struct __stat64 st;
+  if (_wstat64(path_w, &st) == 0)
+    return (int64_t)st.st_size;
+  return -1;
+#else
+  struct stat st;
+  if (stat(path, &st) == 0)
+    return (int64_t)st.st_size;
+  return -1;
+#endif
+}
+
 bool platform_is_file(const char *path) {
   if (!path || *path == '\0')
     return false;

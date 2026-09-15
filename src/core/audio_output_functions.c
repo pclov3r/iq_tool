@@ -67,21 +67,12 @@ AudioOutputContext *audio_output_create(AppContext *app, int sample_rate,
                     .channels = channels,
                     .format = format_flag | SF_FORMAT_PCM_16};
 
-#ifdef _WIN32
-  if (config->audio.effective_path_utf8[0] != '\0') {
+  if (config->audio.resolved_path && config->audio.resolved_path[0] != '\0') {
     context->wav_writer =
-        sf_wchar_open(config->audio.effective_path_w, SFM_WRITE, &sfinfo);
+        sf_open(config->audio.resolved_path, SFM_WRITE, &sfinfo);
     if (!context->wav_writer)
       log_error("Failed to open audio writer file.");
   }
-#else
-  if (config->audio.effective_path) {
-    context->wav_writer =
-        sf_open(config->audio.effective_path, SFM_WRITE, &sfinfo);
-    if (!context->wav_writer)
-      log_error("Failed to open audio writer file.");
-  }
-#endif
 
   if (config->audio.mute) {
     log_info("Playback muted. Running at maximum speed.");

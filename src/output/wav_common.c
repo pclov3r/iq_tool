@@ -39,16 +39,9 @@ bool output_wav_common_validate_options(AppContext *app) {
     return false;
   }
 
-#ifdef _WIN32
-  if (config->output.effective_path_utf8[0] == '\0')
+  if (!config->output.resolved_path || config->output.resolved_path[0] == '\0')
     return false;
-  const char *path = config->output.effective_path_utf8;
-#else
-  if (!config->output.effective_path ||
-      config->output.effective_path[0] == '\0')
-    return false;
-  const char *path = config->output.effective_path;
-#endif
+  const char *path = config->output.resolved_path;
 
   if (!utility_verify_output_path(config, path))
     return false;
@@ -77,12 +70,7 @@ bool output_wav_common_initialize(ModuleContext *context, int sf_format_flag) {
     return false;
   app->module.output_private_data = data;
 
-// Use platform-specific UTF-8 path for messages.
-#ifdef _WIN32
-  const char *out_path = config->output.effective_path_utf8;
-#else
-  const char *out_path = config->output.effective_path;
-#endif
+  const char *out_path = config->output.resolved_path;
 
   // Prepare the libsndfile info struct.
   SF_INFO sfinfo;
@@ -123,13 +111,7 @@ bool output_wav_common_initialize(ModuleContext *context, int sf_format_flag) {
     return false;
   }
 
-// Open the file using the appropriate platform-specific function.
-#ifdef _WIN32
-  data->handle =
-      sf_wchar_open(config->output.effective_path_w, SFM_WRITE, &sfinfo);
-#else
   data->handle = sf_open(out_path, SFM_WRITE, &sfinfo);
-#endif
 
   if (!data->handle) {
     log_error("Error opening output WAV file %s: %s", out_path,

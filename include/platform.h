@@ -6,12 +6,14 @@
 #define PLATFORM_H_
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 
 #ifdef _WIN32
 // Includes required for Windows-specific function signatures below
 #include <io.h>
 #include <malloc.h>
+#include <sndfile.h>
 #include <windows.h>
 #define strcasecmp _stricmp
 #define platform_write(fd, buf, count)                                         \
@@ -21,6 +23,20 @@
 // aligned_alloc.
 #define aligned_alloc(alignment, size) _aligned_malloc((size), (alignment))
 #define aligned_free(ptr) _aligned_free((ptr))
+
+// Transparent Windows libsndfile shim: converts UTF-8 -> wchar_t and calls
+// sf_wchar_open
+static inline SNDFILE *win32_compat_sf_open(const char *utf8_path, int mode,
+                                            SF_INFO *sfinfo) {
+  if (!utf8_path || !sfinfo)
+    return NULL;
+  wchar_t path_w[4096];
+  if (MultiByteToWideChar(CP_UTF8, 0, utf8_path, -1, path_w, 4096) <= 0)
+    return NULL;
+  return sf_wchar_open(path_w, mode, sfinfo);
+}
+#define sf_open(path, mode, sfinfo)                                            \
+  win32_compat_sf_open((path), (mode), (sfinfo))
 #elif defined(__GNUC__) || defined(__clang__)
 #include <strings.h>
 #include <unistd.h>
@@ -90,6 +106,16 @@ FILE *platform_file_open_read(const char *path);
  * @return Opened FILE handle, or NULL on failure.
  */
 FILE *platform_file_open_write(const char *path);
+
+/**
+ * @brief Returns the file size in bytes for a given path.
+ *
+ * Handles UTF-8 paths across Windows and POSIX.
+ *
+ * @param path UTF-8 path to the file.
+ * @return File size in bytes, or -1 on error.
+ */
+int64_t platform_file_size(const char *path);
 
 /**
  * @brief Checks if a path exists and points to a safe regular file.

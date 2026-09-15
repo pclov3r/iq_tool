@@ -26,21 +26,13 @@ typedef struct {
 static bool output_rawfile_validate_options(AppContext *app) {
   AppConfig *config = (AppConfig *)app->config;
 
-#ifdef _WIN32
-  if (config->output.effective_path_utf8[0] == '\0') {
-#else
-  if (!config->output.effective_path ||
-      config->output.effective_path[0] == '\0') {
-#endif
+  if (!config->output.resolved_path ||
+      config->output.resolved_path[0] == '\0') {
     log_error("Rawfile output requires a valid file path.");
     return false;
   }
 
-#ifdef _WIN32
-  const char *path = config->output.effective_path_utf8;
-#else
-  const char *path = config->output.effective_path;
-#endif
+  const char *path = config->output.resolved_path;
 
   if (!utility_verify_output_path(config, path)) {
     return false;

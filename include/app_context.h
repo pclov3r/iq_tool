@@ -52,12 +52,7 @@ typedef struct AppConfig {
   struct {
     char *type_name;
     char *path_arg;
-#ifdef _WIN32
-    wchar_t effective_path_w[APP_MAX_PATH_BUFFER];
-    char effective_path_utf8[APP_MAX_PATH_BUFFER];
-#else
-    char *effective_path;
-#endif
+    char *resolved_path;
   } input;
 
   // --- Output Configuration ---
@@ -68,12 +63,7 @@ typedef struct AppConfig {
     bool format_provided;
     OutputPayload payload;
     SampleFormat sample_format;
-#ifdef _WIN32
-    wchar_t effective_path_w[APP_MAX_PATH_BUFFER];
-    char effective_path_utf8[APP_MAX_PATH_BUFFER];
-#else
-    char *effective_path;
-#endif
+    char *resolved_path;
   } output;
 
   // --- Output Sample Rate ---
@@ -100,12 +90,7 @@ typedef struct AppConfig {
   // --- Audio Configuration ---
   struct {
     char *path_arg; // Raw command line argument
-#ifdef _WIN32
-    char effective_path_utf8[APP_MAX_PATH_BUFFER];
-    wchar_t effective_path_w[APP_MAX_PATH_BUFFER];
-#else
-    char *effective_path;
-#endif
+    char *resolved_path;
     bool writer_rf64;
     bool mute;
   } audio;

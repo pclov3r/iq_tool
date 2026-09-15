@@ -552,12 +552,7 @@ static char *arena_strdup(MemoryArena *arena, const char *s) {
 static bool _probe_split_sequence(WavInputContext *wav_input,
                                   const AppConfig *config, AppContext *app,
                                   MemoryArena *arena) {
-  const char *filename;
-#ifdef _WIN32
-  filename = config->input.effective_path_utf8;
-#else
-  filename = config->input.effective_path;
-#endif
+  const char *filename = config->input.resolved_path;
 
   const SplitPattern *matched = NULL;
   int starting_index = -1;
@@ -656,15 +651,8 @@ static bool _probe_split_sequence(WavInputContext *wav_input,
     // Open briefly to sum up the frames
     SF_INFO temp_sfinfo;
     memset(&temp_sfinfo, 0, sizeof(SF_INFO));
-#ifdef _WIN32
-    wchar_t w_path[APP_MAX_PATH_BUFFER];
-    MultiByteToWideChar(CP_UTF8, 0, wav_input->file_list[i], -1, w_path,
-                        APP_MAX_PATH_BUFFER);
-    SNDFILE *temp_file = sf_wchar_open(w_path, SFM_READ, &temp_sfinfo);
-#else
     SNDFILE *temp_file =
         sf_open(wav_input->file_list[i], SFM_READ, &temp_sfinfo);
-#endif
     if (temp_file) {
       cumulative_frames += temp_sfinfo.frames;
       sf_close(temp_file);
@@ -703,11 +691,7 @@ static bool input_wav_validate_options(AppContext *app) {
   if (!config)
     return true;
 
-#ifdef _WIN32
-  const char *input_path = config->input.effective_path_utf8;
-#else
-  const char *input_path = config->input.effective_path;
-#endif
+  const char *input_path = config->input.resolved_path;
 
   if (!input_path || input_path[0] == '\0')
     return true;
@@ -744,15 +728,8 @@ static bool input_wav_validate_options(AppContext *app) {
   // Open file
   log_info("Opening WAV input file: %s", private_data->file_list[0]);
   memset(&private_data->sfinfo, 0, sizeof(SF_INFO));
-#ifdef _WIN32
-  wchar_t w_path[APP_MAX_PATH_BUFFER];
-  MultiByteToWideChar(CP_UTF8, 0, private_data->file_list[0], -1, w_path,
-                      APP_MAX_PATH_BUFFER);
-  private_data->infile = sf_wchar_open(w_path, SFM_READ, &private_data->sfinfo);
-#else
   private_data->infile =
       sf_open(private_data->file_list[0], SFM_READ, &private_data->sfinfo);
-#endif
 
   if (!private_data->infile) {
     log_error("Error opening input file: %s",
@@ -923,17 +900,9 @@ static size_t input_wav_read_chunk(ModuleContext *context, void *buffer,
 
         SF_INFO new_sfinfo;
         memset(&new_sfinfo, 0, sizeof(SF_INFO));
-#ifdef _WIN32
-        wchar_t w_path[APP_MAX_PATH_BUFFER];
-        MultiByteToWideChar(CP_UTF8, 0,
-                            wav_input->file_list[wav_input->current_file_index],
-                            -1, w_path, APP_MAX_PATH_BUFFER);
-        wav_input->infile = sf_wchar_open(w_path, SFM_READ, &new_sfinfo);
-#else
         wav_input->infile =
             sf_open(wav_input->file_list[wav_input->current_file_index],
                     SFM_READ, &new_sfinfo);
-#endif
 
         if (!wav_input->infile) {
           log_fatal("Failed to open next split file: %s",
@@ -963,15 +932,8 @@ static size_t input_wav_read_chunk(ModuleContext *context, void *buffer,
 
         SF_INFO new_sfinfo;
         memset(&new_sfinfo, 0, sizeof(SF_INFO));
-#ifdef _WIN32
-        wchar_t w_path[APP_MAX_PATH_BUFFER];
-        MultiByteToWideChar(CP_UTF8, 0, wav_input->file_list[0], -1, w_path,
-                            APP_MAX_PATH_BUFFER);
-        wav_input->infile = sf_wchar_open(w_path, SFM_READ, &new_sfinfo);
-#else
         wav_input->infile =
             sf_open(wav_input->file_list[0], SFM_READ, &new_sfinfo);
-#endif
 
         if (!wav_input->infile) {
           log_fatal("Failed to reopen first WAV file during loop.");
@@ -1070,12 +1032,9 @@ static void input_wav_get_summary_info(const ModuleContext *context,
   WavInputContext *private_data =
       (WavInputContext *)app->module.input_private_data;
 
-  const char *display_path = config->input.path_arg;
-#ifdef _WIN32
-  if (config->input.effective_path_utf8[0] != '\0') {
-    display_path = config->input.effective_path_utf8;
-  }
-#endif
+  const char *display_path = config->input.resolved_path
+                                 ? config->input.resolved_path
+                                 : config->input.path_arg;
 
   // Dynamic key output depending on split configuration status
   if (private_data && private_data->split_enabled &&
@@ -1122,16 +1081,7 @@ static void input_wav_get_summary_info(const ModuleContext *context,
     // Standard single file fallback
     utility_add_summary_item(info, "Input File", "%s", display_path);
 
-    long long input_file_size = -1LL;
-#ifdef _WIN32
-    struct __stat64 stat_buf64;
-    if (_wstat64(config->input.effective_path_w, &stat_buf64) == 0)
-      input_file_size = stat_buf64.st_size;
-#else
-    struct stat stat_buffer;
-    if (stat(display_path, &stat_buffer) == 0)
-      input_file_size = stat_buffer.st_size;
-#endif
+    long long input_file_size = (long long)platform_file_size(display_path);
     char size_buffer[40];
     utility_add_summary_item(
         info, "Input File Size", "%s",

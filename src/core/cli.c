@@ -350,26 +350,40 @@ static bool resolve_file_paths(AppConfig *config, MemoryArena *arena) {
   if (!config || !arena)
     return false;
 #ifdef _WIN32
+  wchar_t path_w[APP_MAX_PATH_BUFFER];
+  char utf8_path[APP_MAX_PATH_BUFFER];
   if (config->input.path_arg) {
-    if (!get_absolute_path_windows(
-            config->input.path_arg, config->input.effective_path_w,
-            APP_MAX_PATH_BUFFER, config->input.effective_path_utf8,
-            APP_MAX_PATH_BUFFER))
+    if (!get_absolute_path_windows(config->input.path_arg, path_w,
+                                   APP_MAX_PATH_BUFFER, utf8_path,
+                                   APP_MAX_PATH_BUFFER))
       return false;
+    config->input.resolved_path =
+        mem_arena_alloc(arena, strlen(utf8_path) + 1, false);
+    if (!config->input.resolved_path)
+      return false;
+    strcpy(config->input.resolved_path, utf8_path);
   }
   if (config->output.path_arg) {
-    if (!get_absolute_path_windows(
-            config->output.path_arg, config->output.effective_path_w,
-            APP_MAX_PATH_BUFFER, config->output.effective_path_utf8,
-            APP_MAX_PATH_BUFFER))
+    if (!get_absolute_path_windows(config->output.path_arg, path_w,
+                                   APP_MAX_PATH_BUFFER, utf8_path,
+                                   APP_MAX_PATH_BUFFER))
       return false;
+    config->output.resolved_path =
+        mem_arena_alloc(arena, strlen(utf8_path) + 1, false);
+    if (!config->output.resolved_path)
+      return false;
+    strcpy(config->output.resolved_path, utf8_path);
   }
   if (config->audio.path_arg) {
-    if (!get_absolute_path_windows(
-            config->audio.path_arg, config->audio.effective_path_w,
-            APP_MAX_PATH_BUFFER, config->audio.effective_path_utf8,
-            APP_MAX_PATH_BUFFER))
+    if (!get_absolute_path_windows(config->audio.path_arg, path_w,
+                                   APP_MAX_PATH_BUFFER, utf8_path,
+                                   APP_MAX_PATH_BUFFER))
       return false;
+    config->audio.resolved_path =
+        mem_arena_alloc(arena, strlen(utf8_path) + 1, false);
+    if (!config->audio.resolved_path)
+      return false;
+    strcpy(config->audio.resolved_path, utf8_path);
   }
 #else
   if (config->input.path_arg) {
@@ -379,11 +393,11 @@ static bool resolve_file_paths(AppConfig *config, MemoryArena *arena) {
                 config->input.path_arg, strerror(errno));
       return false;
     }
-    config->input.effective_path =
+    config->input.resolved_path =
         mem_arena_alloc(arena, strlen(resolved_input_path) + 1, false);
-    if (!config->input.effective_path)
+    if (!config->input.resolved_path)
       return false;
-    strcpy(config->input.effective_path, resolved_input_path);
+    strcpy(config->input.resolved_path, resolved_input_path);
   }
   if (config->output.path_arg) {
     char *path_copy_for_dirname =
@@ -403,10 +417,10 @@ static bool resolve_file_paths(AppConfig *config, MemoryArena *arena) {
       return false;
     }
     size_t final_length = strlen(resolved_dir_path) + 1 + strlen(base) + 1;
-    config->output.effective_path = mem_arena_alloc(arena, final_length, false);
-    if (!config->output.effective_path)
+    config->output.resolved_path = mem_arena_alloc(arena, final_length, false);
+    if (!config->output.resolved_path)
       return false;
-    snprintf(config->output.effective_path, final_length, "%s/%s",
+    snprintf(config->output.resolved_path, final_length, "%s/%s",
              resolved_dir_path, base);
   }
   if (config->audio.path_arg) {
@@ -428,10 +442,10 @@ static bool resolve_file_paths(AppConfig *config, MemoryArena *arena) {
       return false;
     }
     size_t final_length = strlen(resolved_dir_path) + 1 + strlen(base) + 1;
-    config->audio.effective_path = mem_arena_alloc(arena, final_length, false);
-    if (!config->audio.effective_path)
+    config->audio.resolved_path = mem_arena_alloc(arena, final_length, false);
+    if (!config->audio.resolved_path)
       return false;
-    snprintf(config->audio.effective_path, final_length, "%s/%s",
+    snprintf(config->audio.resolved_path, final_length, "%s/%s",
              resolved_dir_path, base);
   }
 #endif
@@ -523,17 +537,10 @@ static bool validate_and_process_args(AppContext *app, int non_opt_argc,
     return false;
 
   // --- Validate Audio Writer Early ---
-#ifdef _WIN32
-  if (config->audio.effective_path_utf8[0] != '\0') {
-    if (!utility_verify_output_path(config, config->audio.effective_path_utf8))
+  if (config->audio.resolved_path && config->audio.resolved_path[0] != '\0') {
+    if (!utility_verify_output_path(config, config->audio.resolved_path))
       return false;
   }
-#else
-  if (config->audio.effective_path) {
-    if (!utility_verify_output_path(config, config->audio.effective_path))
-      return false;
-  }
-#endif
 
   // --- Final Validation Cascade ---
   if (!validate_output_type_and_sample_format(config))
