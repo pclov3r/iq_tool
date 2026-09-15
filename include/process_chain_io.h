@@ -15,8 +15,10 @@ void *process_chain_thread_output(void *arg);
 struct ThreadManager;
 struct DspModuleInterface;
 struct Queue;
+struct MemoryArena;
 
 bool process_chain_start_dsp_stage(struct ThreadManager *tm,
+                                   struct MemoryArena *arena,
                                    const struct DspModuleInterface *module,
                                    void *state, struct Queue *in_q,
                                    struct Queue *out_q,

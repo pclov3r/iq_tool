@@ -437,8 +437,8 @@ bool process_chain_execute(ProcessChainContext *context) {
 
     for (int i = 0; i < num_dsp_modules; i++) {
       if (!process_chain_start_dsp_stage(
-              &manager, dsp_modules[i], dsp_states[i],
-              app->process_chain.active_queues[i],
+              &manager, &app->process_chain.setup_arena, dsp_modules[i],
+              dsp_states[i], app->process_chain.active_queues[i],
               app->process_chain.active_queues[i + 1],
               app->process_chain.free_sample_chunk_queue)) {
         threads_ok = false;

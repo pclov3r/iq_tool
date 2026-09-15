@@ -10,6 +10,7 @@
 #include "config/constants.h"
 #include "input/common.h"
 #include "log.h"
+#include "mem_arena.h"
 #include "module_registry.h"
 #include "packet_serializer.h"
 #include "platform.h"
@@ -19,9 +20,7 @@
 #include "ring_buffer.h"
 #include "sample_conversion_functions.h"
 #include "signal_handler.h"
-#include "utilities.h"
 #include <stdatomic.h>
-#include <stdlib.h>
 #include <string.h>
 
 // --- ProcessChain Thread Function Implementations (Private to this module) ---
@@ -361,22 +360,23 @@ static void *process_chain_thread_dsp(void *arg) {
     }
   }
 
-  free(ctx);
   return NULL;
 }
 
 bool process_chain_start_dsp_stage(struct ThreadManager *tm,
+                                   struct MemoryArena *arena,
                                    const struct DspModuleInterface *module,
                                    void *state, struct Queue *in_q,
                                    struct Queue *out_q,
                                    struct Queue *free_chunk_q) {
-  if (!tm || !module || !in_q || !out_q) {
+  if (!tm || !arena || !module || !in_q || !out_q) {
     log_error("process_chain_start_dsp_stage called with NULL arguments.");
     return false;
   }
 
-  ProcessChainDspStageContext *ctx = (ProcessChainDspStageContext *)malloc(
-      sizeof(ProcessChainDspStageContext));
+  ProcessChainDspStageContext *ctx =
+      (ProcessChainDspStageContext *)mem_arena_alloc(
+          arena, sizeof(ProcessChainDspStageContext), false);
   if (!ctx) {
     log_fatal("Failed to allocate context for DSP stage '%s'.", module->name);
     return false;
@@ -389,7 +389,6 @@ bool process_chain_start_dsp_stage(struct ThreadManager *tm,
   ctx->free_chunk_q = free_chunk_q;
 
   if (!thread_manager_spawn(tm, module->name, process_chain_thread_dsp, ctx)) {
-    free(ctx);
     return false;
   }
 
