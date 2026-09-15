@@ -9,21 +9,11 @@
 #include "module_registry.h"
 #include "platform.h"
 #include "utilities.h"
-#include <ctype.h>
 #include <errno.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef _WIN32
-#include <fcntl.h>
-#include <io.h>
-#else
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#endif
 
 // --- Private Data ---
 typedef struct {
