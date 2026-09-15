@@ -21,6 +21,7 @@
 #include <pathcch.h>
 #include <shlobj.h>
 #include <shlwapi.h>
+#include <sys/stat.h>
 #include <windows.h>
 #else
 #include <dlfcn.h>
@@ -180,9 +181,13 @@ int64_t platform_file_size(const char *path) {
   if (MultiByteToWideChar(CP_UTF8, 0, path, -1, path_w, APP_MAX_PATH_BUFFER) <=
       0)
     return -1;
-  struct __stat64 st;
-  if (_wstat64(path_w, &st) == 0)
-    return (int64_t)st.st_size;
+  WIN32_FILE_ATTRIBUTE_DATA fad;
+  if (GetFileAttributesExW(path_w, GetFileExInfoStandard, &fad)) {
+    LARGE_INTEGER size;
+    size.HighPart = (LONG)fad.nFileSizeHigh;
+    size.LowPart = fad.nFileSizeLow;
+    return (int64_t)size.QuadPart;
+  }
   return -1;
 #else
   struct stat st;
