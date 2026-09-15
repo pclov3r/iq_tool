@@ -291,9 +291,10 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
   size_t total_tray_size =
       struct_stride + raw_stride + (complex_stride * 2) + final_stride;
 
-  // Allocate the big data block
-  app->process_chain.chunk_data_pool = aligned_alloc(
-      MEM_ARENA_ALIGNMENT, app->process_chain.num_chunks * total_tray_size);
+  // Allocate the big data block from the setup arena
+  app->process_chain.chunk_data_pool =
+      mem_arena_alloc(&app->process_chain.setup_arena,
+                      app->process_chain.num_chunks * total_tray_size, false);
   if (!app->process_chain.chunk_data_pool) {
     log_fatal("Failed to allocate chunk data pool.");
     return false;
@@ -653,8 +654,5 @@ static void _destroy_queues_and_buffers(AppContext *app) {
     }
   }
 
-  if (app->process_chain.chunk_data_pool) {
-    aligned_free(app->process_chain.chunk_data_pool);
-    app->process_chain.chunk_data_pool = NULL;
-  }
+  app->process_chain.chunk_data_pool = NULL;
 }
