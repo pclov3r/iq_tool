@@ -62,7 +62,7 @@ static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
 }
 
 #else
-void *signal_handler_thread(void *arg) {
+static void *signal_handler_thread(void *arg) {
   (void)arg;
   sigset_t signal_set;
   int sig;
@@ -98,23 +98,46 @@ void *signal_handler_thread(void *arg) {
 }
 #endif
 
-void setup_signal_handlers(AppContext *app) {
+bool setup_signal_handlers(AppContext *app) {
   g_app_context_for_signal_handler = app;
 #ifdef _WIN32
   if (!SetConsoleCtrlHandler(console_ctrl_handler, TRUE)) {
     log_warn("Failed to register console control handler.");
+    return false;
   }
+  return true;
 #else
+  signal(SIGPIPE, SIG_IGN);
+
   sigset_t signal_set;
   sigemptyset(&signal_set);
   sigaddset(&signal_set, SIGINT);
   sigaddset(&signal_set, SIGTERM);
-  // Block signals in the main thread so they are handled by the dedicated
-  // thread
   if (pthread_sigmask(SIG_BLOCK, &signal_set, NULL) != 0) {
-    fprintf(stderr, "FATAL: Failed to set signal mask.\n");
-    exit(EXIT_FAILURE);
+    log_fatal("Failed to set signal mask.");
+    return false;
   }
+
+  pthread_t sig_thread_id;
+  pthread_attr_t sig_thread_attr;
+  if (pthread_attr_init(&sig_thread_attr) != 0) {
+    log_fatal("Failed to initialize signal thread attributes.");
+    return false;
+  }
+  if (pthread_attr_setdetachstate(&sig_thread_attr, PTHREAD_CREATE_DETACHED) !=
+      0) {
+    log_fatal("Failed to set signal thread to detached state.");
+    pthread_attr_destroy(&sig_thread_attr);
+    return false;
+  }
+  if (pthread_create(&sig_thread_id, &sig_thread_attr, signal_handler_thread,
+                     app) != 0) {
+    log_fatal("Failed to create detached signal handler thread.");
+    pthread_attr_destroy(&sig_thread_attr);
+    return false;
+  }
+  pthread_attr_destroy(&sig_thread_attr);
+  return true;
 #endif
 }
 

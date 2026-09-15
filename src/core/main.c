@@ -43,10 +43,6 @@
 #include <string.h>
 #include <time.h>
 
-#ifndef _WIN32
-#include <signal.h>
-#endif
-
 // --- Global Variable Definitions ---
 pthread_mutex_t g_console_mutex;
 
@@ -71,9 +67,6 @@ static void close_output_module(AppConfig *config, AppContext *app);
 
 int main(int argc, char *argv[]) {
   setlocale(LC_NUMERIC, "C");
-#ifndef _WIN32
-  signal(SIGPIPE, SIG_IGN);
-#endif
 
   int exit_status = EXIT_FAILURE;
   AppContext app;
@@ -115,7 +108,9 @@ int main(int argc, char *argv[]) {
 
   initialize_app_context(&config, &app);
   reset_shutdown_flag();
-  setup_signal_handlers(&app);
+  if (!setup_signal_handlers(&app)) {
+    goto cleanup;
+  }
 
   if (!mem_arena_init(&app.process_chain.setup_arena, MEM_ARENA_SIZE_BYTES)) {
     goto cleanup;
@@ -125,28 +120,6 @@ int main(int argc, char *argv[]) {
   if (!presets_load_from_file(&config, &app.process_chain.setup_arena)) {
     goto cleanup;
   }
-
-#ifndef _WIN32
-  pthread_t sig_thread_id;
-  pthread_attr_t sig_thread_attr;
-  if (pthread_attr_init(&sig_thread_attr) != 0) {
-    log_fatal("Failed to initialize signal thread attributes.");
-    goto cleanup;
-  }
-  if (pthread_attr_setdetachstate(&sig_thread_attr, PTHREAD_CREATE_DETACHED) !=
-      0) {
-    log_fatal("Failed to set signal thread to detached state.");
-    pthread_attr_destroy(&sig_thread_attr);
-    goto cleanup;
-  }
-  if (pthread_create(&sig_thread_id, &sig_thread_attr, signal_handler_thread,
-                     &app) != 0) {
-    log_fatal("Failed to create detached signal handler thread.");
-    pthread_attr_destroy(&sig_thread_attr);
-    goto cleanup;
-  }
-  pthread_attr_destroy(&sig_thread_attr);
-#endif
 
   if (argc <= 1) {
     cli_print_usage(argv[0], &config, &app.process_chain.setup_arena);
