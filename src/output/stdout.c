@@ -69,7 +69,7 @@ static void output_stdout_cleanup(ModuleContext *context) {
 }
 
 static void output_stdout_get_summary_info(const ModuleContext *context,
-                                           OutputSummaryInfo *info) {
+                                           SummaryInfo *info) {
   (void)context;
   utility_add_summary_item(info, "Output Type", "stdout");
 }

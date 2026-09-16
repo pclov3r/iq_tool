@@ -32,8 +32,7 @@ typedef enum {
 // structs without needing their full definitions in this header.
 struct AppConfig;
 struct AppContext;
-struct InputSummaryInfo;
-typedef struct InputSummaryInfo OutputSummaryInfo;
+struct SummaryInfo;
 struct ModuleContext;
 struct SampleChunk;
 struct OutputAgcConfig;
@@ -116,7 +115,7 @@ typedef struct InputModuleInterface {
    * @param info A pointer to the summary struct to be populated.
    */
   void (*get_summary_info)(const struct ModuleContext *context,
-                           struct InputSummaryInfo *info);
+                           struct SummaryInfo *info);
 
   /**
    * @brief Passes keypress events to the module.
@@ -185,7 +184,7 @@ typedef struct OutputModuleInterface {
   // Populates a summary struct with output details
 
   void (*get_summary_info)(const ModuleContext *context,
-                           OutputSummaryInfo *info);
+                           struct SummaryInfo *info);
   void (*on_keypress)(ModuleContext *context, int key);
 } OutputModuleInterface;
 
@@ -226,7 +225,7 @@ typedef struct DspModuleInterface {
   // Returns any CLI options specific to this DSP module
 
   // Appends to the summary info block before processing starts (optional)
-  void (*get_summary_info)(void *state, OutputSummaryInfo *info);
+  void (*get_summary_info)(void *state, struct SummaryInfo *info);
 
   // Frees all allocated memory
   void (*cleanup)(void *state);

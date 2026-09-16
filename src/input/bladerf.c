@@ -220,7 +220,7 @@ static const struct argparse_option *input_bladerf_get_cli_options(int *count) {
 
 // Forward declarations for static functions
 static void input_bladerf_get_summary_info(const ModuleContext *context,
-                                           InputSummaryInfo *info);
+                                           SummaryInfo *info);
 static void *bladerf_rx_stream_callback(struct bladerf *dev,
                                         struct bladerf_stream *stream,
                                         struct bladerf_metadata *meta,
@@ -813,7 +813,7 @@ static void input_bladerf_cleanup(ModuleContext *context) {
 }
 
 static void input_bladerf_get_summary_info(const ModuleContext *context,
-                                           InputSummaryInfo *info) {
+                                           SummaryInfo *info) {
   const AppConfig *config = context->config;
   AppContext *app = context->app;
   BladerfContext *private_data =

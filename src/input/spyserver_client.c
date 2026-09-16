@@ -234,7 +234,7 @@ input_spyserver_client_set_default_config(struct AppConfig *config) {
 static void *input_spyserver_client_producer_thread(void *arg);
 static void
 input_spyserver_client_get_summary_info(const ModuleContext *context,
-                                        InputSummaryInfo *info);
+                                        SummaryInfo *info);
 static bool input_spyserver_client_validate_options(AppContext *app);
 
 // --- The InputModuleInterface V-Table ---
@@ -874,7 +874,7 @@ static void input_spyserver_client_cleanup(ModuleContext *context) {
 
 static void
 input_spyserver_client_get_summary_info(const ModuleContext *context,
-                                        InputSummaryInfo *info) {
+                                        SummaryInfo *info) {
   const SpyServerClientContext *client =
       (const SpyServerClientContext *)context->app->module.input_private_data;
   const AppContext *app = context->app;

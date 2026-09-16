@@ -997,7 +997,7 @@ static bool input_wav_pre_stream_iq_correction(ModuleContext *context) {
 }
 
 static void input_wav_get_summary_info(const ModuleContext *context,
-                                       InputSummaryInfo *info) {
+                                       SummaryInfo *info) {
   const AppConfig *config = context->config;
   const AppContext *app = context->app;
   WavInputContext *private_data =

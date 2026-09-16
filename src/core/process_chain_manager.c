@@ -478,8 +478,7 @@ void process_chain_teardown_buffers(ProcessChainContext *context) {
   _destroy_queues_and_buffers(context->app);
 }
 
-void process_chain_get_summary_info(const AppContext *app,
-                                    OutputSummaryInfo *info) {
+void process_chain_get_summary_info(const AppContext *app, SummaryInfo *info) {
   for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
     const struct DspModuleInterface *module =
         get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name);

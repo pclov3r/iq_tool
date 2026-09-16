@@ -329,7 +329,7 @@ static void output_nfm_cleanup(ModuleContext *context) {
 }
 
 static void output_nfm_get_summary_info(const ModuleContext *context,
-                                        OutputSummaryInfo *info) {
+                                        SummaryInfo *info) {
   (void)context;
   const char *mode =
       s_nfm_config.is_narrow ? "Narrow (2.5k Dev)" : "Standard (5k Dev)";

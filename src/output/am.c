@@ -500,7 +500,7 @@ static void output_am_cleanup(ModuleContext *context) {
 }
 
 static void output_am_get_summary_info(const ModuleContext *context,
-                                       OutputSummaryInfo *info) {
+                                       SummaryInfo *info) {
   (void)context;
   utility_add_summary_item(info, "Output Type", "AM Audio");
   utility_add_summary_item(info, "Mode", "%s",

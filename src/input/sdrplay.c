@@ -264,7 +264,7 @@ static const struct argparse_option *input_sdrplay_get_cli_options(int *count) {
 }
 
 static void input_sdrplay_get_summary_info(const ModuleContext *context,
-                                           InputSummaryInfo *info);
+                                           SummaryInfo *info);
 static bool input_sdrplay_validate_options(AppContext *app);
 static bool input_sdrplay_validate_generic_options(const AppConfig *config);
 
@@ -546,7 +546,7 @@ static void input_sdrplay_event_callback(sdrplay_api_EventT eventId,
 }
 
 static void input_sdrplay_get_summary_info(const ModuleContext *context,
-                                           InputSummaryInfo *info) {
+                                           SummaryInfo *info) {
   const AppConfig *config = context->config;
   AppContext *app = context->app;
   SdrplayContext *private_data =

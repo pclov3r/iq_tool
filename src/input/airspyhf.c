@@ -74,7 +74,7 @@ input_airspyhf_get_cli_options(int *count) {
 }
 
 static void input_airspyhf_get_summary_info(const ModuleContext *context,
-                                            InputSummaryInfo *info);
+                                            SummaryInfo *info);
 static bool input_airspyhf_validate_options(AppContext *app);
 static bool input_airspyhf_validate_generic_options(const AppConfig *config);
 
@@ -194,7 +194,7 @@ input_airspyhf_buffered_stream_callback(airspyhf_transfer_t *transfer) {
 }
 
 static void input_airspyhf_get_summary_info(const ModuleContext *context,
-                                            InputSummaryInfo *info) {
+                                            SummaryInfo *info) {
   const AppConfig *config = context->config;
   const AppContext *app = context->app;
 

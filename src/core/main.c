@@ -50,8 +50,8 @@ pthread_mutex_t g_console_mutex;
 static void initialize_app_context(AppConfig *config, AppContext *app);
 static void print_configuration_summary(const AppConfig *config,
                                         const AppContext *app);
-static void print_summary_section(const char *header,
-                                  const InputSummaryInfo *info, int w);
+static void print_summary_section(const char *header, const SummaryInfo *info,
+                                  int w);
 static void print_final_summary(const AppConfig *config, const AppContext *app,
                                 bool success);
 static void console_lock_function(bool lock, void *udata);
@@ -321,8 +321,8 @@ static void close_output_module(AppConfig *config, AppContext *app) {
 
 // --- Static Helper Function Definitions ---
 
-static void print_summary_section(const char *header,
-                                  const InputSummaryInfo *info, int w) {
+static void print_summary_section(const char *header, const SummaryInfo *info,
+                                  int w) {
   fprintf(stderr, "--- %s ---\n", header);
   for (int i = 0; i < info->count; i++)
     fprintf(stderr, " %-*s : %s\n", w, info->items[i].label,
@@ -350,7 +350,7 @@ static void print_configuration_summary(const AppConfig *config,
   const ModuleContext context = {.config = config, .app = (AppContext *)app};
 
   // --- Build input section ---
-  InputSummaryInfo input_info = {0};
+  SummaryInfo input_info = {0};
   app->module.input_api->get_summary_info(&context, &input_info);
 
   if (config->sdr_general.rf_freq_provided) {
@@ -376,7 +376,7 @@ static void print_configuration_summary(const AppConfig *config,
                                                        : "Disabled");
 
   // --- Build output section ---
-  OutputSummaryInfo output_info = {0};
+  SummaryInfo output_info = {0};
   if (app->module.output_api && app->module.output_api->get_summary_info)
     app->module.output_api->get_summary_info(&context, &output_info);
 

@@ -987,7 +987,7 @@ static void output_wfm_cleanup(ModuleContext *context) {
 }
 
 static void output_wfm_get_summary_info(const ModuleContext *context,
-                                        OutputSummaryInfo *info) {
+                                        SummaryInfo *info) {
   (void)context;
   utility_add_summary_item(info, "Output Type", "WFM Stereo Audio");
   utility_add_summary_item(info, "Audio Sample Rate", "%d Hz",

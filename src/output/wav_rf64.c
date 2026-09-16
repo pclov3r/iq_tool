@@ -27,7 +27,7 @@ static bool output_wav_rf64_initialize(ModuleContext *context) {
  * @brief Populates the summary info for a WAV/RF64 output.
  */
 static void output_wav_rf64_get_summary_info(const ModuleContext *context,
-                                             OutputSummaryInfo *info) {
+                                             SummaryInfo *info) {
   (void)context; // Unused in this simple implementation
   utility_add_summary_item(info, "Output Type", "WAV-RF64");
 }

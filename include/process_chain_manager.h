@@ -28,8 +28,8 @@ bool process_chain_execute(struct ProcessChainContext *context);
 void process_chain_close_dsp_modules(struct ProcessChainContext *context);
 void process_chain_teardown_buffers(struct ProcessChainContext *context);
 
-#include "utilities.h" // For OutputSummaryInfo
+#include "utilities.h" // For SummaryInfo
 void process_chain_get_summary_info(const struct AppContext *app,
-                                    OutputSummaryInfo *info);
+                                    SummaryInfo *info);
 
 #endif // PROCESS_CHAIN_MANAGER_H_

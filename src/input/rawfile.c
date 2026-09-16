@@ -66,7 +66,7 @@ static const struct argparse_option *input_rawfile_get_cli_options(int *count) {
 }
 
 static void input_rawfile_get_summary_info(const ModuleContext *context,
-                                           InputSummaryInfo *info);
+                                           SummaryInfo *info);
 static bool input_rawfile_validate_options(AppContext *app);
 static bool input_rawfile_pre_stream_iq_correction(ModuleContext *context);
 
@@ -269,7 +269,7 @@ static void input_rawfile_cleanup(ModuleContext *context) {
 }
 
 static void input_rawfile_get_summary_info(const ModuleContext *context,
-                                           InputSummaryInfo *info) {
+                                           SummaryInfo *info) {
   const AppConfig *config = context->config;
   const AppContext *app = context->app;
   const char *display_path = config->input.resolved_path

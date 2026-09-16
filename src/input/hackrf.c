@@ -75,7 +75,7 @@ static const struct argparse_option *input_hackrf_get_cli_options(int *count) {
 }
 
 static void input_hackrf_get_summary_info(const ModuleContext *context,
-                                          InputSummaryInfo *info);
+                                          SummaryInfo *info);
 static bool input_hackrf_validate_options(AppContext *app);
 static bool input_hackrf_validate_generic_options(const AppConfig *config);
 
@@ -156,7 +156,7 @@ static int input_hackrf_buffered_stream_callback(hackrf_transfer *transfer) {
 }
 
 static void input_hackrf_get_summary_info(const ModuleContext *context,
-                                          InputSummaryInfo *info) {
+                                          SummaryInfo *info) {
   const AppConfig *config = context->config;
   const AppContext *app = context->app;
   utility_add_summary_item(info, "Input Source", "HackRF One");

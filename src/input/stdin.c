@@ -178,7 +178,7 @@ static void input_stdin_stop_sample_queue_push(ModuleContext *context) {
 static void input_stdin_cleanup(ModuleContext *context) { (void)context; }
 
 static void input_stdin_get_summary_info(const ModuleContext *context,
-                                         InputSummaryInfo *info) {
+                                         SummaryInfo *info) {
   (void)context;
   utility_add_summary_item(info, "Input Source", "Standard Input (stdin)");
   utility_add_summary_item(info, "Input Format", "%s",

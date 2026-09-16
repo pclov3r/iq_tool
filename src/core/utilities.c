@@ -60,7 +60,7 @@ const char *utility_get_basename_for_parsing(const AppConfig *config,
   return buffer;
 }
 
-void utility_add_summary_item(InputSummaryInfo *info, const char *label,
+void utility_add_summary_item(SummaryInfo *info, const char *label,
                               const char *value_fmt, ...) {
   if (info->count >= APP_MAX_SUMMARY_ITEMS) {
     return;

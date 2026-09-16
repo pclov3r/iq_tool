@@ -108,7 +108,7 @@ input_hydrasdr_get_cli_options(int *count) {
 }
 
 static void input_hydrasdr_get_summary_info(const ModuleContext *context,
-                                            InputSummaryInfo *info);
+                                            SummaryInfo *info);
 static bool input_hydrasdr_validate_options(AppContext *app);
 static bool input_hydrasdr_validate_generic_options(const AppConfig *config);
 
@@ -290,7 +290,7 @@ input_hydrasdr_buffered_stream_callback(hydrasdr_transfer *transfer) {
 }
 
 static void input_hydrasdr_get_summary_info(const ModuleContext *context,
-                                            InputSummaryInfo *info) {
+                                            SummaryInfo *info) {
   const AppConfig *config = context->config;
   const AppContext *app = context->app;
   HydraSDRContext *private_data =

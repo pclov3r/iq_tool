@@ -676,8 +676,7 @@ static bool dsp_filter_validate_options(struct AppContext *app) {
   return true;
 }
 
-static void filter_get_summary_info(void *state,
-                                    OutputSummaryInfo *output_info) {
+static void filter_get_summary_info(void *state, SummaryInfo *output_info) {
   FilterState *fs = (FilterState *)state;
   if (!fs) {
     utility_add_summary_item(output_info, "Filter", "Disabled");

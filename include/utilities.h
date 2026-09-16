@@ -30,14 +30,13 @@ typedef struct SummaryItem {
 } SummaryItem;
 
 /**
- * @struct InputSummaryInfo
+ * @struct SummaryInfo
  * @brief A collection of SummaryItem objects to be displayed.
  */
-typedef struct InputSummaryInfo {
+typedef struct SummaryInfo {
   SummaryItem items[APP_MAX_SUMMARY_ITEMS];
   int count;
-} InputSummaryInfo;
-typedef struct InputSummaryInfo OutputSummaryInfo;
+} SummaryInfo;
 
 // --- Function Declarations ---
 
@@ -72,12 +71,12 @@ const char *utility_get_basename_for_parsing(const AppConfig *config,
 /**
  * @brief A helper to safely add a new key-value pair to the summary info
  * struct.
- * @param info Pointer to the InputSummaryInfo struct to modify.
+ * @param info Pointer to the SummaryInfo struct to modify.
  * @param label The label or key for the summary item.
  * @param value_fmt A printf-style format string for the value.
  * @param ... Variable arguments corresponding to the format string.
  */
-void utility_add_summary_item(InputSummaryInfo *info, const char *label,
+void utility_add_summary_item(SummaryInfo *info, const char *label,
                               const char *value_fmt, ...);
 
 /**
