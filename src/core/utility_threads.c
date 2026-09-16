@@ -8,10 +8,8 @@
 #include "config/constants.h"
 #include "log.h"
 #include "platform.h"
-#include "process_chain_context.h"
-#include "queue.h"
 #include "signal_handler.h"
-#include "utilities.h"
+#include "thread_manager.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -57,10 +55,9 @@ void *sdr_init_watchdog_thread(void *arg) {
  * reader to detect deadlocks or driver hangs, forcing a shutdown if the input
  * becomes unresponsive.
  */
-void *process_chain_thread_watchdog(void *arg) {
-  ProcessChainContext *args = (ProcessChainContext *)arg;
-  AppContext *app = args->app;
-  AppConfig *config = args->config;
+static void *input_watchdog_thread(void *arg) {
+  AppContext *app = (AppContext *)arg;
+  const AppConfig *config = app ? app->config : NULL;
 
   // Give the SDR a moment to start up before we start checking
   platform_sleep(WATCHDOG_TIMEOUT_MS);
@@ -103,4 +100,11 @@ void *process_chain_thread_watchdog(void *arg) {
 
   log_debug("Input watchdog thread is exiting.");
   return NULL;
+}
+
+void setup_input_watchdog(AppContext *app) {
+  if (app && app->process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH) {
+    thread_manager_spawn(&app->thread_manager, "watchdog", PRIORITY_NORMAL,
+                         input_watchdog_thread, app);
+  }
 }

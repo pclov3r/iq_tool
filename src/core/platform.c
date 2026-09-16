@@ -291,10 +291,43 @@ PlatformFileStatus platform_file_verify(FILE *fp) {
 #endif
 }
 
-// --- Thread Priority Abstraction ---
+// --- Thread Naming & Priority Abstraction ---
+
+void platform_set_thread_name(const char *name) {
+  if (!name || name[0] == '\0') {
+    return;
+  }
+#ifdef _WIN32
+  typedef HRESULT(WINAPI * PFN_SetThreadDescription)(HANDLE, PCWSTR);
+  HMODULE hKernel = GetModuleHandleA("KernelBase.dll");
+  if (!hKernel) {
+    hKernel = GetModuleHandleA("kernel32.dll");
+  }
+  if (hKernel) {
+    PFN_SetThreadDescription pfnSetThreadDescription =
+        (PFN_SetThreadDescription)(uintptr_t)GetProcAddress(
+            hKernel, "SetThreadDescription");
+    if (pfnSetThreadDescription) {
+      wchar_t wname[64];
+      wname[0] = L'\0';
+      MultiByteToWideChar(CP_UTF8, 0, name, -1, wname, 64);
+      wname[63] = L'\0';
+      pfnSetThreadDescription(GetCurrentThread(), wname);
+    }
+  }
+#elif defined(HAVE_PTHREAD_SETNAME_NP) && defined(__linux__)
+  char buf[16];
+  strncpy(buf, name, sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0';
+  pthread_setname_np(pthread_self(), buf);
+#else
+  (void)name;
+#endif
+}
 
 void platform_set_thread_priority(ThreadPriority priority,
                                   const char *thread_name) {
+  bool has_name = (thread_name && thread_name[0] != '\0');
 #ifdef _WIN32
   // --- Windows Implementation ---
   int win_prio = THREAD_PRIORITY_NORMAL;
@@ -318,8 +351,12 @@ void platform_set_thread_priority(ThreadPriority priority,
   }
 
   if (!SetThreadPriority(GetCurrentThread(), win_prio)) {
-    log_warn("Failed to set '%s' thread scheduling priority to %s.",
-             thread_name, prio_desc);
+    if (has_name) {
+      log_warn("Failed to set '%s' thread scheduling priority to %s.",
+               thread_name, prio_desc);
+    } else {
+      log_warn("Failed to set thread scheduling priority to %s.", prio_desc);
+    }
   }
 #else
   // --- Linux / POSIX Implementation ---
@@ -358,8 +395,12 @@ void platform_set_thread_priority(ThreadPriority priority,
   // 1. Attempt FIFO Scheduling
   int fifo_err = pthread_setschedparam(pthread_self(), policy, &param);
   if (fifo_err == 0) {
-    log_debug("Set '%s' thread scheduling priority to %s.", thread_name,
-              prio_desc);
+    if (has_name) {
+      log_debug("Set '%s' thread scheduling priority to %s.", thread_name,
+                prio_desc);
+    } else {
+      log_debug("Set thread scheduling priority to %s.", prio_desc);
+    }
     return;
   }
 
@@ -378,14 +419,23 @@ void platform_set_thread_priority(ThreadPriority priority,
 #endif
 
   if (nice_ok) {
-    log_debug("Set '%s' thread scheduling priority to %s.", thread_name,
-              prio_desc);
+    if (has_name) {
+      log_debug("Set '%s' thread scheduling priority to %s.", thread_name,
+                prio_desc);
+    } else {
+      log_debug("Set thread scheduling priority to %s.", prio_desc);
+    }
     return;
   }
 
   // 3. Both failed - print a single, clean warning
-  log_warn("Failed to elevate '%s' thread scheduling priority to %s: %s",
-           thread_name, prio_desc, strerror(fifo_err));
+  if (has_name) {
+    log_warn("Failed to elevate '%s' thread scheduling priority to %s: %s",
+             thread_name, prio_desc, strerror(fifo_err));
+  } else {
+    log_warn("Failed to elevate thread scheduling priority to %s: %s",
+             prio_desc, strerror(fifo_err));
+  }
 #endif
 }
 

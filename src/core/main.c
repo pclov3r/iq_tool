@@ -187,6 +187,7 @@ int main(int argc, char *argv[]) {
 
   app.stats.start_time = time(NULL);
 
+  setup_input_watchdog(&app);
   setup_keyboard_handler(&app);
 
   if (!process_chain_execute(&process_chain_context)) {
@@ -198,6 +199,8 @@ int main(int argc, char *argv[]) {
   exit_status = processing_ok ? EXIT_SUCCESS : EXIT_FAILURE;
 
 cleanup:
+  thread_manager_join_all(&app.thread_manager);
+
   pthread_mutex_lock(&g_console_mutex);
 
   bool final_ok =
@@ -270,8 +273,8 @@ static bool init_input_module(AppConfig *config, AppContext *app) {
   };
 
   if (is_live_input) {
-    thread_manager_spawn(&watchdog_tm, "watchdog", sdr_init_watchdog_thread,
-                         &watchdog_ctx);
+    thread_manager_spawn(&watchdog_tm, "watchdog", PRIORITY_NORMAL,
+                         sdr_init_watchdog_thread, &watchdog_ctx);
   }
 
   bool init_ok = app->module.input_api->initialize(&context);
@@ -332,6 +335,7 @@ static void print_summary_section(const char *header, const SummaryInfo *info,
 static void initialize_app_context(AppConfig *config, AppContext *app) {
   memset(app, 0, sizeof(AppContext));
   app->config = config;
+  thread_manager_init(&app->thread_manager);
 
   // Set global DSP defaults
   config->dsp.input_gain = 1.0f;

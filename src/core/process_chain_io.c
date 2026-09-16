@@ -54,8 +54,6 @@ static bool process_chain_queue_samples(void *context, const void *data,
 }
 
 void *process_chain_thread_input(void *arg) {
-  platform_set_thread_priority(PRIORITY_REALTIME, "input");
-
   ProcessChainContext *args = (ProcessChainContext *)arg;
   AppContext *app = args->app;
   ModuleContext context = {.config = args->config, .app = app};
@@ -72,8 +70,6 @@ void *process_chain_thread_input(void *arg) {
 }
 
 void *process_chain_thread_chunker(void *arg) {
-  platform_set_thread_priority(PRIORITY_NORMAL, "chunker");
-
   ProcessChainContext *args = (ProcessChainContext *)arg;
   AppContext *app = args->app;
   AppConfig *config = args->config;
@@ -229,8 +225,6 @@ void *process_chain_thread_chunker(void *arg) {
 }
 
 void *process_chain_thread_output(void *arg) {
-  platform_set_thread_priority(PRIORITY_HIGHEST, "output");
-
   ProcessChainContext *args = (ProcessChainContext *)arg;
   AppContext *app = args->app;
   OutputModuleInterface *out_api = app->module.output_api;
@@ -332,8 +326,6 @@ typedef struct {
 static void *process_chain_thread_dsp(void *arg) {
   ProcessChainDspStageContext *ctx = (ProcessChainDspStageContext *)arg;
 
-  platform_set_thread_priority(PRIORITY_HIGH, ctx->module->name);
-
   while (1) {
     SampleChunk *chunk = (SampleChunk *)queue_dequeue(ctx->in_q);
     if (!chunk) {
@@ -388,7 +380,8 @@ bool process_chain_start_dsp_stage(struct ThreadManager *tm,
   ctx->out_q = out_q;
   ctx->free_chunk_q = free_chunk_q;
 
-  if (!thread_manager_spawn(tm, module->name, process_chain_thread_dsp, ctx)) {
+  if (!thread_manager_spawn(tm, module->name, PRIORITY_HIGH,
+                            process_chain_thread_dsp, ctx)) {
     return false;
   }
 

@@ -145,6 +145,16 @@ typedef struct InputModuleInterface {
   // Optional function for file-based inputs to perform initial I/Q correction.
   bool (*pre_stream_iq_correction)(struct ModuleContext *context);
 
+  /**
+   * @brief Optional callback to spawn module-internal worker threads via the
+   * centralized manager.
+   * @param context The module context.
+   * @param manager The pipeline's thread manager.
+   * @return true if threads were spawned successfully, false on error.
+   */
+  bool (*start_background_threads)(struct ModuleContext *context,
+                                   struct ThreadManager *manager);
+
 } InputModuleInterface;
 
 /**
@@ -186,6 +196,16 @@ typedef struct OutputModuleInterface {
   void (*get_summary_info)(const ModuleContext *context,
                            struct SummaryInfo *info);
   void (*on_keypress)(ModuleContext *context, int key);
+
+  /**
+   * @brief Optional callback to spawn module-internal worker threads via the
+   * centralized manager.
+   * @param context The module context.
+   * @param manager The pipeline's thread manager.
+   * @return true if threads were spawned successfully, false on error.
+   */
+  bool (*start_background_threads)(struct ModuleContext *context,
+                                   struct ThreadManager *manager);
 } OutputModuleInterface;
 
 /**

@@ -50,9 +50,9 @@
 #include "ring_buffer.h"
 #include "sample_format_table.h"
 #include "signal_handler.h"
+#include "thread_manager.h"
 #include "utilities.h"
 #include <math.h>
-#include <pthread.h>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -197,8 +197,6 @@ typedef struct {
   // Scratch buffer for reading network payloads before stripping headers
   unsigned char *rx_buffer;
   size_t rx_buffer_size;
-
-  pthread_t producer_thread_id;
 } SpyServerClientContext;
 
 // --- CLI Options ---
@@ -656,39 +654,6 @@ static bool input_spyserver_client_initialize(ModuleContext *context) {
   // the CF32 conversion.
   app->process_chain.input_ring_buffer = client->stream_buffer;
 
-  // Start stream!
-  if (!send_setting(client, SPYSERVER_SETTING_STREAMING_ENABLED, 1)) {
-    goto error_cleanup;
-  }
-
-  if (pthread_create(&client->producer_thread_id, NULL,
-                     input_spyserver_client_producer_thread, context) != 0) {
-    goto error_cleanup;
-  }
-
-  size_t high_water_mark =
-      (size_t)(bytes_per_sec * SPYSERVER_PREBUFFER_TARGET_SECONDS);
-  size_t max_safe_mark =
-      (size_t)(desired_buffer_size * SPYSERVER_PREBUFFER_MAX_FILL_RATIO);
-  if (high_water_mark > max_safe_mark)
-    high_water_mark = max_safe_mark;
-  if (high_water_mark < SPYSERVER_PREBUFFER_MIN_BYTES)
-    high_water_mark = SPYSERVER_PREBUFFER_MIN_BYTES;
-
-  log_info("Pre-buffering SpyServer data...");
-  while (!is_shutdown_requested() &&
-         ring_buffer_get_size(client->stream_buffer) < high_water_mark) {
-    if (input_has_error(app))
-      break;
-    platform_sleep(100);
-  }
-
-  if (is_shutdown_requested() || input_has_error(app)) {
-    log_warn("Shutdown requested during pre-buffering phase.");
-  } else {
-    log_info("Pre-buffering complete.");
-  }
-
   return true;
 
 error_cleanup:
@@ -700,8 +665,6 @@ error_cleanup:
 }
 
 static void *input_spyserver_client_producer_thread(void *arg) {
-  platform_set_thread_priority(PRIORITY_REALTIME, "SpyServer Producer");
-
   ModuleContext *context = (ModuleContext *)arg;
   AppContext *app = context->app;
   SpyServerClientContext *client =
@@ -811,6 +774,55 @@ end_loop:;
   return NULL;
 }
 
+static bool
+input_spyserver_client_start_background_threads(ModuleContext *context,
+                                                ThreadManager *manager) {
+  AppContext *app = context->app;
+  SpyServerClientContext *client =
+      (SpyServerClientContext *)app->module.input_private_data;
+  if (!client || !client->stream_buffer) {
+    return false;
+  }
+
+  // Start stream!
+  if (!send_setting(client, SPYSERVER_SETTING_STREAMING_ENABLED, 1)) {
+    return false;
+  }
+
+  if (!thread_manager_spawn(manager, "spyserver_rx", PRIORITY_REALTIME,
+                            input_spyserver_client_producer_thread, context)) {
+    return false;
+  }
+
+  size_t bytes_per_sec = (size_t)app->module.input_info.sample_rate *
+                         get_bytes_per_iq_sample(client->active_format);
+  size_t desired_buffer_size = ring_buffer_get_capacity(client->stream_buffer);
+  size_t high_water_mark =
+      (size_t)(bytes_per_sec * SPYSERVER_PREBUFFER_TARGET_SECONDS);
+  size_t max_safe_mark =
+      (size_t)(desired_buffer_size * SPYSERVER_PREBUFFER_MAX_FILL_RATIO);
+  if (high_water_mark > max_safe_mark)
+    high_water_mark = max_safe_mark;
+  if (high_water_mark < SPYSERVER_PREBUFFER_MIN_BYTES)
+    high_water_mark = SPYSERVER_PREBUFFER_MIN_BYTES;
+
+  log_info("Pre-buffering SpyServer data...");
+  while (!is_shutdown_requested() &&
+         ring_buffer_get_size(client->stream_buffer) < high_water_mark) {
+    if (input_has_error(app))
+      break;
+    platform_sleep(100);
+  }
+
+  if (is_shutdown_requested() || input_has_error(app)) {
+    log_warn("Shutdown requested during pre-buffering phase.");
+  } else {
+    log_info("Pre-buffering complete.");
+  }
+
+  return true;
+}
+
 static void *
 input_spyserver_client_push_samples_to_queue(ModuleContext *context,
                                              QueueSamples queue_samples,
@@ -818,8 +830,6 @@ input_spyserver_client_push_samples_to_queue(ModuleContext *context,
   (void)queue_samples;
   (void)process_chain_context;
   AppContext *app = context->app;
-  SpyServerClientContext *client =
-      (SpyServerClientContext *)app->module.input_private_data;
 
   // The process_chain_thread_chunker in process_chain_io.c handles pulling
   // chunks from input_ring_buffer and performing the CF32 conversion. The
@@ -835,8 +845,6 @@ input_spyserver_client_push_samples_to_queue(ModuleContext *context,
   if (!is_shutdown_requested()) {
     request_shutdown();
   }
-
-  pthread_join(client->producer_thread_id, NULL);
 
   log_debug("SpyServer Client stream thread is exiting.");
   return NULL;
@@ -921,6 +929,7 @@ input_spyserver_client_get_summary_info(const ModuleContext *context,
 // --- The InputModuleInterface V-Table ---
 static InputModuleInterface s_input_spyserver_client_api = {
     .initialize = input_spyserver_client_initialize,
+    .start_background_threads = input_spyserver_client_start_background_threads,
     .push_samples_to_queue = input_spyserver_client_push_samples_to_queue,
     .stop_sample_queue_push = input_spyserver_client_stop_sample_queue_push,
     .cleanup = input_spyserver_client_cleanup,

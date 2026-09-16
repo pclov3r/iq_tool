@@ -742,7 +742,8 @@ static bool
 dsp_iq_correction_start_background_threads(void *state,
                                            struct ThreadManager *tm) {
   (void)state;
-  return thread_manager_spawn(tm, "I/Q Optimizer", iq_estimation_thread, state);
+  return thread_manager_spawn(tm, "I/Q Optimizer", PRIORITY_NORMAL,
+                              iq_estimation_thread, state);
 }
 
 static void *dsp_iq_correction_init(ModuleContext *ctx, double input_rate,

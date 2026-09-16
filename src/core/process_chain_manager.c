@@ -17,7 +17,6 @@
 #include "log.h"
 #include "module_registry.h"
 #include "packet_serializer.h"
-#include "platform.h" // Added for thread priority abstraction
 #include "process_chain_context.h"
 #include "process_chain_io.h"
 #include "queue.h"
@@ -25,8 +24,6 @@
 #include "sample_format_table.h"
 #include "signal_handler.h"
 #include "thread_manager.h"
-#include "utilities.h"
-#include "utility_threads.h"
 #include "wait_event.h"
 #include <errno.h>
 #include <math.h>
@@ -392,21 +389,38 @@ bool process_chain_execute(ProcessChainContext *context) {
     return false;
   }
 
-  // --- Step 4: Initialize the generic thread manager ---
-  ThreadManager manager;
-  thread_manager_init(&manager);
+  // --- Step 4: Use the application thread manager ---
+  ThreadManager *manager = &app->thread_manager;
 
   // --- Step 5: Spawn threads based on configuration (Direct Command Model) ---
   log_debug("Spawning process_chain threads...");
   bool threads_ok = true;
-  if (app->process_chain_mode != PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL) {
-    if (!thread_manager_spawn(&manager, "input", process_chain_thread_input,
-                              context))
+
+  // Start module background worker threads (e.g. network reception /
+  // pre-buffering)
+  ModuleContext mctx = {.config = config, .app = app};
+  if (threads_ok && app->module.input_api &&
+      app->module.input_api->start_background_threads) {
+    if (!app->module.input_api->start_background_threads(&mctx, manager)) {
+      threads_ok = false;
+    }
+  }
+  if (threads_ok && app->module.output_api &&
+      app->module.output_api->start_background_threads) {
+    if (!app->module.output_api->start_background_threads(&mctx, manager)) {
+      threads_ok = false;
+    }
+  }
+
+  if (threads_ok &&
+      app->process_chain_mode != PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL) {
+    if (!thread_manager_spawn(manager, "input", PRIORITY_REALTIME,
+                              process_chain_thread_input, context))
       threads_ok = false;
   }
   if (threads_ok &&
-      !thread_manager_spawn(&manager, "chunker", process_chain_thread_chunker,
-                            context))
+      !thread_manager_spawn(manager, "chunker", PRIORITY_NORMAL,
+                            process_chain_thread_chunker, context))
     threads_ok = false;
 
   // Start DSP chains
@@ -427,8 +441,7 @@ bool process_chain_execute(ProcessChainContext *context) {
 
     for (int i = 0; i < num_dsp_modules; i++) {
       if (dsp_modules[i]->start_background_threads) {
-        if (!dsp_modules[i]->start_background_threads(dsp_states[i],
-                                                      &manager)) {
+        if (!dsp_modules[i]->start_background_threads(dsp_states[i], manager)) {
           threads_ok = false;
           break;
         }
@@ -437,7 +450,7 @@ bool process_chain_execute(ProcessChainContext *context) {
 
     for (int i = 0; i < num_dsp_modules; i++) {
       if (!process_chain_start_dsp_stage(
-              &manager, &app->process_chain.setup_arena, dsp_modules[i],
+              manager, &app->process_chain.setup_arena, dsp_modules[i],
               dsp_states[i], app->process_chain.active_queues[i],
               app->process_chain.active_queues[i + 1],
               app->process_chain.free_sample_chunk_queue)) {
@@ -447,14 +460,9 @@ bool process_chain_execute(ProcessChainContext *context) {
     }
   }
 
-  if (threads_ok && !thread_manager_spawn(&manager, "output",
+  if (threads_ok && !thread_manager_spawn(manager, "output", PRIORITY_HIGHEST,
                                           process_chain_thread_output, context))
     threads_ok = false;
-  if (threads_ok && module_is_live_input(config->input.type_name)) {
-    if (!thread_manager_spawn(&manager, "watchdog",
-                              process_chain_thread_watchdog, context))
-      threads_ok = false;
-  }
 
   if (!threads_ok) {
     log_fatal("Failed to spawn one or more process_chain threads. Initiating "
@@ -463,7 +471,7 @@ bool process_chain_execute(ProcessChainContext *context) {
   }
 
   // --- Step 6: Wait for all spawned threads to complete ---
-  thread_manager_join_all(&manager);
+  thread_manager_join_all(manager);
   log_debug("All process_chain threads have completed.");
   success =
       !atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed);

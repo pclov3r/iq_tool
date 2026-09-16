@@ -23,6 +23,8 @@ typedef struct SdrInitWatchdogContext {
       is_complete; ///< Flag set by the caller when initialization completes.
 } SdrInitWatchdogContext;
 
+struct AppContext;
+
 /**
  * @brief Watchdog thread that forces application exit if SDR initialization
  * hangs.
@@ -32,10 +34,10 @@ typedef struct SdrInitWatchdogContext {
 void *sdr_init_watchdog_thread(void *arg);
 
 /**
- * @brief The main function for the Input Watchdog utility thread.
- * @param arg A void pointer to the ProcessChainContext struct.
- * @return NULL.
+ * @brief Sets up and spawns the input watchdog thread if in live streaming
+ * mode.
+ * @param app Pointer to the global application context.
  */
-void *process_chain_thread_watchdog(void *arg);
+void setup_input_watchdog(struct AppContext *app);
 
 #endif // UTILITY_THREADS_H_

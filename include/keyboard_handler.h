@@ -6,7 +6,7 @@
 #ifndef KEYBOARD_HANDLER_H_
 #define KEYBOARD_HANDLER_H_
 
-#include "app_context.h"
+struct AppContext;
 
 /**
  * @brief Initializes the background keyboard listener thread.
@@ -17,6 +17,6 @@
  *
  * @param app Pointer to the global application context.
  */
-void setup_keyboard_handler(AppContext *app);
+void setup_keyboard_handler(struct AppContext *app);
 
-#endif // KEYBOARD_HANDLER_H
+#endif // KEYBOARD_HANDLER_H_

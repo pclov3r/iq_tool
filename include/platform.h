@@ -249,6 +249,16 @@ typedef enum {
 void platform_set_thread_priority(ThreadPriority priority,
                                   const char *thread_name);
 
+/**
+ * @brief Sets the human-readable name for the calling thread in the OS.
+ *
+ * If name is NULL or empty, the function does nothing and the thread's name
+ * is left unchanged.
+ *
+ * @param name The name to assign to the calling thread.
+ */
+void platform_set_thread_name(const char *name);
+
 void *platform_dll_load(const char *dll_path);
 #ifdef _WIN32
 void *platform_dll_load_w(const wchar_t *dll_path);

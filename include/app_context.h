@@ -13,6 +13,7 @@
 #include "module.h"
 #include "presets_loader.h"
 #include "process_chain_types.h"
+#include "thread_manager.h"
 #include "wait_event.h"
 #include <stdatomic.h>
 
@@ -241,6 +242,7 @@ typedef struct AppContext {
   DspContext dsp;
   ModuleState module;
   RuntimeState stats;
+  ThreadManager thread_manager;
 
   ProcessChainMode process_chain_mode;
 } AppContext;

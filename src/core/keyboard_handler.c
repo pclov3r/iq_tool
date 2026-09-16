@@ -4,12 +4,13 @@
  */
 
 #include "keyboard_handler.h"
+#include "app_context.h"
 #include "log.h"
 #include "module.h"
 #include "platform.h"
 #include "signal_handler.h"
+#include "thread_manager.h"
 #include <errno.h>
-#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
@@ -105,11 +106,6 @@ void setup_keyboard_handler(AppContext *app) {
     return; // Don't steal terminal focus or trigger SIGTTOU if no modules care
   }
 
-  pthread_t thread_id;
-  pthread_attr_t attr;
-
-  pthread_attr_init(&attr);
-  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-  pthread_create(&thread_id, &attr, keyboard_listener_thread, app);
-  pthread_attr_destroy(&attr);
+  thread_manager_spawn(&app->thread_manager, "keyboard", PRIORITY_NORMAL,
+                       keyboard_listener_thread, app);
 }
