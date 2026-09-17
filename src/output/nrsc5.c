@@ -775,9 +775,9 @@ static void output_nrsc5_on_keypress(ModuleContext *context, int key) {
       nrsc5_decoder->active_program = new_program;
       audio_output_clear(nrsc5_decoder->audio_out);
 
-      // Inject 138ms of silence (Exactly 3 HDC frames) to build a pre-buffer
+      // Inject ~139ms of silence (Exactly 3 HDC frames) to build a pre-buffer
       // and prevent stuttering
-      size_t silence_frames = (size_t)(NRSC5_AUDIO_SAMPLE_RATE * 0.138);
+      size_t silence_frames = NRSC5_AUDIO_FRAME_SAMPLES * 3;
       size_t silence_bytes =
           silence_frames * NRSC5_AUDIO_CHANNELS * sizeof(int16_t);
       int16_t *silence = calloc(1, silence_bytes);
