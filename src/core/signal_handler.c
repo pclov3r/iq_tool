@@ -7,6 +7,7 @@
 #include "app_context.h" // Provides AppContext
 #include "log.h"
 #include "module.h"      // Provides ModuleContext
+#include "platform.h"
 #include "queue.h"       // Provides queue_signal_shutdown
 #include "ring_buffer.h" // Provides ring_buffer_signal_shutdown
 #include "wait_event.h"
@@ -64,6 +65,7 @@ static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
 #else
 static void *signal_handler_thread(void *arg) {
   (void)arg;
+  platform_set_thread_name("signal");
   sigset_t signal_set;
   int sig;
 
