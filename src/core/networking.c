@@ -158,13 +158,22 @@ NetworkingContext *networking_connect(const char *hostname, int port,
     // --- Apply Timeouts (Windows) ---
     // Windows setsockopt takes DWORD in milliseconds.
     DWORD timeout = NETWORK_SOCKET_TIMEOUT_MS;
-    setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVTIMEO,
-               (const char *)&timeout, sizeof(timeout));
-    setsockopt(context->socket_fd, SOL_SOCKET, SO_SNDTIMEO,
-               (const char *)&timeout, sizeof(timeout));
+    if (setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVTIMEO,
+                   (const char *)&timeout, sizeof(timeout)) == SOCKET_ERROR) {
+      log_warn("Failed to set socket receive timeout: error %d",
+               WSAGetLastError());
+    }
+    if (setsockopt(context->socket_fd, SOL_SOCKET, SO_SNDTIMEO,
+                   (const char *)&timeout, sizeof(timeout)) == SOCKET_ERROR) {
+      log_warn("Failed to set socket send timeout: error %d",
+               WSAGetLastError());
+    }
     int rcvbuf = 2 * 1024 * 1024;
-    setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf,
-               sizeof(rcvbuf));
+    if (setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVBUF,
+                   (const char *)&rcvbuf, sizeof(rcvbuf)) == SOCKET_ERROR) {
+      log_warn("Failed to set socket receive buffer size: error %d",
+               WSAGetLastError());
+    }
 
     if (connect(context->socket_fd, p->ai_addr, (int)p->ai_addrlen) ==
         SOCKET_ERROR) {
@@ -181,13 +190,19 @@ NetworkingContext *networking_connect(const char *hostname, int port,
     struct timeval timeout;
     timeout.tv_sec = NETWORK_SOCKET_TIMEOUT_MS / 1000;
     timeout.tv_usec = (NETWORK_SOCKET_TIMEOUT_MS % 1000) * 1000;
-    setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
-               sizeof(timeout));
-    setsockopt(context->socket_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout,
-               sizeof(timeout));
+    if (setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+                   sizeof(timeout)) < 0) {
+      log_warn("Failed to set socket receive timeout: %s", strerror(errno));
+    }
+    if (setsockopt(context->socket_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout,
+                   sizeof(timeout)) < 0) {
+      log_warn("Failed to set socket send timeout: %s", strerror(errno));
+    }
     int rcvbuf = 2 * 1024 * 1024;
-    setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf,
-               sizeof(rcvbuf));
+    if (setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVBUF,
+                   (const char *)&rcvbuf, sizeof(rcvbuf)) < 0) {
+      log_warn("Failed to set socket receive buffer size: %s", strerror(errno));
+    }
 
     if (connect(context->socket_fd, p->ai_addr, p->ai_addrlen) < 0) {
       close(context->socket_fd);
