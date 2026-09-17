@@ -201,8 +201,6 @@ int main(int argc, char *argv[]) {
 cleanup:
   thread_manager_join_all(&app.thread_manager);
 
-  pthread_mutex_lock(&g_console_mutex);
-
   bool final_ok =
       !atomic_load_explicit(&app.stats.error_occurred, memory_order_relaxed);
 
@@ -227,10 +225,10 @@ cleanup:
 
   // Print summary AFTER all buffers are flushed and files are closed
   if (resources_initialized) {
+    pthread_mutex_lock(&g_console_mutex);
     print_final_summary(&config, &app, final_ok);
+    pthread_mutex_unlock(&g_console_mutex);
   }
-
-  pthread_mutex_unlock(&g_console_mutex);
 
   if (arena_initialized) {
     signal_handler_clear_context();
