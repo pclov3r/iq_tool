@@ -141,6 +141,7 @@ bool packet_serializer_write_reset_event(struct RingBuffer *buffer);
  * encountered.
  * @param request_size_samples The maximum number of samples to read into the
  * chunk.
+ * @param raw_passthrough If true, read payload directly into final_output_data.
  *
  * @return The actual number of samples read (may be less than requested if the
  *         packet ends), 0 if end-of-stream or reset event, or -1 on fatal
@@ -150,6 +151,7 @@ int64_t packet_serializer_read_packet(struct RingBuffer *buffer,
                                       struct SampleChunk *target_chunk,
                                       SerializerState *state,
                                       bool *is_reset_event,
-                                      size_t request_size_samples);
+                                      size_t request_size_samples,
+                                      bool raw_passthrough);
 
 #endif // PACKET_SERIALIZER_H_

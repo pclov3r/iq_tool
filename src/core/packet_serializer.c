@@ -65,11 +65,9 @@ bool packet_serializer_write_reset_event(RingBuffer *buffer) {
 
 // --- READ IMPLEMENTATION ---
 
-int64_t packet_serializer_read_packet(RingBuffer *buffer,
-                                      SampleChunk *target_chunk,
-                                      SerializerState *state,
-                                      bool *is_reset_event,
-                                      size_t request_size_samples) {
+int64_t packet_serializer_read_packet(
+    RingBuffer *buffer, SampleChunk *target_chunk, SerializerState *state,
+    bool *is_reset_event, size_t request_size_samples, bool raw_passthrough) {
   *is_reset_event = false;
 
   // 1. Fetch Header if needed
@@ -113,8 +111,15 @@ int64_t packet_serializer_read_packet(RingBuffer *buffer,
   if (bpp == 0)
     return -1;
 
+  void *target_buffer = raw_passthrough
+                            ? (void *)target_chunk->final_output_data
+                            : target_chunk->raw_input_data;
+  size_t capacity_bytes = raw_passthrough
+                              ? target_chunk->final_output_capacity_bytes
+                              : target_chunk->raw_input_capacity_bytes;
+
   // Validate capacity
-  size_t capacity_samples = target_chunk->raw_input_capacity_bytes / bpp;
+  size_t capacity_samples = capacity_bytes / bpp;
   if (samples_to_read > capacity_samples)
     samples_to_read = capacity_samples;
 
@@ -123,8 +128,7 @@ int64_t packet_serializer_read_packet(RingBuffer *buffer,
 
   // Read
   size_t bytes_to_read = samples_to_read * bpp;
-  if (ring_buffer_read(buffer, target_chunk->raw_input_data, bytes_to_read) <
-      bytes_to_read) {
+  if (ring_buffer_read(buffer, target_buffer, bytes_to_read) < bytes_to_read) {
     log_error("Stream Error: Unexpected end of buffer while reading payload.");
     return -1;
   }

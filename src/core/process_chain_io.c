@@ -97,7 +97,7 @@ void *process_chain_thread_chunker(void *arg) {
       // size
       int64_t frames_read = packet_serializer_read_packet(
           app->process_chain.input_ring_buffer, item, &state, &is_reset,
-          app->process_chain.read_chunk_size);
+          app->process_chain.read_chunk_size, config->dsp.raw_passthrough);
 
       if (frames_read < 0) {
         request_forceful_shutdown(
@@ -120,10 +120,7 @@ void *process_chain_thread_chunker(void *arg) {
 
       item->current_buffer = item->ping_buffer;
 
-      if (config->dsp.raw_passthrough && item->frames_read > 0) {
-        size_t bytes = item->frames_read * item->input_bytes_per_iq_sample;
-        memcpy(item->final_output_data, item->raw_input_data, bytes);
-      } else if (!config->dsp.raw_passthrough && item->frames_read > 0) {
+      if (!config->dsp.raw_passthrough && item->frames_read > 0) {
         sample_convert_block_to_cf32(
             item->raw_input_data, item->current_buffer, item->frames_read,
             item->packet_sample_format, config->dsp.input_gain);
