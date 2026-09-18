@@ -769,7 +769,7 @@ static void *input_spyserver_client_producer_thread(void *arg) {
   }
 
 end_loop:;
-  ring_buffer_signal_end_of_stream(client->stream_buffer);
+  ring_buffer_drain(client->stream_buffer);
   log_debug("SpyServer producer thread is exiting.");
   return NULL;
 }
@@ -857,7 +857,7 @@ input_spyserver_client_stop_sample_queue_push(ModuleContext *context) {
     SpyServerClientContext *client =
         (SpyServerClientContext *)app->module.input_private_data;
     if (client->stream_buffer) {
-      ring_buffer_signal_shutdown(client->stream_buffer);
+      ring_buffer_shutdown(client->stream_buffer);
     }
   }
 }

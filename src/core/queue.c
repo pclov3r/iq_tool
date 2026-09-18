@@ -161,7 +161,7 @@ void *queue_try_dequeue(Queue *queue) {
   return item;
 }
 
-void queue_signal_shutdown(Queue *queue) {
+void queue_drain(Queue *queue) {
   if (!queue || queue->state == QUEUE_STATE_UNINITIALIZED ||
       queue->state == QUEUE_STATE_DESTROYED)
     return;

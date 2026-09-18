@@ -62,7 +62,7 @@ void *process_chain_thread_input(void *arg) {
       &context, process_chain_queue_samples, app);
 
   if (app->process_chain.input_ring_buffer) {
-    ring_buffer_signal_end_of_stream(app->process_chain.input_ring_buffer);
+    ring_buffer_drain(app->process_chain.input_ring_buffer);
   }
 
   log_debug("Input capture thread is exiting.");

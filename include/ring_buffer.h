@@ -74,14 +74,16 @@ size_t ring_buffer_read(RingBuffer *iob, void *buffer, size_t max_bytes);
 void ring_buffer_wait_for_threshold(RingBuffer *iob, size_t target_size);
 
 /**
- * @brief Signals that no more data will be written to the buffer.
+ * @brief Transitions buffer to DRAINING state (no more writes; consumer drains
+ * remaining data).
  */
-void ring_buffer_signal_end_of_stream(RingBuffer *iob);
+void ring_buffer_drain(RingBuffer *iob);
 
 /**
- * @brief Signals an immediate shutdown of the buffer.
+ * @brief Transitions buffer to SHUTDOWN state (immediate abort; wakes all
+ * waiters).
  */
-void ring_buffer_signal_shutdown(RingBuffer *iob);
+void ring_buffer_shutdown(RingBuffer *iob);
 
 /**
  * @brief Gets the current number of bytes waiting to be read.

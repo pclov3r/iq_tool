@@ -183,21 +183,21 @@ void request_shutdown(void) {
       app->module.input_api->stop_sample_queue_push(&context);
     }
 
-    // Signal all queues to wake up any waiting threads.
+    // Signal all queues to drain and wake up any waiting threads.
     if (app->process_chain.free_sample_chunk_queue)
-      queue_signal_shutdown(app->process_chain.free_sample_chunk_queue);
+      queue_drain(app->process_chain.free_sample_chunk_queue);
 
     if (app->process_chain.active_queues) {
       for (int i = 0; i < app->process_chain.num_active_queues; i++) {
         if (app->process_chain.active_queues[i]) {
-          queue_signal_shutdown(app->process_chain.active_queues[i]);
+          queue_drain(app->process_chain.active_queues[i]);
         }
       }
     }
 
-    // Signal all ring buffers to wake up any waiting threads
+    // Signal all ring buffers to shut down and wake up any waiting threads
     if (app->process_chain.input_ring_buffer)
-      ring_buffer_signal_shutdown(app->process_chain.input_ring_buffer);
+      ring_buffer_shutdown(app->process_chain.input_ring_buffer);
   }
 }
 

@@ -391,7 +391,7 @@ void ring_buffer_wait_for_threshold(RingBuffer *iob, size_t target_size) {
   pthread_mutex_unlock(&iob->sync_mutex);
 }
 
-void ring_buffer_signal_end_of_stream(RingBuffer *iob) {
+void ring_buffer_drain(RingBuffer *iob) {
   if (!iob)
     return;
   int expected = RING_BUFFER_STATE_ACTIVE;
@@ -417,7 +417,7 @@ void ring_buffer_signal_end_of_stream(RingBuffer *iob) {
 #endif
 }
 
-void ring_buffer_signal_shutdown(RingBuffer *iob) {
+void ring_buffer_shutdown(RingBuffer *iob) {
   if (!iob)
     return;
   int st = atomic_load(&iob->state);

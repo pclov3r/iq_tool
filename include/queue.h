@@ -94,14 +94,11 @@ void *queue_dequeue(Queue *queue);
 void *queue_try_dequeue(Queue *queue);
 
 /**
- * @brief Signals all threads waiting on the queue to wake up for a shutdown.
- *
- * This sets an internal flag and broadcasts to all condition variables,
- * ensuring that no threads remain blocked on `queue_enqueue` or
- * `queue_dequeue`.
+ * @brief Transitions queue to DRAINING state (rejects new enqueues, wakes
+ * workers to drain).
  *
  * @param queue Pointer to the queue to signal.
  */
-void queue_signal_shutdown(Queue *queue);
+void queue_drain(Queue *queue);
 
 #endif // QUEUE_H_
