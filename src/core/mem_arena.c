@@ -103,11 +103,11 @@ bool mem_arena_init(MemoryArena *arena) {
   arena->total_allocated = first->capacity;
   arena->state = MEM_ARENA_STATE_ACTIVE;
 
-  log_info("Dynamic memory arena initialized: chunk size %zu MB, max capacity "
-           "%zu MB (%d%% of detected %llu MB system RAM)",
-           arena->default_chunk_size / (1024 * 1024),
-           arena->max_capacity / (1024 * 1024), MEM_ARENA_RAM_PERCENT_CAP,
-           (unsigned long long)(total_ram / (1024 * 1024)));
+  log_debug("Dynamic memory arena initialized: chunk size %zu MB, max capacity "
+            "%zu MB (%d%% of detected %llu MB system RAM)",
+            arena->default_chunk_size / (1024 * 1024),
+            arena->max_capacity / (1024 * 1024), MEM_ARENA_RAM_PERCENT_CAP,
+            (unsigned long long)(total_ram / (1024 * 1024)));
 
   return true;
 }
