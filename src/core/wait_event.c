@@ -8,13 +8,19 @@
 #include "mem_arena.h"
 #include <stdlib.h>
 
+typedef enum WaitEventState {
+  WAIT_EVENT_STATE_UNINITIALIZED = 0,
+  WAIT_EVENT_STATE_ACTIVE,
+  WAIT_EVENT_STATE_DESTROYED
+} WaitEventState;
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 struct WaitEvent {
   HANDLE handle;
-  bool is_initialized;
+  WaitEventState state;
 };
 
 #else
@@ -24,7 +30,7 @@ struct WaitEvent {
   pthread_mutex_t mutex;
   pthread_cond_t cond;
   bool signaled;
-  bool is_initialized;
+  WaitEventState state;
 };
 #endif
 
@@ -53,16 +59,16 @@ WaitEvent *wait_event_create(struct MemoryArena *arena) {
   }
   ev->signaled = false;
 #endif
-  ev->is_initialized = true;
+  ev->state = WAIT_EVENT_STATE_ACTIVE;
 
   return ev;
 }
 
 void wait_event_destroy(WaitEvent *ev) {
-  if (!ev || !ev->is_initialized)
+  if (!ev || ev->state != WAIT_EVENT_STATE_ACTIVE)
     return;
 
-  ev->is_initialized = false;
+  ev->state = WAIT_EVENT_STATE_DESTROYED;
 #ifdef _WIN32
   if (ev->handle) {
     CloseHandle(ev->handle);
@@ -75,7 +81,7 @@ void wait_event_destroy(WaitEvent *ev) {
 }
 
 void wait_event_signal(WaitEvent *ev) {
-  if (!ev || !ev->is_initialized)
+  if (!ev || ev->state != WAIT_EVENT_STATE_ACTIVE)
     return;
 #ifdef _WIN32
   SetEvent(ev->handle);
@@ -89,13 +95,13 @@ void wait_event_signal(WaitEvent *ev) {
 }
 
 void wait_event_wait(WaitEvent *ev) {
-  if (!ev || !ev->is_initialized)
+  if (!ev || ev->state != WAIT_EVENT_STATE_ACTIVE)
     return;
 #ifdef _WIN32
   WaitForSingleObject(ev->handle, INFINITE);
 #else
   pthread_mutex_lock(&ev->mutex);
-  while (!ev->signaled && ev->is_initialized) {
+  while (!ev->signaled && ev->state == WAIT_EVENT_STATE_ACTIVE) {
     pthread_cond_wait(&ev->cond, &ev->mutex);
   }
   pthread_mutex_unlock(&ev->mutex);

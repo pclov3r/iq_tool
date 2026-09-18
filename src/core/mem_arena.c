@@ -86,7 +86,7 @@ bool mem_arena_init(MemoryArena *arena) {
   arena->total_allocated = 0;
   arena->first_block = NULL;
   arena->current_block = NULL;
-  arena->is_initialized = true;
+  arena->state = MEM_ARENA_STATE_UNINITIALIZED;
 
   // Allocate initial 32 MB chunk immediately
   ArenaBlock *first = create_arena_block(arena->default_chunk_size);
@@ -94,13 +94,14 @@ bool mem_arena_init(MemoryArena *arena) {
     log_fatal("Failed to allocate initial memory arena block (%zu bytes).",
               arena->default_chunk_size);
     pthread_mutex_destroy(&arena->lock);
-    arena->is_initialized = false;
+    arena->state = MEM_ARENA_STATE_DESTROYED;
     return false;
   }
 
   arena->first_block = first;
   arena->current_block = first;
   arena->total_allocated = first->capacity;
+  arena->state = MEM_ARENA_STATE_ACTIVE;
 
   log_info("Dynamic memory arena initialized: chunk size %zu MB, max capacity "
            "%zu MB (%d%% of detected %llu MB system RAM)",
@@ -112,7 +113,7 @@ bool mem_arena_init(MemoryArena *arena) {
 }
 
 void *mem_arena_alloc(MemoryArena *arena, size_t size, bool zero_memory) {
-  if (!arena || !arena->is_initialized || size == 0)
+  if (!arena || arena->state != MEM_ARENA_STATE_ACTIVE || size == 0)
     return NULL;
 
   size_t aligned_size =
@@ -189,7 +190,7 @@ void *mem_arena_alloc(MemoryArena *arena, size_t size, bool zero_memory) {
 }
 
 void mem_arena_destroy(MemoryArena *arena) {
-  if (!arena || !arena->is_initialized)
+  if (!arena || arena->state != MEM_ARENA_STATE_ACTIVE)
     return;
 
   pthread_mutex_lock(&arena->lock);
@@ -203,7 +204,7 @@ void mem_arena_destroy(MemoryArena *arena) {
   arena->current_block = NULL;
   arena->total_allocated = 0;
   arena->max_capacity = 0;
-  arena->is_initialized = false;
+  arena->state = MEM_ARENA_STATE_DESTROYED;
   pthread_mutex_unlock(&arena->lock);
   pthread_mutex_destroy(&arena->lock);
 }

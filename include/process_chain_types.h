@@ -69,6 +69,17 @@ typedef struct SampleChunk {
 } SampleChunk;
 
 /**
+ * @enum QueueState
+ * @brief Represents the lifecycle state of a thread-safe Queue.
+ */
+typedef enum QueueState {
+  QUEUE_STATE_UNINITIALIZED = 0, ///< Unallocated or zero-initialized.
+  QUEUE_STATE_ACTIVE,   ///< Fully operational: accepts enqueues and dequeues.
+  QUEUE_STATE_DRAINING, ///< Shutdown signaled: rejects enqueues, workers drain.
+  QUEUE_STATE_DESTROYED ///< Mutexes destroyed: completely inert.
+} QueueState;
+
+/**
  * @struct Queue
  * @brief A standard, blocking, thread-safe queue for passing pointers between
  * threads.
@@ -87,9 +98,8 @@ typedef struct Queue {
   pthread_cond_t
       not_empty_cond; ///< Condition variable to signal when an item is added.
   pthread_cond_t
-      not_full_cond;  ///< Condition variable to signal when an item is removed.
-  bool shutting_down; ///< Flag to unblock waiting threads during shutdown.
-  bool is_initialized; ///< Flag to track if mutexes are safely initialized.
+      not_full_cond; ///< Condition variable to signal when an item is removed.
+  QueueState state;  ///< Explicit lifecycle state.
 } Queue;
 
 #endif // PROCESS_CHAIN_TYPES_H_

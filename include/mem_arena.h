@@ -16,6 +16,16 @@ typedef struct ArenaBlock ArenaBlock;
 // --- Struct Definition ---
 
 /**
+ * @enum MemoryArenaState
+ * @brief Represents the lifecycle state of a MemoryArena.
+ */
+typedef enum MemoryArenaState {
+  MEM_ARENA_STATE_UNINITIALIZED = 0, ///< Uninitialized or zeroed.
+  MEM_ARENA_STATE_ACTIVE,            ///< Ready for allocations.
+  MEM_ARENA_STATE_DESTROYED          ///< Deallocated and mutex destroyed.
+} MemoryArenaState;
+
+/**
  * @struct MemoryArena
  * @brief Dynamic chained-block memory arena allocator.
  *
@@ -34,7 +44,7 @@ typedef struct MemoryArena {
   size_t
       total_allocated;  ///< Total bytes currently allocated across all blocks.
   pthread_mutex_t lock; ///< Mutex ensuring thread-safe allocation and growth.
-  bool is_initialized;  ///< Tracks whether the arena is initialized.
+  MemoryArenaState state; ///< Explicit lifecycle state.
 } MemoryArena;
 
 // --- Function Declarations ---

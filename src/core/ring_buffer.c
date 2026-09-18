@@ -23,6 +23,14 @@
 #include <time.h>
 #endif
 
+typedef enum RingBufferState {
+  RING_BUFFER_STATE_UNINITIALIZED = 0,
+  RING_BUFFER_STATE_ACTIVE,   ///< Normal streaming operation.
+  RING_BUFFER_STATE_DRAINING, ///< End of stream: reject writes, reader drains.
+  RING_BUFFER_STATE_SHUTDOWN, ///< Immediate shutdown: abort reader and writer.
+  RING_BUFFER_STATE_DESTROYED ///< Mutexes destroyed: completely inert.
+} RingBufferState;
+
 struct RingBuffer {
   unsigned char *buffer;
   size_t capacity;
@@ -36,8 +44,7 @@ struct RingBuffer {
   alignas(CACHE_LINE_PADDING) atomic_size_t read_pos;
 
   // Isolates the reader index from the flags and mutexes below.
-  alignas(CACHE_LINE_PADDING) atomic_bool end_of_stream;
-  atomic_bool shutting_down;
+  alignas(CACHE_LINE_PADDING) atomic_int state;
   atomic_bool is_consumer_sleeping;
 
   // Synchronization for Backpressure (Producer Waiting)
@@ -56,8 +63,6 @@ struct RingBuffer {
   pthread_cond_t event_cond;
   bool event_signaled;
 #endif
-
-  bool is_initialized;
 };
 
 RingBuffer *ring_buffer_create(size_t capacity, MemoryArena *arena) {
@@ -82,8 +87,7 @@ RingBuffer *ring_buffer_create(size_t capacity, MemoryArena *arena) {
   iob->capacity = aligned_capacity;
   atomic_init(&iob->write_pos, 0);
   atomic_init(&iob->read_pos, 0);
-  atomic_init(&iob->end_of_stream, false);
-  atomic_init(&iob->shutting_down, false);
+  atomic_init(&iob->state, RING_BUFFER_STATE_ACTIVE);
   atomic_init(&iob->is_consumer_sleeping, false);
 
   pthread_mutex_init(&iob->sync_mutex, NULL);
@@ -115,16 +119,19 @@ RingBuffer *ring_buffer_create(size_t capacity, MemoryArena *arena) {
   iob->event_signaled = false;
 #endif
 
-  iob->is_initialized = true;
-
   return iob;
 }
 
 void ring_buffer_destroy(RingBuffer *iob) {
-  if (!iob || !iob->is_initialized)
+  if (!iob)
     return;
 
-  iob->is_initialized = false;
+  int expected = atomic_load(&iob->state);
+  if (expected == RING_BUFFER_STATE_UNINITIALIZED ||
+      expected == RING_BUFFER_STATE_DESTROYED) {
+    return;
+  }
+  atomic_store(&iob->state, RING_BUFFER_STATE_DESTROYED);
 
   pthread_mutex_destroy(&iob->sync_mutex);
   pthread_cond_destroy(&iob->space_free_cond);
@@ -142,7 +149,9 @@ void ring_buffer_destroy(RingBuffer *iob) {
 
 // PRODUCER: High Priority, Lock-Free, Never Sleeps
 size_t ring_buffer_write(RingBuffer *iob, const void *data, size_t bytes) {
-  if (!iob || !iob->is_initialized || !data || bytes == 0)
+  if (!iob || !data || bytes == 0 ||
+      atomic_load_explicit(&iob->state, memory_order_acquire) !=
+          RING_BUFFER_STATE_ACTIVE)
     return 0;
 
   size_t w = atomic_load_explicit(&iob->write_pos, memory_order_relaxed);
@@ -177,7 +186,8 @@ size_t ring_buffer_write(RingBuffer *iob, const void *data, size_t bytes) {
       SetEvent(iob->block_ready_event);
     }
 #else
-    if (iob->is_initialized) {
+    if (atomic_load_explicit(&iob->state, memory_order_acquire) ==
+        RING_BUFFER_STATE_ACTIVE) {
       pthread_mutex_lock(&iob->event_mutex);
       iob->event_signaled = true; // Latch the signal
       pthread_cond_signal(&iob->event_cond);
@@ -193,7 +203,9 @@ size_t ring_buffer_write(RingBuffer *iob, const void *data, size_t bytes) {
 size_t ring_buffer_write_packet(RingBuffer *iob, const void *header,
                                 size_t h_length, const void *payload,
                                 size_t p_length) {
-  if (!iob || !iob->is_initialized || !header)
+  if (!iob || !header ||
+      atomic_load_explicit(&iob->state, memory_order_acquire) !=
+          RING_BUFFER_STATE_ACTIVE)
     return 0;
 
   size_t total_bytes = h_length + p_length;
@@ -242,7 +254,8 @@ size_t ring_buffer_write_packet(RingBuffer *iob, const void *header,
       SetEvent(iob->block_ready_event);
     }
 #else
-    if (iob->is_initialized) {
+    if (atomic_load_explicit(&iob->state, memory_order_acquire) ==
+        RING_BUFFER_STATE_ACTIVE) {
       pthread_mutex_lock(&iob->event_mutex);
       iob->event_signaled = true; // Latch the signal
       pthread_cond_signal(&iob->event_cond);
@@ -256,7 +269,7 @@ size_t ring_buffer_write_packet(RingBuffer *iob, const void *header,
 
 // CONSUMER: Low Priority, Blocking (Sleeps if empty)
 size_t ring_buffer_read(RingBuffer *iob, void *buffer, size_t max_bytes) {
-  if (!iob || !iob->is_initialized || !buffer || max_bytes == 0)
+  if (!iob || !buffer || max_bytes == 0)
     return 0;
 
   size_t w, r, cap, available;
@@ -266,8 +279,9 @@ size_t ring_buffer_read(RingBuffer *iob, void *buffer, size_t max_bytes) {
     r = atomic_load_explicit(&iob->read_pos, memory_order_relaxed);
     cap = iob->capacity;
 
-    if (atomic_load_explicit(&iob->shutting_down, memory_order_relaxed) ||
-        !iob->is_initialized)
+    int st = atomic_load_explicit(&iob->state, memory_order_acquire);
+    if (st == RING_BUFFER_STATE_SHUTDOWN || st == RING_BUFFER_STATE_DESTROYED ||
+        st == RING_BUFFER_STATE_UNINITIALIZED)
       return 0;
 
     available = (w >= r) ? (w - r) : (cap - (r - w));
@@ -276,8 +290,7 @@ size_t ring_buffer_read(RingBuffer *iob, void *buffer, size_t max_bytes) {
       break;
     }
 
-    if (atomic_load_explicit(&iob->end_of_stream, memory_order_acquire) ||
-        !iob->is_initialized) {
+    if (st == RING_BUFFER_STATE_DRAINING) {
       return 0;
     }
 
@@ -300,7 +313,8 @@ size_t ring_buffer_read(RingBuffer *iob, void *buffer, size_t max_bytes) {
       WaitForSingleObject(iob->block_ready_event, 100);
     }
 #else
-    if (!iob->is_initialized)
+    if (atomic_load_explicit(&iob->state, memory_order_acquire) !=
+        RING_BUFFER_STATE_ACTIVE)
       return 0;
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts); // Safe Clock
@@ -316,7 +330,9 @@ size_t ring_buffer_read(RingBuffer *iob, void *buffer, size_t max_bytes) {
 
     // Auto-Reset Event Logic:
     // Wait until signaled or timeout.
-    while (!iob->event_signaled && iob->is_initialized) {
+    while (!iob->event_signaled &&
+           atomic_load_explicit(&iob->state, memory_order_acquire) ==
+               RING_BUFFER_STATE_ACTIVE) {
       int rc = pthread_cond_timedwait(&iob->event_cond, &iob->event_mutex, &ts);
       if (rc == ETIMEDOUT)
         break;
@@ -349,7 +365,9 @@ size_t ring_buffer_read(RingBuffer *iob, void *buffer, size_t max_bytes) {
                         memory_order_release);
 
   // Signal Backpressure: Wake up any waiting producers (File Readers)
-  if (iob->is_initialized) {
+  int current_st = atomic_load_explicit(&iob->state, memory_order_acquire);
+  if (current_st == RING_BUFFER_STATE_ACTIVE ||
+      current_st == RING_BUFFER_STATE_DRAINING) {
     pthread_mutex_lock(&iob->sync_mutex);
     pthread_cond_broadcast(&iob->space_free_cond);
     pthread_mutex_unlock(&iob->sync_mutex);
@@ -360,21 +378,26 @@ size_t ring_buffer_read(RingBuffer *iob, void *buffer, size_t max_bytes) {
 
 // BACKPRESSURE WAIT: Used by File Readers (Producers)
 void ring_buffer_wait_for_threshold(RingBuffer *iob, size_t target_size) {
-  if (!iob || !iob->is_initialized)
+  if (!iob || atomic_load_explicit(&iob->state, memory_order_acquire) !=
+                  RING_BUFFER_STATE_ACTIVE)
     return;
 
   pthread_mutex_lock(&iob->sync_mutex);
-  while (!atomic_load_explicit(&iob->shutting_down, memory_order_relaxed) &&
-         iob->is_initialized && ring_buffer_get_size(iob) > target_size) {
+  while (atomic_load_explicit(&iob->state, memory_order_relaxed) ==
+             RING_BUFFER_STATE_ACTIVE &&
+         ring_buffer_get_size(iob) > target_size) {
     pthread_cond_wait(&iob->space_free_cond, &iob->sync_mutex);
   }
   pthread_mutex_unlock(&iob->sync_mutex);
 }
 
 void ring_buffer_signal_end_of_stream(RingBuffer *iob) {
-  if (!iob || !iob->is_initialized)
+  if (!iob)
     return;
-  atomic_store_explicit(&iob->end_of_stream, true, memory_order_release);
+  int expected = RING_BUFFER_STATE_ACTIVE;
+  if (!atomic_compare_exchange_strong(&iob->state, &expected,
+                                      RING_BUFFER_STATE_DRAINING))
+    return;
 
   // Wake up backpressure waiters
   pthread_mutex_lock(&iob->sync_mutex);
@@ -395,9 +418,14 @@ void ring_buffer_signal_end_of_stream(RingBuffer *iob) {
 }
 
 void ring_buffer_signal_shutdown(RingBuffer *iob) {
-  if (!iob || !iob->is_initialized)
+  if (!iob)
     return;
-  atomic_store_explicit(&iob->shutting_down, true, memory_order_release);
+  int st = atomic_load(&iob->state);
+  if (st == RING_BUFFER_STATE_UNINITIALIZED ||
+      st == RING_BUFFER_STATE_DESTROYED || st == RING_BUFFER_STATE_SHUTDOWN)
+    return;
+  atomic_store_explicit(&iob->state, RING_BUFFER_STATE_SHUTDOWN,
+                        memory_order_release);
 
   pthread_mutex_lock(&iob->sync_mutex);
   pthread_cond_broadcast(&iob->space_free_cond);
@@ -417,7 +445,11 @@ void ring_buffer_signal_shutdown(RingBuffer *iob) {
 }
 
 size_t ring_buffer_get_size(RingBuffer *iob) {
-  if (!iob || !iob->is_initialized)
+  if (!iob)
+    return 0;
+  int st = atomic_load_explicit(&iob->state, memory_order_acquire);
+  if (st == RING_BUFFER_STATE_UNINITIALIZED ||
+      st == RING_BUFFER_STATE_DESTROYED)
     return 0;
   size_t w = atomic_load_explicit(&iob->write_pos, memory_order_acquire);
   size_t r = atomic_load_explicit(&iob->read_pos, memory_order_acquire);
@@ -427,13 +459,21 @@ size_t ring_buffer_get_size(RingBuffer *iob) {
 }
 
 size_t ring_buffer_get_capacity(RingBuffer *iob) {
-  if (!iob || !iob->is_initialized)
+  if (!iob)
+    return 0;
+  int st = atomic_load_explicit(&iob->state, memory_order_acquire);
+  if (st == RING_BUFFER_STATE_UNINITIALIZED ||
+      st == RING_BUFFER_STATE_DESTROYED)
     return 0;
   return iob->capacity;
 }
 
 void ring_buffer_clear(RingBuffer *iob) {
-  if (!iob || !iob->is_initialized)
+  if (!iob)
+    return;
+  int st = atomic_load_explicit(&iob->state, memory_order_acquire);
+  if (st == RING_BUFFER_STATE_UNINITIALIZED ||
+      st == RING_BUFFER_STATE_DESTROYED)
     return;
   // Safe Lock-Free Clear: Advance read_pos to match write_pos
   size_t w = atomic_load_explicit(&iob->write_pos, memory_order_acquire);
