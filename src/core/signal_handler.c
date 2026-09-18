@@ -6,7 +6,7 @@
 #include "signal_handler.h"
 #include "app_context.h" // Provides AppContext
 #include "log.h"
-#include "module.h"      // Provides ModuleContext
+#include "module.h" // Provides ModuleContext
 #include "platform.h"
 #include "queue.h"       // Provides queue_signal_shutdown
 #include "ring_buffer.h" // Provides ring_buffer_signal_shutdown
@@ -28,6 +28,7 @@
 #endif
 
 extern pthread_mutex_t g_console_mutex;
+extern atomic_bool g_console_mutex_initialized;
 
 static AppContext *g_app_context_for_signal_handler = NULL;
 static atomic_bool g_shutdown_flag = ATOMIC_VAR_INIT(false);
@@ -42,11 +43,13 @@ static BOOL WINAPI console_ctrl_handler(DWORD dwCtrlType) {
     if (!is_shutdown_requested()) {
       // 1. Cosmetic: Force a newline immediately so ^C doesn't mess up the next
       // log
-      pthread_mutex_lock(&g_console_mutex);
-      if (_isatty(_fileno(stderr))) {
-        fprintf(stderr, "\n");
+      if (atomic_load(&g_console_mutex_initialized)) {
+        pthread_mutex_lock(&g_console_mutex);
+        if (_isatty(_fileno(stderr))) {
+          fprintf(stderr, "\n");
+        }
+        pthread_mutex_unlock(&g_console_mutex);
       }
-      pthread_mutex_unlock(&g_console_mutex);
 
       // 2. Trigger shutdown (High Priority)
       // This will trigger the input module's stop_sample_queue_push, which
@@ -79,11 +82,13 @@ static void *signal_handler_thread(void *arg) {
 
       // 1. Cosmetic: Force a newline immediately.
       // This separates the terminal's "^C" echo from the logs that follow.
-      pthread_mutex_lock(&g_console_mutex);
-      if (isatty(fileno(stderr))) {
-        fprintf(stderr, "\n");
+      if (atomic_load(&g_console_mutex_initialized)) {
+        pthread_mutex_lock(&g_console_mutex);
+        if (isatty(fileno(stderr))) {
+          fprintf(stderr, "\n");
+        }
+        pthread_mutex_unlock(&g_console_mutex);
       }
-      pthread_mutex_unlock(&g_console_mutex);
 
       // 2. Trigger shutdown (High Priority)
       // This calls the input module's stop_sample_queue_push(), which generates

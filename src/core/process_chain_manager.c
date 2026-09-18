@@ -645,21 +645,31 @@ static void _destroy_queues_and_buffers(AppContext *app) {
 
   if (app->process_chain.shutdown_event) {
     wait_event_destroy(app->process_chain.shutdown_event);
+    app->process_chain.shutdown_event = NULL;
   }
 
-  if (app->process_chain.input_ring_buffer)
+  if (app->process_chain.input_ring_buffer) {
     ring_buffer_destroy(app->process_chain.input_ring_buffer);
+    app->process_chain.input_ring_buffer = NULL;
+  }
 
-  if (app->process_chain.free_sample_chunk_queue)
+  if (app->process_chain.free_sample_chunk_queue) {
     queue_destroy(app->process_chain.free_sample_chunk_queue);
+    app->process_chain.free_sample_chunk_queue = NULL;
+  }
 
   if (app->process_chain.active_queues) {
     for (int i = 0; i < app->process_chain.num_active_queues; i++) {
       if (app->process_chain.active_queues[i]) {
         queue_destroy(app->process_chain.active_queues[i]);
+        app->process_chain.active_queues[i] = NULL;
       }
     }
+    app->process_chain.active_queues = NULL;
   }
 
+  app->process_chain.output_queue = NULL;
+  app->process_chain.chunker_output_queue = NULL;
   app->process_chain.chunk_data_pool = NULL;
+  app->process_chain.num_active_queues = 0;
 }

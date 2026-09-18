@@ -45,6 +45,7 @@
 
 // --- Global Variable Definitions ---
 pthread_mutex_t g_console_mutex;
+atomic_bool g_console_mutex_initialized = ATOMIC_VAR_INIT(false);
 
 // --- Forward Declarations for Static Helper Functions ---
 static void initialize_app_context(AppConfig *config, AppContext *app);
@@ -99,6 +100,7 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
   pthread_mutexattr_destroy(&attr);
+  atomic_store(&g_console_mutex_initialized, true);
 
   log_set_lock(console_lock_function, &g_console_mutex);
   log_set_level(LOG_INFO);
@@ -199,6 +201,7 @@ int main(int argc, char *argv[]) {
   exit_status = processing_ok ? EXIT_SUCCESS : EXIT_FAILURE;
 
 cleanup:
+  signal_handler_clear_context();
   thread_manager_join_all(&app.thread_manager);
 
   bool final_ok =
@@ -225,16 +228,21 @@ cleanup:
 
   // Print summary AFTER all buffers are flushed and files are closed
   if (resources_initialized) {
-    pthread_mutex_lock(&g_console_mutex);
+    if (atomic_load(&g_console_mutex_initialized)) {
+      pthread_mutex_lock(&g_console_mutex);
+    }
     print_final_summary(&config, &app, final_ok);
-    pthread_mutex_unlock(&g_console_mutex);
+    if (atomic_load(&g_console_mutex_initialized)) {
+      pthread_mutex_unlock(&g_console_mutex);
+    }
   }
 
   if (arena_initialized) {
-    signal_handler_clear_context();
     mem_arena_destroy(&app.process_chain.setup_arena);
   }
 
+  atomic_store(&g_console_mutex_initialized, false);
+  log_set_lock(NULL, NULL);
   pthread_mutex_destroy(&g_console_mutex);
 
   return exit_status;
@@ -561,6 +569,9 @@ static void print_final_summary(const AppConfig *config, const AppContext *app,
 }
 
 static void console_lock_function(bool lock, void *udata) {
+  if (!atomic_load(&g_console_mutex_initialized)) {
+    return;
+  }
   pthread_mutex_t *mutex = (pthread_mutex_t *)udata;
   if (lock) {
     pthread_mutex_lock(mutex);

@@ -65,7 +65,7 @@ void queue_destroy(Queue *queue) {
 }
 
 bool queue_enqueue(Queue *queue, void *item) {
-  if (!queue)
+  if (!queue || !queue->is_initialized)
     return false;
 
   pthread_mutex_lock(&queue->mutex);
@@ -90,7 +90,7 @@ bool queue_enqueue(Queue *queue, void *item) {
 }
 
 bool queue_enqueue_forced(Queue *queue, void *item) {
-  if (!queue)
+  if (!queue || !queue->is_initialized)
     return false;
   pthread_mutex_lock(&queue->mutex);
 
@@ -110,7 +110,7 @@ bool queue_enqueue_forced(Queue *queue, void *item) {
 }
 
 void *queue_dequeue(Queue *queue) {
-  if (!queue)
+  if (!queue || !queue->is_initialized)
     return NULL;
 
   pthread_mutex_lock(&queue->mutex);
@@ -135,7 +135,7 @@ void *queue_dequeue(Queue *queue) {
 }
 
 void *queue_try_dequeue(Queue *queue) {
-  if (!queue)
+  if (!queue || !queue->is_initialized)
     return NULL;
 
   pthread_mutex_lock(&queue->mutex);
@@ -156,7 +156,7 @@ void *queue_try_dequeue(Queue *queue) {
 }
 
 void queue_signal_shutdown(Queue *queue) {
-  if (!queue)
+  if (!queue || !queue->is_initialized)
     return;
 
   pthread_mutex_lock(&queue->mutex);

@@ -14,6 +14,7 @@
 
 struct WaitEvent {
   HANDLE handle;
+  bool is_initialized;
 };
 
 #else
@@ -23,6 +24,7 @@ struct WaitEvent {
   pthread_mutex_t mutex;
   pthread_cond_t cond;
   bool signaled;
+  bool is_initialized;
 };
 #endif
 
@@ -51,13 +53,16 @@ WaitEvent *wait_event_create(struct MemoryArena *arena) {
   }
   ev->signaled = false;
 #endif
+  ev->is_initialized = true;
 
   return ev;
 }
 
 void wait_event_destroy(WaitEvent *ev) {
-  if (!ev)
+  if (!ev || !ev->is_initialized)
     return;
+
+  ev->is_initialized = false;
 #ifdef _WIN32
   if (ev->handle) {
     CloseHandle(ev->handle);
@@ -70,7 +75,7 @@ void wait_event_destroy(WaitEvent *ev) {
 }
 
 void wait_event_signal(WaitEvent *ev) {
-  if (!ev)
+  if (!ev || !ev->is_initialized)
     return;
 #ifdef _WIN32
   SetEvent(ev->handle);
@@ -84,13 +89,13 @@ void wait_event_signal(WaitEvent *ev) {
 }
 
 void wait_event_wait(WaitEvent *ev) {
-  if (!ev)
+  if (!ev || !ev->is_initialized)
     return;
 #ifdef _WIN32
   WaitForSingleObject(ev->handle, INFINITE);
 #else
   pthread_mutex_lock(&ev->mutex);
-  while (!ev->signaled) {
+  while (!ev->signaled && ev->is_initialized) {
     pthread_cond_wait(&ev->cond, &ev->mutex);
   }
   pthread_mutex_unlock(&ev->mutex);
