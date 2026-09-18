@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
     goto cleanup;
   }
 
-  if (!mem_arena_init(&app.process_chain.setup_arena, MEM_ARENA_SIZE_BYTES)) {
+  if (!mem_arena_init(&app.process_chain.setup_arena)) {
     goto cleanup;
   }
   arena_initialized = true;

@@ -65,6 +65,15 @@ void platform_sleep(unsigned int ms);
 double platform_get_time(void);
 
 /**
+ * @brief Returns the total physical system memory in bytes.
+ *
+ * Uses GlobalMemoryStatusEx on Windows and sysconf(_SC_PHYS_PAGES) on POSIX.
+ *
+ * @return Total physical memory in bytes, or 0 if query failed.
+ */
+uint64_t platform_get_total_memory(void);
+
+/**
  * @brief Suspends execution of the calling thread for the specified microsecond
  * duration.
  * @param us Duration to sleep in microseconds.

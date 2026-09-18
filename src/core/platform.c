@@ -64,6 +64,26 @@ double platform_get_time(void) {
 #endif
 }
 
+uint64_t platform_get_total_memory(void) {
+#ifdef _WIN32
+  MEMORYSTATUSEX status;
+  status.dwLength = sizeof(status);
+  if (GlobalMemoryStatusEx(&status)) {
+    return (uint64_t)status.ullTotalPhys;
+  }
+  return 0;
+#elif defined(_SC_PHYS_PAGES) && defined(_SC_PAGE_SIZE)
+  long pages = sysconf(_SC_PHYS_PAGES);
+  long page_size = sysconf(_SC_PAGE_SIZE);
+  if (pages > 0 && page_size > 0) {
+    return (uint64_t)pages * (uint64_t)page_size;
+  }
+  return 0;
+#else
+  return 0;
+#endif
+}
+
 void platform_sleep_us(unsigned int us) {
 #ifdef _WIN32
   if (us == 0) {

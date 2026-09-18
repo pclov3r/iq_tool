@@ -1,6 +1,6 @@
 /**
  * @file mem_arena.c
- * @brief Thread-safe bump-pointer memory arena allocator.
+ * @brief Thread-safe dynamic chained-block memory arena allocator.
  */
 
 #include "mem_arena.h"
@@ -15,82 +15,195 @@
 _Static_assert((MEM_ARENA_ALIGNMENT & (MEM_ARENA_ALIGNMENT - 1)) == 0,
                "MEM_ARENA_ALIGNMENT must be a power of 2");
 
-/**
- * @brief Initializes a memory arena with a specified capacity.
- * @param arena Pointer to the MemoryArena struct to initialize.
- * @param capacity The total size of the memory block to allocate.
- * @return true on success, false on memory allocation failure.
- */
-bool mem_arena_init(MemoryArena *arena, size_t capacity) {
-  if (!arena)
-    return false;
-  if (capacity == 0) {
-    log_fatal("Cannot initialize memory arena with zero capacity.");
-    return false;
-  }
-  // C11: Use standard aligned_alloc. The size MUST be a multiple of the
-  // alignment.
+struct ArenaBlock {
+  struct ArenaBlock *next;
+  size_t capacity;
+  size_t offset;
+  void *memory;
+};
+
+static ArenaBlock *create_arena_block(size_t capacity) {
+  size_t header_size = (sizeof(ArenaBlock) + MEM_ARENA_ALIGNMENT - 1) &
+                       ~(MEM_ARENA_ALIGNMENT - 1);
   size_t aligned_capacity =
       (capacity + MEM_ARENA_ALIGNMENT - 1) & ~(MEM_ARENA_ALIGNMENT - 1);
-  arena->memory = aligned_alloc(MEM_ARENA_ALIGNMENT, aligned_capacity);
+  size_t total_bytes = header_size + aligned_capacity;
 
-  if (!arena->memory) {
-    log_fatal("Failed to allocate memory for setup arena (%zu bytes).",
-              capacity);
+  void *raw = aligned_alloc(MEM_ARENA_ALIGNMENT, total_bytes);
+  if (!raw) {
+    return NULL;
+  }
+  ArenaBlock *block = (ArenaBlock *)raw;
+  block->next = NULL;
+  block->capacity = aligned_capacity;
+  block->offset = 0;
+  block->memory = (char *)raw + header_size;
+  return block;
+}
+
+static void free_arena_block(ArenaBlock *block) {
+  if (block) {
+    aligned_free(block);
+  }
+}
+
+bool mem_arena_init(MemoryArena *arena) {
+  if (!arena)
+    return false;
+
+  memset(arena, 0, sizeof(*arena));
+
+  if (pthread_mutex_init(&arena->lock, NULL) != 0) {
+    log_fatal("Failed to initialize memory arena mutex.");
     return false;
   }
-  arena->capacity = capacity;
-  atomic_init(&arena->offset, 0);
-  log_debug("Initialized setup memory arena with %zu bytes.", capacity);
+
+  uint64_t total_ram = platform_get_total_memory();
+
+  size_t default_chunk = MEM_ARENA_CHUNK_SIZE_BYTES;
+  size_t max_cap;
+
+  if (total_ram > 0) {
+    max_cap =
+        (size_t)((total_ram * (uint64_t)MEM_ARENA_RAM_PERCENT_CAP) / 100ULL);
+    // On 32-bit systems, clamp to 1.5 GB to prevent virtual address space
+    // exhaustion
+    if (sizeof(void *) == 4 && max_cap > (size_t)MEM_ARENA_32BIT_CAP) {
+      max_cap = (size_t)MEM_ARENA_32BIT_CAP;
+    }
+  } else {
+    // Fallback if system RAM query is unavailable
+    max_cap =
+        (sizeof(void *) == 4) ? (512 * 1024 * 1024) : (1024 * 1024 * 1024);
+  }
+
+  if (max_cap < default_chunk) {
+    max_cap = default_chunk;
+  }
+
+  arena->default_chunk_size = default_chunk;
+  arena->max_capacity = max_cap;
+  arena->total_allocated = 0;
+  arena->first_block = NULL;
+  arena->current_block = NULL;
+  arena->is_initialized = true;
+
+  // Allocate initial 32 MB chunk immediately
+  ArenaBlock *first = create_arena_block(arena->default_chunk_size);
+  if (!first) {
+    log_fatal("Failed to allocate initial memory arena block (%zu bytes).",
+              arena->default_chunk_size);
+    pthread_mutex_destroy(&arena->lock);
+    arena->is_initialized = false;
+    return false;
+  }
+
+  arena->first_block = first;
+  arena->current_block = first;
+  arena->total_allocated = first->capacity;
+
+  log_info("Dynamic memory arena initialized: chunk size %zu MB, max capacity "
+           "%zu MB (%d%% of detected %llu MB system RAM)",
+           arena->default_chunk_size / (1024 * 1024),
+           arena->max_capacity / (1024 * 1024), MEM_ARENA_RAM_PERCENT_CAP,
+           (unsigned long long)(total_ram / (1024 * 1024)));
+
   return true;
 }
 
-// --- mem_arena_alloc implementation ---
 void *mem_arena_alloc(MemoryArena *arena, size_t size, bool zero_memory) {
-  if (!arena || !arena->memory)
+  if (!arena || !arena->is_initialized || size == 0)
     return NULL;
 
-  if (size > arena->capacity) {
-    log_fatal("Requested arena allocation size (%zu) exceeds total capacity.",
-              size);
-    assert(size <= arena->capacity &&
-           "Allocation request exceeds total arena capacity.");
-    return NULL;
-  }
-
-  // Align the size to the next multiple of the alignment constant for
-  // performance
   size_t aligned_size =
       (size + MEM_ARENA_ALIGNMENT - 1) & ~(MEM_ARENA_ALIGNMENT - 1);
 
-  size_t old_offset = atomic_fetch_add_explicit(&arena->offset, aligned_size,
-                                                memory_order_relaxed);
-  if (old_offset + aligned_size > arena->capacity) {
-    log_error(
-        "Memory arena exhausted. Requested %zu bytes, but only %zu remaining.",
-        size,
-        (old_offset > arena->capacity) ? 0 : (arena->capacity - old_offset));
+  pthread_mutex_lock(&arena->lock);
+
+  // Fast path: current block has enough space
+  if (arena->current_block && (arena->current_block->offset + aligned_size <=
+                               arena->current_block->capacity)) {
+    void *ptr =
+        (char *)arena->current_block->memory + arena->current_block->offset;
+    arena->current_block->offset += aligned_size;
+    pthread_mutex_unlock(&arena->lock);
+
+    if (zero_memory) {
+      memset(ptr, 0, size);
+    }
+    return ptr;
+  }
+
+  // Slow path: need a new block
+  size_t new_capacity = (aligned_size > arena->default_chunk_size)
+                            ? aligned_size
+                            : arena->default_chunk_size;
+
+  // Check hard cap
+  if (arena->max_capacity > 0 &&
+      (arena->total_allocated + new_capacity > arena->max_capacity)) {
+    log_error("Memory arena exhausted maximum capacity limit (%zu bytes). "
+              "Allocated: %zu bytes, Requested chunk: %zu bytes.",
+              arena->max_capacity, arena->total_allocated, new_capacity);
+    pthread_mutex_unlock(&arena->lock);
     return NULL;
   }
-  void *ptr = (char *)arena->memory + old_offset;
-  // FIX: Make zero-initialization optional for performance.
+
+  ArenaBlock *new_block = create_arena_block(new_capacity);
+  if (!new_block) {
+    log_error("Failed to allocate new memory arena block (%zu bytes).",
+              new_capacity);
+    pthread_mutex_unlock(&arena->lock);
+    return NULL;
+  }
+
+  arena->total_allocated += new_block->capacity;
+  void *ptr = new_block->memory;
+  new_block->offset = aligned_size;
+
+  if (aligned_size > arena->default_chunk_size) {
+    // Dedicated oversized block: link at head so current_block remains
+    // available
+    new_block->next = arena->first_block;
+    arena->first_block = new_block;
+    if (!arena->current_block) {
+      arena->current_block = new_block;
+    }
+  } else {
+    // Normal chunk expansion: chain to current block and advance current_block
+    if (arena->current_block) {
+      arena->current_block->next = new_block;
+      arena->current_block = new_block;
+    } else {
+      arena->first_block = new_block;
+      arena->current_block = new_block;
+    }
+  }
+
+  pthread_mutex_unlock(&arena->lock);
+
   if (zero_memory) {
     memset(ptr, 0, size);
   }
   return ptr;
 }
 
-/**
- * @brief Destroys a memory arena, freeing its main memory block.
- * @param arena Pointer to the MemoryArena to destroy.
- */
 void mem_arena_destroy(MemoryArena *arena) {
-  if (arena) {
-    if (arena->memory) {
-      aligned_free(arena->memory);
-      arena->memory = NULL;
-    }
-    arena->capacity = 0;
-    atomic_store(&arena->offset, 0);
+  if (!arena || !arena->is_initialized)
+    return;
+
+  pthread_mutex_lock(&arena->lock);
+  ArenaBlock *block = arena->first_block;
+  while (block) {
+    ArenaBlock *next = block->next;
+    free_arena_block(block);
+    block = next;
   }
+  arena->first_block = NULL;
+  arena->current_block = NULL;
+  arena->total_allocated = 0;
+  arena->max_capacity = 0;
+  arena->is_initialized = false;
+  pthread_mutex_unlock(&arena->lock);
+  pthread_mutex_destroy(&arena->lock);
 }

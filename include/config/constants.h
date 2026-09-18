@@ -66,15 +66,24 @@
 #define MAX_MANAGED_THREADS 32
 
 /**
- * @def MEM_ARENA_SIZE_BYTES
- * @brief The size of the single memory arena for all startup and buffer
- * allocations.
- *
- * Purpose: To hold all DSP objects, configuration strings, and other setup
- * data, eliminating hundreds of small malloc calls at startup. Trade-off: Must
- * hold large SDR buffers. 1 GB is safe as allocation is virtual.
+ * @def MEM_ARENA_CHUNK_SIZE_BYTES
+ * @brief Default chunk size for dynamic memory arena allocations.
  */
-#define MEM_ARENA_SIZE_BYTES (1024 * 1024 * 1024) // 1 GB
+#define MEM_ARENA_CHUNK_SIZE_BYTES (32 * 1024 * 1024) // 32 MB chunk
+
+/**
+ * @def MEM_ARENA_RAM_PERCENT_CAP
+ * @brief Safety cap: maximum percentage of detected system RAM the arena can
+ * grow to.
+ */
+#define MEM_ARENA_RAM_PERCENT_CAP 80 // 80% of total system RAM
+
+/**
+ * @def MEM_ARENA_32BIT_CAP
+ * @brief Upper bound for 32-bit platforms to prevent virtual address space
+ * exhaustion.
+ */
+#define MEM_ARENA_32BIT_CAP (1536ULL * 1024 * 1024) // 1.5 GB
 
 /**
  * @def INPUT_BUFFER_DURATION_SEC

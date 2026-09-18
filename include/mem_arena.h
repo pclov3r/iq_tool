@@ -5,35 +5,47 @@
 #ifndef MEM_ARENA_H_
 #define MEM_ARENA_H_
 
-#include <stdatomic.h>
+#include <pthread.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
+
+// Forward declaration of internal chunk block
+typedef struct ArenaBlock ArenaBlock;
 
 // --- Struct Definition ---
 
 /**
  * @struct MemoryArena
- * @brief Manages a single large block of memory for fast, contiguous
- * allocations.
+ * @brief Dynamic chained-block memory arena allocator.
+ *
+ * Starts lean with a small initial block, and dynamically allocates
+ * additional blocks as needed up to an intelligent memory-based cap.
+ * Preserves 100% pointer stability and thread safety.
  *
  * This struct should be treated as an opaque handle by client code and only
  * manipulated through the mem_arena_* functions.
  */
 typedef struct MemoryArena {
-  void *memory; ///< Pointer to the start of the large allocated memory block.
-  size_t capacity;      ///< The total size in bytes of the memory block.
-  atomic_size_t offset; ///< C11 Atomic offset for wait-free allocations.
+  ArenaBlock *first_block;   ///< Head of the linked list of blocks.
+  ArenaBlock *current_block; ///< Current active block for bump allocations.
+  size_t default_chunk_size; ///< Standard chunk size for subsequent blocks.
+  size_t max_capacity; ///< Hard cap on total memory across all blocks (bytes).
+  size_t
+      total_allocated;  ///< Total bytes currently allocated across all blocks.
+  pthread_mutex_t lock; ///< Mutex ensuring thread-safe allocation and growth.
+  bool is_initialized;  ///< Tracks whether the arena is initialized.
 } MemoryArena;
 
 // --- Function Declarations ---
 
 /**
- * @brief Initializes a memory arena with a specified capacity.
+ * @brief Initializes a dynamic memory arena with a 32 MB initial chunk and 80%
+ * RAM cap.
  * @param arena Pointer to the MemoryArena struct to initialize.
- * @param capacity The total size of the memory block to allocate.
  * @return true on success, false on memory allocation failure.
  */
-bool mem_arena_init(MemoryArena *arena, size_t capacity);
+bool mem_arena_init(MemoryArena *arena);
 
 /**
  * @brief Allocates a block of memory from the arena.
