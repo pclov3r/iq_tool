@@ -117,6 +117,12 @@ typedef struct {
   iirfilt_rrrf iir_r;
 } DeEmphasis;
 
+typedef enum {
+  WFM_STEREO_AUTO = 0,
+  WFM_STEREO_FORCE_MONO,
+  WFM_STEREO_FORCE_STEREO,
+} WfmStereoMode;
+
 typedef struct {
   // ProcessChain State
   AudioOutputContext *audio_out;
@@ -143,6 +149,7 @@ typedef struct {
   // Processing State
   float input_samplerate;
   float gain;
+  WfmStereoMode stereo_mode;
 
   // Scratch Buffers
   float *mpx_buffer;
@@ -177,6 +184,7 @@ typedef struct {
 static struct {
   float deemph_us;
   float gain_val;
+  WfmStereoMode stereo_mode;
   bool force_stereo;
   bool force_mono;
   bool raw_mpx_stdout;
@@ -189,6 +197,7 @@ static struct {
 } s_wfm_config = {
     .deemph_us = 75.0f,
     .gain_val = 5.0f,
+    .stereo_mode = WFM_STEREO_AUTO,
     .force_stereo = 0,
     .force_mono = 0,
     .raw_mpx_stdout = 0,
@@ -286,11 +295,18 @@ static bool output_wfm_validate_options(AppContext *app) {
     }
   }
 
-  // 3. Check for conflicting forced modes
+  // 3. Check for conflicting forced modes and resolve stereo mode
   if (s_wfm_config.force_stereo && s_wfm_config.force_mono) {
     log_error("WFM: Cannot force both Stereo and Mono simultaneously. Please "
               "choose one.");
     return false;
+  }
+  if (s_wfm_config.force_mono) {
+    s_wfm_config.stereo_mode = WFM_STEREO_FORCE_MONO;
+  } else if (s_wfm_config.force_stereo) {
+    s_wfm_config.stereo_mode = WFM_STEREO_FORCE_STEREO;
+  } else {
+    s_wfm_config.stereo_mode = WFM_STEREO_AUTO;
   }
 
   return true;
@@ -314,6 +330,7 @@ static bool output_wfm_initialize(ModuleContext *context) {
   if (!wfm_demod)
     return false;
   app->module.output_private_data = wfm_demod;
+  wfm_demod->stereo_mode = s_wfm_config.stereo_mode;
 
   wfm_demod->audio_out =
       audio_output_create(app, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS,
@@ -827,14 +844,16 @@ static void demod_dsb_stereo(WfmContext *wfm_demod, unsigned int num_frames) {
       running_average_push(&wfm_demod->pilotnoise, phase_error * phase_error);
     }
     nco_crcf_step(wfm_demod->nco_pilot_exact);
-    float stereogain =
-        s_wfm_config.force_mono
-            ? 0.0f
-            : (s_wfm_config.force_stereo
-                   ? 1.0f
-                   : fmaxf(0.0f, fminf(1.0f, WFM_STEREO_SEPARATION -
-                                                 running_average_get(
-                                                     &wfm_demod->pilotnoise))));
+    float stereogain;
+    if (wfm_demod->stereo_mode == WFM_STEREO_FORCE_MONO) {
+      stereogain = 0.0f;
+    } else if (wfm_demod->stereo_mode == WFM_STEREO_FORCE_STEREO) {
+      stereogain = 1.0f;
+    } else {
+      float sep =
+          WFM_STEREO_SEPARATION - running_average_get(&wfm_demod->pilotnoise);
+      stereogain = fmaxf(0.0f, fminf(1.0f, sep));
+    }
     wfm_demod->accum_stereo_pct_sum += (stereogain * 100.0f);
     firfilt_rrrf_push(wfm_demod->fir_sum, insample);
     liquid_float_complex sc_mix;
@@ -876,7 +895,7 @@ static void log_reception_stats(WfmContext *wfm_demod) {
   if (avg_stereo_pct > 1.0f)
     is_mono_station = false;
 
-  if (is_mono_station || s_wfm_config.force_mono) {
+  if (is_mono_station || wfm_demod->stereo_mode == WFM_STEREO_FORCE_MONO) {
     if (wfm_demod->redsea) {
       const char *rds_std =
           (s_wfm_config.rds_standard == RDS_STANDARD_RBDS) ? "RBDS" : "RDS";
@@ -1016,9 +1035,9 @@ static void output_wfm_get_summary_info(const ModuleContext *context,
                            s_wfm_config.deemph_us);
 
   const char *mode = "Adaptive";
-  if (s_wfm_config.force_mono)
+  if (s_wfm_config.stereo_mode == WFM_STEREO_FORCE_MONO)
     mode = "Forced Mono";
-  if (s_wfm_config.force_stereo)
+  else if (s_wfm_config.stereo_mode == WFM_STEREO_FORCE_STEREO)
     mode = "Forced Stereo";
   utility_add_summary_item(info, "Stereo Mode", "%s", mode);
 }
