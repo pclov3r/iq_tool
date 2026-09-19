@@ -320,21 +320,25 @@ bool platform_get_executable_dir(char *buffer, size_t buffer_size);
 struct MemoryArena;
 
 /**
- * @brief Resolves a relative or user-supplied file path into a canonical
- * absolute path string allocated from the provided arena.
- *
- * For input files (is_input = true), verifies that the file exists and is
- * regular. For output files (is_input = false), verifies that the parent
- * directory exists.
+ * @brief Resolves an input file path into a canonical absolute path string
+ * allocated from the provided arena. Verifies that the file exists and is
+ * readable.
  *
  * @param path The raw user-supplied path string.
- * @param is_input true if validating an existing input file, false for output
- * files.
  * @param arena Memory arena to allocate the resolved path string from.
  * @return Resolved absolute UTF-8 path string, or NULL on error.
  */
-char *platform_resolve_path(const char *path, bool is_input,
-                            struct MemoryArena *arena);
+char *platform_resolve_input_path(const char *path, struct MemoryArena *arena);
+
+/**
+ * @brief Resolves an output file path into a canonical absolute path string
+ * allocated from the provided arena. Verifies that the parent directory exists.
+ *
+ * @param path The raw user-supplied path string.
+ * @param arena Memory arena to allocate the resolved path string from.
+ * @return Resolved absolute UTF-8 path string, or NULL on error.
+ */
+char *platform_resolve_output_path(const char *path, struct MemoryArena *arena);
 
 /**
  * @brief Retrieves platform-specific directory search paths for configuration

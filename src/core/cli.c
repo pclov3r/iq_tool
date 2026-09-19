@@ -349,19 +349,19 @@ static bool resolve_file_paths(AppConfig *config, MemoryArena *arena) {
 
   if (config->input.path_arg) {
     config->input.resolved_path =
-        platform_resolve_path(config->input.path_arg, true, arena);
+        platform_resolve_input_path(config->input.path_arg, arena);
     if (!config->input.resolved_path)
       return false;
   }
   if (config->output.path_arg) {
     config->output.resolved_path =
-        platform_resolve_path(config->output.path_arg, false, arena);
+        platform_resolve_output_path(config->output.path_arg, arena);
     if (!config->output.resolved_path)
       return false;
   }
   if (config->audio.path_arg) {
     config->audio.resolved_path =
-        platform_resolve_path(config->audio.path_arg, false, arena);
+        platform_resolve_output_path(config->audio.path_arg, arena);
     if (!config->audio.resolved_path)
       return false;
   }

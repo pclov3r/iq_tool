@@ -594,23 +594,20 @@ bool platform_get_executable_dir(char *buffer, size_t buffer_size) {
 
 #endif // _WIN32
 
-char *platform_resolve_path(const char *path, bool is_input,
-                            struct MemoryArena *arena) {
+#ifdef _WIN32
+char *platform_resolve_input_path(const char *path, struct MemoryArena *arena) {
   if (!path || !arena)
     return NULL;
 
-#ifdef _WIN32
   wchar_t path_w[APP_MAX_PATH_BUFFER];
   char utf8_path[APP_MAX_PATH_BUFFER];
   if (!get_absolute_path_windows(path, path_w, APP_MAX_PATH_BUFFER, utf8_path,
                                  APP_MAX_PATH_BUFFER))
     return NULL;
 
-  if (is_input) {
-    if (!platform_is_file(utf8_path)) {
-      log_error("Input file not found or path is invalid: %s", path);
-      return NULL;
-    }
+  if (!platform_is_file(utf8_path)) {
+    log_error("Input file not found or path is invalid: %s", path);
+    return NULL;
   }
 
   char *resolved = (char *)mem_arena_alloc(arena, strlen(utf8_path) + 1, false);
@@ -618,46 +615,73 @@ char *platform_resolve_path(const char *path, bool is_input,
     return NULL;
   strcpy(resolved, utf8_path);
   return resolved;
-#else
-  if (is_input) {
-    char resolved_input_path[PATH_MAX];
-    if (realpath(path, resolved_input_path) == NULL) {
-      log_error("Input file not found or path is invalid: %s (%s)", path,
-                strerror(errno));
-      return NULL;
-    }
-    char *resolved =
-        (char *)mem_arena_alloc(arena, strlen(resolved_input_path) + 1, false);
-    if (!resolved)
-      return NULL;
-    strcpy(resolved, resolved_input_path);
-    return resolved;
-  } else {
-    char *path_copy_for_dirname =
-        (char *)mem_arena_alloc(arena, strlen(path) + 1, false);
-    char *path_copy_for_basename =
-        (char *)mem_arena_alloc(arena, strlen(path) + 1, false);
-    if (!path_copy_for_dirname || !path_copy_for_basename)
-      return NULL;
-    strcpy(path_copy_for_dirname, path);
-    strcpy(path_copy_for_basename, path);
-    char *dir = dirname(path_copy_for_dirname);
-    char *base = basename(path_copy_for_basename);
-    char resolved_dir_path[PATH_MAX];
-    if (realpath(dir, resolved_dir_path) == NULL) {
-      log_error("Output directory does not exist or path is invalid: %s (%s)",
-                dir, strerror(errno));
-      return NULL;
-    }
-    size_t final_length = strlen(resolved_dir_path) + 1 + strlen(base) + 1;
-    char *resolved = (char *)mem_arena_alloc(arena, final_length, false);
-    if (!resolved)
-      return NULL;
-    snprintf(resolved, final_length, "%s/%s", resolved_dir_path, base);
-    return resolved;
-  }
-#endif
 }
+
+char *platform_resolve_output_path(const char *path,
+                                   struct MemoryArena *arena) {
+  if (!path || !arena)
+    return NULL;
+
+  wchar_t path_w[APP_MAX_PATH_BUFFER];
+  char utf8_path[APP_MAX_PATH_BUFFER];
+  if (!get_absolute_path_windows(path, path_w, APP_MAX_PATH_BUFFER, utf8_path,
+                                 APP_MAX_PATH_BUFFER))
+    return NULL;
+
+  char *resolved = (char *)mem_arena_alloc(arena, strlen(utf8_path) + 1, false);
+  if (!resolved)
+    return NULL;
+  strcpy(resolved, utf8_path);
+  return resolved;
+}
+#else
+char *platform_resolve_input_path(const char *path, struct MemoryArena *arena) {
+  if (!path || !arena)
+    return NULL;
+
+  char resolved_input_path[PATH_MAX];
+  if (realpath(path, resolved_input_path) == NULL) {
+    log_error("Input file not found or path is invalid: %s (%s)", path,
+              strerror(errno));
+    return NULL;
+  }
+  char *resolved =
+      (char *)mem_arena_alloc(arena, strlen(resolved_input_path) + 1, false);
+  if (!resolved)
+    return NULL;
+  strcpy(resolved, resolved_input_path);
+  return resolved;
+}
+
+char *platform_resolve_output_path(const char *path,
+                                   struct MemoryArena *arena) {
+  if (!path || !arena)
+    return NULL;
+
+  char *path_copy_for_dirname =
+      (char *)mem_arena_alloc(arena, strlen(path) + 1, false);
+  char *path_copy_for_basename =
+      (char *)mem_arena_alloc(arena, strlen(path) + 1, false);
+  if (!path_copy_for_dirname || !path_copy_for_basename)
+    return NULL;
+  strcpy(path_copy_for_dirname, path);
+  strcpy(path_copy_for_basename, path);
+  char *dir = dirname(path_copy_for_dirname);
+  char *base = basename(path_copy_for_basename);
+  char resolved_dir_path[PATH_MAX];
+  if (realpath(dir, resolved_dir_path) == NULL) {
+    log_error("Output directory does not exist or path is invalid: %s (%s)",
+              dir, strerror(errno));
+    return NULL;
+  }
+  size_t final_length = strlen(resolved_dir_path) + 1 + strlen(base) + 1;
+  char *resolved = (char *)mem_arena_alloc(arena, final_length, false);
+  if (!resolved)
+    return NULL;
+  snprintf(resolved, final_length, "%s/%s", resolved_dir_path, base);
+  return resolved;
+}
+#endif
 
 // --- Dynamic Library Loading ---
 
