@@ -7,6 +7,7 @@
 #include "argparse.h"
 #include "config/constants.h"
 
+#include "driver_state.h"
 #include "input/common.h"
 #include "interleave_functions.h"
 #include "log.h"
@@ -223,8 +224,7 @@ typedef struct {
   bool sdr_api_is_open;
   bool device_selected; // Tracks if SelectDevice was successful
   int16_t *interleave_buffer;
-  bool is_streaming;
-  pthread_mutex_t driver_mutex;
+  atomic_int state;
 } SdrplayContext;
 
 static void input_sdrplay_set_default_config(AppConfig *config) {
@@ -619,10 +619,7 @@ static bool input_sdrplay_initialize(ModuleContext *context) {
   size_t conversion_buf_size =
       MAX_SDRPLAY_CONVERSION_SAMPLES * 2 * sizeof(int16_t);
 
-  if (pthread_mutex_init(&private_data->driver_mutex, NULL) != 0) {
-    log_error("Failed to init driver mutex.");
-    return false;
-  }
+  driver_state_init(&private_data->state);
   private_data->interleave_buffer = (int16_t *)mem_arena_alloc(
       &app->process_chain.setup_arena, conversion_buf_size, false);
   if (!private_data->interleave_buffer)
@@ -631,7 +628,6 @@ static bool input_sdrplay_initialize(ModuleContext *context) {
   private_data->sdr_device = NULL;
   private_data->sdr_api_is_open = false;
   private_data->device_selected = false;
-  private_data->is_streaming = false;
   app->module.input_private_data = private_data;
 
 #if defined(_WIN32)
@@ -987,7 +983,7 @@ static void *input_sdrplay_push_samples_to_queue(ModuleContext *context,
   sdrplay_api_ErrT api_error =
       sdrplay_api_Init(private_data->sdr_device->dev, &cbFns, app);
   if (api_error == sdrplay_api_Success)
-    private_data->is_streaming = true;
+    driver_start_streaming(&private_data->state);
 
   // After a successful Init, explicitly apply the Bias-T setting if requested.
   if (api_error == sdrplay_api_Success &&
@@ -1055,19 +1051,20 @@ static void *input_sdrplay_push_samples_to_queue(ModuleContext *context,
     input_sdrplay_stop_sample_queue_push(context);
   }
 
+  driver_finish_streaming(&private_data->state);
   return NULL;
 }
 
 static void input_sdrplay_stop_sample_queue_push(ModuleContext *context) {
-  AppContext *app = context->app;
+  AppContext *app = context ? context->app : NULL;
+  if (!app) {
+    return;
+  }
   SdrplayContext *private_data =
       (SdrplayContext *)app->module.input_private_data;
-  if (private_data) {
-    pthread_mutex_lock(&private_data->driver_mutex);
-    if (private_data && private_data->sdr_device &&
-        private_data->is_streaming) {
+  if (private_data && driver_stop_streaming(&private_data->state)) {
+    if (private_data->sdr_device) {
       log_debug("Stopping SDRplay stream...");
-      private_data->is_streaming = false;
       sdrplay_api_ErrT api_error =
           sdrplay_api_Uninit(private_data->sdr_device->dev);
       // Ignore NotInitialised error, as it may happen during a race condition
@@ -1079,16 +1076,19 @@ static void input_sdrplay_stop_sample_queue_push(ModuleContext *context) {
                   sdrplay_api_GetErrorString(api_error));
       }
     }
-    pthread_mutex_unlock(&private_data->driver_mutex);
   }
 }
 
 static void input_sdrplay_cleanup(ModuleContext *context) {
-  AppContext *app = context->app;
-  if (app->module.input_private_data) {
+  AppContext *app = context ? context->app : NULL;
+  if (app && app->module.input_private_data) {
     SdrplayContext *private_data =
         (SdrplayContext *)app->module.input_private_data;
-    pthread_mutex_lock(&private_data->driver_mutex);
+    if (driver_close(&private_data->state)) {
+      if (private_data->sdr_device) {
+        sdrplay_api_Uninit(private_data->sdr_device->dev);
+      }
+    }
     if (private_data->sdr_device && private_data->device_selected) {
       sdrplay_api_ReleaseDevice(private_data->sdr_device);
 #ifndef _WIN32
@@ -1103,8 +1103,6 @@ static void input_sdrplay_cleanup(ModuleContext *context) {
       sdrplay_api_Close();
       private_data->sdr_api_is_open = false;
     }
-    pthread_mutex_unlock(&private_data->driver_mutex);
-    pthread_mutex_destroy(&private_data->driver_mutex);
     app->module.input_private_data = NULL;
   }
 #if defined(_WIN32)

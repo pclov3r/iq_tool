@@ -7,6 +7,7 @@
 #include "argparse.h"
 #include "config/constants.h"
 
+#include "driver_state.h"
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
@@ -192,7 +193,7 @@ typedef struct {
   size_t num_stream_buffers;
   size_t samples_per_buffer;
   atomic_bool stream_error;
-  pthread_mutex_t driver_mutex;
+  atomic_int state;
 } BladerfContext;
 
 static void input_bladerf_set_default_config(AppConfig *config) {
@@ -325,10 +326,7 @@ static bool input_bladerf_initialize(ModuleContext *context) {
   // Initialize state variables that the main cleanup function will check.
   private_data->dev = NULL;
 
-  if (pthread_mutex_init(&private_data->driver_mutex, NULL) != 0) {
-    log_error("Failed to init driver mutex.");
-    return false;
-  }
+  driver_state_init(&private_data->state);
   app->module.input_private_data = private_data;
 
 #if defined(_WIN32) && defined(WITH_BLADERF)
@@ -750,7 +748,9 @@ static void *input_bladerf_push_samples_to_queue(ModuleContext *context,
   }
 
   bladerf_channel_layout layout = BLADERF_RX_X1;
+  driver_start_streaming(&private_data->state);
   status = bladerf_stream(private_data->rx_stream, layout);
+  driver_finish_streaming(&private_data->state);
 
   if (status != 0 && !is_shutdown_requested()) {
     char error_buffer[256];
@@ -764,47 +764,63 @@ static void *input_bladerf_push_samples_to_queue(ModuleContext *context,
 }
 
 static void input_bladerf_stop_sample_queue_push(ModuleContext *context) {
-  AppContext *app = context->app;
+  AppContext *app = context ? context->app : NULL;
+  if (!app) {
+    return;
+  }
   BladerfContext *private_data =
       (BladerfContext *)app->module.input_private_data;
-  if (private_data && private_data->dev) {
-    // Set error flag so callback returns BLADERF_STREAM_SHUTDOWN
-    atomic_store_explicit(&private_data->stream_error, true,
-                          memory_order_release);
+  if (private_data && driver_stop_streaming(&private_data->state)) {
+    if (private_data->dev) {
+      // Set error flag so callback returns BLADERF_STREAM_SHUTDOWN
+      atomic_store_explicit(&private_data->stream_error, true,
+                            memory_order_release);
 
-    // Give the stream thread time to exit cleanly
-    platform_sleep(200);
+      // Give the stream thread time to exit cleanly
+      platform_sleep(200);
 
-    bladerf_channel rx_channel;
-    if (strcmp(private_data->board_name, "bladerf2") == 0) {
-      rx_channel = BLADERF_CHANNEL_RX(s_bladerf_config.channel);
-    } else {
-      rx_channel = BLADERF_CHANNEL_RX(0);
-    }
-    log_debug("Disabling BladeRF RX module...");
-    int status = bladerf_enable_module(private_data->dev, rx_channel, false);
-    if (status != 0) {
-      log_error("Failed to disable BladeRF RX module: %s",
-                bladerf_strerror(status));
+      bladerf_channel rx_channel;
+      if (strcmp(private_data->board_name, "bladerf2") == 0) {
+        rx_channel = BLADERF_CHANNEL_RX(s_bladerf_config.channel);
+      } else {
+        rx_channel = BLADERF_CHANNEL_RX(0);
+      }
+      log_debug("Disabling BladeRF RX module...");
+      int status = bladerf_enable_module(private_data->dev, rx_channel, false);
+      if (status != 0) {
+        log_error("Failed to disable BladeRF RX module: %s",
+                  bladerf_strerror(status));
+      }
     }
   }
 }
 
 static void input_bladerf_cleanup(ModuleContext *context) {
-  AppContext *app = context->app;
-  if (app->module.input_private_data) {
+  AppContext *app = context ? context->app : NULL;
+  if (app && app->module.input_private_data) {
     BladerfContext *private_data =
         (BladerfContext *)app->module.input_private_data;
-    pthread_mutex_lock(&private_data->driver_mutex);
+    if (driver_close(&private_data->state)) {
+      if (private_data->dev) {
+        atomic_store_explicit(&private_data->stream_error, true,
+                              memory_order_release);
+        bladerf_channel rx_channel;
+        if (strcmp(private_data->board_name, "bladerf2") == 0) {
+          rx_channel = BLADERF_CHANNEL_RX(s_bladerf_config.channel);
+        } else {
+          rx_channel = BLADERF_CHANNEL_RX(0);
+        }
+        bladerf_enable_module(private_data->dev, rx_channel, false);
+      }
+    }
     if (private_data->rx_stream) {
       bladerf_deinit_stream(private_data->rx_stream);
       private_data->rx_stream = NULL;
     }
     if (private_data->dev) {
       bladerf_close(private_data->dev);
+      private_data->dev = NULL;
     }
-    pthread_mutex_unlock(&private_data->driver_mutex);
-    pthread_mutex_destroy(&private_data->driver_mutex);
     app->module.input_private_data = NULL;
   }
 #if defined(_WIN32) && defined(WITH_BLADERF)

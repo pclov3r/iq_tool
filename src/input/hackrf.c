@@ -7,6 +7,7 @@
 #include "argparse.h"
 #include "config/constants.h"
 
+#include "driver_state.h"
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
@@ -48,7 +49,7 @@ static struct {
 // --- Private Module State ---
 typedef struct {
   hackrf_device *dev;
-  pthread_mutex_t driver_mutex;
+  atomic_int state;
 } HackrfContext;
 
 static void input_hackrf_set_default_config(AppConfig *config) {
@@ -187,10 +188,7 @@ static bool input_hackrf_initialize(ModuleContext *context) {
   }
   private_data->dev = NULL;
 
-  if (pthread_mutex_init(&private_data->driver_mutex, NULL) != 0) {
-    log_error("Failed to init driver mutex.");
-    return false;
-  } // Initialize resource state
+  driver_state_init(&private_data->state);
   app->module.input_private_data = private_data;
 
   result = hackrf_init();
@@ -285,8 +283,10 @@ static void *input_hackrf_push_samples_to_queue(ModuleContext *context,
   hackrf_sample_block_cb_fn callback_fn;
   callback_fn = input_hackrf_buffered_stream_callback;
 
+  driver_start_streaming(&private_data->state);
   result = hackrf_start_rx(private_data->dev, callback_fn, app);
   if (result != HACKRF_SUCCESS) {
+    driver_finish_streaming(&private_data->state);
     char error_buffer[256];
     snprintf(error_buffer, sizeof(error_buffer),
              "hackrf_start_rx() failed: %s (%d)", hackrf_error_name(result),
@@ -304,15 +304,18 @@ static void *input_hackrf_push_samples_to_queue(ModuleContext *context,
     input_hackrf_stop_sample_queue_push(context);
   }
 
+  driver_finish_streaming(&private_data->state);
   return NULL;
 }
 
 static void input_hackrf_stop_sample_queue_push(ModuleContext *context) {
-  AppContext *app = context->app;
+  AppContext *app = context ? context->app : NULL;
+  if (!app) {
+    return;
+  }
   HackrfContext *private_data = (HackrfContext *)app->module.input_private_data;
-  if (private_data) {
-    pthread_mutex_lock(&private_data->driver_mutex);
-    if (private_data && private_data->dev &&
+  if (private_data && driver_stop_streaming(&private_data->state)) {
+    if (private_data->dev &&
         hackrf_is_streaming(private_data->dev) == HACKRF_TRUE) {
       log_debug("Stopping HackRF stream...");
       int result = hackrf_stop_rx(private_data->dev);
@@ -321,22 +324,24 @@ static void input_hackrf_stop_sample_queue_push(ModuleContext *context) {
                   hackrf_error_name(result), result);
       }
     }
-    pthread_mutex_unlock(&private_data->driver_mutex);
   }
 }
 
 static void input_hackrf_cleanup(ModuleContext *context) {
-  AppContext *app = context->app;
-  if (app->module.input_private_data) {
+  AppContext *app = context ? context->app : NULL;
+  if (app && app->module.input_private_data) {
     HackrfContext *private_data =
         (HackrfContext *)app->module.input_private_data;
-    pthread_mutex_lock(&private_data->driver_mutex);
+    if (driver_close(&private_data->state)) {
+      if (private_data->dev &&
+          hackrf_is_streaming(private_data->dev) == HACKRF_TRUE) {
+        hackrf_stop_rx(private_data->dev);
+      }
+    }
     if (private_data->dev) {
       hackrf_close(private_data->dev);
       private_data->dev = NULL;
     }
-    pthread_mutex_unlock(&private_data->driver_mutex);
-    pthread_mutex_destroy(&private_data->driver_mutex);
     app->module.input_private_data = NULL;
   }
   log_debug("Exiting HackRF library...");

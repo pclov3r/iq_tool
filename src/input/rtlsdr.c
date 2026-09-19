@@ -7,6 +7,7 @@
 #include "argparse.h"
 #include "config/constants.h"
 
+#include "driver_state.h"
 #include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
@@ -47,7 +48,7 @@ typedef struct {
   char product[256];
   char serial[256];
   unsigned char *passthrough_buffer;
-  pthread_mutex_t driver_mutex;
+  atomic_int state;
 } RtlSdrContext;
 
 static void input_rtlsdr_set_default_config(AppConfig *config) {
@@ -206,10 +207,7 @@ static bool input_rtlsdr_initialize(ModuleContext *context) {
   private_data->passthrough_buffer = (unsigned char *)mem_arena_alloc(
       &app->process_chain.setup_arena, RTLSDR_PASSTHROUGH_BUFFER_SIZE, false);
 
-  if (pthread_mutex_init(&private_data->driver_mutex, NULL) != 0) {
-    log_error("Failed to init driver mutex.");
-    return false;
-  }
+  driver_state_init(&private_data->state);
   if (!private_data->passthrough_buffer) {
     return false;
   }
@@ -368,8 +366,10 @@ static void *input_rtlsdr_push_samples_to_queue(ModuleContext *context,
   int result;
 
   // NOTE: rtlsdr_read_async BLOCKS until the stream stops or is cancelled.
+  driver_start_streaming(&private_data->state);
   result = rtlsdr_read_async(private_data->dev, input_rtlsdr_stream_callback,
                              app, 0, 0);
+  driver_finish_streaming(&private_data->state);
 
   if (result < 0) {
     char error_buffer[256];
@@ -383,28 +383,35 @@ static void *input_rtlsdr_push_samples_to_queue(ModuleContext *context,
 }
 
 static void input_rtlsdr_stop_sample_queue_push(ModuleContext *context) {
-  AppContext *app = context->app;
+  AppContext *app = context ? context->app : NULL;
+  if (!app) {
+    return;
+  }
   RtlSdrContext *private_data = (RtlSdrContext *)app->module.input_private_data;
-  if (private_data && private_data->dev) {
-    log_debug("Stopping RTL-SDR stream...");
-    rtlsdr_cancel_async(private_data->dev);
+  if (private_data && driver_stop_streaming(&private_data->state)) {
+    if (private_data->dev) {
+      log_debug("Stopping RTL-SDR stream...");
+      rtlsdr_cancel_async(private_data->dev);
+    }
   }
 }
 
 static void input_rtlsdr_cleanup(ModuleContext *context) {
-  AppContext *app = context->app;
-  if (app->module.input_private_data) {
+  AppContext *app = context ? context->app : NULL;
+  if (app && app->module.input_private_data) {
     RtlSdrContext *private_data =
         (RtlSdrContext *)app->module.input_private_data;
-    pthread_mutex_lock(&private_data->driver_mutex);
+    if (driver_close(&private_data->state)) {
+      if (private_data->dev) {
+        rtlsdr_cancel_async(private_data->dev);
+      }
+    }
     if (private_data->dev) {
       // Reset buffer to clear USB stalls before closing; prevents I2C errors
       rtlsdr_reset_buffer(private_data->dev);
       rtlsdr_close(private_data->dev);
       private_data->dev = NULL;
     }
-    pthread_mutex_unlock(&private_data->driver_mutex);
-    pthread_mutex_destroy(&private_data->driver_mutex);
     app->module.input_private_data = NULL;
   }
 }
