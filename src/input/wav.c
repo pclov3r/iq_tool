@@ -128,7 +128,6 @@ typedef struct {
   char *base_path_no_suffix; // Base file path with the suffix stripped
   const SplitPattern *active_pattern;
   bool repeat_enabled; // Loop state
-  bool is_real;        // True if the file has 1 channel
 } WavInputContext;
 
 // --- Expat XML Metadata Handlers (Unmodified) ---
@@ -754,29 +753,10 @@ static bool input_wav_initialize(ModuleContext *context) {
     return false;
   }
 
-  private_data->is_real = (private_data->sfinfo.channels == 1);
-
   int sf_subtype = (private_data->sfinfo.format & SF_FORMAT_SUBMASK);
-  switch (sf_subtype) {
-  case SF_FORMAT_PCM_16:
-    app->module.input_format = private_data->is_real ? S16 : CS16;
-    break;
-  case SF_FORMAT_PCM_U8:
-    app->module.input_format = private_data->is_real ? U8 : CU8;
-    break;
-  case SF_FORMAT_PCM_S8:
-    app->module.input_format = private_data->is_real ? S8 : CS8;
-    break;
-  case SF_FORMAT_PCM_24:
-    app->module.input_format = private_data->is_real ? S24 : CS24;
-    break;
-  case SF_FORMAT_PCM_32:
-    app->module.input_format = private_data->is_real ? S32 : CS32;
-    break;
-  case SF_FORMAT_FLOAT:
-    app->module.input_format = private_data->is_real ? F32 : CF32;
-    break;
-  default:
+  app->module.input_format =
+      format_from_pcm_subtype(sf_subtype, private_data->sfinfo.channels);
+  if (app->module.input_format == FORMAT_UNKNOWN) {
     log_error("Error: Input WAV file uses an unsupported PCM subtype (0x%04X).",
               sf_subtype);
     sf_close(private_data->infile);
@@ -802,7 +782,7 @@ static bool input_wav_initialize(ModuleContext *context) {
   }
 
   if (s_wav_config.center_target_hz_arg != 0.0f) {
-    if (private_data->is_real) {
+    if (private_data->sfinfo.channels == 1) {
       log_error("--wav-center-target-freq can only be used with I/Q (complex) "
                 "WAV files.");
       sf_close(private_data->infile);
@@ -884,12 +864,10 @@ static size_t input_wav_read_chunk(ModuleContext *context, void *buffer,
 
         // Strict format validation across boundaries
         if (new_sfinfo.samplerate != app->module.input_info.sample_rate ||
-            (new_sfinfo.channels == 1 && !wav_input->is_real) ||
-            (new_sfinfo.channels == 2 && wav_input->is_real) ||
-            (new_sfinfo.channels != 1 && new_sfinfo.channels != 2)) {
+            new_sfinfo.channels != wav_input->sfinfo.channels) {
           log_fatal(
               "Next split file format mismatch! (Expected Rate: %d, Chans: %d)",
-              app->module.input_info.sample_rate, wav_input->is_real ? 1 : 2);
+              app->module.input_info.sample_rate, wav_input->sfinfo.channels);
           request_forceful_shutdown("Format mismatch during rollover.", app);
           return 0;
         }
@@ -914,12 +892,10 @@ static size_t input_wav_read_chunk(ModuleContext *context, void *buffer,
 
         // Strict format validation across boundaries
         if (new_sfinfo.samplerate != app->module.input_info.sample_rate ||
-            (new_sfinfo.channels == 1 && !wav_input->is_real) ||
-            (new_sfinfo.channels == 2 && wav_input->is_real) ||
-            (new_sfinfo.channels != 1 && new_sfinfo.channels != 2)) {
+            new_sfinfo.channels != wav_input->sfinfo.channels) {
           log_fatal(
               "Format mismatch on loop reopen! (Expected Rate: %d, Chans: %d)",
-              app->module.input_info.sample_rate, wav_input->is_real ? 1 : 2);
+              app->module.input_info.sample_rate, wav_input->sfinfo.channels);
           request_forceful_shutdown("Format mismatch during loop.", app);
           return 0;
         }

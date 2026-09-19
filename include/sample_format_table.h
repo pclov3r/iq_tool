@@ -29,6 +29,9 @@ typedef struct {
                               ///< complete I/Q pair.
   float default_filter_attenuation_db; ///< Recommended default stop-band
                                        ///< attenuation for DSP filters.
+  int pcm_subtype; ///< libsndfile PCM subtype (SF_FORMAT_PCM_*,
+                   ///< SF_FORMAT_FLOAT) or 0 if unsupported.
+  int channels;    ///< Canonical channels (1=real, 2=complex, 0=container only)
 } SampleFormatInfo;
 
 // --- Function Prototypes ---
@@ -62,5 +65,25 @@ const SampleFormatInfo *get_format_info_by_name(const char *name);
  * @return The size in bytes of one I/Q pair, or 0 if the format is unknown.
  */
 size_t get_bytes_per_iq_sample(SampleFormat format);
+
+/**
+ * @brief Maps an internal SampleFormat to its corresponding libsndfile PCM
+ * subtype.
+ *
+ * @param format The internal SampleFormat enum.
+ * @return The SF_FORMAT_PCM_* or SF_FORMAT_FLOAT constant, or 0 if unsupported.
+ */
+int format_to_pcm_subtype(SampleFormat format);
+
+/**
+ * @brief Maps a libsndfile PCM subtype and channel count to an internal
+ * SampleFormat.
+ *
+ * @param subtype The SF_FORMAT_PCM_* or SF_FORMAT_FLOAT constant.
+ * @param channels The channel count (1 for real, 2 for complex).
+ * @return The canonical matching SampleFormat, or FORMAT_UNKNOWN if
+ * unsupported.
+ */
+SampleFormat format_from_pcm_subtype(int subtype, int channels);
 
 #endif // SAMPLE_FORMAT_TABLE_H_

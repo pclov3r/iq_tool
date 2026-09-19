@@ -8,6 +8,7 @@
 #include "log.h"
 #include "module_registry.h"
 #include "platform.h"
+#include "sample_format_table.h"
 #include "utilities.h"
 #include <ctype.h>
 #include <errno.h>
@@ -27,12 +28,9 @@
 bool output_wav_common_validate_options(AppContext *app) {
   AppConfig *config = app ? (AppConfig *)app->config : NULL;
   // This logic is identical for both WAV and RF64.
-  if (config->output.sample_format != CS16 &&
-      config->output.sample_format != CU8 &&
-      config->output.sample_format != CS8 &&
-      config->output.sample_format != CS24 &&
-      config->output.sample_format != CS32 &&
-      config->output.sample_format != CF32) {
+  int pcm_subtype = format_to_pcm_subtype(config->output.sample_format);
+  if (pcm_subtype == 0 ||
+      format_from_pcm_subtype(pcm_subtype, 2) != config->output.sample_format) {
     log_error("Invalid sample format '%s' for WAV/RF64 container. Only 'cs8', "
               "'cu8', 'cs16', 'cs24', 'cs32', and 'cf32' are supported.",
               config->output.sample_format_str);
@@ -78,30 +76,7 @@ bool output_wav_common_initialize(ModuleContext *context, int sf_format_flag) {
   sfinfo.samplerate = (int)app->dsp.process_chain_sample_rate_hz;
   sfinfo.channels = 2;
   sfinfo.format =
-      sf_format_flag; // Use the specific format flag passed by the wrapper.
-
-  switch (config->output.sample_format) {
-  case CS16:
-    sfinfo.format |= SF_FORMAT_PCM_16;
-    break;
-  case CU8:
-    sfinfo.format |= SF_FORMAT_PCM_U8;
-    break;
-  case CS8:
-    sfinfo.format |= SF_FORMAT_PCM_S8;
-    break;
-  case CS24:
-    sfinfo.format |= SF_FORMAT_PCM_24;
-    break;
-  case CS32:
-    sfinfo.format |= SF_FORMAT_PCM_32;
-    break;
-  case CF32:
-    sfinfo.format |= SF_FORMAT_FLOAT;
-    break;
-  default:
-    return false; // Should be caught by validation.
-  }
+      sf_format_flag | format_to_pcm_subtype(config->output.sample_format);
 
   // Verify that libsndfile supports this format combination.
   if (!sf_format_check(&sfinfo)) {

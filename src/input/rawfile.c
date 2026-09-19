@@ -119,39 +119,13 @@ static bool input_rawfile_validate_options(AppContext *app) {
   memset(&sfinfo, 0, sizeof(SF_INFO));
   sfinfo.samplerate = (int)s_rawfile_config.sample_rate_hz;
   sfinfo.channels = 2;
-  int format_code = SF_FORMAT_RAW;
-  switch (format_enum) {
-  case SC16Q11:
-  case CS16:
-    format_code |= SF_FORMAT_PCM_16;
-    break;
-  case CU16:
-    format_code |= SF_FORMAT_PCM_16;
-    break;
-  case CS8:
-    format_code |= SF_FORMAT_PCM_S8;
-    break;
-  case CU8:
-    format_code |= SF_FORMAT_PCM_U8;
-    break;
-  case CS24:
-    format_code |= SF_FORMAT_PCM_24;
-    break;
-  case CS32:
-    format_code |= SF_FORMAT_PCM_32;
-    break;
-  case CU32:
-    format_code |= SF_FORMAT_PCM_32;
-    break;
-  case CF32:
-    format_code |= SF_FORMAT_FLOAT;
-    break;
-  default:
+  int pcm_subtype = format_to_pcm_subtype(format_enum);
+  if (!pcm_subtype) {
     log_fatal("Internal error: unhandled format enum in "
               "input_rawfile_validate_options.");
     return false;
   }
-  sfinfo.format = format_code;
+  sfinfo.format = SF_FORMAT_RAW | pcm_subtype;
 
   private_data->infile =
       sf_open(config->input.resolved_path, SFM_READ, &sfinfo);
