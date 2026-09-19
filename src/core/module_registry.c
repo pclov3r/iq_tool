@@ -73,12 +73,6 @@ const Module *module_get_all(int *count) {
   return all_modules;
 }
 
-bool module_is_live_input(const char *name) {
-  const Module *module = _find_module_by_name_and_type(name, MODULE_TYPE_INPUT);
-  return (module != NULL &&
-          module->process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH);
-}
-
 // --- CLI Options Population ---
 
 void module_populate_cli_options(struct argparse_option *dest_buffer,

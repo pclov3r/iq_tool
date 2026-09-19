@@ -270,7 +270,6 @@ static bool init_input_module(AppConfig *config, AppContext *app) {
 
   log_info("Initializing the '%s' input module...", config->input.type_name);
 
-  bool is_live_input = module_is_live_input(config->input.type_name);
   ThreadManager watchdog_tm;
   thread_manager_init(&watchdog_tm);
   SdrInitWatchdogContext watchdog_ctx = {
@@ -278,7 +277,7 @@ static bool init_input_module(AppConfig *config, AppContext *app) {
       .is_complete = false,
   };
 
-  if (is_live_input) {
+  if (app->process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH) {
     thread_manager_spawn(&watchdog_tm, "watchdog", PRIORITY_NORMAL,
                          sdr_init_watchdog_thread, &watchdog_ctx);
   }
@@ -418,8 +417,8 @@ static void print_configuration_summary(const AppConfig *config,
 
   process_chain_get_summary_info(app, &output_info);
 
-  bool is_audio_output = (config->output.payload == PAYLOAD_AUDIO);
-  const char *agc_label = is_audio_output ? "Baseband AGC" : "Output AGC";
+  const char *agc_label =
+      (config->output.payload == PAYLOAD_AUDIO) ? "Baseband AGC" : "Output AGC";
 
   if (app->dsp.process_chain_agc.enable) {
     utility_add_summary_item(&output_info, agc_label, "Enabled (Target: %.2f)",
@@ -428,7 +427,8 @@ static void print_configuration_summary(const AppConfig *config,
     utility_add_summary_item(&output_info, agc_label, "Disabled");
   }
 
-  if (is_audio_output && app->dsp.process_chain_gain != 1.0f) {
+  if (config->output.payload == PAYLOAD_AUDIO &&
+      app->dsp.process_chain_gain != 1.0f) {
     utility_add_summary_item(&output_info, "Baseband Gain", "%.2fx",
                              app->dsp.process_chain_gain);
   }

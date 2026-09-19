@@ -76,14 +76,6 @@ void module_registry_add(const Module *m);
 const Module *module_get_all(int *count);
 
 /**
- * @brief Checks if a given module name corresponds to a live input requiring a
- * watchdog.
- * @param name The name of the module to check.
- * @return true if the module exists and is a live input, false otherwise.
- */
-bool module_is_live_input(const char *name);
-
-/**
  * @brief Populates a buffer with the CLI options from all registered modules.
  *
  * This function iterates through all known modules and appends their
