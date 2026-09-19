@@ -103,11 +103,9 @@ bool mem_arena_init(MemoryArena *arena) {
   arena->total_allocated = first->capacity;
   arena->state = MEM_ARENA_STATE_ACTIVE;
 
-  log_debug("Dynamic memory arena initialized: chunk size %zu MB, max capacity "
-            "%zu MB (%d%% of detected %llu MB system RAM)",
-            arena->default_chunk_size / (1024 * 1024),
-            arena->max_capacity / (1024 * 1024), MEM_ARENA_RAM_PERCENT_CAP,
-            (unsigned long long)(total_ram / (1024 * 1024)));
+  log_debug("Memory arena initialized: %zu MB (limit: %zu MB)",
+            arena->total_allocated / (1024 * 1024),
+            arena->max_capacity / (1024 * 1024));
 
   return true;
 }
@@ -159,6 +157,10 @@ void *mem_arena_alloc(MemoryArena *arena, size_t size, bool zero_memory) {
   }
 
   arena->total_allocated += new_block->capacity;
+  log_debug("Memory arena expanded: +%zu MB (total: %zu MB, limit: %zu MB)",
+            new_block->capacity / (1024 * 1024),
+            arena->total_allocated / (1024 * 1024),
+            arena->max_capacity / (1024 * 1024));
   void *ptr = new_block->memory;
   new_block->offset = aligned_size;
 
