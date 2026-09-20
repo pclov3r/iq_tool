@@ -30,9 +30,21 @@
 #include <sys/socket.h>
 #include <sys/time.h> // Added for struct timeval
 #include <unistd.h>
+
+static const char *get_socket_error_str(int err, char *buf, size_t buf_len) {
+#if defined(_GNU_SOURCE) && defined(__GLIBC__)
+  return strerror_r(err, buf, buf_len);
+#else
+  if (strerror_r(err, buf, buf_len) != 0) {
+    snprintf(buf, buf_len, "Error %d", err);
+  }
+  return buf;
+#endif
+}
 #endif
 
 // --- Private State ---
+
 // Mutex protecting subsystem lifecycle transitions.
 static pthread_mutex_t g_networking_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -43,13 +55,21 @@ static atomic_int g_networking_ref_count = 0;
 // The private, internal definition of our opaque handle.
 struct NetworkingContext {
 #ifdef _WIN32
-  SOCKET socket_fd;
+  atomic_uintptr_t socket_fd;
 #else
-  int socket_fd;
+  atomic_int socket_fd;
 #endif
+  atomic_int state;
 };
 
 // --- Public API Implementation ---
+
+NetworkingState networking_get_state(const NetworkingContext *context) {
+  if (!context)
+    return NETWORKING_STATE_UNINITIALIZED;
+  return (NetworkingState)atomic_load_explicit(&context->state,
+                                               memory_order_acquire);
+}
 
 bool networking_init(void) {
   pthread_mutex_lock(&g_networking_mutex);
@@ -143,46 +163,51 @@ NetworkingContext *networking_connect(const char *hostname, int port,
     return NULL;
   }
 
+  atomic_store_explicit(&context->state, NETWORKING_STATE_CONNECTING,
+                        memory_order_release);
 #ifdef _WIN32
-  context->socket_fd = INVALID_SOCKET;
+  atomic_store_explicit(&context->socket_fd, (uintptr_t)INVALID_SOCKET,
+                        memory_order_release);
 #else
-  context->socket_fd = -1;
+  atomic_store_explicit(&context->socket_fd, -1, memory_order_release);
 #endif
 
   for (p = res; p != NULL; p = p->ai_next) {
-    context->socket_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
 #ifdef _WIN32
-    if (context->socket_fd == INVALID_SOCKET)
+    SOCKET s = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+    if (s == INVALID_SOCKET)
       continue;
 
     // --- Apply Timeouts (Windows) ---
     // Windows setsockopt takes DWORD in milliseconds.
     DWORD timeout = NETWORK_SOCKET_TIMEOUT_MS;
-    if (setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVTIMEO,
-                   (const char *)&timeout, sizeof(timeout)) == SOCKET_ERROR) {
+    if (setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout,
+                   sizeof(timeout)) == SOCKET_ERROR) {
       log_warn("Failed to set socket receive timeout: error %d",
                WSAGetLastError());
     }
-    if (setsockopt(context->socket_fd, SOL_SOCKET, SO_SNDTIMEO,
-                   (const char *)&timeout, sizeof(timeout)) == SOCKET_ERROR) {
+    if (setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeout,
+                   sizeof(timeout)) == SOCKET_ERROR) {
       log_warn("Failed to set socket send timeout: error %d",
                WSAGetLastError());
     }
     int rcvbuf = 2 * 1024 * 1024;
-    if (setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVBUF,
-                   (const char *)&rcvbuf, sizeof(rcvbuf)) == SOCKET_ERROR) {
+    if (setsockopt(s, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf,
+                   sizeof(rcvbuf)) == SOCKET_ERROR) {
       log_warn("Failed to set socket receive buffer size: error %d",
                WSAGetLastError());
     }
 
-    if (connect(context->socket_fd, p->ai_addr, (int)p->ai_addrlen) ==
-        SOCKET_ERROR) {
-      closesocket(context->socket_fd);
-      context->socket_fd = INVALID_SOCKET;
+    if (connect(s, p->ai_addr, (int)p->ai_addrlen) == SOCKET_ERROR) {
+      closesocket(s);
       continue;
     }
+    atomic_store_explicit(&context->socket_fd, (uintptr_t)s,
+                          memory_order_release);
+    break; // Successfully connected
 #else
-    if (context->socket_fd < 0)
+    int s = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+    if (s < 0)
       continue;
 
     // --- Apply Timeouts (POSIX) ---
@@ -190,37 +215,43 @@ NetworkingContext *networking_connect(const char *hostname, int port,
     struct timeval timeout;
     timeout.tv_sec = NETWORK_SOCKET_TIMEOUT_MS / 1000;
     timeout.tv_usec = (NETWORK_SOCKET_TIMEOUT_MS % 1000) * 1000;
-    if (setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
-                   sizeof(timeout)) < 0) {
-      log_warn("Failed to set socket receive timeout: %s", strerror(errno));
+    char err_buf[128];
+    if (setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+      log_warn("Failed to set socket receive timeout: %s",
+               get_socket_error_str(errno, err_buf, sizeof(err_buf)));
     }
-    if (setsockopt(context->socket_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout,
-                   sizeof(timeout)) < 0) {
-      log_warn("Failed to set socket send timeout: %s", strerror(errno));
+    if (setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) < 0) {
+      log_warn("Failed to set socket send timeout: %s",
+               get_socket_error_str(errno, err_buf, sizeof(err_buf)));
     }
     int rcvbuf = 2 * 1024 * 1024;
-    if (setsockopt(context->socket_fd, SOL_SOCKET, SO_RCVBUF,
-                   (const char *)&rcvbuf, sizeof(rcvbuf)) < 0) {
-      log_warn("Failed to set socket receive buffer size: %s", strerror(errno));
+    if (setsockopt(s, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf,
+                   sizeof(rcvbuf)) < 0) {
+      log_warn("Failed to set socket receive buffer size: %s",
+               get_socket_error_str(errno, err_buf, sizeof(err_buf)));
     }
 
-    if (connect(context->socket_fd, p->ai_addr, p->ai_addrlen) < 0) {
-      close(context->socket_fd);
-      context->socket_fd = -1;
+    if (connect(s, p->ai_addr, p->ai_addrlen) < 0) {
+      close(s);
       continue;
     }
-#endif
+    atomic_store_explicit(&context->socket_fd, s, memory_order_release);
     break; // Successfully connected
+#endif
   }
 
   if (p == NULL) {
     log_error("Failed to connect to %s:%d", hostname, port);
+    atomic_store_explicit(&context->state, NETWORKING_STATE_ERROR,
+                          memory_order_release);
     freeaddrinfo(res);
     networking_cleanup(); // Decrement ref count on failure.
     return NULL;
   }
 
   freeaddrinfo(res);
+  atomic_store_explicit(&context->state, NETWORKING_STATE_CONNECTED,
+                        memory_order_release);
   log_info("Network connection established.");
   return context;
 }
@@ -229,50 +260,95 @@ void networking_disconnect(NetworkingContext *context) {
   if (!context)
     return;
 
-  // We explicitly log this so that if the application hangs here, the user
-  // knows it's a socket timeout/deadlock issue.
+  NetworkingState expected = (NetworkingState)atomic_load_explicit(
+      &context->state, memory_order_acquire);
+  if (expected == NETWORKING_STATE_UNINITIALIZED ||
+      expected == NETWORKING_STATE_CLOSING ||
+      expected == NETWORKING_STATE_CLOSED) {
+    return;
+  }
+
+  while (!atomic_compare_exchange_weak_explicit(
+      &context->state, (int *)&expected, (int)NETWORKING_STATE_CLOSING,
+      memory_order_acq_rel, memory_order_acquire)) {
+    if (expected == NETWORKING_STATE_UNINITIALIZED ||
+        expected == NETWORKING_STATE_CLOSING ||
+        expected == NETWORKING_STATE_CLOSED) {
+      return;
+    }
+  }
+
   log_info("Closing network connection...");
 #ifdef _WIN32
-  if (context->socket_fd != INVALID_SOCKET) {
-    shutdown(context->socket_fd, SD_BOTH);
-    closesocket(context->socket_fd);
-    context->socket_fd = INVALID_SOCKET; // Mark as closed
+  SOCKET sock = (SOCKET)atomic_exchange_explicit(
+      &context->socket_fd, (uintptr_t)INVALID_SOCKET, memory_order_acq_rel);
+  if (sock != INVALID_SOCKET) {
+    shutdown(sock, SD_BOTH);
+    closesocket(sock);
     networking_cleanup();
   }
 #else
-  if (context->socket_fd >= 0) {
-    shutdown(context->socket_fd, SHUT_RDWR);
-    close(context->socket_fd);
-    context->socket_fd = -1; // Mark as closed
+  int sock =
+      atomic_exchange_explicit(&context->socket_fd, -1, memory_order_acq_rel);
+  if (sock >= 0) {
+    shutdown(sock, SHUT_RDWR);
+    close(sock);
     networking_cleanup();
   }
 #endif
-  // No free(context), as the memory is managed by the arena.
+
+  atomic_store_explicit(&context->state, NETWORKING_STATE_CLOSED,
+                        memory_order_release);
 }
 
 bool networking_send_all(NetworkingContext *context, const void *data,
                          size_t length) {
   if (!context || !data)
     return false;
+
   size_t total_sent = 0;
   while (total_sent < length) {
+    if (networking_get_state(context) != NETWORKING_STATE_CONNECTED) {
+      return false;
+    }
+
     size_t to_send = length - total_sent;
     if (to_send > NETWORK_MAX_CHUNK_BYTES)
       to_send = NETWORK_MAX_CHUNK_BYTES;
-    int sent = send(context->socket_fd, (const char *)data + total_sent,
-                    (int)to_send, 0);
-    if (sent <= 0) {
+
 #ifdef _WIN32
-      if (sent < 0 && WSAGetLastError() == WSAETIMEDOUT) {
-        log_error("Network send timed out.");
-      } else
+    SOCKET sock =
+        (SOCKET)atomic_load_explicit(&context->socket_fd, memory_order_acquire);
+    if (sock == INVALID_SOCKET)
+      return false;
 #else
-      if (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-        log_error("Network send timed out.");
-      } else
+    int sock = atomic_load_explicit(&context->socket_fd, memory_order_acquire);
+    if (sock < 0)
+      return false;
 #endif
-      {
-        log_error("Failed to send data to remote host.");
+
+    int sent = send(sock, (const char *)data + total_sent, (int)to_send, 0);
+    if (sent <= 0) {
+      NetworkingState current = networking_get_state(context);
+      if (current != NETWORKING_STATE_CLOSING &&
+          current != NETWORKING_STATE_CLOSED) {
+        atomic_store_explicit(&context->state, NETWORKING_STATE_ERROR,
+                              memory_order_release);
+#ifdef _WIN32
+        if (sent < 0 && WSAGetLastError() == WSAETIMEDOUT) {
+          log_error("Network send timed out.");
+        } else {
+          log_error("Failed to send data to remote host.");
+        }
+#else
+        if (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+          log_error("Network send timed out.");
+        } else {
+          char err_buf[128];
+          log_error("Failed to send data to remote host: %s",
+                    get_socket_error_str(errno, err_buf, sizeof(err_buf)));
+        }
+#endif
       }
       return false;
     }
@@ -285,26 +361,60 @@ bool networking_recv_all(NetworkingContext *context, void *data,
                          size_t length) {
   if (!context || !data)
     return false;
+
   size_t total_recv = 0;
   while (total_recv < length) {
+    if (networking_get_state(context) != NETWORKING_STATE_CONNECTED) {
+      return false;
+    }
+
     size_t to_recv = length - total_recv;
     if (to_recv > NETWORK_MAX_CHUNK_BYTES)
       to_recv = NETWORK_MAX_CHUNK_BYTES;
-    int recvd =
-        recv(context->socket_fd, (char *)data + total_recv, (int)to_recv, 0);
-    if (recvd <= 0) {
+
 #ifdef _WIN32
-      if (recvd < 0 && WSAGetLastError() == WSAETIMEDOUT) {
-        log_error("Network receive timed out.");
-      } else
+    SOCKET sock =
+        (SOCKET)atomic_load_explicit(&context->socket_fd, memory_order_acquire);
+    if (sock == INVALID_SOCKET)
+      return false;
 #else
-      if (recvd < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-        log_error("Network receive timed out.");
-      } else
+    int sock = atomic_load_explicit(&context->socket_fd, memory_order_acquire);
+    if (sock < 0)
+      return false;
 #endif
-      {
-        log_error("Failed to receive data from remote host (connection closed "
-                  "or error).");
+
+    int recvd = recv(sock, (char *)data + total_recv, (int)to_recv, 0);
+    if (recvd <= 0) {
+      NetworkingState current = networking_get_state(context);
+      if (current != NETWORKING_STATE_CLOSING &&
+          current != NETWORKING_STATE_CLOSED) {
+        if (recvd == 0) {
+          atomic_store_explicit(&context->state, NETWORKING_STATE_CLOSED,
+                                memory_order_release);
+        } else {
+          atomic_store_explicit(&context->state, NETWORKING_STATE_ERROR,
+                                memory_order_release);
+        }
+
+#ifdef _WIN32
+        if (recvd < 0 && WSAGetLastError() == WSAETIMEDOUT) {
+          log_error("Network receive timed out.");
+        } else {
+          log_error(
+              "Failed to receive data from remote host (connection closed "
+              "or error).");
+        }
+#else
+        if (recvd < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+          log_error("Network receive timed out.");
+        } else {
+          char err_buf[128];
+          log_error(
+              "Failed to receive data from remote host (connection closed "
+              "or error: %s).",
+              get_socket_error_str(errno, err_buf, sizeof(err_buf)));
+        }
+#endif
       }
       return false;
     }

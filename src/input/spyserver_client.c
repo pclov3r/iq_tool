@@ -364,7 +364,6 @@ static bool input_spyserver_client_initialize(ModuleContext *context) {
                                            s_spyserver_client_config.port,
                                            &app->process_chain.setup_arena);
   if (!client->net_context) {
-    networking_cleanup(); // Release our reference on failure.
     return false;
   }
 
@@ -664,6 +663,15 @@ error_cleanup:
   return false;
 }
 
+static inline bool
+spyserver_should_report_error(const NetworkingContext *net_ctx) {
+  if (is_shutdown_requested())
+    return false;
+  NetworkingState state = networking_get_state(net_ctx);
+  return (state != NETWORKING_STATE_CLOSING &&
+          state != NETWORKING_STATE_CLOSED);
+}
+
 static void *input_spyserver_client_producer_thread(void *arg) {
   ModuleContext *context = (ModuleContext *)arg;
   AppContext *app = context->app;
@@ -675,7 +683,7 @@ static void *input_spyserver_client_producer_thread(void *arg) {
 
     // Block waiting for a protocol header
     if (!networking_recv_all(client->net_context, &header, sizeof(header))) {
-      if (!is_shutdown_requested()) {
+      if (spyserver_should_report_error(client->net_context)) {
         request_forceful_shutdown(
             "Connection to spyserver lost (header recv failed).", app);
       }
@@ -712,7 +720,7 @@ static void *input_spyserver_client_producer_thread(void *arg) {
           // here because aligned_read is 0.
           if (!networking_recv_all(client->net_context, client->rx_buffer,
                                    bytes_remaining)) {
-            if (!is_shutdown_requested())
+            if (spyserver_should_report_error(client->net_context))
               request_forceful_shutdown("Connection lost draining leftovers.",
                                         app);
             goto end_loop;
@@ -725,7 +733,7 @@ static void *input_spyserver_client_producer_thread(void *arg) {
         // 1. Read Payload Chunk from Network
         if (!networking_recv_all(client->net_context, client->rx_buffer,
                                  aligned_read)) {
-          if (!is_shutdown_requested())
+          if (spyserver_should_report_error(client->net_context))
             request_forceful_shutdown("Connection lost reading payload.", app);
           goto end_loop;
         }
@@ -762,7 +770,7 @@ static void *input_spyserver_client_producer_thread(void *arg) {
       // process_chain.
       if (body_size > 0) {
         if (!discard_network_bytes(client->net_context, body_size)) {
-          if (!is_shutdown_requested())
+          if (spyserver_should_report_error(client->net_context))
             request_forceful_shutdown("Connection lost discarding packet.",
                                       app);
           goto end_loop;
@@ -772,6 +780,10 @@ static void *input_spyserver_client_producer_thread(void *arg) {
   }
 
 end_loop:;
+  if (client->net_context &&
+      networking_get_state(client->net_context) == NETWORKING_STATE_CONNECTED) {
+    send_setting(client, SPYSERVER_SETTING_STREAMING_ENABLED, 0);
+  }
   ring_buffer_drain(client->stream_buffer);
   log_debug("SpyServer producer thread is exiting.");
   return NULL;
@@ -862,6 +874,9 @@ input_spyserver_client_stop_sample_queue_push(ModuleContext *context) {
     if (client->stream_buffer) {
       ring_buffer_shutdown(client->stream_buffer);
     }
+    if (client->net_context) {
+      networking_disconnect(client->net_context);
+    }
   }
 }
 
@@ -879,7 +894,6 @@ static void input_spyserver_client_cleanup(ModuleContext *context) {
       client->net_context = NULL;
     }
     // rx_buffer is in arena, no free needed
-    networking_cleanup();
   }
 }
 

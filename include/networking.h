@@ -12,6 +12,19 @@
 struct MemoryArena;
 
 /**
+ * @enum NetworkingState
+ * @brief Lifecycle states for an active network connection handle.
+ */
+typedef enum NetworkingState {
+  NETWORKING_STATE_UNINITIALIZED = 0,
+  NETWORKING_STATE_CONNECTING, ///< Socket created, connection in progress.
+  NETWORKING_STATE_CONNECTED,  ///< Socket connected and ready for I/O.
+  NETWORKING_STATE_CLOSING,    ///< Shutdown/disconnect in progress.
+  NETWORKING_STATE_CLOSED,     ///< Socket closed and inert.
+  NETWORKING_STATE_ERROR       ///< Fatal socket error encountered.
+} NetworkingState;
+
+/**
  * @brief An opaque handle representing an active network connection.
  */
 typedef struct NetworkingContext NetworkingContext;
@@ -45,6 +58,13 @@ NetworkingContext *networking_connect(const char *hostname, int port,
  * @param context The context handle to disconnect.
  */
 void networking_disconnect(NetworkingContext *context);
+
+/**
+ * @brief Returns the current lifecycle state of the network connection.
+ * @param context The context handle to inspect.
+ * @return The current NetworkingState.
+ */
+NetworkingState networking_get_state(const NetworkingContext *context);
 
 /**
  * @brief Reliably sends a block of bytes over the connection.
