@@ -874,9 +874,6 @@ input_spyserver_client_stop_sample_queue_push(ModuleContext *context) {
     if (client->stream_buffer) {
       ring_buffer_shutdown(client->stream_buffer);
     }
-    if (client->net_context) {
-      networking_disconnect(client->net_context);
-    }
   }
 }
 
