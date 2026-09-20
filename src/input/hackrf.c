@@ -33,8 +33,6 @@
 #define HACKRF_DEFAULT_VGA_GAIN 0
 #define HACKRF_DEMOD_AUDIO_BUFFER_SIZE (128 * 1024)
 
-extern pthread_mutex_t g_console_mutex;
-
 // --- Private Module Configuration ---
 static struct {
   uint32_t lna_gain;

@@ -31,8 +31,6 @@
 #define AIRSPYHF_DEFAULT_SAMPLE_RATE 768000
 #define AIRSPYHF_DEMOD_AUDIO_BUFFER_SIZE (128 * 1024)
 
-extern pthread_mutex_t g_console_mutex;
-
 // --- Private Module Configuration ---
 static struct {
   char *agc_mode;

@@ -25,6 +25,7 @@
 #include <errno.h>
 #include <math.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -194,6 +195,7 @@ static void sdrplay_unload_api(void) {
 #endif
 
 extern pthread_mutex_t g_console_mutex;
+extern atomic_bool g_console_mutex_initialized;
 #define LINE_CLEAR_SEQUENCE "\r \r"
 
 // --- Private Module Configuration ---
@@ -511,7 +513,11 @@ static void input_sdrplay_event_callback(sdrplay_api_EventT eventId,
   case sdrplay_api_PowerOverloadChange: {
     sdrplay_api_PowerOverloadCbEventIdT overload_state =
         params->powerOverloadParams.powerOverloadChangeType;
-    pthread_mutex_lock(&g_console_mutex);
+    bool locked = false;
+    if (atomic_load(&g_console_mutex_initialized)) {
+      pthread_mutex_lock(&g_console_mutex);
+      locked = true;
+    }
 #ifdef _WIN32
     const int stderr_is_tty = _isatty(_fileno(stderr));
 #else
@@ -526,7 +532,9 @@ static void input_sdrplay_event_callback(sdrplay_api_EventT eventId,
         fprintf(stderr, LINE_CLEAR_SEQUENCE);
       log_info("Overload condition corrected.");
     }
-    pthread_mutex_unlock(&g_console_mutex);
+    if (locked) {
+      pthread_mutex_unlock(&g_console_mutex);
+    }
 
     // --- Overload ACK Logic ---
     // The SDRplay API requires an ACK for BOTH overload states

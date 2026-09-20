@@ -36,8 +36,6 @@
 #define HYDRASDR_DEFAULT_VGA_GAIN 5
 #define HYDRASDR_DEMOD_AUDIO_BUFFER_SIZE (128 * 1024)
 
-extern pthread_mutex_t g_console_mutex;
-
 // Max expected buffer size for unpacking.
 // HydraSDR USB transfers are typically 128KB - 256KB.
 // We'll allocate enough space for 256K complex samples (16-bit I/Q) to be safe.
