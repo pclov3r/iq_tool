@@ -34,9 +34,13 @@ static bool process_chain_queue_samples(void *context, const void *data,
       atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed))
     return false;
 
-  if (!packet_serializer_write_packet(app->process_chain.input_ring_buffer,
-                                      num_samples, data, format,
-                                      app->module.input_info.sample_rate)) {
+  PacketWriteResult res = packet_serializer_write_packet(
+      app->process_chain.input_ring_buffer, num_samples, data, format,
+      app->module.input_info.sample_rate);
+
+  if (res == PACKET_WRITE_INACTIVE) {
+    return false;
+  } else if (res == PACKET_WRITE_DROPPED) {
     static double last_drop_log_time = 0.0;
     static size_t accumulated_drops = 0;
 

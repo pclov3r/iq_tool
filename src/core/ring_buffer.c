@@ -23,14 +23,6 @@
 #include <time.h>
 #endif
 
-typedef enum RingBufferState {
-  RING_BUFFER_STATE_UNINITIALIZED = 0,
-  RING_BUFFER_STATE_ACTIVE,   ///< Normal streaming operation.
-  RING_BUFFER_STATE_DRAINING, ///< End of stream: reject writes, reader drains.
-  RING_BUFFER_STATE_SHUTDOWN, ///< Immediate shutdown: abort reader and writer.
-  RING_BUFFER_STATE_DESTROYED ///< Mutexes destroyed: completely inert.
-} RingBufferState;
-
 struct RingBuffer {
   unsigned char *buffer;
   size_t capacity;
@@ -482,4 +474,11 @@ void ring_buffer_clear(RingBuffer *iob) {
   pthread_mutex_lock(&iob->sync_mutex);
   pthread_cond_broadcast(&iob->space_free_cond);
   pthread_mutex_unlock(&iob->sync_mutex);
+}
+
+RingBufferState ring_buffer_get_state(const RingBuffer *iob) {
+  if (!iob)
+    return RING_BUFFER_STATE_UNINITIALIZED;
+  return (RingBufferState)atomic_load_explicit(&iob->state,
+                                               memory_order_acquire);
 }

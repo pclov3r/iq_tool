@@ -91,6 +91,16 @@ typedef struct {
   double current_sample_rate;
 } SerializerState;
 
+/**
+ * @enum PacketWriteResult
+ * @brief Result status of packet serialization into the ring buffer.
+ */
+typedef enum PacketWriteResult {
+  PACKET_WRITE_SUCCESS = 0,
+  PACKET_WRITE_DROPPED, ///< Buffer is active, but packet was dropped.
+  PACKET_WRITE_INACTIVE ///< Buffer is DRAINING, SHUTDOWN, or DESTROYED.
+} PacketWriteResult;
+
 // --- Serialization Functions (Writing to the Stream) ---
 
 /**
@@ -106,12 +116,13 @@ typedef struct {
  * @param sample_data Pointer to the interleaved data ([I, Q, I, Q...]).
  * @param format The format of the samples (e.g., CU8, CS16).
  * @param sample_rate The sampling rate of the packet in Hz.
- * @return true if written successfully, false if dropped due to lack of space.
+ * @return PacketWriteResult status (SUCCESS, DROPPED, or INACTIVE).
  */
-bool packet_serializer_write_packet(struct RingBuffer *buffer,
-                                    uint32_t num_samples,
-                                    const void *sample_data,
-                                    SampleFormat format, double sample_rate);
+PacketWriteResult packet_serializer_write_packet(struct RingBuffer *buffer,
+                                                 uint32_t num_samples,
+                                                 const void *sample_data,
+                                                 SampleFormat format,
+                                                 double sample_rate);
 
 /**
  * @brief Writes a "Stream Reset" event packet to the buffer.
@@ -121,9 +132,10 @@ bool packet_serializer_write_packet(struct RingBuffer *buffer,
  * smearing glitches.
  *
  * @param buffer The target ring buffer.
- * @return true if written, false if buffer full.
+ * @return PacketWriteResult status (SUCCESS, DROPPED, or INACTIVE).
  */
-bool packet_serializer_write_reset_event(struct RingBuffer *buffer);
+PacketWriteResult
+packet_serializer_write_reset_event(struct RingBuffer *buffer);
 
 // --- Deserialization Function (Reading from the Stream) ---
 

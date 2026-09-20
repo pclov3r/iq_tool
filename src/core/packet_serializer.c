@@ -22,9 +22,19 @@ static bool _has_space_for(RingBuffer *buffer, size_t bytes_needed) {
 
 // --- WRITE IMPLEMENTATION ---
 
-bool packet_serializer_write_packet(RingBuffer *buffer, uint32_t num_samples,
-                                    const void *sample_data,
-                                    SampleFormat format, double sample_rate) {
+PacketWriteResult packet_serializer_write_packet(RingBuffer *buffer,
+                                                 uint32_t num_samples,
+                                                 const void *sample_data,
+                                                 SampleFormat format,
+                                                 double sample_rate) {
+  if (!buffer)
+    return PACKET_WRITE_INACTIVE;
+
+  RingBufferState state = ring_buffer_get_state(buffer);
+  if (state != RING_BUFFER_STATE_ACTIVE) {
+    return PACKET_WRITE_INACTIVE;
+  }
+
   const SampleFormatInfo *fmt_info = get_format_info_by_enum(format);
   size_t bytes_per_sample = fmt_info ? fmt_info->bytes_per_iq_sample : 0;
   size_t data_size = num_samples * bytes_per_sample;
@@ -33,7 +43,7 @@ bool packet_serializer_write_packet(RingBuffer *buffer, uint32_t num_samples,
   // Atomic Check: If we cannot write the entire packet, we write nothing to
   // maintain stream integrity.
   if (!_has_space_for(buffer, total_needed)) {
-    return false;
+    return PACKET_WRITE_DROPPED;
   }
 
   PacketHeader header;
@@ -44,13 +54,29 @@ bool packet_serializer_write_packet(RingBuffer *buffer, uint32_t num_samples,
   header.sample_rate = sample_rate;
   header.num_samples = num_samples;
 
-  return ring_buffer_write_packet(buffer, &header, sizeof(header), sample_data,
-                                  data_size) > 0;
+  size_t written = ring_buffer_write_packet(buffer, &header, sizeof(header),
+                                            sample_data, data_size);
+  if (written == 0) {
+    if (ring_buffer_get_state(buffer) != RING_BUFFER_STATE_ACTIVE) {
+      return PACKET_WRITE_INACTIVE;
+    }
+    return PACKET_WRITE_DROPPED;
+  }
+
+  return PACKET_WRITE_SUCCESS;
 }
 
-bool packet_serializer_write_reset_event(RingBuffer *buffer) {
+PacketWriteResult packet_serializer_write_reset_event(RingBuffer *buffer) {
+  if (!buffer)
+    return PACKET_WRITE_INACTIVE;
+
+  RingBufferState state = ring_buffer_get_state(buffer);
+  if (state != RING_BUFFER_STATE_ACTIVE) {
+    return PACKET_WRITE_INACTIVE;
+  }
+
   if (!_has_space_for(buffer, sizeof(PacketHeader)))
-    return false;
+    return PACKET_WRITE_DROPPED;
 
   PacketHeader header;
   memset(&header, 0, sizeof(header));
@@ -60,7 +86,16 @@ bool packet_serializer_write_reset_event(RingBuffer *buffer) {
   header.sample_rate = 0.0;
   header.num_samples = 0;
 
-  return ring_buffer_write_packet(buffer, &header, sizeof(header), NULL, 0) > 0;
+  size_t written =
+      ring_buffer_write_packet(buffer, &header, sizeof(header), NULL, 0);
+  if (written == 0) {
+    if (ring_buffer_get_state(buffer) != RING_BUFFER_STATE_ACTIVE) {
+      return PACKET_WRITE_INACTIVE;
+    }
+    return PACKET_WRITE_DROPPED;
+  }
+
+  return PACKET_WRITE_SUCCESS;
 }
 
 // --- READ IMPLEMENTATION ---

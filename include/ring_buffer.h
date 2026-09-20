@@ -7,6 +7,18 @@
 
 #include <stddef.h>
 
+/**
+ * @enum RingBufferState
+ * @brief Lifecycle states for the lock-free ring buffer.
+ */
+typedef enum RingBufferState {
+  RING_BUFFER_STATE_UNINITIALIZED = 0,
+  RING_BUFFER_STATE_ACTIVE,   ///< Normal streaming operation.
+  RING_BUFFER_STATE_DRAINING, ///< End of stream: reject writes, reader drains.
+  RING_BUFFER_STATE_SHUTDOWN, ///< Immediate shutdown: abort reader and writer.
+  RING_BUFFER_STATE_DESTROYED ///< Mutexes destroyed: completely inert.
+} RingBufferState;
+
 // --- Opaque Structure Definition ---
 typedef struct RingBuffer RingBuffer;
 
@@ -99,5 +111,10 @@ size_t ring_buffer_get_capacity(RingBuffer *iob);
  * @brief Clears the ring buffer.
  */
 void ring_buffer_clear(RingBuffer *iob);
+
+/**
+ * @brief Returns the current lifecycle state of the ring buffer.
+ */
+RingBufferState ring_buffer_get_state(const RingBuffer *iob);
 
 #endif // RING_BUFFER_H_
