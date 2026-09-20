@@ -70,46 +70,54 @@ static bool _configure_filter_stage(AppConfig *config, AppContext *app) {
   double input_rate = (double)app->module.input_info.sample_rate;
   double output_sample_rate = app->dsp.process_chain_sample_rate_hz;
 
+  float max_filter_freq_hz = 0.0f;
+
+  // Find the highest frequency required by any filter in the chain.
+  for (int i = 0; i < config->dsp.filter.count; i++) {
+    const FilterRequest *request = &config->dsp.filter.requests[i];
+    float current_max = 0.0f;
+    switch (request->type) {
+    case FILTER_TYPE_LOWPASS:
+    case FILTER_TYPE_HIGHPASS:
+      current_max = fabsf(request->freq1_hz);
+      break;
+    case FILTER_TYPE_PASSBAND:
+    case FILTER_TYPE_STOPBAND:
+      current_max = fabsf(request->freq1_hz) + (request->freq2_hz / 2.0f);
+      break;
+    default:
+      break;
+    }
+    if (current_max > max_filter_freq_hz) {
+      max_filter_freq_hz = current_max;
+    }
+  }
+
+  double input_nyquist = input_rate / 2.0;
+  if (max_filter_freq_hz > input_nyquist) {
+    log_error(
+        "Filter configuration is incompatible with the input sample rate.");
+    log_error(
+        "The specified filter chain extends to %.15g Hz, but the input rate "
+        "of %.15g Hz can only support frequencies up to %.15g Hz.",
+        max_filter_freq_hz, input_rate, input_nyquist);
+    return false;
+  }
+
   // This optimization is only relevant if we are downsampling.
   if (output_sample_rate < input_rate) {
-    float max_filter_freq_hz = 0.0f;
-
-    // Find the highest frequency required by any filter in the chain.
-    for (int i = 0; i < config->dsp.filter.count; i++) {
-      const FilterRequest *request = &config->dsp.filter.requests[i];
-      float current_max = 0.0f;
-      switch (request->type) {
-      case FILTER_TYPE_LOWPASS:
-      case FILTER_TYPE_HIGHPASS:
-        current_max = fabsf(request->freq1_hz);
-        break;
-      case FILTER_TYPE_PASSBAND:
-      case FILTER_TYPE_STOPBAND:
-        current_max = fabsf(request->freq1_hz) + (request->freq2_hz / 2.0f);
-        break;
-      default:
-        break;
-      }
-      if (current_max > max_filter_freq_hz) {
-        max_filter_freq_hz = current_max;
-      }
-    }
-
     double output_nyquist = output_sample_rate / 2.0;
 
-    if (max_filter_freq_hz > output_nyquist) {
-      log_error(
-          "Filter configuration is incompatible with the output sample rate.");
-      log_error(
-          "The specified filter chain extends to %.15g Hz, but the output rate "
-          "of %.15g Hz can only support frequencies up to %.15g Hz.",
-          max_filter_freq_hz, output_sample_rate, output_nyquist);
-      return false;
-    } else {
+    if (max_filter_freq_hz <= output_nyquist) {
       // It's safe and more efficient to filter after resampling.
       log_debug("Filter will be applied efficiently after resampling to avoid "
                 "excessive CPU usage.");
       config->dsp.filter.apply_post_resample = true;
+    } else {
+      log_info("Filter cutoff (%.15g Hz) exceeds output Nyquist (%.15g Hz). "
+               "Applying filter before resampling.",
+               max_filter_freq_hz, output_nyquist);
+      config->dsp.filter.apply_post_resample = false;
     }
   }
   return true;
@@ -887,6 +895,7 @@ static SampleChunk *dsp_filter_process(void *state, SampleChunk *chunk) {
       chunk->frames_to_write = output_frames;
     } else {
       chunk->frames_read = output_frames;
+      chunk->frames_to_write = output_frames;
     }
     return chunk;
   }
