@@ -6,6 +6,7 @@
 #include "wait_event.h"
 #include "log.h"
 #include "mem_arena.h"
+#include <stdatomic.h>
 #include <stdlib.h>
 
 typedef enum WaitEventState {
@@ -20,7 +21,7 @@ typedef enum WaitEventState {
 
 struct WaitEvent {
   HANDLE handle;
-  WaitEventState state;
+  atomic_int state;
 };
 
 #else
@@ -30,7 +31,7 @@ struct WaitEvent {
   pthread_mutex_t mutex;
   pthread_cond_t cond;
   bool signaled;
-  WaitEventState state;
+  atomic_int state;
 };
 #endif
 
@@ -59,7 +60,8 @@ WaitEvent *wait_event_create(struct MemoryArena *arena) {
   }
   ev->signaled = false;
 #endif
-  ev->state = WAIT_EVENT_STATE_ACTIVE;
+  atomic_store_explicit(&ev->state, WAIT_EVENT_STATE_ACTIVE,
+                        memory_order_release);
 
   return ev;
 }
@@ -69,20 +71,22 @@ void wait_event_destroy(WaitEvent *ev) {
     return;
 
 #ifdef _WIN32
-  if (ev->state != WAIT_EVENT_STATE_ACTIVE)
+  if (atomic_exchange_explicit(&ev->state, WAIT_EVENT_STATE_DESTROYED,
+                               memory_order_acq_rel) != WAIT_EVENT_STATE_ACTIVE)
     return;
-  ev->state = WAIT_EVENT_STATE_DESTROYED;
   if (ev->handle) {
     CloseHandle(ev->handle);
     ev->handle = NULL;
   }
 #else
   pthread_mutex_lock(&ev->mutex);
-  if (ev->state != WAIT_EVENT_STATE_ACTIVE) {
+  if (atomic_load_explicit(&ev->state, memory_order_acquire) !=
+      WAIT_EVENT_STATE_ACTIVE) {
     pthread_mutex_unlock(&ev->mutex);
     return;
   }
-  ev->state = WAIT_EVENT_STATE_DESTROYED;
+  atomic_store_explicit(&ev->state, WAIT_EVENT_STATE_DESTROYED,
+                        memory_order_release);
   pthread_cond_broadcast(&ev->cond);
   pthread_mutex_unlock(&ev->mutex);
 
@@ -95,12 +99,14 @@ void wait_event_signal(WaitEvent *ev) {
   if (!ev)
     return;
 #ifdef _WIN32
-  if (ev->state != WAIT_EVENT_STATE_ACTIVE)
+  if (atomic_load_explicit(&ev->state, memory_order_acquire) !=
+      WAIT_EVENT_STATE_ACTIVE)
     return;
   SetEvent(ev->handle);
 #else
   pthread_mutex_lock(&ev->mutex);
-  if (ev->state != WAIT_EVENT_STATE_ACTIVE) {
+  if (atomic_load_explicit(&ev->state, memory_order_acquire) !=
+      WAIT_EVENT_STATE_ACTIVE) {
     pthread_mutex_unlock(&ev->mutex);
     return;
   }
@@ -115,12 +121,15 @@ void wait_event_wait(WaitEvent *ev) {
   if (!ev)
     return;
 #ifdef _WIN32
-  if (ev->state != WAIT_EVENT_STATE_ACTIVE)
+  if (atomic_load_explicit(&ev->state, memory_order_acquire) !=
+      WAIT_EVENT_STATE_ACTIVE)
     return;
   WaitForSingleObject(ev->handle, INFINITE);
 #else
   pthread_mutex_lock(&ev->mutex);
-  while (!ev->signaled && ev->state == WAIT_EVENT_STATE_ACTIVE) {
+  while (!ev->signaled &&
+         atomic_load_explicit(&ev->state, memory_order_relaxed) ==
+             WAIT_EVENT_STATE_ACTIVE) {
     pthread_cond_wait(&ev->cond, &ev->mutex);
   }
   pthread_mutex_unlock(&ev->mutex);
