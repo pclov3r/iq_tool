@@ -30,7 +30,7 @@
 extern pthread_mutex_t g_console_mutex;
 extern atomic_bool g_console_mutex_initialized;
 
-static AppContext *g_app_context_for_signal_handler = NULL;
+static _Atomic(AppContext *) g_app_context_for_signal_handler = NULL;
 static atomic_bool g_shutdown_flag = ATOMIC_VAR_INIT(false);
 
 #ifdef _WIN32
@@ -106,7 +106,8 @@ static void *signal_handler_thread(void *arg) {
 #endif
 
 bool setup_signal_handlers(AppContext *app) {
-  g_app_context_for_signal_handler = app;
+  atomic_store_explicit(&g_app_context_for_signal_handler, app,
+                        memory_order_release);
 #ifdef _WIN32
   if (!SetConsoleCtrlHandler(console_ctrl_handler, TRUE)) {
     log_warn("Failed to register console control handler.");
@@ -157,7 +158,8 @@ void reset_shutdown_flag(void) {
 }
 
 void signal_handler_clear_context(void) {
-  g_app_context_for_signal_handler = NULL;
+  atomic_store_explicit(&g_app_context_for_signal_handler, NULL,
+                        memory_order_release);
 }
 
 void request_shutdown(void) {
@@ -166,8 +168,9 @@ void request_shutdown(void) {
     return;
   }
 
-  if (g_app_context_for_signal_handler) {
-    AppContext *app = g_app_context_for_signal_handler;
+  AppContext *app = atomic_load_explicit(&g_app_context_for_signal_handler,
+                                         memory_order_acquire);
+  if (app) {
 
     // Signal the global shutdown event to wake up any sleeping input threads
     if (app->process_chain.shutdown_event) {
