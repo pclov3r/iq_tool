@@ -358,6 +358,7 @@ Available Presets
 
 Help & Version
     -v, --version                             show program's version number and exit
+    -r, --revision                            show program's revision number and exit
     -h, --help                                show this help message and exit
 ```
 

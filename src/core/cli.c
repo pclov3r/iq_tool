@@ -85,9 +85,9 @@ static int version_cb(struct argparse *self,
   (void)self;
   (void)option;
 #ifdef GIT_HASH
-  fprintf(stdout, "%s version %s\n", APP_NAME, GIT_HASH);
+  fprintf(stdout, "%s revision %s\n", APP_NAME, GIT_HASH);
 #else
-  fprintf(stdout, "%s version unknown\n", APP_NAME);
+  fprintf(stdout, "%s revision unknown\n", APP_NAME);
 #endif
   exit(EXIT_SUCCESS);
 }
@@ -172,6 +172,9 @@ static int build_cli_options(struct argparse_option *options_buffer,
       OPT_GROUP("Help & Version"),
       OPT_BOOLEAN('v', "version", NULL,
                   "show program's version number and exit", version_cb, 0,
+                  OPT_NONEG),
+      OPT_BOOLEAN('r', "revision", NULL,
+                  "show program's revision number and exit", version_cb, 0,
                   OPT_NONEG),
       OPT_BOOLEAN('h', "help", NULL, "show this help message and exit",
                   argparse_help_cb, 0, OPT_NONEG),
