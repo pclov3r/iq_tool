@@ -8,6 +8,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -96,7 +97,8 @@ static bool load_nrsc5_dll(void) {
 typedef struct {
   nrsc5_t *nrsc5_instance;
   AudioOutputContext *audio_out;
-  unsigned int active_program;
+  atomic_uint active_program;
+  atomic_bool flush_requested;
   ProcessChainMode process_chain_mode;
 
   float input_samplerate;
@@ -253,7 +255,9 @@ static void nrsc5_event_callback(const nrsc5_event_t *event_payload,
     break;
 
   case NRSC5_EVENT_HDC:
-    if (event_payload->hdc.program == nrsc5_decoder->active_program) {
+    if (event_payload->hdc.program ==
+        atomic_load_explicit(&nrsc5_decoder->active_program,
+                             memory_order_relaxed)) {
       nrsc5_decoder->audio_bytes += event_payload->hdc.count;
       nrsc5_decoder->audio_packets++;
 
@@ -287,7 +291,13 @@ static void nrsc5_event_callback(const nrsc5_event_t *event_payload,
     break;
 
   case NRSC5_EVENT_AUDIO:
-    if (event_payload->audio.program == nrsc5_decoder->active_program) {
+    if (event_payload->audio.program ==
+        atomic_load_explicit(&nrsc5_decoder->active_program,
+                             memory_order_relaxed)) {
+      if (atomic_exchange_explicit(&nrsc5_decoder->flush_requested, false,
+                                   memory_order_acq_rel)) {
+        audio_output_clear(nrsc5_decoder->audio_out);
+      }
       if (!event_payload->audio.data || event_payload->audio.count == 0 ||
           event_payload->audio.count > 100000)
         return;
@@ -298,7 +308,9 @@ static void nrsc5_event_callback(const nrsc5_event_t *event_payload,
     break;
 
   case NRSC5_EVENT_ID3:
-    if (event_payload->id3.program == nrsc5_decoder->active_program) {
+    if (event_payload->id3.program ==
+        atomic_load_explicit(&nrsc5_decoder->active_program,
+                             memory_order_relaxed)) {
       if (event_payload->id3.title)
         log_info("NRSC5: Title: %s", event_payload->id3.title);
       if (event_payload->id3.artist)
@@ -657,7 +669,11 @@ static bool output_nrsc5_initialize(ModuleContext *context) {
            nrsc5_decoder->input_samplerate,
            (s_nrsc5_config.active_mode == NRSC5_MODE_FM) ? "FM" : "AM");
 
-  nrsc5_decoder->active_program = (unsigned int)s_nrsc5_config.program_id;
+  atomic_store_explicit(&nrsc5_decoder->active_program,
+                        (unsigned int)s_nrsc5_config.program_id,
+                        memory_order_relaxed);
+  atomic_store_explicit(&nrsc5_decoder->flush_requested, false,
+                        memory_order_relaxed);
   nrsc5_set_callback(nrsc5_decoder->nrsc5_instance, nrsc5_event_callback,
                      nrsc5_decoder);
 
@@ -771,22 +787,12 @@ static void output_nrsc5_on_keypress(ModuleContext *context, int key) {
     unsigned int new_program = key - '0';
     nrsc5_context *nrsc5_decoder =
         (nrsc5_context *)context->app->module.output_private_data;
-    if (nrsc5_decoder->active_program != new_program) {
-      nrsc5_decoder->active_program = new_program;
-      audio_output_clear(nrsc5_decoder->audio_out);
-
-      // Inject ~139ms of silence (Exactly 3 HDC frames) to build a pre-buffer
-      // and prevent stuttering
-      size_t silence_frames = NRSC5_AUDIO_FRAME_SAMPLES * 3;
-      size_t silence_bytes =
-          silence_frames * NRSC5_AUDIO_CHANNELS * sizeof(int16_t);
-      int16_t *silence = calloc(1, silence_bytes);
-      if (silence) {
-        audio_output_write(nrsc5_decoder->audio_out, silence, silence_bytes,
-                           nrsc5_decoder->process_chain_mode);
-        free(silence);
-      }
-
+    if (atomic_load_explicit(&nrsc5_decoder->active_program,
+                             memory_order_relaxed) != new_program) {
+      atomic_store_explicit(&nrsc5_decoder->flush_requested, true,
+                            memory_order_release);
+      atomic_store_explicit(&nrsc5_decoder->active_program, new_program,
+                            memory_order_release);
       log_info("NRSC5: Switched to program %u (HD%u)", new_program,
                new_program + 1);
     }
