@@ -449,12 +449,22 @@ void platform_set_thread_priority(ThreadPriority priority,
   }
 
   // 3. Both failed - print a single, clean warning
+  char err_buf[128];
+#if defined(_GNU_SOURCE) && defined(__GLIBC__)
+  const char *err_msg = strerror_r(fifo_err, err_buf, sizeof(err_buf));
+#else
+  if (strerror_r(fifo_err, err_buf, sizeof(err_buf)) != 0) {
+    snprintf(err_buf, sizeof(err_buf), "Error %d", fifo_err);
+  }
+  const char *err_msg = err_buf;
+#endif
+
   if (has_name) {
     log_warn("Failed to elevate '%s' thread scheduling priority to %s: %s",
-             thread_name, prio_desc, strerror(fifo_err));
+             thread_name, prio_desc, err_msg);
   } else {
     log_warn("Failed to elevate thread scheduling priority to %s: %s",
-             prio_desc, strerror(fifo_err));
+             prio_desc, err_msg);
   }
 #endif
 }
@@ -641,8 +651,17 @@ char *platform_resolve_input_path(const char *path, struct MemoryArena *arena) {
 
   char resolved_input_path[PATH_MAX];
   if (realpath(path, resolved_input_path) == NULL) {
+    char err_buf[128];
+#if defined(_GNU_SOURCE) && defined(__GLIBC__)
+    const char *err_msg = strerror_r(errno, err_buf, sizeof(err_buf));
+#else
+    if (strerror_r(errno, err_buf, sizeof(err_buf)) != 0) {
+      snprintf(err_buf, sizeof(err_buf), "Error %d", errno);
+    }
+    const char *err_msg = err_buf;
+#endif
     log_error("Input file not found or path is invalid: %s (%s)", path,
-              strerror(errno));
+              err_msg);
     return NULL;
   }
   char *resolved =
@@ -660,18 +679,24 @@ char *platform_resolve_output_path(const char *path,
 
   char *path_copy_for_dirname =
       (char *)mem_arena_alloc(arena, strlen(path) + 1, false);
-  char *path_copy_for_basename =
-      (char *)mem_arena_alloc(arena, strlen(path) + 1, false);
-  if (!path_copy_for_dirname || !path_copy_for_basename)
+  if (!path_copy_for_dirname)
     return NULL;
   strcpy(path_copy_for_dirname, path);
-  strcpy(path_copy_for_basename, path);
   char *dir = dirname(path_copy_for_dirname);
-  char *base = basename(path_copy_for_basename);
+  const char *base = platform_get_basename(path);
   char resolved_dir_path[PATH_MAX];
   if (realpath(dir, resolved_dir_path) == NULL) {
+    char err_buf[128];
+#if defined(_GNU_SOURCE) && defined(__GLIBC__)
+    const char *err_msg = strerror_r(errno, err_buf, sizeof(err_buf));
+#else
+    if (strerror_r(errno, err_buf, sizeof(err_buf)) != 0) {
+      snprintf(err_buf, sizeof(err_buf), "Error %d", errno);
+    }
+    const char *err_msg = err_buf;
+#endif
     log_error("Output directory does not exist or path is invalid: %s (%s)",
-              dir, strerror(errno));
+              dir, err_msg);
     return NULL;
   }
   size_t final_length = strlen(resolved_dir_path) + 1 + strlen(base) + 1;

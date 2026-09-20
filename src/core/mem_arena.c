@@ -111,13 +111,17 @@ bool mem_arena_init(MemoryArena *arena) {
 }
 
 void *mem_arena_alloc(MemoryArena *arena, size_t size, bool zero_memory) {
-  if (!arena || arena->state != MEM_ARENA_STATE_ACTIVE || size == 0)
+  if (!arena || size == 0)
     return NULL;
 
   size_t aligned_size =
       (size + MEM_ARENA_ALIGNMENT - 1) & ~(MEM_ARENA_ALIGNMENT - 1);
 
   pthread_mutex_lock(&arena->lock);
+  if (arena->state != MEM_ARENA_STATE_ACTIVE) {
+    pthread_mutex_unlock(&arena->lock);
+    return NULL;
+  }
 
   // Fast path: current block has enough space
   if (arena->current_block && (arena->current_block->offset + aligned_size <=
@@ -192,10 +196,14 @@ void *mem_arena_alloc(MemoryArena *arena, size_t size, bool zero_memory) {
 }
 
 void mem_arena_destroy(MemoryArena *arena) {
-  if (!arena || arena->state != MEM_ARENA_STATE_ACTIVE)
+  if (!arena)
     return;
 
   pthread_mutex_lock(&arena->lock);
+  if (arena->state != MEM_ARENA_STATE_ACTIVE) {
+    pthread_mutex_unlock(&arena->lock);
+    return;
+  }
   ArenaBlock *block = arena->first_block;
   while (block) {
     ArenaBlock *next = block->next;

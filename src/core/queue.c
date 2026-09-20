@@ -55,22 +55,35 @@ bool queue_init(Queue *queue, size_t capacity, MemoryArena *arena) {
 }
 
 void queue_destroy(Queue *queue) {
-  if (!queue || queue->state == QUEUE_STATE_UNINITIALIZED ||
+  if (!queue)
+    return;
+
+  pthread_mutex_lock(&queue->mutex);
+  if (queue->state == QUEUE_STATE_UNINITIALIZED ||
       queue->state == QUEUE_STATE_DESTROYED) {
+    pthread_mutex_unlock(&queue->mutex);
     return;
   }
 
   queue->state = QUEUE_STATE_DESTROYED;
+  pthread_cond_broadcast(&queue->not_empty_cond);
+  pthread_cond_broadcast(&queue->not_full_cond);
+  pthread_mutex_unlock(&queue->mutex);
+
   pthread_mutex_destroy(&queue->mutex);
   pthread_cond_destroy(&queue->not_empty_cond);
   pthread_cond_destroy(&queue->not_full_cond);
 }
 
 bool queue_enqueue(Queue *queue, void *item) {
-  if (!queue || queue->state != QUEUE_STATE_ACTIVE)
+  if (!queue)
     return false;
 
   pthread_mutex_lock(&queue->mutex);
+  if (queue->state != QUEUE_STATE_ACTIVE) {
+    pthread_mutex_unlock(&queue->mutex);
+    return false;
+  }
 
   while (queue->count == queue->capacity &&
          queue->state == QUEUE_STATE_ACTIVE) {
@@ -93,10 +106,14 @@ bool queue_enqueue(Queue *queue, void *item) {
 }
 
 bool queue_enqueue_forced(Queue *queue, void *item) {
-  if (!queue || queue->state == QUEUE_STATE_UNINITIALIZED ||
-      queue->state == QUEUE_STATE_DESTROYED)
+  if (!queue)
     return false;
   pthread_mutex_lock(&queue->mutex);
+  if (queue->state == QUEUE_STATE_UNINITIALIZED ||
+      queue->state == QUEUE_STATE_DESTROYED) {
+    pthread_mutex_unlock(&queue->mutex);
+    return false;
+  }
 
   // Wait for space (sanity check), but IGNORE draining state
   if (queue->count == queue->capacity) {
@@ -114,11 +131,15 @@ bool queue_enqueue_forced(Queue *queue, void *item) {
 }
 
 void *queue_dequeue(Queue *queue) {
-  if (!queue || queue->state == QUEUE_STATE_UNINITIALIZED ||
-      queue->state == QUEUE_STATE_DESTROYED)
+  if (!queue)
     return NULL;
 
   pthread_mutex_lock(&queue->mutex);
+  if (queue->state == QUEUE_STATE_UNINITIALIZED ||
+      queue->state == QUEUE_STATE_DESTROYED) {
+    pthread_mutex_unlock(&queue->mutex);
+    return NULL;
+  }
 
   while (queue->count == 0 && queue->state == QUEUE_STATE_ACTIVE) {
     pthread_cond_wait(&queue->not_empty_cond, &queue->mutex);
@@ -140,11 +161,15 @@ void *queue_dequeue(Queue *queue) {
 }
 
 void *queue_try_dequeue(Queue *queue) {
-  if (!queue || queue->state == QUEUE_STATE_UNINITIALIZED ||
-      queue->state == QUEUE_STATE_DESTROYED)
+  if (!queue)
     return NULL;
 
   pthread_mutex_lock(&queue->mutex);
+  if (queue->state == QUEUE_STATE_UNINITIALIZED ||
+      queue->state == QUEUE_STATE_DESTROYED) {
+    pthread_mutex_unlock(&queue->mutex);
+    return NULL;
+  }
 
   if (queue->count == 0) {
     pthread_mutex_unlock(&queue->mutex);
@@ -162,11 +187,16 @@ void *queue_try_dequeue(Queue *queue) {
 }
 
 void queue_drain(Queue *queue) {
-  if (!queue || queue->state == QUEUE_STATE_UNINITIALIZED ||
-      queue->state == QUEUE_STATE_DESTROYED)
+  if (!queue)
     return;
 
   pthread_mutex_lock(&queue->mutex);
+  if (queue->state == QUEUE_STATE_UNINITIALIZED ||
+      queue->state == QUEUE_STATE_DESTROYED) {
+    pthread_mutex_unlock(&queue->mutex);
+    return;
+  }
+
   queue->state = QUEUE_STATE_DRAINING;
 
   pthread_mutex_unlock(&queue->mutex);

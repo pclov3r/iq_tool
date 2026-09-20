@@ -96,7 +96,8 @@ bool output_wav_common_initialize(ModuleContext *context, int sf_format_flag) {
 
   // --- SDR-XML Metadata Injection ---
   time_t now = time(NULL);
-  struct tm *tm_info = gmtime(&now);
+  struct tm tm_buf;
+  struct tm *tm_info = platform_gmtime_r(&now, &tm_buf);
   char time_utc[64] = {0};
   char time_created[64] = {0};
   char date_only[64] = {0};

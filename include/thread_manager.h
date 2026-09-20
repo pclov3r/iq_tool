@@ -11,6 +11,13 @@
 #include <pthread.h>
 #include <stdbool.h>
 
+typedef enum ThreadManagerState {
+  THREAD_MANAGER_STATE_UNINITIALIZED = 0,
+  THREAD_MANAGER_STATE_ACTIVE,
+  THREAD_MANAGER_STATE_JOINING,
+  THREAD_MANAGER_STATE_DESTROYED
+} ThreadManagerState;
+
 typedef struct ManagedThread {
   pthread_t handle;
   char name[16];
@@ -22,6 +29,8 @@ typedef struct ManagedThread {
 typedef struct ThreadManager {
   ManagedThread threads[MAX_MANAGED_THREADS];
   int num_threads_started;
+  ThreadManagerState state;
+  pthread_mutex_t lock;
 } ThreadManager;
 
 /**
@@ -46,5 +55,11 @@ bool thread_manager_spawn(ThreadManager *manager, const char *name,
  * @brief Waits for all spawned threads to complete and resets the manager.
  */
 void thread_manager_join_all(ThreadManager *manager);
+
+/**
+ * @brief Waits for all spawned threads to complete and destroys manager
+ * resources.
+ */
+void thread_manager_destroy(ThreadManager *manager);
 
 #endif // THREAD_MANAGER_H_

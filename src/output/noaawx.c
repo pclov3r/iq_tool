@@ -9,6 +9,7 @@
 #include "log.h"
 #include "module.h"
 #include "module_registry.h"
+#include "platform.h"
 #include "signal_handler.h"
 #include "utilities.h"
 #include <complex.h>
@@ -3725,7 +3726,11 @@ static void parse_same_header(const char *header) {
     int mn = (julian_time[5] - '0') * 10 + (julian_time[6] - '0');
 
     time_t t = time(NULL);
-    struct tm *tm_info = gmtime(&t);
+    struct tm tm_buf;
+    struct tm *tm_info = platform_gmtime_r(&t, &tm_buf);
+    if (!tm_info) {
+      return;
+    }
     int year = tm_info->tm_year + 1900;
 
     // Handle New Year's edge case (e.g. warning issued Dec 31, received Jan 1)

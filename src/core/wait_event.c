@@ -65,28 +65,45 @@ WaitEvent *wait_event_create(struct MemoryArena *arena) {
 }
 
 void wait_event_destroy(WaitEvent *ev) {
-  if (!ev || ev->state != WAIT_EVENT_STATE_ACTIVE)
+  if (!ev)
     return;
 
-  ev->state = WAIT_EVENT_STATE_DESTROYED;
 #ifdef _WIN32
+  if (ev->state != WAIT_EVENT_STATE_ACTIVE)
+    return;
+  ev->state = WAIT_EVENT_STATE_DESTROYED;
   if (ev->handle) {
     CloseHandle(ev->handle);
     ev->handle = NULL;
   }
 #else
-  pthread_mutex_destroy(&ev->mutex);
+  pthread_mutex_lock(&ev->mutex);
+  if (ev->state != WAIT_EVENT_STATE_ACTIVE) {
+    pthread_mutex_unlock(&ev->mutex);
+    return;
+  }
+  ev->state = WAIT_EVENT_STATE_DESTROYED;
+  pthread_cond_broadcast(&ev->cond);
+  pthread_mutex_unlock(&ev->mutex);
+
   pthread_cond_destroy(&ev->cond);
+  pthread_mutex_destroy(&ev->mutex);
 #endif
 }
 
 void wait_event_signal(WaitEvent *ev) {
-  if (!ev || ev->state != WAIT_EVENT_STATE_ACTIVE)
+  if (!ev)
     return;
 #ifdef _WIN32
+  if (ev->state != WAIT_EVENT_STATE_ACTIVE)
+    return;
   SetEvent(ev->handle);
 #else
   pthread_mutex_lock(&ev->mutex);
+  if (ev->state != WAIT_EVENT_STATE_ACTIVE) {
+    pthread_mutex_unlock(&ev->mutex);
+    return;
+  }
   ev->signaled = true;
   // Broadcast wakes up ALL waiting threads, not just one.
   pthread_cond_broadcast(&ev->cond);
@@ -95,9 +112,11 @@ void wait_event_signal(WaitEvent *ev) {
 }
 
 void wait_event_wait(WaitEvent *ev) {
-  if (!ev || ev->state != WAIT_EVENT_STATE_ACTIVE)
+  if (!ev)
     return;
 #ifdef _WIN32
+  if (ev->state != WAIT_EVENT_STATE_ACTIVE)
+    return;
   WaitForSingleObject(ev->handle, INFINITE);
 #else
   pthread_mutex_lock(&ev->mutex);
