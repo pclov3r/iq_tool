@@ -297,6 +297,20 @@ static void nrsc5_event_callback(const nrsc5_event_t *event_payload,
       if (atomic_exchange_explicit(&nrsc5_decoder->flush_requested, false,
                                    memory_order_acq_rel)) {
         audio_output_clear(nrsc5_decoder->audio_out);
+
+        // Inject ~139ms of silence (Exactly 3 HDC frames) to build a pre-buffer
+        // and prevent stuttering
+        static const int16_t s_silence[1024] = {0};
+        size_t silence_frames = NRSC5_AUDIO_FRAME_SAMPLES * 3;
+        size_t silence_bytes =
+            silence_frames * NRSC5_AUDIO_CHANNELS * sizeof(int16_t);
+        while (silence_bytes > 0) {
+          size_t chunk = (silence_bytes > sizeof(s_silence)) ? sizeof(s_silence)
+                                                             : silence_bytes;
+          audio_output_write(nrsc5_decoder->audio_out, s_silence, chunk,
+                             nrsc5_decoder->process_chain_mode);
+          silence_bytes -= chunk;
+        }
       }
       if (!event_payload->audio.data || event_payload->audio.count == 0 ||
           event_payload->audio.count > 100000)
@@ -789,6 +803,7 @@ static void output_nrsc5_on_keypress(ModuleContext *context, int key) {
         (nrsc5_context *)context->app->module.output_private_data;
     if (atomic_load_explicit(&nrsc5_decoder->active_program,
                              memory_order_relaxed) != new_program) {
+      audio_output_clear(nrsc5_decoder->audio_out);
       atomic_store_explicit(&nrsc5_decoder->flush_requested, true,
                             memory_order_release);
       atomic_store_explicit(&nrsc5_decoder->active_program, new_program,
