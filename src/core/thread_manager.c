@@ -8,11 +8,12 @@
 #include <string.h>
 
 #include "log.h"
+#include "mem_arena.h"
 #include "thread_manager.h"
 
 static void *managed_thread_trampoline(void *arg) {
-  ManagedThread *info = (ManagedThread *)arg;
-  ManagedThread thread_info = *info;
+  TrampolineArg *targ = (TrampolineArg *)arg;
+  TrampolineArg thread_info = *targ;
 
   if (thread_info.name[0] != '\0') {
     platform_set_thread_name(thread_info.name);
@@ -24,7 +25,7 @@ static void *managed_thread_trampoline(void *arg) {
   return thread_info.func(thread_info.arg);
 }
 
-void thread_manager_init(ThreadManager *manager) {
+void thread_manager_init(ThreadManager *manager, struct MemoryArena *arena) {
   if (!manager) {
     return;
   }
@@ -32,6 +33,17 @@ void thread_manager_init(ThreadManager *manager) {
   pthread_mutex_init(&manager->lock, NULL);
   manager->state = THREAD_MANAGER_STATE_ACTIVE;
   manager->num_threads_started = 0;
+  manager->arena = arena;
+}
+
+void thread_manager_set_arena(ThreadManager *manager,
+                              struct MemoryArena *arena) {
+  if (!manager) {
+    return;
+  }
+  pthread_mutex_lock(&manager->lock);
+  manager->arena = arena;
+  pthread_mutex_unlock(&manager->lock);
 }
 
 bool thread_manager_spawn(ThreadManager *manager, const char *name,
@@ -62,6 +74,23 @@ bool thread_manager_spawn(ThreadManager *manager, const char *name,
     return false;
   }
 
+  TrampolineArg *targ = NULL;
+  if (manager->arena) {
+    targ = (TrampolineArg *)mem_arena_alloc(manager->arena,
+                                            sizeof(TrampolineArg), true);
+  }
+  if (!targ) {
+    targ = &manager->trampoline_args[manager->num_threads_started];
+  }
+  memset(targ, 0, sizeof(*targ));
+  if (name && name[0] != '\0') {
+    strncpy(targ->name, name, sizeof(targ->name) - 1);
+    targ->name[sizeof(targ->name) - 1] = '\0';
+  }
+  targ->priority = priority;
+  targ->func = func;
+  targ->arg = arg;
+
   ManagedThread *info = &manager->threads[manager->num_threads_started];
   memset(info, 0, sizeof(*info));
   if (name && name[0] != '\0') {
@@ -72,7 +101,7 @@ bool thread_manager_spawn(ThreadManager *manager, const char *name,
   info->func = func;
   info->arg = arg;
 
-  int rc = pthread_create(&info->handle, NULL, managed_thread_trampoline, info);
+  int rc = pthread_create(&info->handle, NULL, managed_thread_trampoline, targ);
   if (rc != 0) {
     if (info->name[0] != '\0') {
       log_fatal("Failed to create '%s' thread: %s", info->name, strerror(rc));

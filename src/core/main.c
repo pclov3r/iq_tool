@@ -271,7 +271,7 @@ static bool init_input_module(AppConfig *config, AppContext *app) {
   log_info("Initializing the '%s' input module...", config->input.type_name);
 
   ThreadManager watchdog_tm;
-  thread_manager_init(&watchdog_tm);
+  thread_manager_init(&watchdog_tm, &app->process_chain.setup_arena);
   SdrInitWatchdogContext watchdog_ctx = {
       .module_name = config->input.type_name,
       .is_complete = false,
@@ -340,7 +340,7 @@ static void print_summary_section(const char *header, const SummaryInfo *info,
 static void initialize_app_context(AppConfig *config, AppContext *app) {
   memset(app, 0, sizeof(AppContext));
   app->config = config;
-  thread_manager_init(&app->thread_manager);
+  thread_manager_init(&app->thread_manager, &app->process_chain.setup_arena);
 
   // Set global DSP defaults
   config->dsp.input_gain = 1.0f;
