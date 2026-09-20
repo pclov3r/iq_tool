@@ -117,6 +117,24 @@ struct tm *platform_gmtime_r(const time_t *timep, struct tm *result) {
 #endif
 }
 
+const char *platform_strerror(int errnum, char *buf, size_t buflen) {
+  if (!buf || buflen == 0)
+    return "";
+#ifdef _WIN32
+  if (strerror_s(buf, buflen, errnum) != 0) {
+    snprintf(buf, buflen, "Unknown error %d", errnum);
+  }
+  return buf;
+#elif defined(_GNU_SOURCE) && defined(__GLIBC__)
+  return strerror_r(errnum, buf, buflen);
+#else
+  if (strerror_r(errnum, buf, buflen) != 0) {
+    snprintf(buf, buflen, "Unknown error %d", errnum);
+  }
+  return buf;
+#endif
+}
+
 // --- File Stream & Descriptor I/O ---
 
 bool platform_set_binary_mode(FILE *stream) {

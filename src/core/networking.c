@@ -12,12 +12,6 @@
 #include "config/constants.h" // Added for NETWORK_SOCKET_TIMEOUT_MS
 #include "log.h"
 #include "mem_arena.h"
-#include <pthread.h>
-#include <stdatomic.h>
-#include <stdlib.h>
-#include <string.h>
-
-// --- Platform-Specific Networking Includes ---
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
@@ -30,18 +24,13 @@
 #include <sys/socket.h>
 #include <sys/time.h> // Added for struct timeval
 #include <unistd.h>
+#endif
 
-static const char *get_socket_error_str(int err, char *buf, size_t buf_len) {
-#if defined(_GNU_SOURCE) && defined(__GLIBC__)
-  return strerror_r(err, buf, buf_len);
-#else
-  if (strerror_r(err, buf, buf_len) != 0) {
-    snprintf(buf, buf_len, "Error %d", err);
-  }
-  return buf;
-#endif
-}
-#endif
+#include "platform.h"
+#include <pthread.h>
+#include <stdatomic.h>
+#include <stdlib.h>
+#include <string.h>
 
 // --- Private State ---
 
@@ -218,17 +207,17 @@ NetworkingContext *networking_connect(const char *hostname, int port,
     char err_buf[128];
     if (setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
       log_warn("Failed to set socket receive timeout: %s",
-               get_socket_error_str(errno, err_buf, sizeof(err_buf)));
+               platform_strerror(errno, err_buf, sizeof(err_buf)));
     }
     if (setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) < 0) {
       log_warn("Failed to set socket send timeout: %s",
-               get_socket_error_str(errno, err_buf, sizeof(err_buf)));
+               platform_strerror(errno, err_buf, sizeof(err_buf)));
     }
     int rcvbuf = 2 * 1024 * 1024;
     if (setsockopt(s, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf,
                    sizeof(rcvbuf)) < 0) {
       log_warn("Failed to set socket receive buffer size: %s",
-               get_socket_error_str(errno, err_buf, sizeof(err_buf)));
+               platform_strerror(errno, err_buf, sizeof(err_buf)));
     }
 
     if (connect(s, p->ai_addr, p->ai_addrlen) < 0) {
@@ -346,7 +335,7 @@ bool networking_send_all(NetworkingContext *context, const void *data,
         } else {
           char err_buf[128];
           log_error("Failed to send data to remote host: %s",
-                    get_socket_error_str(errno, err_buf, sizeof(err_buf)));
+                    platform_strerror(errno, err_buf, sizeof(err_buf)));
         }
 #endif
       }
@@ -412,7 +401,7 @@ bool networking_recv_all(NetworkingContext *context, void *data,
           log_error(
               "Failed to receive data from remote host (connection closed "
               "or error: %s).",
-              get_socket_error_str(errno, err_buf, sizeof(err_buf)));
+              platform_strerror(errno, err_buf, sizeof(err_buf)));
         }
 #endif
       }

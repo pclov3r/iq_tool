@@ -103,6 +103,18 @@ time_t platform_timegm(struct tm *tm);
  */
 struct tm *platform_gmtime_r(const time_t *timep, struct tm *result);
 
+/**
+ * @brief Thread-safe error string formatting.
+ *
+ * Portable equivalent to POSIX strerror_r / Windows strerror_s.
+ *
+ * @param errnum The error number (e.g. errno or return code).
+ * @param buf Buffer to store the error message.
+ * @param buflen Length of buffer in bytes.
+ * @return Pointer to buf (or error string).
+ */
+const char *platform_strerror(int errnum, char *buf, size_t buflen);
+
 // --- File Stream & Descriptor I/O ---
 
 /**
