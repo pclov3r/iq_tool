@@ -99,6 +99,7 @@ typedef struct {
   AudioOutputContext *audio_out;
   atomic_uint active_program;
   atomic_bool flush_requested;
+  atomic_bool is_synchronized;
   ProcessChainMode process_chain_mode;
 
   float input_samplerate;
@@ -227,10 +228,16 @@ static void nrsc5_event_callback(const nrsc5_event_t *event_payload,
 
   switch (event_payload->event) {
   case NRSC5_EVENT_LOST_DEVICE:
+    atomic_store_explicit(&nrsc5_decoder->is_synchronized, false,
+                          memory_order_release);
     log_error("NRSC5: Lost device synchronization.");
     break;
 
   case NRSC5_EVENT_SYNC:
+    atomic_store_explicit(&nrsc5_decoder->is_synchronized, true,
+                          memory_order_release);
+    atomic_store_explicit(&nrsc5_decoder->flush_requested, true,
+                          memory_order_release);
     log_info("NRSC5: Synchronized");
     log_info("NRSC5: Frequency offset: %.15g Hz",
              event_payload->sync.freq_offset);
@@ -242,6 +249,8 @@ static void nrsc5_event_callback(const nrsc5_event_t *event_payload,
     break;
 
   case NRSC5_EVENT_LOST_SYNC:
+    atomic_store_explicit(&nrsc5_decoder->is_synchronized, false,
+                          memory_order_release);
     log_info("NRSC5: Lost synchronization");
     break;
 
@@ -294,6 +303,12 @@ static void nrsc5_event_callback(const nrsc5_event_t *event_payload,
     if (event_payload->audio.program ==
         atomic_load_explicit(&nrsc5_decoder->active_program,
                              memory_order_relaxed)) {
+      if (nrsc5_decoder->process_chain_mode ==
+              PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL &&
+          !atomic_load_explicit(&nrsc5_decoder->is_synchronized,
+                                memory_order_acquire)) {
+        return;
+      }
       if (atomic_exchange_explicit(&nrsc5_decoder->flush_requested, false,
                                    memory_order_acq_rel)) {
         audio_output_clear(nrsc5_decoder->audio_out);
@@ -687,6 +702,8 @@ static bool output_nrsc5_initialize(ModuleContext *context) {
                         (unsigned int)s_nrsc5_config.program_id,
                         memory_order_relaxed);
   atomic_store_explicit(&nrsc5_decoder->flush_requested, false,
+                        memory_order_relaxed);
+  atomic_store_explicit(&nrsc5_decoder->is_synchronized, false,
                         memory_order_relaxed);
   nrsc5_set_callback(nrsc5_decoder->nrsc5_instance, nrsc5_event_callback,
                      nrsc5_decoder);
