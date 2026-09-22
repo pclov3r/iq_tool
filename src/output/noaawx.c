@@ -55,15 +55,16 @@ typedef struct {
   msresamp_rrrf resampler;    // Resampler (Input Rate -> 48kHz)
 
   // AFSK SAME Decoder
-  nco_crcf afsk_nco;      // 1822.91Hz shift to baseband
-  iirfilt_crcf afsk_lpf;  // Complex lowpass to remove image
-  freqdem afsk_fm;        // FSK to Real discriminator
-  symsync_rrrf afsk_sync; // Symbol synchronizer
-  uint8_t shift_register; // 8-bit shift register for SAME bytes
-  bool is_locked;         // True if locked to 0xAB sync sequence
-  int bit_count;          // Counts 0 to 7 after lock
-  char same_msg[256];     // Buffer for the ASCII message
-  int same_msg_len;       // Length of the current message
+  nco_crcf afsk_nco;             // 1822.91Hz shift to baseband
+  iirfilt_crcf afsk_lpf;         // Complex lowpass to remove image
+  freqdem afsk_fm;               // FSK to Real discriminator
+  symsync_rrrf afsk_sync;        // Symbol synchronizer
+  uint8_t shift_register;        // 8-bit shift register for SAME bytes
+  bool is_locked;                // True if locked to 0xAB sync sequence
+  int bit_count;                 // Counts 0 to 7 after lock
+  char same_msg[256];            // Buffer for the ASCII message
+  int same_msg_length;           // Length of the current message
+  int consecutive_invalid_chars; // Consecutive non-printable characters
 
   // Voting State
   char same_bursts[3][256];
@@ -182,7 +183,8 @@ static bool output_noaawx_initialize(ModuleContext *context) {
   decoder->is_unmuted = !s_noaawx_config.standby;
   decoder->num_eom_bursts = 0;
   decoder->bit_count = 0;
-  decoder->same_msg_len = 0;
+  decoder->same_msg_length = 0;
+  decoder->consecutive_invalid_chars = 0;
   memset(decoder->same_msg, 0, sizeof(decoder->same_msg));
 
   decoder->num_bursts = 0;
@@ -3772,6 +3774,14 @@ static void output_noaawx_flush(ModuleContext *context) {
     audio_output_drain(decoder->audio_out);
   }
 }
+static inline bool is_valid_same_char(uint8_t character) {
+  character &= 0x7F;
+  return (character >= '0' && character <= '9') ||
+         (character >= 'A' && character <= 'Z') || character == '-' ||
+         character == '+' || character == '/' || character == ' ' ||
+         character == '?';
+}
+
 static void run_bit_wise_voting(NoaawxContext *decoder) {
   if (decoder->num_bursts == 0)
     return;
@@ -3780,62 +3790,129 @@ static void run_bit_wise_voting(NoaawxContext *decoder) {
   memset(final_msg, 0, sizeof(final_msg));
 
   if (decoder->num_bursts == 1) {
-    strncpy(final_msg, decoder->same_bursts[0], 255);
+    strncpy(final_msg, decoder->same_bursts[0], sizeof(final_msg) - 1);
+    final_msg[sizeof(final_msg) - 1] = '\0';
   } else if (decoder->num_bursts == 2) {
-    strncpy(final_msg, decoder->same_bursts[0],
-            255); // Fallback to burst 1 if only 2 received
-  } else {
-    // 3 bursts received, Bit-Wise Voting!
-    for (int i = 0; i < 255; i++) {
-      char c1 = decoder->same_bursts[0][i];
-      char c2 = decoder->same_bursts[1][i];
-      char c3 = decoder->same_bursts[2][i];
+    // 2 bursts received: character validity and error correction
+    size_t burst0_length = strlen(decoder->same_bursts[0]);
+    size_t burst1_length = strlen(decoder->same_bursts[1]);
+    size_t max_burst_length =
+        (burst0_length > burst1_length) ? burst0_length : burst1_length;
+    if (max_burst_length > sizeof(final_msg) - 1)
+      max_burst_length = sizeof(final_msg) - 1;
 
-      if (c1 == '\0' && c2 == '\0' && c3 == '\0')
-        break;
+    for (size_t char_index = 0; char_index < max_burst_length; char_index++) {
+      uint8_t burst0_char = (char_index < burst0_length)
+                                ? (uint8_t)decoder->same_bursts[0][char_index]
+                                : 0;
+      uint8_t burst1_char = (char_index < burst1_length)
+                                ? (uint8_t)decoder->same_bursts[1][char_index]
+                                : 0;
 
-      char voted_char = 0;
-      for (int b = 0; b < 8; b++) {
-        int bit1 = (c1 >> b) & 1;
-        int bit2 = (c2 >> b) & 1;
-        int bit3 = (c3 >> b) & 1;
+      uint8_t voted_char = 0;
+      if (burst0_char != 0 && burst1_char != 0) {
+        if (burst0_char == burst1_char) {
+          voted_char = burst0_char;
+        } else {
+          bool burst0_valid = is_valid_same_char(burst0_char);
+          bool burst1_valid = is_valid_same_char(burst1_char);
 
-        int sum = 0;
-        int active = 0;
-        int tiebreaker = 0;
-
-        // Only count the bit if the burst actually has a valid character
-        if (c1 != '\0') {
-          sum += bit1;
-          active++;
-          tiebreaker = bit1;
+          if (burst0_valid && !burst1_valid)
+            voted_char = burst0_char;
+          else if (!burst0_valid && burst1_valid)
+            voted_char = burst1_char;
+          else
+            voted_char = burst0_char;
         }
-        if (c2 != '\0') {
-          sum += bit2;
-          active++;
-          tiebreaker = bit2;
-        }
-        if (c3 != '\0') {
-          sum += bit3;
-          active++;
-          tiebreaker = bit3;
-        }
-
-        if (active == 3) {
-          if (sum >= 2)
-            voted_char |= (1 << b);
-        } else if (active == 2) {
-          if (sum == 2)
-            voted_char |= (1 << b);
-          else if (sum == 1)
-            voted_char |= (tiebreaker << b); // Tiebreaker
-        } else if (active == 1) {
-          if (sum == 1)
-            voted_char |= (1 << b);
-        }
+      } else if (burst0_char != 0) {
+        voted_char = burst0_char;
+      } else {
+        voted_char = burst1_char;
       }
-      final_msg[i] = voted_char;
+
+      voted_char &= 0x7F;
+      final_msg[char_index] =
+          (voted_char >= 32 && voted_char <= 126) ? (char)voted_char : '?';
     }
+    final_msg[max_burst_length] = '\0';
+  } else {
+    // 3 bursts received: 2-out-of-3 bit-wise majority voting
+    size_t burst0_length = strlen(decoder->same_bursts[0]);
+    size_t burst1_length = strlen(decoder->same_bursts[1]);
+    size_t burst2_length = strlen(decoder->same_bursts[2]);
+    size_t max_burst_length = burst0_length;
+    if (burst1_length > max_burst_length)
+      max_burst_length = burst1_length;
+    if (burst2_length > max_burst_length)
+      max_burst_length = burst2_length;
+    if (max_burst_length > sizeof(final_msg) - 1)
+      max_burst_length = sizeof(final_msg) - 1;
+
+    for (size_t char_index = 0; char_index < max_burst_length; char_index++) {
+      uint8_t burst0_char = (char_index < burst0_length)
+                                ? (uint8_t)decoder->same_bursts[0][char_index]
+                                : 0;
+      uint8_t burst1_char = (char_index < burst1_length)
+                                ? (uint8_t)decoder->same_bursts[1][char_index]
+                                : 0;
+      uint8_t burst2_char = (char_index < burst2_length)
+                                ? (uint8_t)decoder->same_bursts[2][char_index]
+                                : 0;
+
+      uint8_t voted_char = 0;
+      int active_burst_count =
+          (burst0_char != 0) + (burst1_char != 0) + (burst2_char != 0);
+
+      if (active_burst_count == 3) {
+        // Standard parallel 2-of-3 bitwise majority formula:
+        voted_char = (burst0_char & burst1_char) | (burst1_char & burst2_char) |
+                     (burst0_char & burst2_char);
+      } else if (active_burst_count == 2) {
+        uint8_t first_active_char;
+        uint8_t second_active_char;
+        if (burst0_char != 0 && burst1_char != 0) {
+          first_active_char = burst0_char;
+          second_active_char = burst1_char;
+        } else if (burst0_char != 0 && burst2_char != 0) {
+          first_active_char = burst0_char;
+          second_active_char = burst2_char;
+        } else {
+          first_active_char = burst1_char;
+          second_active_char = burst2_char;
+        }
+
+        if (first_active_char == second_active_char) {
+          voted_char = first_active_char;
+        } else {
+          bool first_char_valid = is_valid_same_char(first_active_char);
+          bool second_char_valid = is_valid_same_char(second_active_char);
+          if (first_char_valid && !second_char_valid)
+            voted_char = first_active_char;
+          else if (!first_char_valid && second_char_valid)
+            voted_char = second_active_char;
+          else
+            voted_char = first_active_char;
+        }
+      } else if (active_burst_count == 1) {
+        if (burst0_char != 0)
+          voted_char = burst0_char;
+        else if (burst1_char != 0)
+          voted_char = burst1_char;
+        else
+          voted_char = burst2_char;
+      }
+
+      voted_char &= 0x7F;
+      final_msg[char_index] =
+          (voted_char >= 32 && voted_char <= 126) ? (char)voted_char : '?';
+    }
+    final_msg[max_burst_length] = '\0';
+  }
+
+  // Trim any trailing noise after the terminal minus sign '-'
+  char *last_dash = strrchr(final_msg, '-');
+  if (last_dash && (size_t)(last_dash - final_msg) >= 16) {
+    *(last_dash + 1) = '\0';
   }
 
   log_info("Error corrected SAME Header: %s", final_msg);
@@ -3994,7 +4071,8 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
         if (decoder->shift_register == 0xAB) {
           decoder->is_locked = true;
           decoder->bit_count = 0;
-          decoder->same_msg_len = 0;
+          decoder->same_msg_length = 0;
+          decoder->consecutive_invalid_chars = 0;
           memset(decoder->same_msg, 0, sizeof(decoder->same_msg));
         }
       } else {
@@ -4005,16 +4083,45 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
 
           if (byte == 0xAB) {
             // Still in preamble, keep waiting
-            decoder->same_msg_len = 0;
+            decoder->same_msg_length = 0;
+            decoder->consecutive_invalid_chars = 0;
           } else if (byte >= 32 && byte <= 126) {
             // Printable ASCII character
-            if (decoder->same_msg_len < (int)sizeof(decoder->same_msg) - 1) {
-              decoder->same_msg[decoder->same_msg_len++] = (char)byte;
-              decoder->same_msg[decoder->same_msg_len] = '\0';
+            decoder->consecutive_invalid_chars = 0;
+            if (decoder->same_msg_length < (int)sizeof(decoder->same_msg) - 1) {
+              decoder->same_msg[decoder->same_msg_length++] = (char)byte;
+              decoder->same_msg[decoder->same_msg_length] = '\0';
+            }
+            if (decoder->same_msg_length >=
+                (int)sizeof(decoder->same_msg) - 1) {
+              decoder->consecutive_invalid_chars = 4;
             }
           } else {
-            // Non-printable character means the AFSK burst is over (or noise)
-            if (decoder->same_msg_len > 0) {
+            // Non-printable character or bit error
+            decoder->consecutive_invalid_chars++;
+            if (decoder->consecutive_invalid_chars < 4 &&
+                decoder->same_msg_length > 0) {
+              // Maintain character alignment within this burst
+              if (decoder->same_msg_length <
+                  (int)sizeof(decoder->same_msg) - 1) {
+                decoder->same_msg[decoder->same_msg_length++] = (char)byte;
+                decoder->same_msg[decoder->same_msg_length] = '\0';
+              }
+            }
+          }
+
+          if (decoder->consecutive_invalid_chars >= 4) {
+            // 4+ consecutive non-printable bytes or max length: burst is over
+            while (decoder->same_msg_length > 0 &&
+                   ((uint8_t)decoder->same_msg[decoder->same_msg_length - 1] <
+                        32 ||
+                    (uint8_t)decoder->same_msg[decoder->same_msg_length - 1] >
+                        126)) {
+              decoder->same_msg_length--;
+            }
+            decoder->same_msg[decoder->same_msg_length] = '\0';
+
+            if (decoder->same_msg_length > 0) {
               if (strncmp(decoder->same_msg, "ZCZC", 4) == 0) {
                 log_info("SAME Decoder: %s", decoder->same_msg);
 
@@ -4046,6 +4153,7 @@ static size_t output_noaawx_write_chunk(ModuleContext *context,
               }
             }
             decoder->is_locked = false;
+            decoder->consecutive_invalid_chars = 0;
           }
         }
       }
