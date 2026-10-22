@@ -49,27 +49,7 @@ typedef struct FilterState {
 
 // --- Static Helper Functions ---
 
-/**
- * @brief Determines if the filter should be applied before or after resampling
- * for efficiency. This is an important optimization. If downsampling, it checks
- * if the filter's passband is within the Nyquist frequency of the *output*
- * rate. If so, it's more efficient to filter after resampling. This function
- * modifies the config.
- * @param config The application configuration.
- * @param app The application app.
- * @return true on success, false if the filter configuration is invalid for the
- * output rate.
- */
-static bool _configure_filter_stage(AppConfig *config, AppContext *app) {
-  config->dsp.filter.apply_post_resample = false;
-
-  if (config->dsp.filter.count == 0 || config->dsp.raw_passthrough) {
-    return true;
-  }
-
-  double input_rate = (double)app->module.input_info.sample_rate;
-  double output_sample_rate = app->dsp.process_chain_sample_rate_hz;
-
+static float _get_max_filter_freq_hz(const AppConfig *config) {
   float max_filter_freq_hz = 0.0f;
 
   // Find the highest frequency required by any filter in the chain.
@@ -92,6 +72,30 @@ static bool _configure_filter_stage(AppConfig *config, AppContext *app) {
       max_filter_freq_hz = current_max;
     }
   }
+  return max_filter_freq_hz;
+}
+
+/**
+ * @brief Determines if the filter should be applied before or after resampling
+ * for efficiency. This is an important optimization. If downsampling, it checks
+ * if the filter's passband is within the Nyquist frequency of the *output*
+ * rate. If so, it's more efficient to filter after resampling. This function
+ * modifies the config.
+ * @param config The application configuration.
+ * @param app The application app.
+ * @return true on success, false if the filter configuration is invalid for the
+ * output rate.
+ */
+static bool _configure_filter_stage(AppConfig *config, AppContext *app) {
+  config->dsp.filter.apply_post_resample = false;
+
+  if (config->dsp.filter.count == 0 || config->dsp.raw_passthrough) {
+    return true;
+  }
+
+  double input_rate = (double)app->module.input_info.sample_rate;
+  double output_sample_rate = app->dsp.process_chain_sample_rate_hz;
+  float max_filter_freq_hz = _get_max_filter_freq_hz(config);
 
   double input_nyquist = input_rate / 2.0;
   if (max_filter_freq_hz > input_nyquist) {
@@ -252,8 +256,16 @@ _compound_filter_stages(AppConfig *config, double sample_rate,
       if (current_taps_length < FILTER_MINIMUM_TAPS)
         current_taps_length = FILTER_MINIMUM_TAPS;
 
-      if (current_taps_length > FILTER_MAXIMUM_AUTO_TAPS) {
-        current_taps_length = FILTER_MAXIMUM_AUTO_TAPS;
+      unsigned int max_stage_taps =
+          (FILTER_MAXIMUM_AUTO_TAPS - 1) /
+          (unsigned int)config->dsp.filter.count;
+      if (max_stage_taps % 2 == 0)
+        max_stage_taps--;
+      if (max_stage_taps < FILTER_MINIMUM_TAPS)
+        max_stage_taps = FILTER_MINIMUM_TAPS;
+
+      if (current_taps_length > max_stage_taps) {
+        current_taps_length = max_stage_taps;
       }
     }
 
@@ -305,7 +317,8 @@ static bool _compile_filter_object(AppConfig *config, FilterState *state,
                                    liquid_float_complex *master_taps,
                                    int master_taps_length,
                                    bool is_final_filter_complex,
-                                   bool normalize_by_peak, MemoryArena *arena,
+                                   bool normalize_by_peak, double sample_rate,
+                                   MemoryArena *arena,
                                    size_t alloc_size_samples) {
   if (normalize_by_peak || is_final_filter_complex) {
     log_info("Normalizing filter gain (this may be slow for large filters)...");
@@ -320,6 +333,20 @@ static bool _compile_filter_object(AppConfig *config, FilterState *state,
         float mag = cabsf(H);
         if (mag > max_mag)
           max_mag = mag;
+      }
+      if (sample_rate > 0.0) {
+        for (int i = 0; i < config->dsp.filter.count; i++) {
+          const FilterRequest *req = &config->dsp.filter.requests[i];
+          if (req->type == FILTER_TYPE_PASSBAND) {
+            float center_freq_norm = req->freq1_hz / (float)sample_rate;
+            if (center_freq_norm >= -0.5f && center_freq_norm <= 0.5f) {
+              firfilt_cccf_freqresponse(temp_filter, center_freq_norm, &H);
+              float mag = cabsf(H);
+              if (mag > max_mag)
+                max_mag = mag;
+            }
+          }
+        }
       }
       firfilt_cccf_destroy(temp_filter);
     }
@@ -353,14 +380,25 @@ static bool _compile_filter_object(AppConfig *config, FilterState *state,
     unsigned int block_size;
     if (config->dsp.filter.args.fft_size > 0) {
       block_size = (unsigned int)config->dsp.filter.args.fft_size / 2;
-      if (block_size < (unsigned int)master_taps_length - 1)
+      if (block_size < (unsigned int)master_taps_length - 1) {
+        log_error("--filter-fft-size (%d) is too small for the combined filter "
+                  "length (%d taps). Minimum FFT size is %u.",
+                  config->dsp.filter.args.fft_size, master_taps_length,
+                  (unsigned int)master_taps_length * 2);
         return false;
+      }
     } else {
       block_size = 1;
       while (block_size < (unsigned int)master_taps_length - 1)
         block_size *= 2;
       if (block_size < (unsigned int)master_taps_length * 2)
         block_size *= 2;
+    }
+    if (block_size > alloc_size_samples) {
+      log_error("FFT filter block size (%u) exceeds allocated chunk capacity "
+                "(%zu).",
+                block_size, alloc_size_samples);
+      return false;
     }
     state->block_size = block_size;
 
@@ -373,6 +411,8 @@ static bool _compile_filter_object(AppConfig *config, FilterState *state,
     } else {
       float *real_taps = (float *)mem_arena_alloc(
           arena, master_taps_length * sizeof(float), false);
+      if (!real_taps)
+        return false;
       for (int i = 0; i < master_taps_length; i++)
         real_taps[i] = crealf(master_taps[i]);
       state->type_actual = FILTER_IMPL_FFT_SYMMETRIC;
@@ -397,6 +437,8 @@ static bool _compile_filter_object(AppConfig *config, FilterState *state,
     } else {
       float *real_taps = (float *)mem_arena_alloc(
           arena, master_taps_length * sizeof(float), false);
+      if (!real_taps)
+        return false;
       for (int i = 0; i < master_taps_length; i++)
         real_taps[i] = crealf(master_taps[i]);
       state->type_actual = FILTER_IMPL_FIR_SYMMETRIC;
@@ -589,9 +631,17 @@ static bool dsp_filter_validate_options(struct AppContext *app) {
 
     config->dsp.filter.count = 0;
     for (int i = 0; i < FILTER_MAX_CHAIN; i++) {
+      if (config->dsp.filter.args.lowpass[i] < 0.0f) {
+        log_error("--lowpass frequency must be a positive value.");
+        return false;
+      }
       if (config->dsp.filter.args.lowpass[i] > 0.0f)
         add_filter_request(config, FILTER_TYPE_LOWPASS,
                            config->dsp.filter.args.lowpass[i], 0.0f);
+      if (config->dsp.filter.args.highpass[i] < 0.0f) {
+        log_error("--highpass frequency must be a positive value.");
+        return false;
+      }
       if (config->dsp.filter.args.highpass[i] > 0.0f)
         add_filter_request(config, FILTER_TYPE_HIGHPASS,
                            config->dsp.filter.args.highpass[i], 0.0f);
@@ -615,6 +665,10 @@ static bool dsp_filter_validate_options(struct AppContext *app) {
       }
     }
 
+    if (config->dsp.filter.args.transition_width < 0.0f) {
+      log_error("--transition-width must be a positive value.");
+      return false;
+    }
     if (config->dsp.filter.args.transition_width > 0.0f &&
         config->dsp.filter.args.taps > 0) {
       log_error("Cannot specify both --transition-width and --filter-taps.");
@@ -676,8 +730,8 @@ static bool dsp_filter_validate_options(struct AppContext *app) {
         config->dsp.filter.type_req = FILTER_TYPE_FFT;
       }
       int n = config->dsp.filter.args.fft_size;
-      if (n <= 0 || ((n & (n - 1)) != 0)) {
-        log_error("--filter-fft-size must be a positive power of two.");
+      if (n < 4 || ((n & (n - 1)) != 0)) {
+        log_error("--filter-fft-size must be a power of two >= 4.");
         return false;
       }
     }
@@ -718,6 +772,9 @@ static void dsp_filter_reset_api(void *state) {
   FilterState *fs = (FilterState *)state;
   if (!fs)
     return;
+
+  fs->pre_fft_remainder_length = 0;
+  fs->post_fft_remainder_length = 0;
 
   switch (fs->type_actual) {
   case FILTER_IMPL_FIR_SYMMETRIC:
@@ -814,7 +871,7 @@ static void *dsp_filter_init(ModuleContext *ctx, double input_rate,
 
   if (config->dsp.filter.args.taps > 0) {
     log_info("Using user-specified filter size of %d taps.", master_length);
-  } else if (master_length >= FILTER_MAXIMUM_AUTO_TAPS) {
+  } else if (master_length >= FILTER_MAXIMUM_AUTO_TAPS - FILTER_MAX_CHAIN) {
     log_info("Final combined filter clamped to maximum %d taps.",
              master_length);
   } else {
@@ -825,20 +882,26 @@ static void *dsp_filter_init(ModuleContext *ctx, double input_rate,
     log_info("Asymmetric filter detected.");
 
   if (!_compile_filter_object(config, state, master_taps, master_length,
-                              is_complex, norm_peak, arena,
+                              is_complex, norm_peak, sample_rate, arena,
                               ctx->app->process_chain.alloc_size_samples)) {
     log_fatal("Failed to create final combined filter object.");
     return NULL;
   }
 
-  if (config->dsp.filter.apply_post_resample) {
-    state->post_fft_remainder_buffer = (ComplexFloat *)mem_arena_alloc(
-        arena, state->block_size * sizeof(ComplexFloat), true);
-    state->post_fft_remainder_length = 0;
-  } else {
-    state->pre_fft_remainder_buffer = (ComplexFloat *)mem_arena_alloc(
-        arena, state->block_size * sizeof(ComplexFloat), true);
-    state->pre_fft_remainder_length = 0;
+  if (state->block_size > 0) {
+    if (config->dsp.filter.apply_post_resample) {
+      state->post_fft_remainder_buffer = (ComplexFloat *)mem_arena_alloc(
+          arena, state->block_size * sizeof(ComplexFloat), true);
+      if (!state->post_fft_remainder_buffer)
+        return NULL;
+      state->post_fft_remainder_length = 0;
+    } else {
+      state->pre_fft_remainder_buffer = (ComplexFloat *)mem_arena_alloc(
+          arena, state->block_size * sizeof(ComplexFloat), true);
+      if (!state->pre_fft_remainder_buffer)
+        return NULL;
+      state->pre_fft_remainder_length = 0;
+    }
   }
 
   state->apply_post_resample = config->dsp.filter.apply_post_resample;
@@ -857,14 +920,14 @@ static SampleChunk *dsp_filter_process(void *state, SampleChunk *chunk) {
 
   unsigned int frames_in =
       fs->apply_post_resample ? chunk->frames_to_write : chunk->frames_read;
-  if (frames_in == 0)
+  if (frames_in == 0 && chunk->state != CHUNK_STATE_END_OF_STREAM)
     return chunk;
 
   ComplexFloat *target_buffer = chunk->current_buffer;
 
   switch (fs->type_actual) {
   case FILTER_IMPL_FIR_SYMMETRIC:
-    if (fs->fir_crcf) {
+    if (fs->fir_crcf && frames_in > 0) {
       firfilt_crcf_execute_block(
           fs->fir_crcf, (liquid_float_complex *)target_buffer, frames_in,
           (liquid_float_complex *)target_buffer);
@@ -872,7 +935,7 @@ static SampleChunk *dsp_filter_process(void *state, SampleChunk *chunk) {
     break;
 
   case FILTER_IMPL_FIR_ASYMMETRIC:
-    if (fs->fir_cccf) {
+    if (fs->fir_cccf && frames_in > 0) {
       firfilt_cccf_execute_block(
           fs->fir_cccf, (liquid_float_complex *)target_buffer, frames_in,
           (liquid_float_complex *)target_buffer);
@@ -909,23 +972,36 @@ static SampleChunk *dsp_filter_process(void *state, SampleChunk *chunk) {
 }
 
 static size_t dsp_filter_get_chunk_size(AppConfig *config) {
+  if (config->dsp.filter.count == 0) {
+    return 0;
+  }
+
   size_t estimated_taps = 0;
   if (config->dsp.filter.args.taps > 0) {
-    estimated_taps = config->dsp.filter.args.taps;
-  } else if (config->dsp.filter.count > 0) {
+    size_t count = (size_t)config->dsp.filter.count;
+    size_t per_stage_taps = (size_t)config->dsp.filter.args.taps;
+    if (per_stage_taps % 2 == 0)
+      per_stage_taps++;
+    estimated_taps = count * per_stage_taps - (count - 1);
+  } else {
     estimated_taps = FILTER_SAFETY_DEFAULT_TAPS;
   }
 
-  size_t req_block_size = 0;
-  if (estimated_taps > 0) {
-    req_block_size = 1;
-    while (req_block_size < estimated_taps) {
-      req_block_size *= 2;
-    }
-    if (req_block_size < estimated_taps * 2) {
-      req_block_size *= 2;
+  size_t req_block_size = 1;
+  while (req_block_size < estimated_taps - 1) {
+    req_block_size *= 2;
+  }
+  if (req_block_size < estimated_taps * 2) {
+    req_block_size *= 2;
+  }
+
+  if (config->dsp.filter.args.fft_size > 0) {
+    size_t user_block_size = (size_t)config->dsp.filter.args.fft_size / 2;
+    if (user_block_size > req_block_size) {
+      req_block_size = user_block_size;
     }
   }
+
   return req_block_size;
 }
 
@@ -934,6 +1010,16 @@ static bool dsp_filter_is_active(AppContext *app, const char *stage_tag) {
   if (config->dsp.filter.count == 0) {
     return false;
   }
+
+  double input_rate = (double)app->module.input_info.sample_rate;
+  double output_sample_rate = app->dsp.process_chain_sample_rate_hz;
+  if (input_rate > 0.0 && output_sample_rate > 0.0) {
+    float max_filter_freq_hz = _get_max_filter_freq_hz(config);
+    config->dsp.filter.apply_post_resample =
+        (output_sample_rate < input_rate) &&
+        (max_filter_freq_hz <= (output_sample_rate / 2.0));
+  }
+
   if (stage_tag && strcmp(stage_tag, "pre") == 0) {
     return !config->dsp.filter.apply_post_resample;
   }
