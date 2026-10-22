@@ -453,7 +453,7 @@ bool iq_correction_run_initial_calibration(
         ((AppConfig *)app->config)->dsp.input_gain);
 
     if (dc_block_state) {
-      temp_chunk.stream_discontinuity_event = false;
+      temp_chunk.state = CHUNK_STATE_DATA;
       dc_block_api->process(dc_block_state, &temp_chunk);
     }
 
@@ -762,7 +762,7 @@ static void *dsp_iq_correction_init(ModuleContext *ctx, double input_rate,
 }
 
 static SampleChunk *dsp_iq_correction_process(void *state, SampleChunk *chunk) {
-  if (chunk->stream_discontinuity_event) {
+  if (chunk->state == CHUNK_STATE_STREAM_RESET) {
     // no-op for now
   }
   IqState *iq_state = (IqState *)state;

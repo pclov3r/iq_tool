@@ -414,7 +414,7 @@ static unsigned int _execute_fft_filter_pass(FilterState *state,
                                              ComplexFloat *output_buffer,
                                              ComplexFloat *remainder_buffer,
                                              unsigned int *remainder_length_ptr,
-                                             bool is_last_chunk) {
+                                             SampleChunkState chunk_state) {
   unsigned int old_remainder_length = *remainder_length_ptr;
   unsigned int total_frames_to_process = old_remainder_length + frames_in;
 
@@ -444,7 +444,8 @@ static unsigned int _execute_fft_filter_pass(FilterState *state,
   }
 
   // EOF LOGIC: Flush the remaining tail of the file
-  if (is_last_chunk && (total_frames_to_process > processed_frames)) {
+  if (chunk_state == CHUNK_STATE_END_OF_STREAM &&
+      (total_frames_to_process > processed_frames)) {
     unsigned int final_tail_length = total_frames_to_process - processed_frames;
 
     // Zero-pad the remaining samples up to block_size
@@ -850,7 +851,7 @@ static SampleChunk *dsp_filter_process(void *state, SampleChunk *chunk) {
   if (!fs)
     return chunk;
 
-  if (chunk->stream_discontinuity_event) {
+  if (chunk->state == CHUNK_STATE_STREAM_RESET) {
     dsp_filter_reset_api(fs);
   }
 
@@ -889,7 +890,7 @@ static SampleChunk *dsp_filter_process(void *state, SampleChunk *chunk) {
 
     unsigned int output_frames = _execute_fft_filter_pass(
         fs, target_buffer, frames_in, target_buffer, remainder_buffer,
-        remainder_length_ptr, chunk->is_last_chunk);
+        remainder_length_ptr, chunk->state);
 
     if (fs->apply_post_resample) {
       chunk->frames_to_write = output_frames;

@@ -51,7 +51,7 @@ static SampleChunk *dsp_resampler_process(void *state, SampleChunk *chunk) {
   if (!resampler)
     return chunk;
 
-  if (chunk->stream_discontinuity_event) {
+  if (chunk->state == CHUNK_STATE_STREAM_RESET) {
     msresamp_crcf_reset(resampler->resamp);
   }
 

@@ -328,6 +328,9 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
         app->process_chain.alloc_size_samples;
     item->final_output_capacity_bytes = final_stride;
     item->input_bytes_per_iq_sample = app->module.input_bytes_per_iq_sample;
+    item->frames_read = 0;
+    item->frames_to_write = 0;
+    item->state = CHUNK_STATE_EMPTY;
   }
 
   // -------------------------------------------------------------------------

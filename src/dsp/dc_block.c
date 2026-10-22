@@ -66,7 +66,7 @@ static SampleChunk *dc_block_process(void *state, SampleChunk *chunk) {
   if (!filter)
     return chunk;
 
-  if (chunk->stream_discontinuity_event) {
+  if (chunk->state == CHUNK_STATE_STREAM_RESET) {
     log_debug("DC block filter reset due to stream discontinuity.");
     iirfilt_crcf_reset(filter);
   }

@@ -25,6 +25,17 @@
 // --- Struct Definitions ---
 
 /**
+ * @enum SampleChunkState
+ * @brief Represents the lifecycle state of a SampleChunk in the pipeline.
+ */
+typedef enum SampleChunkState {
+  CHUNK_STATE_EMPTY = 0,    ///< Uninitialized or returned to the free pool.
+  CHUNK_STATE_DATA,         ///< Active chunk carrying valid sample frames.
+  CHUNK_STATE_STREAM_RESET, ///< In-band stream discontinuity (e.g., SDR overrun).
+  CHUNK_STATE_END_OF_STREAM ///< Final chunk signaling the end of the stream (EOF).
+} SampleChunkState;
+
+/**
  * @struct SampleChunk
  * @brief A container for a block of samples and its state as it moves through
  * the process_chain.
@@ -61,10 +72,8 @@ typedef struct SampleChunk {
   size_t
       input_bytes_per_iq_sample; ///< Size of a single I/Q pair from the input.
 
-  // --- Stream Flags ---
-  bool is_last_chunk; ///< Flag indicating the end of the stream (EOF).
-  bool stream_discontinuity_event; ///< Flag indicating an input reset (e.g.,
-                                   ///< SDR overrun).
+  // --- Stream State ---
+  SampleChunkState state; ///< Lifecycle state of this chunk in the pipeline.
 
 } SampleChunk;
 

@@ -364,7 +364,7 @@ static void *dsp_agc_init(ModuleContext *ctx, double input_rate,
 
 static SampleChunk *dsp_agc_process(void *state, SampleChunk *chunk) {
   HarrisAgc *agc = (HarrisAgc *)state;
-  if (chunk->stream_discontinuity_event) {
+  if (chunk->state == CHUNK_STATE_STREAM_RESET) {
     agc_reset(agc);
   }
   agc_apply(agc, chunk->current_buffer, chunk->frames_to_write);

@@ -106,21 +106,31 @@ void *process_chain_thread_chunker(void *arg) {
       if (frames_read < 0) {
         request_forceful_shutdown(
             "Chunker: Fatal error parsing input buffer stream.", app);
+        item->state = CHUNK_STATE_EMPTY;
         queue_enqueue(app->process_chain.free_sample_chunk_queue, item);
         break;
       }
 
       if (frames_read == 0 && !is_reset) {
-        item->is_last_chunk = true;
+        item->state = CHUNK_STATE_END_OF_STREAM;
         item->frames_read = 0;
-        queue_enqueue(app->process_chain.chunker_output_queue, item);
+        item->frames_to_write = 0;
+        item->current_buffer = item->ping_buffer;
+        if (!is_shutdown_requested()) {
+          atomic_store_explicit(&app->stats.end_of_stream_reached, true,
+                                memory_order_release);
+        }
+        if (!queue_enqueue(app->process_chain.chunker_output_queue, item)) {
+          item->state = CHUNK_STATE_EMPTY;
+          queue_enqueue_forced(app->process_chain.free_sample_chunk_queue,
+                               item);
+        }
         break;
       }
 
       item->frames_read = frames_read;
       item->frames_to_write = (unsigned int)frames_read;
-      item->stream_discontinuity_event = is_reset;
-      item->is_last_chunk = false;
+      item->state = is_reset ? CHUNK_STATE_STREAM_RESET : CHUNK_STATE_DATA;
 
       item->current_buffer = item->ping_buffer;
 
@@ -139,6 +149,7 @@ void *process_chain_thread_chunker(void *arg) {
         // The process_chain is shutting down, so we can't send data forward.
         // We drop the data, but we MUST return the memory to the pool.
         // We use forced enqueue to guarantee the pool accepts it.
+        item->state = CHUNK_STATE_EMPTY;
         queue_enqueue_forced(app->process_chain.free_sample_chunk_queue, item);
         break;
       }
@@ -178,8 +189,8 @@ void *process_chain_thread_chunker(void *arg) {
         item->frames_to_write = (unsigned int)item->frames_read;
         item->packet_sample_format = app->module.input_format;
         item->input_bytes_per_iq_sample = app->module.input_bytes_per_iq_sample;
-        item->stream_discontinuity_event = false;
-        item->is_last_chunk = (bytes_read == 0); // EOF reached
+        item->state = (bytes_read == 0) ? CHUNK_STATE_END_OF_STREAM
+                                        : CHUNK_STATE_DATA; // EOF reached
 
         item->current_buffer = item->ping_buffer;
 
@@ -194,12 +205,19 @@ void *process_chain_thread_chunker(void *arg) {
                                     item->frames_read, memory_order_relaxed);
         }
 
+        if (item->state == CHUNK_STATE_END_OF_STREAM &&
+            !is_shutdown_requested()) {
+          atomic_store_explicit(&app->stats.end_of_stream_reached, true,
+                                memory_order_release);
+        }
+
         if (!queue_enqueue(app->process_chain.chunker_output_queue, item)) {
+          item->state = CHUNK_STATE_EMPTY;
           queue_enqueue_forced(app->process_chain.free_sample_chunk_queue,
                                item);
           break;
         }
-        if (item->is_last_chunk)
+        if (item->state == CHUNK_STATE_END_OF_STREAM)
           break;
       }
     }
@@ -215,9 +233,15 @@ void *process_chain_thread_chunker(void *arg) {
     SampleChunk *last_item = (SampleChunk *)queue_try_dequeue(
         app->process_chain.free_sample_chunk_queue);
     if (last_item) {
-      last_item->is_last_chunk = true;
+      last_item->state = CHUNK_STATE_END_OF_STREAM;
       last_item->frames_read = 0;
-      queue_enqueue(app->process_chain.chunker_output_queue, last_item);
+      last_item->frames_to_write = 0;
+      last_item->current_buffer = last_item->ping_buffer;
+      if (!queue_enqueue(app->process_chain.chunker_output_queue, last_item)) {
+        last_item->state = CHUNK_STATE_EMPTY;
+        queue_enqueue_forced(app->process_chain.free_sample_chunk_queue,
+                             last_item);
+      }
     }
   }
 
@@ -244,7 +268,7 @@ void *process_chain_thread_output(void *arg) {
 
     // 1. Process payload FIRST if it exists
     // This ensures the partial "tail" of a file is written before we exit.
-    if (item->frames_to_write > 0 && !item->stream_discontinuity_event) {
+    if (item->frames_to_write > 0 && item->state != CHUNK_STATE_STREAM_RESET) {
       if (!args->config->dsp.raw_passthrough) {
         if (app->dsp.process_chain_gain != 1.0f) {
           float gain = app->dsp.process_chain_gain;
@@ -290,20 +314,22 @@ void *process_chain_thread_output(void *arg) {
     }
 
     // 2. Handle Reset Event (Input Overrun)
-    if (item->stream_discontinuity_event) {
+    if (item->state == CHUNK_STATE_STREAM_RESET) {
       if (out_api->reset)
         out_api->reset(&context);
     }
 
     // 3. Handle End-of-Stream
-    if (item->is_last_chunk) {
+    if (item->state == CHUNK_STATE_END_OF_STREAM) {
       if (out_api->flush)
         out_api->flush(&context);
+      item->state = CHUNK_STATE_EMPTY;
       queue_enqueue(app->process_chain.free_sample_chunk_queue, item);
       break; // Loop exit happens here, AFTER processing data/flush
     }
 
     // 4. Return regular chunks to the pool
+    item->state = CHUNK_STATE_EMPTY;
     if (!queue_enqueue(app->process_chain.free_sample_chunk_queue, item))
       break;
   }
@@ -333,7 +359,7 @@ static void *process_chain_thread_dsp(void *arg) {
       break; // Input queue signaled shutdown
     }
 
-    bool was_last = chunk->is_last_chunk;
+    bool is_end_of_stream = (chunk->state == CHUNK_STATE_END_OF_STREAM);
 
     chunk = ctx->module->process(ctx->state, chunk);
 
@@ -342,13 +368,14 @@ static void *process_chain_thread_dsp(void *arg) {
         // Enqueue failed because pipeline is shutting down.
         // Return chunk to pool so we don't leak memory during shutdown.
         if (ctx->free_chunk_q) {
+          chunk->state = CHUNK_STATE_EMPTY;
           queue_enqueue_forced(ctx->free_chunk_q, chunk);
         }
         break;
       }
     }
 
-    if (was_last) {
+    if (is_end_of_stream) {
       break;
     }
   }

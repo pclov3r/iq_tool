@@ -171,7 +171,7 @@ static SampleChunk *dsp_nco_process(void *state, SampleChunk *chunk) {
   if (!nco_state)
     return chunk;
 
-  if (chunk->stream_discontinuity_event) {
+  if (chunk->state == CHUNK_STATE_STREAM_RESET) {
     if (nco_state->pre_resample_nco)
       nco_reset(nco_state->pre_resample_nco);
     if (nco_state->post_resample_nco)
