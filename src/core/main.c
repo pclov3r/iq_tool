@@ -153,25 +153,39 @@ int main(int argc, char *argv[]) {
   }
 
   if (!init_input_module(&config, &app)) {
+    atomic_store_explicit(&app.stats.stream_state, STREAM_STATE_ERROR,
+                          memory_order_relaxed);
     goto cleanup;
   }
   // Perform pre-stream calibration if needed (requires open input module)
   if (app.module.input_api->pre_stream_iq_correction) {
     ModuleContext context = {.config = &config, .app = &app};
-    if (!app.module.input_api->pre_stream_iq_correction(&context))
+    if (!app.module.input_api->pre_stream_iq_correction(&context)) {
+      atomic_store_explicit(&app.stats.stream_state, STREAM_STATE_ERROR,
+                            memory_order_relaxed);
       goto cleanup;
+    }
   }
   process_chain_context.config = &config;
   process_chain_context.app = &app;
   if (!process_chain_setup_buffers(&process_chain_context)) {
+    log_fatal("Failed to setup pipeline buffers.");
+    atomic_store_explicit(&app.stats.stream_state, STREAM_STATE_ERROR,
+                          memory_order_relaxed);
     goto cleanup;
   }
 
   if (!process_chain_init_dsp_modules(&process_chain_context)) {
+    log_fatal("Failed to initialize DSP processing chain.");
+    atomic_store_explicit(&app.stats.stream_state, STREAM_STATE_ERROR,
+                          memory_order_relaxed);
     goto cleanup;
   }
 
   if (!init_output_module(&config, &app)) {
+    log_fatal("Failed to initialize output module.");
+    atomic_store_explicit(&app.stats.stream_state, STREAM_STATE_ERROR,
+                          memory_order_relaxed);
     goto cleanup;
   }
   resources_initialized = true;
@@ -194,6 +208,8 @@ int main(int argc, char *argv[]) {
 
   if (!process_chain_execute(&process_chain_context)) {
     log_fatal("Processing execution failed.");
+    atomic_store_explicit(&app.stats.stream_state, STREAM_STATE_ERROR,
+                          memory_order_relaxed);
   }
 
   bool processing_ok =
@@ -205,9 +221,18 @@ cleanup:
   signal_handler_clear_context();
   thread_manager_join_all(&app.thread_manager);
 
+  if (!resources_initialized && exit_status == EXIT_SUCCESS) {
+    atomic_store_explicit(&app.stats.stream_state, STREAM_STATE_ERROR,
+                          memory_order_relaxed);
+    exit_status = EXIT_FAILURE;
+  }
+
   bool final_ok =
       (atomic_load_explicit(&app.stats.stream_state, memory_order_relaxed) !=
        STREAM_STATE_ERROR);
+  if (!final_ok) {
+    exit_status = EXIT_FAILURE;
+  }
 
   if (app.module.output_api) {
     log_info("Closing %s output module...", config.output.module_name);
@@ -219,10 +244,12 @@ cleanup:
   process_chain_teardown_buffers(&process_chain_context);
 
   if (app.module.input_api) {
-    if (app.stream_source_type == STREAM_SOURCE_LIVE_STREAM) {
-      log_info("Stopping %s live input capture...", config.input.type_name);
-    } else {
-      log_info("Finished %s file processing.", config.input.type_name);
+    if (resources_initialized) {
+      if (app.stream_source_type == STREAM_SOURCE_LIVE_STREAM) {
+        log_info("Stopping %s live input capture...", config.input.type_name);
+      } else {
+        log_info("Finished %s file processing.", config.input.type_name);
+      }
     }
     log_info("Closing %s input module...", config.input.type_name);
     close_input_module(&config, &app);

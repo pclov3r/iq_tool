@@ -468,9 +468,9 @@ bool process_chain_execute(ProcessChainContext *context) {
     threads_ok = false;
 
   if (!threads_ok) {
-    log_fatal("Failed to spawn one or more process_chain threads. Initiating "
-              "shutdown.");
-    request_shutdown(); // Signal any successfully started threads to stop
+    request_forceful_shutdown(
+        "Failed to spawn one or more process_chain threads. Initiating shutdown.",
+        app);
   }
 
   // --- Step 6: Wait for all spawned threads to complete ---
