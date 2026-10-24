@@ -186,7 +186,7 @@ int main(int argc, char *argv[]) {
 
   app.stats.progress_callback = application_progress_callback;
   app.stats.progress_callback_udata = &g_console_mutex;
-
+  atomic_init(&app.stats.stream_state, STREAM_STATE_RUNNING);
   app.stats.start_time = time(NULL);
 
   setup_input_watchdog(&app);
@@ -197,7 +197,8 @@ int main(int argc, char *argv[]) {
   }
 
   bool processing_ok =
-      !atomic_load_explicit(&app.stats.error_occurred, memory_order_relaxed);
+      (atomic_load_explicit(&app.stats.stream_state, memory_order_relaxed) !=
+       STREAM_STATE_ERROR);
   exit_status = processing_ok ? EXIT_SUCCESS : EXIT_FAILURE;
 
 cleanup:
@@ -205,7 +206,8 @@ cleanup:
   thread_manager_join_all(&app.thread_manager);
 
   bool final_ok =
-      !atomic_load_explicit(&app.stats.error_occurred, memory_order_relaxed);
+      (atomic_load_explicit(&app.stats.stream_state, memory_order_relaxed) !=
+       STREAM_STATE_ERROR);
 
   if (app.module.output_api) {
     log_info("Closing %s output module...", config.output.module_name);
@@ -494,8 +496,11 @@ static void print_final_summary(const AppConfig *config, const AppContext *app,
         (1024.0 * 1024.0) / duration_secs;
   }
 
+  StreamState stream_state = (StreamState)atomic_load_explicit(
+      &app->stats.stream_state, memory_order_relaxed);
+
   fprintf(stderr, "\n--- Final Summary ---\n");
-  if (!success) {
+  if (!success || stream_state == STREAM_STATE_ERROR) {
     fprintf(stderr, "%-*s %s\n", label_width,
             "Status:", "Stopped Due to Error");
     if ((unsigned long long)atomic_load(&app->stats.total_frames_read) > 0) {
@@ -504,8 +509,7 @@ static void print_final_summary(const AppConfig *config, const AppContext *app,
     }
     fprintf(stderr, "%-*s %s (possibly incomplete)\n", label_width,
             "Output File Size:", size_buffer);
-  } else if (atomic_load_explicit(&app->stats.end_of_stream_reached,
-                                  memory_order_relaxed)) {
+  } else if (stream_state == STREAM_STATE_END_OF_STREAM) {
     fprintf(stderr, "%-*s %s\n", label_width,
             "Status:", "Completed Successfully");
     fprintf(stderr, "%-*s %s\n", label_width,
@@ -524,7 +528,7 @@ static void print_final_summary(const AppConfig *config, const AppContext *app,
             "Final Output Size:", size_buffer);
     fprintf(stderr, "%-*s %.2f MB/s\n", label_width,
             "Average Write Speed:", avg_write_speed_mbps);
-  } else if (is_shutdown_requested()) {
+  } else if (stream_state == STREAM_STATE_STOPPED || is_shutdown_requested()) {
     bool input_has_known_length =
         (app->process_chain_mode == PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL);
     if (!input_has_known_length) {

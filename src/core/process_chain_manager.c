@@ -477,7 +477,8 @@ bool process_chain_execute(ProcessChainContext *context) {
   thread_manager_join_all(manager);
   log_debug("All process_chain threads have completed.");
   success =
-      !atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed);
+      (atomic_load_explicit(&app->stats.stream_state, memory_order_relaxed) !=
+       STREAM_STATE_ERROR);
 
   // --- Step 7: Clean up all process_chain-specific app ---
   return success;

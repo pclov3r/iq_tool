@@ -171,6 +171,10 @@ void request_shutdown(void) {
   AppContext *app = atomic_load_explicit(&g_app_context_for_signal_handler,
                                          memory_order_acquire);
   if (app) {
+    int expected_running = STREAM_STATE_RUNNING;
+    atomic_compare_exchange_strong_explicit(
+        &app->stats.stream_state, &expected_running, STREAM_STATE_STOPPED,
+        memory_order_release, memory_order_relaxed);
 
     // Signal the global shutdown event to wake up any sleeping input threads
     if (app->process_chain.shutdown_event) {
@@ -205,9 +209,10 @@ void request_shutdown(void) {
 }
 
 void request_forceful_shutdown(const char *context_msg, AppContext *app) {
-  bool expected = false;
-  if (atomic_compare_exchange_strong(&app->stats.error_occurred, &expected,
-                                     true)) {
+  int current = atomic_exchange_explicit(&app->stats.stream_state,
+                                         STREAM_STATE_ERROR,
+                                         memory_order_acq_rel);
+  if (current != STREAM_STATE_ERROR) {
     log_fatal("%s", context_msg);
     request_shutdown();
   }

@@ -30,8 +30,7 @@ static bool process_chain_queue_samples(void *context, const void *data,
                                         SampleFormat format) {
   AppContext *app = (AppContext *)context;
   input_update_heartbeat(app);
-  if (is_shutdown_requested() ||
-      atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed))
+  if (is_shutdown_requested() || input_has_error(app))
     return false;
 
   PacketWriteResult res = packet_serializer_write_packet(
@@ -87,9 +86,7 @@ void *process_chain_thread_chunker(void *arg) {
     SerializerState state;
     memset(&state, 0, sizeof(state));
 
-    while (!is_shutdown_requested() &&
-           !atomic_load_explicit(&app->stats.error_occurred,
-                                 memory_order_relaxed)) {
+    while (!is_shutdown_requested() && !input_has_error(app)) {
       SampleChunk *item = (SampleChunk *)queue_dequeue(
           app->process_chain.free_sample_chunk_queue);
       if (!item)
@@ -117,8 +114,11 @@ void *process_chain_thread_chunker(void *arg) {
         item->frames_to_write = 0;
         item->current_buffer = item->ping_buffer;
         if (!is_shutdown_requested()) {
-          atomic_store_explicit(&app->stats.end_of_stream_reached, true,
-                                memory_order_release);
+          int expected_running = STREAM_STATE_RUNNING;
+          atomic_compare_exchange_strong_explicit(
+              &app->stats.stream_state, &expected_running,
+              STREAM_STATE_END_OF_STREAM, memory_order_release,
+              memory_order_relaxed);
         }
         if (!queue_enqueue(app->process_chain.chunker_output_queue, item)) {
           item->state = CHUNK_STATE_EMPTY;
@@ -165,9 +165,7 @@ void *process_chain_thread_chunker(void *arg) {
       request_forceful_shutdown(
           "Chunker: File input module missing read_chunk.", app);
     } else {
-      while (!is_shutdown_requested() &&
-             !atomic_load_explicit(&app->stats.error_occurred,
-                                   memory_order_relaxed)) {
+      while (!is_shutdown_requested() && !input_has_error(app)) {
         SampleChunk *item = (SampleChunk *)queue_dequeue(
             app->process_chain.free_sample_chunk_queue);
         if (!item)
@@ -207,8 +205,11 @@ void *process_chain_thread_chunker(void *arg) {
 
         bool is_end_of_stream = (item->state == CHUNK_STATE_END_OF_STREAM);
         if (is_end_of_stream && !is_shutdown_requested()) {
-          atomic_store_explicit(&app->stats.end_of_stream_reached, true,
-                                memory_order_release);
+          int expected_running = STREAM_STATE_RUNNING;
+          atomic_compare_exchange_strong_explicit(
+              &app->stats.stream_state, &expected_running,
+              STREAM_STATE_END_OF_STREAM, memory_order_release,
+              memory_order_relaxed);
         }
 
         if (!queue_enqueue(app->process_chain.chunker_output_queue, item)) {
@@ -225,10 +226,12 @@ void *process_chain_thread_chunker(void *arg) {
   }
   }
 
-  if (!is_shutdown_requested()) {
+  if (!is_shutdown_requested() && !input_has_error(app)) {
     log_debug("Chunker thread finished naturally. End of stream reached.");
-    atomic_store_explicit(&app->stats.end_of_stream_reached, true,
-                          memory_order_release);
+    int expected_running = STREAM_STATE_RUNNING;
+    atomic_compare_exchange_strong_explicit(
+        &app->stats.stream_state, &expected_running, STREAM_STATE_END_OF_STREAM,
+        memory_order_release, memory_order_relaxed);
   } else {
     SampleChunk *last_item = (SampleChunk *)queue_try_dequeue(
         app->process_chain.free_sample_chunk_queue);
@@ -286,11 +289,10 @@ void *process_chain_thread_output(void *arg) {
                                             bytes_to_write);
 
       if (written < bytes_to_write) {
-        log_error("Fatal I/O Error: Output module failed to write the complete "
-                  "chunk (Disk full? Broken Pipe?). Initiating shutdown.");
-        atomic_store_explicit(&app->stats.error_occurred, true,
-                              memory_order_relaxed);
-        request_shutdown();
+        request_forceful_shutdown(
+            "Fatal I/O Error: Output module failed to write the complete chunk "
+            "(Disk full? Broken Pipe?). Initiating shutdown.",
+            app);
       }
 
       // Stats & Progress Reporting (Only for file outputs)

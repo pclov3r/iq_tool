@@ -36,7 +36,8 @@ static inline void input_update_heartbeat(AppContext *app) {
  */
 static inline bool input_has_error(const AppContext *app) {
   return app &&
-         atomic_load_explicit(&app->stats.error_occurred, memory_order_relaxed);
+         (atomic_load_explicit(&app->stats.stream_state, memory_order_relaxed) ==
+          STREAM_STATE_ERROR);
 }
 
 #endif // INPUT_COMMON_H_

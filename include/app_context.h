@@ -216,11 +216,20 @@ typedef void (*ProgressUpdateFn)(unsigned long long current_output_frames,
                                  unsigned long long current_bytes_written,
                                  void *udata);
 
-typedef struct RuntimeState {
+/**
+ * @enum StreamState
+ * @brief Represents the lifecycle execution state of the processing stream.
+ */
+typedef enum StreamState {
+  STREAM_STATE_RUNNING = 0,   ///< Stream is active and processing chunks.
+  STREAM_STATE_END_OF_STREAM, ///< Input stream completed naturally at EOF.
+  STREAM_STATE_STOPPED,       ///< Processing stopped/cancelled by user request.
+  STREAM_STATE_ERROR          ///< Processing terminated due to a fatal error.
+} StreamState;
 
+typedef struct RuntimeState {
   _Atomic double last_input_heartbeat_time;
-  atomic_bool error_occurred;
-  atomic_bool end_of_stream_reached;
+  atomic_int stream_state;
 
   atomic_uint_least64_t total_frames_read;
   atomic_uint_least64_t total_output_frames;
