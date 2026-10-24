@@ -205,8 +205,8 @@ void *process_chain_thread_chunker(void *arg) {
                                     item->frames_read, memory_order_relaxed);
         }
 
-        if (item->state == CHUNK_STATE_END_OF_STREAM &&
-            !is_shutdown_requested()) {
+        bool is_end_of_stream = (item->state == CHUNK_STATE_END_OF_STREAM);
+        if (is_end_of_stream && !is_shutdown_requested()) {
           atomic_store_explicit(&app->stats.end_of_stream_reached, true,
                                 memory_order_release);
         }
@@ -217,7 +217,7 @@ void *process_chain_thread_chunker(void *arg) {
                                item);
           break;
         }
-        if (item->state == CHUNK_STATE_END_OF_STREAM)
+        if (is_end_of_stream)
           break;
       }
     }

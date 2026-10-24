@@ -952,18 +952,8 @@ static bool input_wav_pre_stream_iq_correction(ModuleContext *context) {
 
   // The module's only job is to call the calibration service with its private
   // file handle.
-  size_t raw_buffer_size =
-      4096 *
-      context->app->module.input_bytes_per_iq_sample; // IQ_CORRECTION_FFT_SIZE
-  void *raw_buffer = mem_arena_alloc(&context->app->process_chain.setup_arena,
-                                     raw_buffer_size, false);
-  if (!raw_buffer)
-    return false;
-
-  // We do an initial read inside the calibration function now
   bool result = iq_correction_run_initial_calibration(
-      context, raw_buffer, raw_buffer_size, wav_iq_cal_read_cb,
-      private_data->infile);
+      context, wav_iq_cal_read_cb, private_data->infile);
 
   if (sf_seek(private_data->infile, 0, SEEK_SET) < 0) {
     log_fatal("Failed to rewind file after calibration.");
