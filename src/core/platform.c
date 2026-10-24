@@ -211,6 +211,14 @@ FILE *platform_file_open_write(const char *path) {
   return platform_fopen(path, "wb");
 }
 
+FILE *platform_open_tty(void) {
+#ifdef _WIN32
+  return fopen("CONIN$", "r");
+#else
+  return fopen("/dev/tty", "r");
+#endif
+}
+
 int64_t platform_file_size(const char *path) {
   if (!path || *path == '\0')
     return -1;

@@ -41,11 +41,6 @@ typedef struct SummaryInfo {
 // --- Function Declarations ---
 
 /**
- * @brief Clears the standard input buffer up to the next newline or EOF.
- */
-void utility_clear_stdin(void);
-
-/**
  * @brief Formats a file size in bytes into a human-readable string (B, KB, MB,
  * GB).
  * @param size_bytes The size in bytes.

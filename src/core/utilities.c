@@ -16,12 +16,6 @@
 #include <string.h>
 #include <time.h>
 
-void utility_clear_stdin(void) {
-  int c;
-  while ((c = getchar()) != '\n' && c != EOF)
-    ;
-}
-
 const char *utility_format_size(long long size_bytes, char *buffer,
                                 size_t buffer_size) {
   static const char *error_msg = "(N/A)";
@@ -122,13 +116,27 @@ bool utility_check_file_exists(const char *full_path) {
 }
 
 bool utility_prompt_for_overwrite(const char *path_for_messages) {
+  FILE *tty = platform_open_tty();
+  if (!tty) {
+    log_error("Output file '%s' already exists and no interactive terminal is "
+              "available to confirm overwrite.",
+              path_for_messages);
+    return false;
+  }
+
   fprintf(stderr,
           "\nOutput file %s exists.\nOverwrite? (y/n): ", path_for_messages);
-  int response = getchar();
+  int response = fgetc(tty);
   if (response != '\n' && response != EOF) {
-    utility_clear_stdin();
+    int c;
+    while ((c = fgetc(tty)) != '\n' && c != EOF)
+      ;
   }
-  response = tolower(response);
+  fclose(tty);
+
+  if (response != EOF) {
+    response = tolower((unsigned char)response);
+  }
   if (response != 'y') {
     if (response != '\n' && response != EOF) {
       log_info("Operation cancelled by user.");

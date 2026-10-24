@@ -183,6 +183,17 @@ FILE *platform_file_open_read(const char *path);
 FILE *platform_file_open_write(const char *path);
 
 /**
+ * @brief Opens the controlling terminal for interactive user input.
+ *
+ * Opens "CONIN$" on Windows and "/dev/tty" on POSIX so interactive prompts
+ * bypass redirected standard input streams (such as '-i stdin').
+ *
+ * @return Opened FILE handle to the controlling terminal, or NULL if no
+ * interactive terminal is available.
+ */
+FILE *platform_open_tty(void);
+
+/**
  * @brief Returns the file size in bytes for a given path.
  *
  * Handles UTF-8 paths across Windows and POSIX.
