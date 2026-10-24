@@ -150,7 +150,7 @@ bool setup_signal_handlers(AppContext *app) {
 }
 
 bool is_shutdown_requested(void) {
-  return atomic_load_explicit(&g_shutdown_flag, memory_order_relaxed);
+  return atomic_load_explicit(&g_shutdown_flag, memory_order_acquire);
 }
 
 void reset_shutdown_flag(void) {
