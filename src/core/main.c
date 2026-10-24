@@ -178,7 +178,7 @@ int main(int argc, char *argv[]) {
 
   print_configuration_summary(&config, &app);
 
-  if (app.process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH) {
+  if (app.stream_source_type == STREAM_SOURCE_LIVE_STREAM) {
     log_info("Starting %s live input capture...", config.input.type_name);
   } else {
     log_info("Starting %s file processing...", config.input.type_name);
@@ -219,7 +219,7 @@ cleanup:
   process_chain_teardown_buffers(&process_chain_context);
 
   if (app.module.input_api) {
-    if (app.process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH) {
+    if (app.stream_source_type == STREAM_SOURCE_LIVE_STREAM) {
       log_info("Stopping %s live input capture...", config.input.type_name);
     } else {
       log_info("Finished %s file processing.", config.input.type_name);
@@ -285,6 +285,12 @@ static bool init_input_module(AppConfig *config, AppContext *app) {
   }
 
   bool init_ok = app->module.input_api->initialize(&context);
+
+  if (init_ok) {
+    app->stream_source_type = (app->module.input_info.frames > 0)
+                                  ? STREAM_SOURCE_FILE
+                                  : STREAM_SOURCE_LIVE_STREAM;
+  }
 
   if (watchdog_tm.num_threads_started > 0) {
     atomic_store_explicit(&watchdog_ctx.is_complete, true,
@@ -512,12 +518,22 @@ static void print_final_summary(const AppConfig *config, const AppContext *app,
   } else if (stream_state == STREAM_STATE_END_OF_STREAM) {
     fprintf(stderr, "%-*s %s\n", label_width,
             "Status:", "Completed Successfully");
-    fprintf(stderr, "%-*s %s\n", label_width,
-            "Processing Duration:", duration_buffer);
-    fprintf(stderr, "%-*s %llu / %lld (100.0%%)\n", label_width,
-            "Input Frames Read:",
-            (unsigned long long)atomic_load(&app->stats.total_frames_read),
-            (long long)app->module.input_info.frames);
+    const char *duration_label =
+        (app->stream_source_type == STREAM_SOURCE_LIVE_STREAM)
+            ? "Capture Duration:"
+            : "Processing Duration:";
+    fprintf(stderr, "%-*s %s\n", label_width, duration_label, duration_buffer);
+    if (app->stream_source_type == STREAM_SOURCE_FILE &&
+        app->module.input_info.frames > 0) {
+      fprintf(stderr, "%-*s %llu / %lld (100.0%%)\n", label_width,
+              "Input Frames Read:",
+              (unsigned long long)atomic_load(&app->stats.total_frames_read),
+              (long long)app->module.input_info.frames);
+    } else {
+      fprintf(stderr, "%-*s %llu\n", label_width,
+              "Input Frames Read:",
+              (unsigned long long)atomic_load(&app->stats.total_frames_read));
+    }
     fprintf(stderr, "%-*s %llu\n", label_width,
             "Input Samples Read:", total_input_samples);
     fprintf(stderr, "%-*s %llu\n", label_width, "Output Frames Written:",
@@ -529,24 +545,20 @@ static void print_final_summary(const AppConfig *config, const AppContext *app,
     fprintf(stderr, "%-*s %.2f MB/s\n", label_width,
             "Average Write Speed:", avg_write_speed_mbps);
   } else if (stream_state == STREAM_STATE_STOPPED || is_shutdown_requested()) {
-    bool input_has_known_length =
-        (app->process_chain_mode == PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL);
-    if (!input_has_known_length) {
+    if (app->stream_source_type == STREAM_SOURCE_LIVE_STREAM) {
       fprintf(stderr, "%-*s %s\n", label_width,
               "Status:", "Capture Stopped by User");
-    } else {
-      fprintf(stderr, "%-*s %s\n", label_width,
-              "Status:", "Processing Cancelled by User");
-    }
-    const char *duration_label =
-        !input_has_known_length ? "Capture Duration:" : "Processing Duration:";
-    fprintf(stderr, "%-*s %s\n", label_width, duration_label, duration_buffer);
-    if (!input_has_known_length) {
+      fprintf(stderr, "%-*s %s\n", label_width, "Capture Duration:",
+              duration_buffer);
       fprintf(stderr, "%-*s %llu\n", label_width, "Input Frames Read:",
               (unsigned long long)atomic_load(&app->stats.total_frames_read));
       fprintf(stderr, "%-*s %llu\n", label_width,
               "Input Samples Read:", total_input_samples);
     } else {
+      fprintf(stderr, "%-*s %s\n", label_width,
+              "Status:", "Processing Cancelled by User");
+      fprintf(stderr, "%-*s %s\n", label_width, "Processing Duration:",
+              duration_buffer);
       double percentage = 0.0;
       if (app->module.input_info.frames > 0) {
         percentage = ((double)(unsigned long long)atomic_load(

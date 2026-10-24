@@ -254,6 +254,7 @@ typedef struct AppContext {
   ThreadManager thread_manager;
 
   ProcessChainMode process_chain_mode;
+  StreamSourceType stream_source_type;
 } AppContext;
 
 #endif // APP_CONTEXT_H_

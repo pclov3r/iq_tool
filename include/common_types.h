@@ -71,4 +71,13 @@ typedef enum {
   PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL
 } ProcessChainMode;
 
+/**
+ * @enum StreamSourceType
+ * @brief Classifies the nature of the input stream.
+ */
+typedef enum {
+  STREAM_SOURCE_FILE = 0,   ///< Finite file on disk with known length.
+  STREAM_SOURCE_LIVE_STREAM ///< Unbounded real-time stream (SDR, network, pipe).
+} StreamSourceType;
+
 #endif // COMMON_TYPES_H_
