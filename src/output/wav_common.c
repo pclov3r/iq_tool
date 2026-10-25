@@ -109,7 +109,9 @@ bool output_wav_common_initialize(ModuleContext *context, int sf_format_flag) {
 
   int bits_per_sample = get_bits_per_sample(config->output.sample_format);
   if (bits_per_sample <= 0) {
-    bits_per_sample = 16;
+    log_error("Invalid sample format '%s': unable to determine bit depth.",
+              config->output.sample_format_str);
+    return false;
   }
   size_t bytes_per_second = (size_t)app->dsp.process_chain_sample_rate_hz *
                             app->module.output_bytes_per_iq_sample;
