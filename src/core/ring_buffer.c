@@ -299,15 +299,26 @@ size_t ring_buffer_read(RingBuffer *iob, void *buffer, size_t max_bytes) {
       break;
     }
 
+    int current_state = atomic_load_explicit(&iob->state, memory_order_acquire);
+    if (current_state == RING_BUFFER_STATE_SHUTDOWN ||
+        current_state == RING_BUFFER_STATE_DESTROYED ||
+        current_state == RING_BUFFER_STATE_UNINITIALIZED) {
+      atomic_store_explicit(&iob->is_consumer_sleeping, false,
+                            memory_order_release);
+      return 0;
+    }
+    if (current_state == RING_BUFFER_STATE_DRAINING) {
+      atomic_store_explicit(&iob->is_consumer_sleeping, false,
+                            memory_order_release);
+      continue;
+    }
+
     // Buffer still empty, wait efficiently for the producer signal
 #ifdef _WIN32
     if (iob->block_ready_event) {
       WaitForSingleObject(iob->block_ready_event, 100);
     }
 #else
-    if (atomic_load_explicit(&iob->state, memory_order_acquire) !=
-        RING_BUFFER_STATE_ACTIVE)
-      return 0;
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts); // Safe Clock
 
