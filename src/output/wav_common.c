@@ -107,9 +107,19 @@ bool output_wav_common_initialize(ModuleContext *context, int sf_format_flag) {
     strftime(date_only, sizeof(date_only), "%d-%b-%Y", tm_info);
   }
 
-  size_t bps = (size_t)app->dsp.process_chain_sample_rate_hz *
-               app->module.output_bytes_per_iq_sample * 2;
-  int bits = (int)app->module.output_bytes_per_iq_sample * 8;
+  const SampleFormatInfo *format_info =
+      get_format_info_by_enum(config->output.sample_format);
+  int bits_per_sample = 16;
+  if (format_info && format_info->channels > 0) {
+    bits_per_sample = (int)((format_info->bytes_per_iq_sample /
+                             (size_t)format_info->channels) *
+                            8);
+  } else if (app->module.output_bytes_per_iq_sample > 0) {
+    bits_per_sample = (int)((app->module.output_bytes_per_iq_sample / 2) * 8);
+  }
+
+  size_t bytes_per_second = (size_t)app->dsp.process_chain_sample_rate_hz *
+                            app->module.output_bytes_per_iq_sample;
   const char *radio_model =
       config->input.type_name ? config->input.type_name : "iq_tool";
 
@@ -166,9 +176,9 @@ bool output_wav_common_initialize(ModuleContext *context, int sf_format_flag) {
       "UTCSeconds=\"%lld\"/>"
       "</SDR-XML-Root>",
       time_created, time_utc, sdr_console_xml_filename,
-      sdr_console_xml_filename, radio_model, GIT_HASH, time_utc, bits, bps,
-      config->sdr_general.rf_freq_hz, app->dsp.process_chain_sample_rate_hz,
-      (long long)now);
+      sdr_console_xml_filename, radio_model, GIT_HASH, time_utc,
+      bits_per_sample, bytes_per_second, config->sdr_general.rf_freq_hz,
+      app->dsp.process_chain_sample_rate_hz, (long long)now);
 
   if (xml_length > 0 && xml_length < (int)sizeof(xml_buffer)) {
     size_t utf16_size = (size_t)(xml_length + 1) * 2;
