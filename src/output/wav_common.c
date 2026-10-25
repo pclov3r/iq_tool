@@ -107,17 +107,10 @@ bool output_wav_common_initialize(ModuleContext *context, int sf_format_flag) {
     strftime(date_only, sizeof(date_only), "%d-%b-%Y", tm_info);
   }
 
-  const SampleFormatInfo *format_info =
-      get_format_info_by_enum(config->output.sample_format);
-  int bits_per_sample = 16;
-  if (format_info && format_info->channels > 0) {
-    bits_per_sample = (int)((format_info->bytes_per_iq_sample /
-                             (size_t)format_info->channels) *
-                            8);
-  } else if (app->module.output_bytes_per_iq_sample > 0) {
-    bits_per_sample = (int)((app->module.output_bytes_per_iq_sample / 2) * 8);
+  int bits_per_sample = get_bits_per_sample(config->output.sample_format);
+  if (bits_per_sample <= 0) {
+    bits_per_sample = 16;
   }
-
   size_t bytes_per_second = (size_t)app->dsp.process_chain_sample_rate_hz *
                             app->module.output_bytes_per_iq_sample;
   const char *radio_model =

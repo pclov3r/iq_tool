@@ -27,6 +27,7 @@ typedef struct {
       *description_str; ///< A human-readable description for UI and logging.
   size_t bytes_per_iq_sample; ///< Total memory footprint in bytes for one
                               ///< complete I/Q pair.
+  int bits_per_sample; ///< Bit depth per sample component (e.g., 8, 16, 24, 32).
   float default_filter_attenuation_db; ///< Recommended default stop-band
                                        ///< attenuation for DSP filters.
   int pcm_subtype; ///< libsndfile PCM subtype (SF_FORMAT_PCM_*,
@@ -65,6 +66,15 @@ const SampleFormatInfo *get_format_info_by_name(const char *name);
  * @return The size in bytes of one I/Q pair, or 0 if the format is unknown.
  */
 size_t get_bytes_per_iq_sample(SampleFormat format);
+
+/**
+ * @brief Utility wrapper to quickly fetch the bit depth of a single sample
+ * component.
+ *
+ * @param format The internal SampleFormat enum to look up.
+ * @return The bit depth (e.g., 8, 16, 24, 32), or 0 if the format is unknown.
+ */
+int get_bits_per_sample(SampleFormat format);
 
 /**
  * @brief Maps an internal SampleFormat to its corresponding libsndfile PCM
