@@ -368,8 +368,13 @@ static void decode_3a(RdsState *state, const RdsGroup *group) {
     uint16_t b2 = group->blocks[RDS_BLOCK_2].data;
     uint16_t b4 = group->blocks[RDS_BLOCK_4].data;
 
+    // Per IEC 62106 §3.1.5.4, code 00000 indicates that the application is not
+    // carried in an associated group (data is only in 3A). Target group 0 must
+    // not be registered, as that would hijack standard Group 0A Station Name (PS).
     uint8_t target_group = b2 & 0x1F;
-    state->oda_app_for_group[target_group] = b4;
+    if (target_group != 0) {
+        state->oda_app_for_group[target_group] = b4;
+    }
 }
 
 // 5A/5B = Transparent Data Channel (TDC)
