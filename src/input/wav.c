@@ -786,6 +786,7 @@ static bool input_wav_initialize(ModuleContext *context) {
       log_error("--wav-center-target-freq can only be used with I/Q (complex) "
                 "WAV files.");
       sf_close(private_data->infile);
+      private_data->infile = NULL;
       return false;
     }
 
@@ -793,6 +794,7 @@ static bool input_wav_initialize(ModuleContext *context) {
       log_error("Conflicting frequency shift options provided. Cannot use "
                 "--freq-shift and --wav-center-target-freq at the same time.");
       sf_close(private_data->infile);
+      private_data->infile = NULL;
       return false;
     }
 
@@ -801,6 +803,7 @@ static bool input_wav_initialize(ModuleContext *context) {
           "Option --wav-center-target-freq was used, but the input WAV file "
           "does not contain the required center frequency metadata.");
       sf_close(private_data->infile);
+      private_data->infile = NULL;
       return false;
     }
 
