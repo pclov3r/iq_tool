@@ -960,6 +960,8 @@ cleanup:
     if (private_data && private_data->sdr_device &&
         private_data->device_selected) {
       sdrplay_api_ReleaseDevice(private_data->sdr_device);
+      private_data->device_selected = false;
+      private_data->sdr_device = NULL;
     }
     if (private_data && private_data->sdr_api_is_open) {
       sdrplay_api_Close();
@@ -1105,6 +1107,7 @@ static void input_sdrplay_cleanup(ModuleContext *context) {
 #endif
       // No free() needed, memory is in the arena
       private_data->sdr_device = NULL;
+      private_data->device_selected = false;
     }
     if (private_data->sdr_api_is_open) {
       log_debug("Closing SDRplay API...");
