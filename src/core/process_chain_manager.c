@@ -13,7 +13,6 @@
 #include "app_context.h"
 #include "config/constants.h"
 #include "config/process_chain_default.h"
-#include "input/common.h"
 #include "log.h"
 #include "module_registry.h"
 #include "packet_serializer.h"

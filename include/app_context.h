@@ -251,4 +251,15 @@ typedef struct AppContext {
   StreamSourceType stream_source_type;
 } AppContext;
 
+/**
+ * @brief Checks if a fatal stream error has occurred in a thread-safe manner.
+ * @param app A pointer to the application context.
+ * @return True if stream_state is STREAM_STATE_ERROR, false otherwise.
+ */
+static inline bool input_has_error(const AppContext *app) {
+  return app &&
+         (atomic_load_explicit(&app->stats.stream_state, memory_order_relaxed) ==
+          STREAM_STATE_ERROR);
+}
+
 #endif // APP_CONTEXT_H_

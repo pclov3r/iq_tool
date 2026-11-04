@@ -104,6 +104,8 @@ static void *input_watchdog_thread(void *arg) {
 
 void setup_input_watchdog(AppContext *app) {
   if (app && app->process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH) {
+    atomic_store_explicit(&app->stats.last_input_heartbeat_time,
+                          platform_get_time(), memory_order_relaxed);
     thread_manager_spawn(&app->thread_manager, "watchdog", PRIORITY_NORMAL,
                          input_watchdog_thread, app);
   }

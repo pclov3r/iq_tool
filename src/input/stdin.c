@@ -7,7 +7,6 @@
 #include "argparse.h"
 #include "config/constants.h"
 
-#include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
 #include "module_registry.h"

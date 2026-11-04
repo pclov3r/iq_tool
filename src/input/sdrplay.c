@@ -8,7 +8,6 @@
 #include "config/constants.h"
 
 #include "driver_state.h"
-#include "input/common.h"
 #include "interleave_functions.h"
 #include "log.h"
 #include "mem_arena.h"

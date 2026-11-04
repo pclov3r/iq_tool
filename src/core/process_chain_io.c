@@ -8,7 +8,6 @@
 
 #include "app_context.h"
 #include "config/constants.h"
-#include "input/common.h"
 #include "log.h"
 #include "mem_arena.h"
 #include "module_registry.h"
@@ -29,7 +28,8 @@ static bool process_chain_queue_samples(void *context, const void *data,
                                         size_t num_samples,
                                         SampleFormat format) {
   AppContext *app = (AppContext *)context;
-  input_update_heartbeat(app);
+  atomic_store_explicit(&app->stats.last_input_heartbeat_time,
+                        platform_get_time(), memory_order_relaxed);
   if (is_shutdown_requested() || input_has_error(app))
     return false;
 
