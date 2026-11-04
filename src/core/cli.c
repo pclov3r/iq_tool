@@ -283,61 +283,83 @@ static void apply_preset_if_requested(AppConfig *config, MemoryArena *arena) {
   if (!config->preset_name)
     return;
 
-  for (int i = 0; i < config->num_presets; i++) {
-    if (strcasecmp(config->preset_name, config->presets[i].name) == 0) {
-      const PresetDefinition *p = &config->presets[i];
-      if (p->rate_hz_provided) {
-        config->output_sample_rate.rate_hz = p->rate_hz;
+  for (int preset_index = 0; preset_index < config->num_presets;
+       preset_index++) {
+    if (strcasecmp(config->preset_name, config->presets[preset_index].name) ==
+        0) {
+      const PresetDefinition *preset = &config->presets[preset_index];
+      if (preset->rate_hz_provided) {
+        config->output_sample_rate.rate_hz = preset->rate_hz;
         config->output_sample_rate.provided = true;
       }
-      if (p->baseband_sample_rate_provided) {
-        config->baseband_sample_rate.rate_hz = p->baseband_sample_rate_hz;
+      if (preset->baseband_sample_rate_provided) {
+        config->baseband_sample_rate.rate_hz = preset->baseband_sample_rate_hz;
         config->baseband_sample_rate.provided = true;
       }
       if (!config->output.sample_format_str)
-        config->output.sample_format_str = p->output_sample_format;
+        config->output.sample_format_str = preset->output_sample_format;
       if (!config->baseband_sample_format.format_str)
-        config->baseband_sample_format.format_str = p->baseband_sample_format;
-      if (p->input_gain_provided && config->dsp.input_gain == 1.0f)
-        config->dsp.input_gain = p->input_gain;
-      if (p->output_gain_provided && config->dsp.output_gain == 1.0f)
-        config->dsp.output_gain = p->output_gain;
-      if (p->baseband_gain_provided && config->dsp.baseband_gain == 1.0f)
-        config->dsp.baseband_gain = p->baseband_gain;
-      if (p->dc_block_provided && !config->dsp.dc_block.enable)
-        config->dsp.dc_block.enable = p->dc_block_enable;
-      if (p->iq_correction_provided && !config->dsp.iq_correction.enable)
-        config->dsp.iq_correction.enable = p->iq_correction_enable;
-      if (p->output_agc_enable_provided && !config->dsp.output_agc.enable)
-        config->dsp.output_agc.enable = p->output_agc_enable;
-      if (p->output_agc_target_provided &&
+        config->baseband_sample_format.format_str =
+            preset->baseband_sample_format;
+      if (preset->input_gain_provided && config->dsp.input_gain == 1.0f)
+        config->dsp.input_gain = preset->input_gain;
+      if (preset->output_gain_provided && config->dsp.output_gain == 1.0f)
+        config->dsp.output_gain = preset->output_gain;
+      if (preset->baseband_gain_provided && config->dsp.baseband_gain == 1.0f)
+        config->dsp.baseband_gain = preset->baseband_gain;
+      if (preset->dc_block_provided && !config->dsp.dc_block.enable)
+        config->dsp.dc_block.enable = preset->dc_block_enable;
+      if (preset->iq_correction_provided && !config->dsp.iq_correction.enable)
+        config->dsp.iq_correction.enable = preset->iq_correction_enable;
+      if (preset->output_agc_enable_provided && !config->dsp.output_agc.enable)
+        config->dsp.output_agc.enable = preset->output_agc_enable;
+      if (preset->output_agc_target_provided &&
           config->dsp.output_agc.target_level_arg == 0.0f)
-        config->dsp.output_agc.target_level_arg = p->output_agc_target;
-      if (p->baseband_agc_enable_provided && !config->dsp.baseband_agc.enable)
-        config->dsp.baseband_agc.enable = p->baseband_agc_enable;
-      if (p->baseband_agc_target_provided &&
+        config->dsp.output_agc.target_level_arg = preset->output_agc_target;
+      if (preset->baseband_agc_enable_provided &&
+          !config->dsp.baseband_agc.enable)
+        config->dsp.baseband_agc.enable = preset->baseband_agc_enable;
+      if (preset->baseband_agc_target_provided &&
           config->dsp.baseband_agc.target_level_arg == 0.0f)
-        config->dsp.baseband_agc.target_level_arg = p->baseband_agc_target;
-      if (p->lowpass_cutoff_hz_provided &&
-          config->dsp.filter.args.lowpass[0] == 0.0f)
-        config->dsp.filter.args.lowpass[0] = p->lowpass_cutoff_hz;
-      if (p->highpass_cutoff_hz_provided &&
-          config->dsp.filter.args.highpass[0] == 0.0f)
-        config->dsp.filter.args.highpass[0] = p->highpass_cutoff_hz;
-      if (p->pass_range_str_provided && !config->dsp.filter.args.pass_range[0])
-        config->dsp.filter.args.pass_range[0] = p->pass_range_str;
-      if (p->stopband_str_provided && !config->dsp.filter.args.stopband[0])
-        config->dsp.filter.args.stopband[0] = p->stopband_str;
-      if (p->transition_width_hz_provided &&
+        config->dsp.baseband_agc.target_level_arg = preset->baseband_agc_target;
+      if (preset->frequency_shift_provided &&
+          config->dsp.frequency_shift_hz == 0.0)
+        config->dsp.frequency_shift_hz = preset->frequency_shift_hz;
+      if (preset->shift_after_resample_provided &&
+          !config->dsp.shift_after_resample)
+        config->dsp.shift_after_resample = preset->shift_after_resample;
+      for (int stage_index = 0; stage_index < FILTER_MAX_CHAIN; stage_index++) {
+        if (preset->lowpass_cutoff_hz_provided[stage_index] &&
+            config->dsp.filter.args.lowpass[stage_index] == 0.0f)
+          config->dsp.filter.args.lowpass[stage_index] =
+              preset->lowpass_cutoff_hz[stage_index];
+        if (preset->highpass_cutoff_hz_provided[stage_index] &&
+            config->dsp.filter.args.highpass[stage_index] == 0.0f)
+          config->dsp.filter.args.highpass[stage_index] =
+              preset->highpass_cutoff_hz[stage_index];
+        if (preset->pass_range_str_provided[stage_index] &&
+            !config->dsp.filter.args.pass_range[stage_index])
+          config->dsp.filter.args.pass_range[stage_index] =
+              preset->pass_range_str[stage_index];
+        if (preset->stopband_str_provided[stage_index] &&
+            !config->dsp.filter.args.stopband[stage_index])
+          config->dsp.filter.args.stopband[stage_index] =
+              preset->stopband_str[stage_index];
+      }
+      if (preset->transition_width_hz_provided &&
           config->dsp.filter.args.transition_width == 0.0f)
-        config->dsp.filter.args.transition_width = p->transition_width_hz;
-      if (p->filter_taps_provided && config->dsp.filter.args.taps == 0)
-        config->dsp.filter.args.taps = p->filter_taps;
-      if (p->default_filter_attenuation_db_provided &&
+        config->dsp.filter.args.transition_width = preset->transition_width_hz;
+      if (preset->filter_taps_provided && config->dsp.filter.args.taps == 0)
+        config->dsp.filter.args.taps = preset->filter_taps;
+      if (preset->default_filter_attenuation_db_provided &&
           config->dsp.filter.args.attenuation == 0.0f)
-        config->dsp.filter.args.attenuation = p->default_filter_attenuation_db;
-      if (p->filter_type_str_provided && !config->dsp.filter.args.type_str)
-        config->dsp.filter.args.type_str = p->filter_type_str;
+        config->dsp.filter.args.attenuation =
+            preset->default_filter_attenuation_db;
+      if (preset->filter_type_str_provided && !config->dsp.filter.args.type_str)
+        config->dsp.filter.args.type_str = preset->filter_type_str;
+      if (preset->filter_fft_size_provided &&
+          config->dsp.filter.args.fft_size == 0)
+        config->dsp.filter.args.fft_size = preset->filter_fft_size;
       return;
     }
   }

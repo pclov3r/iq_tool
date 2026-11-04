@@ -848,9 +848,9 @@ dsp_iq_correction_get_cli_options(int *count) {
 }
 
 static bool dsp_iq_correction_validate_options(struct AppContext *app) {
-  if (app && app->config) {
+  if (app && app->config && s_enable_iq_correction) {
     AppConfig *config = (AppConfig *)app->config;
-    config->dsp.iq_correction.enable = s_enable_iq_correction;
+    config->dsp.iq_correction.enable = true;
   }
   return true;
 }

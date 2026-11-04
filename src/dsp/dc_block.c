@@ -105,8 +105,8 @@ static const struct argparse_option *dsp_dc_block_get_cli_options(int *count) {
 }
 
 static bool dsp_dc_block_validate_options(struct AppContext *app) {
-  if (app && app->config) {
-    ((AppConfig *)app->config)->dsp.dc_block.enable = s_enable_dc_block;
+  if (app && app->config && s_enable_dc_block) {
+    ((AppConfig *)app->config)->dsp.dc_block.enable = true;
   }
   return true;
 }

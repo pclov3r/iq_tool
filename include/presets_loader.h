@@ -6,6 +6,7 @@
 #ifndef PRESETS_LOADER_H_
 #define PRESETS_LOADER_H_
 
+#include "config/constants.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -65,15 +66,20 @@ typedef struct PresetDefinition {
   float baseband_agc_target;
   bool baseband_agc_target_provided;
 
+  double frequency_shift_hz;
+  bool frequency_shift_provided;
+  bool shift_after_resample;
+  bool shift_after_resample_provided;
+
   // Filter Fields
-  float lowpass_cutoff_hz;
-  bool lowpass_cutoff_hz_provided;
-  float highpass_cutoff_hz;
-  bool highpass_cutoff_hz_provided;
-  char *pass_range_str;
-  bool pass_range_str_provided;
-  char *stopband_str;
-  bool stopband_str_provided;
+  float lowpass_cutoff_hz[FILTER_MAX_CHAIN];
+  bool lowpass_cutoff_hz_provided[FILTER_MAX_CHAIN];
+  float highpass_cutoff_hz[FILTER_MAX_CHAIN];
+  bool highpass_cutoff_hz_provided[FILTER_MAX_CHAIN];
+  char *pass_range_str[FILTER_MAX_CHAIN];
+  bool pass_range_str_provided[FILTER_MAX_CHAIN];
+  char *stopband_str[FILTER_MAX_CHAIN];
+  bool stopband_str_provided[FILTER_MAX_CHAIN];
   float transition_width_hz;
   bool transition_width_hz_provided;
   int filter_taps;
@@ -82,6 +88,8 @@ typedef struct PresetDefinition {
   bool default_filter_attenuation_db_provided;
   char *filter_type_str;
   bool filter_type_str_provided;
+  int filter_fft_size;
+  bool filter_fft_size_provided;
 } PresetDefinition;
 
 bool presets_load_from_file(struct AppConfig *config,

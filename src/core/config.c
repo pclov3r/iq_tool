@@ -26,6 +26,13 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
     config->output.payload = out_mod->payload;
   }
 
+  if (config->output.sample_format_str) {
+    config->output.format_provided = true;
+  }
+  if (config->baseband_sample_format.format_str) {
+    config->baseband_sample_format.provided = true;
+  }
+
   if (config->output.payload == PAYLOAD_AUDIO) {
     if (!config->baseband_sample_format.format_str) {
       if (out_mod && out_mod->module_defines_format) {
@@ -48,9 +55,6 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
       return false;
     }
   } else {
-    if (config->output.sample_format_str) {
-      config->output.format_provided = true;
-    }
     if (!config->output.sample_format_str) {
       if (config->output.path_arg) {
         config->output.sample_format_str = "cs16";
@@ -168,8 +172,8 @@ bool validate_option_combinations(AppConfig *config) {
     }
   }
 
-  if ((config->output_sample_rate.provided ||
-       config->baseband_sample_rate.provided) &&
+  if ((config->output_sample_rate.user_arg > 0.0 ||
+       config->baseband_sample_rate.user_arg > 0.0) &&
       config->preset_name) {
     log_error("Options --output-sample-rate or --baseband-sample-rate cannot "
               "be used with --preset.");

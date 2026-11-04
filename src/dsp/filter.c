@@ -617,17 +617,36 @@ static void add_filter_request(AppConfig *config, FilterType type, float f1,
 static bool dsp_filter_validate_options(struct AppContext *app) {
   if (app && app->config) {
     AppConfig *config = (AppConfig *)app->config;
-    for (int i = 0; i < FILTER_MAX_CHAIN; i++) {
-      config->dsp.filter.args.lowpass[i] = s_lowpass[i];
-      config->dsp.filter.args.highpass[i] = s_highpass[i];
-      config->dsp.filter.args.pass_range[i] = s_pass_range[i];
-      config->dsp.filter.args.stopband[i] = s_stopband[i];
+    for (int stage_index = 0; stage_index < FILTER_MAX_CHAIN; stage_index++) {
+      if (s_lowpass[stage_index] != 0.0f) {
+        config->dsp.filter.args.lowpass[stage_index] = s_lowpass[stage_index];
+      }
+      if (s_highpass[stage_index] != 0.0f) {
+        config->dsp.filter.args.highpass[stage_index] = s_highpass[stage_index];
+      }
+      if (s_pass_range[stage_index] != NULL) {
+        config->dsp.filter.args.pass_range[stage_index] =
+            s_pass_range[stage_index];
+      }
+      if (s_stopband[stage_index] != NULL) {
+        config->dsp.filter.args.stopband[stage_index] = s_stopband[stage_index];
+      }
     }
-    config->dsp.filter.args.transition_width = s_transition_width;
-    config->dsp.filter.args.taps = s_filter_taps;
-    config->dsp.filter.args.attenuation = s_attenuation;
-    config->dsp.filter.args.type_str = s_filter_type_str;
-    config->dsp.filter.args.fft_size = s_filter_fft_size;
+    if (s_transition_width != 0.0f) {
+      config->dsp.filter.args.transition_width = s_transition_width;
+    }
+    if (s_filter_taps != 0) {
+      config->dsp.filter.args.taps = s_filter_taps;
+    }
+    if (s_attenuation != 0.0f) {
+      config->dsp.filter.args.attenuation = s_attenuation;
+    }
+    if (s_filter_type_str != NULL) {
+      config->dsp.filter.args.type_str = s_filter_type_str;
+    }
+    if (s_filter_fft_size != 0) {
+      config->dsp.filter.args.fft_size = s_filter_fft_size;
+    }
 
     config->dsp.filter.count = 0;
     for (int i = 0; i < FILTER_MAX_CHAIN; i++) {

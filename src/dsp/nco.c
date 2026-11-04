@@ -222,9 +222,13 @@ static const struct argparse_option *dsp_nco_get_cli_options(int *count) {
 
 static bool dsp_nco_validate_options(struct AppContext *app) {
   if (app && app->config) {
-    ((AppConfig *)app->config)->dsp.frequency_shift_hz = s_frequency_shift_hz;
-    ((AppConfig *)app->config)->dsp.shift_after_resample =
-        s_shift_after_resample;
+    AppConfig *config = (AppConfig *)app->config;
+    if (s_frequency_shift_hz != 0.0) {
+      config->dsp.frequency_shift_hz = s_frequency_shift_hz;
+    }
+    if (s_shift_after_resample) {
+      config->dsp.shift_after_resample = true;
+    }
   }
   return true;
 }

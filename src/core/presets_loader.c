@@ -32,13 +32,13 @@ static const PresetKeyHandler key_handlers[] = {
      offsetof(PresetDefinition, output_sample_format), 0},
     {"baseband_sample_format", PRESET_KEY_STRDUP,
      offsetof(PresetDefinition, baseband_sample_format), 0},
-    {"input-gain-multiplier", PRESET_KEY_STRTOF,
+    {"input_gain_multiplier", PRESET_KEY_STRTOF,
      offsetof(PresetDefinition, input_gain),
      offsetof(PresetDefinition, input_gain_provided)},
-    {"output-gain-multiplier", PRESET_KEY_STRTOF,
+    {"output_gain_multiplier", PRESET_KEY_STRTOF,
      offsetof(PresetDefinition, output_gain),
      offsetof(PresetDefinition, output_gain_provided)},
-    {"baseband-gain-multiplier", PRESET_KEY_STRTOF,
+    {"baseband_gain_multiplier", PRESET_KEY_STRTOF,
      offsetof(PresetDefinition, baseband_gain),
      offsetof(PresetDefinition, baseband_gain_provided)},
     {"dc_block", PRESET_KEY_BOOL, offsetof(PresetDefinition, dc_block_enable),
@@ -46,29 +46,96 @@ static const PresetKeyHandler key_handlers[] = {
     {"iq_correction", PRESET_KEY_BOOL,
      offsetof(PresetDefinition, iq_correction_enable),
      offsetof(PresetDefinition, iq_correction_provided)},
-    {"output-agc", PRESET_KEY_BOOL,
+    {"output_agc", PRESET_KEY_BOOL,
      offsetof(PresetDefinition, output_agc_enable),
      offsetof(PresetDefinition, output_agc_enable_provided)},
-    {"output-agc-target", PRESET_KEY_STRTOF,
+    {"output_agc_target", PRESET_KEY_STRTOF,
      offsetof(PresetDefinition, output_agc_target),
      offsetof(PresetDefinition, output_agc_target_provided)},
-    {"baseband-agc", PRESET_KEY_BOOL,
+    {"baseband_agc", PRESET_KEY_BOOL,
      offsetof(PresetDefinition, baseband_agc_enable),
      offsetof(PresetDefinition, baseband_agc_enable_provided)},
-    {"baseband-agc-target", PRESET_KEY_STRTOF,
+    {"baseband_agc_target", PRESET_KEY_STRTOF,
      offsetof(PresetDefinition, baseband_agc_target),
      offsetof(PresetDefinition, baseband_agc_target_provided)},
+    {"freq_shift", PRESET_KEY_STRTOD,
+     offsetof(PresetDefinition, frequency_shift_hz),
+     offsetof(PresetDefinition, frequency_shift_provided)},
+    {"shift_after_resample", PRESET_KEY_BOOL,
+     offsetof(PresetDefinition, shift_after_resample),
+     offsetof(PresetDefinition, shift_after_resample_provided)},
     {"lowpass", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, lowpass_cutoff_hz),
-     offsetof(PresetDefinition, lowpass_cutoff_hz_provided)},
+     offsetof(PresetDefinition, lowpass_cutoff_hz[0]),
+     offsetof(PresetDefinition, lowpass_cutoff_hz_provided[0])},
+    {"lowpass_1", PRESET_KEY_STRTOF,
+     offsetof(PresetDefinition, lowpass_cutoff_hz[0]),
+     offsetof(PresetDefinition, lowpass_cutoff_hz_provided[0])},
+    {"lowpass_2", PRESET_KEY_STRTOF,
+     offsetof(PresetDefinition, lowpass_cutoff_hz[1]),
+     offsetof(PresetDefinition, lowpass_cutoff_hz_provided[1])},
+    {"lowpass_3", PRESET_KEY_STRTOF,
+     offsetof(PresetDefinition, lowpass_cutoff_hz[2]),
+     offsetof(PresetDefinition, lowpass_cutoff_hz_provided[2])},
+    {"lowpass_4", PRESET_KEY_STRTOF,
+     offsetof(PresetDefinition, lowpass_cutoff_hz[3]),
+     offsetof(PresetDefinition, lowpass_cutoff_hz_provided[3])},
+    {"lowpass_5", PRESET_KEY_STRTOF,
+     offsetof(PresetDefinition, lowpass_cutoff_hz[4]),
+     offsetof(PresetDefinition, lowpass_cutoff_hz_provided[4])},
     {"highpass", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, highpass_cutoff_hz),
-     offsetof(PresetDefinition, highpass_cutoff_hz_provided)},
+     offsetof(PresetDefinition, highpass_cutoff_hz[0]),
+     offsetof(PresetDefinition, highpass_cutoff_hz_provided[0])},
+    {"highpass_1", PRESET_KEY_STRTOF,
+     offsetof(PresetDefinition, highpass_cutoff_hz[0]),
+     offsetof(PresetDefinition, highpass_cutoff_hz_provided[0])},
+    {"highpass_2", PRESET_KEY_STRTOF,
+     offsetof(PresetDefinition, highpass_cutoff_hz[1]),
+     offsetof(PresetDefinition, highpass_cutoff_hz_provided[1])},
+    {"highpass_3", PRESET_KEY_STRTOF,
+     offsetof(PresetDefinition, highpass_cutoff_hz[2]),
+     offsetof(PresetDefinition, highpass_cutoff_hz_provided[2])},
+    {"highpass_4", PRESET_KEY_STRTOF,
+     offsetof(PresetDefinition, highpass_cutoff_hz[3]),
+     offsetof(PresetDefinition, highpass_cutoff_hz_provided[3])},
+    {"highpass_5", PRESET_KEY_STRTOF,
+     offsetof(PresetDefinition, highpass_cutoff_hz[4]),
+     offsetof(PresetDefinition, highpass_cutoff_hz_provided[4])},
     {"pass_range", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, pass_range_str),
-     offsetof(PresetDefinition, pass_range_str_provided)},
-    {"stopband", PRESET_KEY_STRDUP, offsetof(PresetDefinition, stopband_str),
-     offsetof(PresetDefinition, stopband_str_provided)},
+     offsetof(PresetDefinition, pass_range_str[0]),
+     offsetof(PresetDefinition, pass_range_str_provided[0])},
+    {"pass_range_1", PRESET_KEY_STRDUP,
+     offsetof(PresetDefinition, pass_range_str[0]),
+     offsetof(PresetDefinition, pass_range_str_provided[0])},
+    {"pass_range_2", PRESET_KEY_STRDUP,
+     offsetof(PresetDefinition, pass_range_str[1]),
+     offsetof(PresetDefinition, pass_range_str_provided[1])},
+    {"pass_range_3", PRESET_KEY_STRDUP,
+     offsetof(PresetDefinition, pass_range_str[2]),
+     offsetof(PresetDefinition, pass_range_str_provided[2])},
+    {"pass_range_4", PRESET_KEY_STRDUP,
+     offsetof(PresetDefinition, pass_range_str[3]),
+     offsetof(PresetDefinition, pass_range_str_provided[3])},
+    {"pass_range_5", PRESET_KEY_STRDUP,
+     offsetof(PresetDefinition, pass_range_str[4]),
+     offsetof(PresetDefinition, pass_range_str_provided[4])},
+    {"stopband", PRESET_KEY_STRDUP,
+     offsetof(PresetDefinition, stopband_str[0]),
+     offsetof(PresetDefinition, stopband_str_provided[0])},
+    {"stopband_1", PRESET_KEY_STRDUP,
+     offsetof(PresetDefinition, stopband_str[0]),
+     offsetof(PresetDefinition, stopband_str_provided[0])},
+    {"stopband_2", PRESET_KEY_STRDUP,
+     offsetof(PresetDefinition, stopband_str[1]),
+     offsetof(PresetDefinition, stopband_str_provided[1])},
+    {"stopband_3", PRESET_KEY_STRDUP,
+     offsetof(PresetDefinition, stopband_str[2]),
+     offsetof(PresetDefinition, stopband_str_provided[2])},
+    {"stopband_4", PRESET_KEY_STRDUP,
+     offsetof(PresetDefinition, stopband_str[3]),
+     offsetof(PresetDefinition, stopband_str_provided[3])},
+    {"stopband_5", PRESET_KEY_STRDUP,
+     offsetof(PresetDefinition, stopband_str[4]),
+     offsetof(PresetDefinition, stopband_str_provided[4])},
     {"transition_width", PRESET_KEY_STRTOF,
      offsetof(PresetDefinition, transition_width_hz),
      offsetof(PresetDefinition, transition_width_hz_provided)},
@@ -80,19 +147,40 @@ static const PresetKeyHandler key_handlers[] = {
     {"filter_type", PRESET_KEY_STRDUP,
      offsetof(PresetDefinition, filter_type_str),
      offsetof(PresetDefinition, filter_type_str_provided)},
+    {"filter_fft_size", PRESET_KEY_STRTOL,
+     offsetof(PresetDefinition, filter_fft_size),
+     offsetof(PresetDefinition, filter_fft_size_provided)},
 };
 static const size_t num_key_handlers =
     sizeof(key_handlers) / sizeof(key_handlers[0]);
 
-static char *arena_strdup(MemoryArena *arena, const char *s) {
-  if (!s)
-    return NULL;
-  size_t length = strlen(s) + 1;
-  char *new_s = (char *)mem_arena_alloc(arena, length, false);
-  if (new_s) {
-    memcpy(new_s, s, length);
+static bool preset_key_equals(const char *first_key, const char *second_key) {
+  if (!first_key || !second_key) {
+    return false;
   }
-  return new_s;
+  while (*first_key != '\0' && *second_key != '\0') {
+    char first_char =
+        (*first_key == '-') ? '_' : (char)tolower((unsigned char)*first_key);
+    char second_char =
+        (*second_key == '-') ? '_' : (char)tolower((unsigned char)*second_key);
+    if (first_char != second_char) {
+      return false;
+    }
+    first_key++;
+    second_key++;
+  }
+  return *first_key == '\0' && *second_key == '\0';
+}
+
+static char *arena_strdup(MemoryArena *arena, const char *source_string) {
+  if (!source_string)
+    return NULL;
+  size_t length = strlen(source_string) + 1;
+  char *copied_string = (char *)mem_arena_alloc(arena, length, false);
+  if (copied_string) {
+    memcpy(copied_string, source_string, length);
+  }
+  return copied_string;
 }
 
 bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
@@ -113,8 +201,12 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
     const char *base_dir = search_paths_list[path_index];
     if (base_dir == NULL)
       continue;
-    snprintf(full_path_buffer, sizeof(full_path_buffer), "%s/%s", base_dir,
-             PRESETS_FILENAME);
+    int written_chars = snprintf(full_path_buffer, sizeof(full_path_buffer),
+                                 "%s/%s", base_dir, PRESETS_FILENAME);
+    if (written_chars < 0 ||
+        (size_t)written_chars >= sizeof(full_path_buffer)) {
+      continue;
+    }
 
     if (platform_is_file(full_path_buffer)) {
       if (num_found_files <
@@ -227,12 +319,14 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
       value = utility_trim_whitespace(value);
 
       bool key_found = false;
-      for (size_t i = 0; i < num_key_handlers; ++i) {
-        const PresetKeyHandler *handler = &key_handlers[i];
-        if (strcasecmp(key, handler->key_name) == 0) {
+      for (size_t handler_index = 0; handler_index < num_key_handlers;
+           ++handler_index) {
+        const PresetKeyHandler *handler = &key_handlers[handler_index];
+        if (preset_key_equals(key, handler->key_name)) {
           char *value_ptr = (char *)current_preset + handler->value_offset;
           bool *provided_ptr =
               (bool *)((char *)current_preset + handler->provided_flag_offset);
+          bool value_valid = true;
 
           switch (handler->action) {
           case PRESET_KEY_STRDUP:
@@ -242,24 +336,60 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
               return false;
             }
             break;
-          case PRESET_KEY_STRTOD:
-            *(double *)value_ptr = strtod(value, NULL);
+          case PRESET_KEY_STRTOD: {
+            char *parse_end = NULL;
+            double parsed_double = strtod(value, &parse_end);
+            if (parse_end == value || *parse_end != '\0') {
+              log_warn("Invalid numeric value '%s' for key '%s' in preset '%s' "
+                       "at line %d.",
+                       value, key, current_preset->name, line_num);
+              value_valid = false;
+            } else {
+              *(double *)value_ptr = parsed_double;
+            }
             break;
-          case PRESET_KEY_STRTOF:
-            *(float *)value_ptr = strtof(value, NULL);
+          }
+          case PRESET_KEY_STRTOF: {
+            char *parse_end = NULL;
+            float parsed_float = strtof(value, &parse_end);
+            if (parse_end == value || *parse_end != '\0') {
+              log_warn("Invalid numeric value '%s' for key '%s' in preset '%s' "
+                       "at line %d.",
+                       value, key, current_preset->name, line_num);
+              value_valid = false;
+            } else {
+              *(float *)value_ptr = parsed_float;
+            }
             break;
-          case PRESET_KEY_STRTOL:
-            *(int *)value_ptr = (int)strtol(value, NULL, 10);
+          }
+          case PRESET_KEY_STRTOL: {
+            char *parse_end = NULL;
+            long parsed_long = strtol(value, &parse_end, 10);
+            if (parse_end == value || *parse_end != '\0') {
+              log_warn("Invalid integer value '%s' for key '%s' in preset '%s' "
+                       "at line %d.",
+                       value, key, current_preset->name, line_num);
+              value_valid = false;
+            } else {
+              *(int *)value_ptr = (int)parsed_long;
+            }
             break;
+          }
           case PRESET_KEY_BOOL:
-            if (strcasecmp(value, "true") == 0)
+            if (strcasecmp(value, "true") == 0) {
               *(bool *)value_ptr = true;
-            else if (strcasecmp(value, "false") == 0)
+            } else if (strcasecmp(value, "false") == 0) {
               *(bool *)value_ptr = false;
+            } else {
+              log_warn("Invalid boolean value '%s' for key '%s' in preset '%s' "
+                       "at line %d (expected 'true' or 'false').",
+                       value, key, current_preset->name, line_num);
+              value_valid = false;
+            }
             break;
           }
 
-          if (handler->provided_flag_offset > 0) {
+          if (value_valid && handler->provided_flag_offset > 0) {
             *provided_ptr = true;
           }
           key_found = true;

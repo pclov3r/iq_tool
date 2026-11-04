@@ -397,12 +397,19 @@ static const struct argparse_option *dsp_agc_get_cli_options(int *count) {
 
 static bool dsp_agc_validate_options(struct AppContext *app) {
   if (app && app->config) {
-    ((AppConfig *)app->config)->dsp.baseband_agc.enable = s_baseband_agc;
-    ((AppConfig *)app->config)->dsp.baseband_agc.target_level_arg =
-        s_baseband_agc_target;
-    ((AppConfig *)app->config)->dsp.output_agc.enable = s_output_agc;
-    ((AppConfig *)app->config)->dsp.output_agc.target_level_arg =
-        s_output_agc_target;
+    AppConfig *config = (AppConfig *)app->config;
+    if (s_baseband_agc) {
+      config->dsp.baseband_agc.enable = true;
+    }
+    if (s_baseband_agc_target != 0.0f) {
+      config->dsp.baseband_agc.target_level_arg = s_baseband_agc_target;
+    }
+    if (s_output_agc) {
+      config->dsp.output_agc.enable = true;
+    }
+    if (s_output_agc_target != 0.0f) {
+      config->dsp.output_agc.target_level_arg = s_output_agc_target;
+    }
   }
   return true;
 }
