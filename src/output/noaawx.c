@@ -125,6 +125,7 @@ static bool output_noaawx_validate_options(AppContext *app) {
              config->baseband_sample_rate.rate_hz);
   }
   config->baseband_sample_rate.rate_hz = 24000.0;
+  config->baseband_sample_rate.source = CONFIG_SOURCE_MODULE_DEFAULT;
   return true;
 }
 

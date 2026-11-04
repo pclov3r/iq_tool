@@ -35,7 +35,6 @@ typedef struct {
 typedef struct OutputAgcConfig {
   bool enable;
   float target_level;
-  float target_level_arg;
 } OutputAgcConfig;
 
 typedef struct {
@@ -61,7 +60,7 @@ typedef struct AppConfig {
     char *module_name;
     char *path_arg;
     char *sample_format_str;
-    bool format_provided;
+    ConfigValueSource format_source;
     OutputPayload payload;
     SampleFormat sample_format;
     char *resolved_path;
@@ -70,22 +69,20 @@ typedef struct AppConfig {
   // --- Output Sample Rate ---
   struct {
     double rate_hz;
-    double user_arg;
-    bool provided;
+    ConfigValueSource source;
   } output_sample_rate;
 
   // --- Baseband Sample Rate (for Demodulators) ---
   struct {
     double rate_hz;
-    double user_arg;
-    bool provided;
+    ConfigValueSource source;
   } baseband_sample_rate;
 
   // --- Baseband Sample Format (for Demodulators) ---
   struct {
     char *format_str;
     SampleFormat format;
-    bool provided;
+    ConfigValueSource source;
   } baseband_sample_format;
 
   // --- Audio Configuration ---
@@ -138,12 +135,9 @@ typedef struct AppConfig {
   // --- SDR General ---
   struct {
     double rf_freq_hz;
-    double rf_freq_hz_arg;
     bool rf_freq_provided;
     double frequency_offset_hz;
-    double frequency_offset_arg;
     double sample_rate_hz;
-    double sample_rate_hz_arg;
     bool sample_rate_provided;
     bool bias_t_enable;
   } sdr_general;

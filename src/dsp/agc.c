@@ -289,9 +289,9 @@ static HarrisAgc *agc_create(AppConfig *config, AppContext *app) {
   agc->enabled = app->dsp.process_chain_agc.enable;
   agc->sample_rate_hz = app->dsp.process_chain_sample_rate_hz;
 
-  if (app->dsp.process_chain_agc.target_level_arg > 0.0f) {
+  if (app->dsp.process_chain_agc.target_level > 0.0f) {
     agc->target_db =
-        20.0f * log10f(app->dsp.process_chain_agc.target_level_arg);
+        20.0f * log10f(app->dsp.process_chain_agc.target_level);
   }
 
   log_info("Enabled (Harris/LMS Block Tracker).");
@@ -402,13 +402,13 @@ static bool dsp_agc_validate_options(struct AppContext *app) {
       config->dsp.baseband_agc.enable = true;
     }
     if (s_baseband_agc_target != 0.0f) {
-      config->dsp.baseband_agc.target_level_arg = s_baseband_agc_target;
+      config->dsp.baseband_agc.target_level = s_baseband_agc_target;
     }
     if (s_output_agc) {
       config->dsp.output_agc.enable = true;
     }
     if (s_output_agc_target != 0.0f) {
-      config->dsp.output_agc.target_level_arg = s_output_agc_target;
+      config->dsp.output_agc.target_level = s_output_agc_target;
     }
   }
   return true;

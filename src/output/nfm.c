@@ -103,7 +103,7 @@ static bool output_nfm_validate_options(AppContext *app) {
   // 1. Default to NFM_DEFAULT_INPUT_RATE (48k) if not specified
   if (config->baseband_sample_rate.rate_hz == 0.0) {
     config->baseband_sample_rate.rate_hz = NFM_DEFAULT_INPUT_RATE;
-    config->baseband_sample_rate.provided = true;
+    config->baseband_sample_rate.source = CONFIG_SOURCE_MODULE_DEFAULT;
   }
 
   // 2. Enforce Bounds

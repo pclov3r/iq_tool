@@ -169,7 +169,7 @@ static bool output_am_validate_options(AppContext *app) {
 
   if (config->baseband_sample_rate.rate_hz == 0.0) {
     config->baseband_sample_rate.rate_hz = AM_DEFAULT_INPUT_RATE;
-    config->baseband_sample_rate.provided = true;
+    config->baseband_sample_rate.source = CONFIG_SOURCE_MODULE_DEFAULT;
   } else {
     double sample_rate = config->baseband_sample_rate.rate_hz;
     if (sample_rate < AM_MIN_INPUT_RATE) {

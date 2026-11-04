@@ -87,7 +87,7 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app) {
   app->dsp.process_chain_sample_rate_hz = target_rate_hz;
 
   if (config->dsp.raw_passthrough) {
-    if (config->output.format_provided &&
+    if (config->output.format_source >= CONFIG_SOURCE_PRESET &&
         config->output.sample_format != app->module.input_format) {
       log_error("Option --raw-passthrough cannot be used with an explicit "
                 "--output-sample-format that differs from the input module.");

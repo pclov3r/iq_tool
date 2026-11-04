@@ -20,136 +20,93 @@
 
 // --- The Dispatch Table ---
 static const PresetKeyHandler key_handlers[] = {
-    {"description", PRESET_KEY_STRDUP, offsetof(PresetDefinition, description),
-     0},
+    {"description", PRESET_KEY_STRDUP, offsetof(PresetDefinition, description)},
     {"output_sample_rate", PRESET_KEY_STRTOD,
-     offsetof(PresetDefinition, rate_hz),
-     offsetof(PresetDefinition, rate_hz_provided)},
+     offsetof(PresetDefinition, rate_hz)},
     {"baseband_sample_rate", PRESET_KEY_STRTOD,
-     offsetof(PresetDefinition, baseband_sample_rate_hz),
-     offsetof(PresetDefinition, baseband_sample_rate_provided)},
+     offsetof(PresetDefinition, baseband_sample_rate_hz)},
     {"output_sample_format", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, output_sample_format), 0},
+     offsetof(PresetDefinition, output_sample_format)},
     {"baseband_sample_format", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, baseband_sample_format), 0},
+     offsetof(PresetDefinition, baseband_sample_format)},
     {"input_gain_multiplier", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, input_gain),
-     offsetof(PresetDefinition, input_gain_provided)},
+     offsetof(PresetDefinition, input_gain)},
     {"output_gain_multiplier", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, output_gain),
-     offsetof(PresetDefinition, output_gain_provided)},
+     offsetof(PresetDefinition, output_gain)},
     {"baseband_gain_multiplier", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, baseband_gain),
-     offsetof(PresetDefinition, baseband_gain_provided)},
-    {"dc_block", PRESET_KEY_BOOL, offsetof(PresetDefinition, dc_block_enable),
-     offsetof(PresetDefinition, dc_block_provided)},
+     offsetof(PresetDefinition, baseband_gain)},
+    {"dc_block", PRESET_KEY_BOOL, offsetof(PresetDefinition, dc_block_enable)},
     {"iq_correction", PRESET_KEY_BOOL,
-     offsetof(PresetDefinition, iq_correction_enable),
-     offsetof(PresetDefinition, iq_correction_provided)},
+     offsetof(PresetDefinition, iq_correction_enable)},
     {"output_agc", PRESET_KEY_BOOL,
-     offsetof(PresetDefinition, output_agc_enable),
-     offsetof(PresetDefinition, output_agc_enable_provided)},
+     offsetof(PresetDefinition, output_agc_enable)},
     {"output_agc_target", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, output_agc_target),
-     offsetof(PresetDefinition, output_agc_target_provided)},
+     offsetof(PresetDefinition, output_agc_target)},
     {"baseband_agc", PRESET_KEY_BOOL,
-     offsetof(PresetDefinition, baseband_agc_enable),
-     offsetof(PresetDefinition, baseband_agc_enable_provided)},
+     offsetof(PresetDefinition, baseband_agc_enable)},
     {"baseband_agc_target", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, baseband_agc_target),
-     offsetof(PresetDefinition, baseband_agc_target_provided)},
+     offsetof(PresetDefinition, baseband_agc_target)},
     {"freq_shift", PRESET_KEY_STRTOD,
-     offsetof(PresetDefinition, frequency_shift_hz),
-     offsetof(PresetDefinition, frequency_shift_provided)},
+     offsetof(PresetDefinition, frequency_shift_hz)},
     {"shift_after_resample", PRESET_KEY_BOOL,
-     offsetof(PresetDefinition, shift_after_resample),
-     offsetof(PresetDefinition, shift_after_resample_provided)},
+     offsetof(PresetDefinition, shift_after_resample)},
     {"lowpass", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, lowpass_cutoff_hz[0]),
-     offsetof(PresetDefinition, lowpass_cutoff_hz_provided[0])},
+     offsetof(PresetDefinition, lowpass_cutoff_hz[0])},
     {"lowpass_1", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, lowpass_cutoff_hz[0]),
-     offsetof(PresetDefinition, lowpass_cutoff_hz_provided[0])},
+     offsetof(PresetDefinition, lowpass_cutoff_hz[0])},
     {"lowpass_2", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, lowpass_cutoff_hz[1]),
-     offsetof(PresetDefinition, lowpass_cutoff_hz_provided[1])},
+     offsetof(PresetDefinition, lowpass_cutoff_hz[1])},
     {"lowpass_3", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, lowpass_cutoff_hz[2]),
-     offsetof(PresetDefinition, lowpass_cutoff_hz_provided[2])},
+     offsetof(PresetDefinition, lowpass_cutoff_hz[2])},
     {"lowpass_4", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, lowpass_cutoff_hz[3]),
-     offsetof(PresetDefinition, lowpass_cutoff_hz_provided[3])},
+     offsetof(PresetDefinition, lowpass_cutoff_hz[3])},
     {"lowpass_5", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, lowpass_cutoff_hz[4]),
-     offsetof(PresetDefinition, lowpass_cutoff_hz_provided[4])},
+     offsetof(PresetDefinition, lowpass_cutoff_hz[4])},
     {"highpass", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, highpass_cutoff_hz[0]),
-     offsetof(PresetDefinition, highpass_cutoff_hz_provided[0])},
+     offsetof(PresetDefinition, highpass_cutoff_hz[0])},
     {"highpass_1", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, highpass_cutoff_hz[0]),
-     offsetof(PresetDefinition, highpass_cutoff_hz_provided[0])},
+     offsetof(PresetDefinition, highpass_cutoff_hz[0])},
     {"highpass_2", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, highpass_cutoff_hz[1]),
-     offsetof(PresetDefinition, highpass_cutoff_hz_provided[1])},
+     offsetof(PresetDefinition, highpass_cutoff_hz[1])},
     {"highpass_3", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, highpass_cutoff_hz[2]),
-     offsetof(PresetDefinition, highpass_cutoff_hz_provided[2])},
+     offsetof(PresetDefinition, highpass_cutoff_hz[2])},
     {"highpass_4", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, highpass_cutoff_hz[3]),
-     offsetof(PresetDefinition, highpass_cutoff_hz_provided[3])},
+     offsetof(PresetDefinition, highpass_cutoff_hz[3])},
     {"highpass_5", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, highpass_cutoff_hz[4]),
-     offsetof(PresetDefinition, highpass_cutoff_hz_provided[4])},
+     offsetof(PresetDefinition, highpass_cutoff_hz[4])},
     {"pass_range", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, pass_range_str[0]),
-     offsetof(PresetDefinition, pass_range_str_provided[0])},
+     offsetof(PresetDefinition, pass_range_str[0])},
     {"pass_range_1", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, pass_range_str[0]),
-     offsetof(PresetDefinition, pass_range_str_provided[0])},
+     offsetof(PresetDefinition, pass_range_str[0])},
     {"pass_range_2", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, pass_range_str[1]),
-     offsetof(PresetDefinition, pass_range_str_provided[1])},
+     offsetof(PresetDefinition, pass_range_str[1])},
     {"pass_range_3", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, pass_range_str[2]),
-     offsetof(PresetDefinition, pass_range_str_provided[2])},
+     offsetof(PresetDefinition, pass_range_str[2])},
     {"pass_range_4", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, pass_range_str[3]),
-     offsetof(PresetDefinition, pass_range_str_provided[3])},
+     offsetof(PresetDefinition, pass_range_str[3])},
     {"pass_range_5", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, pass_range_str[4]),
-     offsetof(PresetDefinition, pass_range_str_provided[4])},
+     offsetof(PresetDefinition, pass_range_str[4])},
     {"stopband", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, stopband_str[0]),
-     offsetof(PresetDefinition, stopband_str_provided[0])},
+     offsetof(PresetDefinition, stopband_str[0])},
     {"stopband_1", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, stopband_str[0]),
-     offsetof(PresetDefinition, stopband_str_provided[0])},
+     offsetof(PresetDefinition, stopband_str[0])},
     {"stopband_2", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, stopband_str[1]),
-     offsetof(PresetDefinition, stopband_str_provided[1])},
+     offsetof(PresetDefinition, stopband_str[1])},
     {"stopband_3", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, stopband_str[2]),
-     offsetof(PresetDefinition, stopband_str_provided[2])},
+     offsetof(PresetDefinition, stopband_str[2])},
     {"stopband_4", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, stopband_str[3]),
-     offsetof(PresetDefinition, stopband_str_provided[3])},
+     offsetof(PresetDefinition, stopband_str[3])},
     {"stopband_5", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, stopband_str[4]),
-     offsetof(PresetDefinition, stopband_str_provided[4])},
+     offsetof(PresetDefinition, stopband_str[4])},
     {"transition_width", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, transition_width_hz),
-     offsetof(PresetDefinition, transition_width_hz_provided)},
-    {"filter_taps", PRESET_KEY_STRTOL, offsetof(PresetDefinition, filter_taps),
-     offsetof(PresetDefinition, filter_taps_provided)},
+     offsetof(PresetDefinition, transition_width_hz)},
+    {"filter_taps", PRESET_KEY_STRTOL, offsetof(PresetDefinition, filter_taps)},
     {"attenuation", PRESET_KEY_STRTOF,
-     offsetof(PresetDefinition, default_filter_attenuation_db),
-     offsetof(PresetDefinition, default_filter_attenuation_db_provided)},
+     offsetof(PresetDefinition, default_filter_attenuation_db)},
     {"filter_type", PRESET_KEY_STRDUP,
-     offsetof(PresetDefinition, filter_type_str),
-     offsetof(PresetDefinition, filter_type_str_provided)},
+     offsetof(PresetDefinition, filter_type_str)},
     {"filter_fft_size", PRESET_KEY_STRTOL,
-     offsetof(PresetDefinition, filter_fft_size),
-     offsetof(PresetDefinition, filter_fft_size_provided)},
+     offsetof(PresetDefinition, filter_fft_size)},
 };
 static const size_t num_key_handlers =
     sizeof(key_handlers) / sizeof(key_handlers[0]);
@@ -324,9 +281,6 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
         const PresetKeyHandler *handler = &key_handlers[handler_index];
         if (preset_key_equals(key, handler->key_name)) {
           char *value_ptr = (char *)current_preset + handler->value_offset;
-          bool *provided_ptr =
-              (bool *)((char *)current_preset + handler->provided_flag_offset);
-          bool value_valid = true;
 
           switch (handler->action) {
           case PRESET_KEY_STRDUP:
@@ -343,7 +297,6 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
               log_warn("Invalid numeric value '%s' for key '%s' in preset '%s' "
                        "at line %d.",
                        value, key, current_preset->name, line_num);
-              value_valid = false;
             } else {
               *(double *)value_ptr = parsed_double;
             }
@@ -356,7 +309,6 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
               log_warn("Invalid numeric value '%s' for key '%s' in preset '%s' "
                        "at line %d.",
                        value, key, current_preset->name, line_num);
-              value_valid = false;
             } else {
               *(float *)value_ptr = parsed_float;
             }
@@ -369,7 +321,6 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
               log_warn("Invalid integer value '%s' for key '%s' in preset '%s' "
                        "at line %d.",
                        value, key, current_preset->name, line_num);
-              value_valid = false;
             } else {
               *(int *)value_ptr = (int)parsed_long;
             }
@@ -384,14 +335,10 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
               log_warn("Invalid boolean value '%s' for key '%s' in preset '%s' "
                        "at line %d (expected 'true' or 'false').",
                        value, key, current_preset->name, line_num);
-              value_valid = false;
             }
             break;
           }
 
-          if (value_valid && handler->provided_flag_offset > 0) {
-            *provided_ptr = true;
-          }
           key_found = true;
           break;
         }

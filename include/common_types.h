@@ -80,4 +80,16 @@ typedef enum {
   STREAM_SOURCE_LIVE_STREAM ///< Unbounded real-time stream (SDR, network, pipe).
 } StreamSourceType;
 
+/**
+ * @enum ConfigValueSource
+ * @brief Tracks which configuration stage populated a setting, ordered by
+ * increasing precedence.
+ */
+typedef enum {
+  CONFIG_SOURCE_UNSET = 0,
+  CONFIG_SOURCE_MODULE_DEFAULT,
+  CONFIG_SOURCE_PRESET,
+  CONFIG_SOURCE_USER_CLI
+} ConfigValueSource;
+
 #endif // COMMON_TYPES_H_

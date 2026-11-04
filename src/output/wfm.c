@@ -282,8 +282,7 @@ static bool output_wfm_validate_options(AppContext *app) {
     // If the user didn't request a specific rate, ask the process_chain to give
     // us our default.
     config->baseband_sample_rate.rate_hz = WFM_DEFAULT_MPX_RATE;
-    config->baseband_sample_rate.provided =
-        true; // Mark as provided so setup.c respects it
+    config->baseband_sample_rate.source = CONFIG_SOURCE_MODULE_DEFAULT;
   } else {
     // Case B: User specified a rate. Validate range.
     double rate = config->baseband_sample_rate.rate_hz;

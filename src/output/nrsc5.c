@@ -621,7 +621,7 @@ static bool output_nrsc5_validate_options(AppContext *app) {
   double required_rate =
       (s_nrsc5_config.active_mode == NRSC5_MODE_FM) ? 744187.5 : 46511.71875;
 
-  if (config->baseband_sample_rate.provided) {
+  if (config->baseband_sample_rate.source != CONFIG_SOURCE_UNSET) {
     if (config->baseband_sample_rate.rate_hz != required_rate) {
       log_error("NRSC5: Invalid rate %.15g Hz. Selected band requires exactly "
                 "%.15g Hz.",
@@ -630,6 +630,7 @@ static bool output_nrsc5_validate_options(AppContext *app) {
     }
   } else {
     config->baseband_sample_rate.rate_hz = required_rate;
+    config->baseband_sample_rate.source = CONFIG_SOURCE_MODULE_DEFAULT;
   }
 
   if (s_nrsc5_config.program_id == -1) {

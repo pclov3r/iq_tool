@@ -26,17 +26,11 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
     config->output.payload = out_mod->payload;
   }
 
-  if (config->output.sample_format_str) {
-    config->output.format_provided = true;
-  }
-  if (config->baseband_sample_format.format_str) {
-    config->baseband_sample_format.provided = true;
-  }
-
   if (config->output.payload == PAYLOAD_AUDIO) {
     if (!config->baseband_sample_format.format_str) {
       if (out_mod && out_mod->module_defines_format) {
         config->baseband_sample_format.format_str = "cf32";
+        config->baseband_sample_format.source = CONFIG_SOURCE_MODULE_DEFAULT;
       } else {
         log_error("Missing required argument: --baseband-sample-format for "
                   "output '%s'.",
@@ -58,10 +52,12 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
     if (!config->output.sample_format_str) {
       if (config->output.path_arg) {
         config->output.sample_format_str = "cs16";
+        config->output.format_source = CONFIG_SOURCE_MODULE_DEFAULT;
         log_info("No output sample format specified; defaulting to 'cs16' for "
                  "file output.");
       } else if (out_mod && out_mod->module_defines_format) {
         config->output.sample_format_str = "cs16";
+        config->output.format_source = CONFIG_SOURCE_MODULE_DEFAULT;
       } else {
         log_error("Missing required argument: --output-sample-format for "
                   "output '%s'.",
@@ -94,15 +90,13 @@ bool validate_option_combinations(AppConfig *config) {
   }
 
   if (config->dsp.output_agc.enable) {
-    if (config->dsp.output_agc.target_level_arg != 0.0f) {
-      if (config->dsp.output_agc.target_level_arg <= 0.0f ||
-          config->dsp.output_agc.target_level_arg > 1.0f) {
+    if (config->dsp.output_agc.target_level != 0.0f) {
+      if (config->dsp.output_agc.target_level <= 0.0f ||
+          config->dsp.output_agc.target_level > 1.0f) {
         log_error("Invalid AGC target level %.2f. Must be between 0.0 and 1.0.",
-                  config->dsp.output_agc.target_level_arg);
+                  config->dsp.output_agc.target_level);
         return false;
       }
-      config->dsp.output_agc.target_level =
-          config->dsp.output_agc.target_level_arg;
     }
     if (config->dsp.output_gain != 1.0f) {
       log_error("Conflicting options: --output-agc and "
@@ -111,15 +105,13 @@ bool validate_option_combinations(AppConfig *config) {
     }
   }
   if (config->dsp.baseband_agc.enable) {
-    if (config->dsp.baseband_agc.target_level_arg != 0.0f) {
-      if (config->dsp.baseband_agc.target_level_arg <= 0.0f ||
-          config->dsp.baseband_agc.target_level_arg > 1.0f) {
+    if (config->dsp.baseband_agc.target_level != 0.0f) {
+      if (config->dsp.baseband_agc.target_level <= 0.0f ||
+          config->dsp.baseband_agc.target_level > 1.0f) {
         log_error("Invalid AGC target level %.2f. Must be between 0.0 and 1.0.",
-                  config->dsp.baseband_agc.target_level_arg);
+                  config->dsp.baseband_agc.target_level);
         return false;
       }
-      config->dsp.baseband_agc.target_level =
-          config->dsp.baseband_agc.target_level_arg;
     }
     if (config->dsp.baseband_gain != 1.0f) {
       log_error("Conflicting options: --baseband-agc and "
@@ -129,12 +121,12 @@ bool validate_option_combinations(AppConfig *config) {
   }
 
   if (config->output.payload == PAYLOAD_AUDIO) {
-    if (config->output_sample_rate.provided) {
+    if (config->output_sample_rate.source >= CONFIG_SOURCE_PRESET) {
       log_error("--output-sample-rate cannot be used with demodulators. Please "
                 "use --baseband-sample-rate.");
       return false;
     }
-    if (config->output.format_provided) {
+    if (config->output.format_source >= CONFIG_SOURCE_PRESET) {
       log_error("--output-sample-format cannot be used with demodulators. "
                 "Please use --baseband-sample-format.");
       return false;
@@ -150,12 +142,12 @@ bool validate_option_combinations(AppConfig *config) {
       return false;
     }
   } else {
-    if (config->baseband_sample_rate.provided) {
+    if (config->baseband_sample_rate.source >= CONFIG_SOURCE_PRESET) {
       log_error("--baseband-sample-rate cannot be used with raw outputs. "
                 "Please use --output-sample-rate.");
       return false;
     }
-    if (config->baseband_sample_format.provided) {
+    if (config->baseband_sample_format.source >= CONFIG_SOURCE_PRESET) {
       log_error("--baseband-sample-format cannot be used with raw outputs. "
                 "Please use --output-sample-format.");
       return false;
@@ -172,8 +164,8 @@ bool validate_option_combinations(AppConfig *config) {
     }
   }
 
-  if ((config->output_sample_rate.user_arg > 0.0 ||
-       config->baseband_sample_rate.user_arg > 0.0) &&
+  if ((config->output_sample_rate.source == CONFIG_SOURCE_USER_CLI ||
+       config->baseband_sample_rate.source == CONFIG_SOURCE_USER_CLI) &&
       config->preset_name) {
     log_error("Options --output-sample-rate or --baseband-sample-rate cannot "
               "be used with --preset.");

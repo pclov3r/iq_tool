@@ -456,8 +456,13 @@ static void print_configuration_summary(const AppConfig *config,
       (config->output.payload == PAYLOAD_AUDIO) ? "Baseband AGC" : "Output AGC";
 
   if (app->dsp.process_chain_agc.enable) {
-    utility_add_summary_item(&output_info, agc_label, "Enabled (Target: %.2f)",
-                             app->dsp.process_chain_agc.target_level);
+    if (app->dsp.process_chain_agc.target_level > 0.0f) {
+      utility_add_summary_item(&output_info, agc_label, "Enabled (Target: %.2f)",
+                               app->dsp.process_chain_agc.target_level);
+    } else {
+      utility_add_summary_item(&output_info, agc_label,
+                               "Enabled (Target: -18.0 dBFS)");
+    }
   } else {
     utility_add_summary_item(&output_info, agc_label, "Disabled");
   }
