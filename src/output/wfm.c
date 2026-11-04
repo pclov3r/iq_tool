@@ -106,7 +106,7 @@ typedef enum {
 
 typedef struct {
   float buffer[WFM_BUFFER_SIZE];
-  float sum;
+  double sum;
   int index;
 } RunningAverage;
 
@@ -213,28 +213,46 @@ static float angular_freq(float hertz, float sample_rate) {
   return hertz * 2.0f * (float)M_PI / sample_rate;
 }
 
-static void running_average_init(RunningAverage *ra) {
-  memset(ra->buffer, 0, sizeof(ra->buffer));
-  ra->sum = 0.0f;
-  ra->index = 0;
-  // Pre-fill as done in demux.cpp
-  for (int i = 0; i < WFM_BUFFER_SIZE; i++) {
-    ra->sum -= ra->buffer[ra->index];
-    ra->buffer[ra->index] = 9.0f;
-    ra->sum += ra->buffer[ra->index];
-    ra->index = (ra->index + 1) % WFM_BUFFER_SIZE;
+/**
+ * @brief Normalizes FIR filter tap coefficients to exact unity (0 dB) DC gain.
+ *
+ * Per Richard G. Lyons, "Understanding Digital Signal Processing", 3rd ed.,
+ * Section 5.10.1 (Eq. 5-34) and Section 6.9 (p. 276), the DC gain of an FIR
+ * filter equals the sum of its impulse response coefficients. Dividing each
+ * coefficient by that sum enforces exact unity passband gain at 0 Hz.
+ */
+static void normalize_fir_filter_dc_gain(float *coefficients,
+                                         unsigned int filter_length) {
+  double coefficient_sum = 0.0;
+  for (unsigned int tap_index = 0; tap_index < filter_length; tap_index++) {
+    coefficient_sum += (double)coefficients[tap_index];
+  }
+  if (fabs(coefficient_sum) > 1e-12) {
+    float normalization_scale = (float)(1.0 / coefficient_sum);
+    for (unsigned int tap_index = 0; tap_index < filter_length; tap_index++) {
+      coefficients[tap_index] *= normalization_scale;
+    }
   }
 }
 
-static void running_average_push(RunningAverage *ra, float val) {
-  ra->sum -= ra->buffer[ra->index];
-  ra->buffer[ra->index] = val;
-  ra->sum += ra->buffer[ra->index];
-  ra->index = (ra->index + 1) % WFM_BUFFER_SIZE;
+static void running_average_init(RunningAverage *running_average) {
+  for (int sample_index = 0; sample_index < WFM_BUFFER_SIZE; sample_index++) {
+    running_average->buffer[sample_index] = 9.0f;
+  }
+  running_average->sum = 9.0 * (double)WFM_BUFFER_SIZE;
+  running_average->index = 0;
 }
 
-static float running_average_get(RunningAverage *ra) {
-  return ra->sum / (float)WFM_BUFFER_SIZE;
+static void running_average_push(RunningAverage *running_average,
+                                 float sample_value) {
+  running_average->sum -= (double)running_average->buffer[running_average->index];
+  running_average->buffer[running_average->index] = sample_value;
+  running_average->sum += (double)sample_value;
+  running_average->index = (running_average->index + 1) % WFM_BUFFER_SIZE;
+}
+
+static float running_average_get(RunningAverage *running_average) {
+  return (float)(running_average->sum / (double)WFM_BUFFER_SIZE);
 }
 
 static void deemphasis_init(DeEmphasis *de, float time_constant_us,
@@ -369,28 +387,38 @@ static bool output_wfm_initialize(ModuleContext *context) {
                          2.0f * angular_freq(WFM_PILOT_HZ, mpx_rate));
 
   // Filters
-  int pilot_fir_half_length = (int)(mpx_rate * 1e-6f * WFM_PILOT_FIR_USEC);
-  int pilot_fir_length = pilot_fir_half_length * 2 + 1;
-  wfm_demod->fir_pilot = firfilt_crcf_create_kaiser(
-      pilot_fir_length, WFM_PILOT_FIR_HALFBAND / mpx_rate,
-      context->config->dsp.filter.args.attenuation, 0.0f);
-  firfilt_crcf_set_scale(wfm_demod->fir_pilot,
-                         2.0f * (WFM_PILOT_FIR_HALFBAND / mpx_rate));
+  unsigned int pilot_fir_half_length =
+      (unsigned int)(mpx_rate * 1e-6f * WFM_PILOT_FIR_USEC);
+  unsigned int pilot_fir_length = pilot_fir_half_length * 2U + 1U;
+  float *pilot_fir_coefficients = (float *)mem_arena_alloc(
+      &app->process_chain.setup_arena, pilot_fir_length * sizeof(float), false);
+  if (!pilot_fir_coefficients)
+    return false;
+  liquid_firdes_kaiser(pilot_fir_length, WFM_PILOT_FIR_HALFBAND / mpx_rate,
+                       context->config->dsp.filter.args.attenuation, 0.0f,
+                       pilot_fir_coefficients);
+  normalize_fir_filter_dc_gain(pilot_fir_coefficients, pilot_fir_length);
+  wfm_demod->fir_pilot =
+      firfilt_crcf_create(pilot_fir_coefficients, pilot_fir_length);
 
-  int audio_fir_length = (int)(WFM_AUDIO_FIR_LEN_USEC * 1e-6f * mpx_rate);
-  if (audio_fir_length % 2 == 0)
+  unsigned int audio_fir_length =
+      (unsigned int)(WFM_AUDIO_FIR_LEN_USEC * 1e-6f * mpx_rate);
+  if (audio_fir_length % 2U == 0U)
     audio_fir_length++;
-  float audio_fc = WFM_AUDIO_FIR_CUTOFF / mpx_rate;
+  float audio_cutoff_normalized = WFM_AUDIO_FIR_CUTOFF / mpx_rate;
+  float *audio_fir_coefficients = (float *)mem_arena_alloc(
+      &app->process_chain.setup_arena, audio_fir_length * sizeof(float), false);
+  if (!audio_fir_coefficients)
+    return false;
+  liquid_firdes_kaiser(audio_fir_length, audio_cutoff_normalized,
+                       context->config->dsp.filter.args.attenuation, 0.0f,
+                       audio_fir_coefficients);
+  normalize_fir_filter_dc_gain(audio_fir_coefficients, audio_fir_length);
 
-  wfm_demod->fir_sum = firfilt_rrrf_create_kaiser(
-      audio_fir_length, audio_fc, context->config->dsp.filter.args.attenuation,
-      0.0f);
-  firfilt_rrrf_set_scale(wfm_demod->fir_sum, 2.0f * audio_fc);
-
-  wfm_demod->fir_diff = firfilt_rrrf_create_kaiser(
-      audio_fir_length, audio_fc, context->config->dsp.filter.args.attenuation,
-      0.0f);
-  firfilt_rrrf_set_scale(wfm_demod->fir_diff, 2.0f * audio_fc);
+  wfm_demod->fir_sum =
+      firfilt_rrrf_create(audio_fir_coefficients, audio_fir_length);
+  wfm_demod->fir_diff =
+      firfilt_rrrf_create(audio_fir_coefficients, audio_fir_length);
 
   deemphasis_init(&wfm_demod->deemphasis, s_wfm_config.deemph_us, mpx_rate);
   running_average_init(&wfm_demod->pilotnoise);
