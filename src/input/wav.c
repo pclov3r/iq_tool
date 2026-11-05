@@ -733,9 +733,16 @@ static bool input_wav_validate_options(AppContext *app) {
   }
 
   if (private_data->sdr_metadata.center_freq_hz_present) {
-    config->iq_file_metadata.rf_freq_hz =
-        private_data->sdr_metadata.center_freq_hz;
+    double resolved_center_freq_hz = private_data->sdr_metadata.center_freq_hz;
+    if (s_wav_config.center_target_hz_arg != 0.0f) {
+      resolved_center_freq_hz = (double)s_wav_config.center_target_hz_arg;
+    }
+    config->iq_file_metadata.rf_freq_hz = resolved_center_freq_hz;
     config->iq_file_metadata.rf_freq_provided = true;
+    if (!config->sdr_general.rf_freq_provided &&
+        config->sdr_general.rf_freq_hz == 0.0) {
+      config->sdr_general.rf_freq_hz = resolved_center_freq_hz;
+    }
   }
 
   return true;
@@ -806,9 +813,24 @@ static bool input_wav_initialize(ModuleContext *context) {
       return false;
     }
 
-    double target_freq = (double)s_wav_config.center_target_hz_arg;
+    double target_frequency_hz = (double)s_wav_config.center_target_hz_arg;
     app->dsp.nco_shift_hz =
-        private_data->sdr_metadata.center_freq_hz - target_freq;
+        private_data->sdr_metadata.center_freq_hz - target_frequency_hz;
+    ((AppConfig *)config)->iq_file_metadata.rf_freq_hz = target_frequency_hz;
+    if (!config->sdr_general.rf_freq_provided) {
+      ((AppConfig *)config)->sdr_general.rf_freq_hz = target_frequency_hz;
+    }
+  } else if (private_data->sdr_metadata.center_freq_hz_present) {
+    if (!config->iq_file_metadata.rf_freq_provided) {
+      ((AppConfig *)config)->iq_file_metadata.rf_freq_hz =
+          private_data->sdr_metadata.center_freq_hz;
+      ((AppConfig *)config)->iq_file_metadata.rf_freq_provided = true;
+    }
+    if (!config->sdr_general.rf_freq_provided &&
+        config->sdr_general.rf_freq_hz == 0.0) {
+      ((AppConfig *)config)->sdr_general.rf_freq_hz =
+          private_data->sdr_metadata.center_freq_hz;
+    }
   }
 
   return true;

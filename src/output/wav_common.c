@@ -122,6 +122,18 @@ bool output_wav_common_initialize(ModuleContext *context, int sf_format_flag) {
 #define GIT_HASH "unknown"
 #endif
 
+  // Determine the effective center frequency with fallback to input file metadata
+  double center_freq_hz = 0.0;
+  if (config->sdr_general.rf_freq_provided &&
+      config->sdr_general.rf_freq_hz > 0.0) {
+    center_freq_hz = config->sdr_general.rf_freq_hz;
+  } else if (config->iq_file_metadata.rf_freq_provided &&
+             config->iq_file_metadata.rf_freq_hz > 0.0) {
+    center_freq_hz = config->iq_file_metadata.rf_freq_hz;
+  } else if (config->sdr_general.rf_freq_hz > 0.0) {
+    center_freq_hz = config->sdr_general.rf_freq_hz;
+  }
+
   // Construct the strictly formatted filename exclusively for the XML
   // attributes to satisfy SDR Console's regex parser
   char sdr_console_xml_filename[256];
@@ -129,13 +141,13 @@ bool output_wav_common_initialize(ModuleContext *context, int sf_format_flag) {
            "%s %02d%02d%02d.000 %.3fMHz.wav", date_only,
            tm_info ? tm_info->tm_hour : 0, tm_info ? tm_info->tm_min : 0,
            tm_info ? tm_info->tm_sec : 0,
-           config->sdr_general.rf_freq_hz / 1000000.0);
+           center_freq_hz / 1000000.0);
 
   // Construct the true Title string that SDR Console uses natively for its UI
   char true_title[256];
   snprintf(true_title, sizeof(true_title),
            "%.3f MHz, BW %.0f kHz, %04d-%02d-%02d %02d:%02d",
-           config->sdr_general.rf_freq_hz / 1000000.0,
+           center_freq_hz / 1000000.0,
            app->dsp.process_chain_sample_rate_hz / 1000.0,
            tm_info ? tm_info->tm_year + 1900 : 0,
            tm_info ? tm_info->tm_mon + 1 : 0, tm_info ? tm_info->tm_mday : 0,
@@ -172,7 +184,7 @@ bool output_wav_common_initialize(ModuleContext *context, int sf_format_flag) {
       "</SDR-XML-Root>",
       time_created, time_utc, sdr_console_xml_filename,
       sdr_console_xml_filename, radio_model, GIT_HASH, time_utc,
-      bits_per_sample, bytes_per_second, config->sdr_general.rf_freq_hz,
+      bits_per_sample, bytes_per_second, center_freq_hz,
       app->dsp.process_chain_sample_rate_hz, (long long)now);
 
   if (xml_length > 0 && xml_length < (int)sizeof(xml_buffer)) {
