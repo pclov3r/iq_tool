@@ -887,10 +887,11 @@ static void input_spyserver_client_cleanup(ModuleContext *context) {
   if (app->module.input_private_data) {
     SpyServerClientContext *client =
         (SpyServerClientContext *)app->module.input_private_data;
-    if (client->stream_buffer) {
-      ring_buffer_destroy(client->stream_buffer);
-      client->stream_buffer = NULL;
+    if (app->process_chain.input_ring_buffer) {
+      ring_buffer_destroy(app->process_chain.input_ring_buffer);
+      app->process_chain.input_ring_buffer = NULL;
     }
+    client->stream_buffer = NULL;
     if (client->net_context) {
       networking_disconnect(client->net_context);
       client->net_context = NULL;

@@ -336,8 +336,10 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
   // 5. Calculate Dynamic Ring Buffer Sizes
   // -------------------------------------------------------------------------
 
-  // Calculate input buffer size (for buffered mode)
-  if (app->process_chain_mode != PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL) {
+  // Calculate input buffer size (for buffered mode when not pre-allocated by
+  // the input module)
+  if (app->process_chain_mode != PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL &&
+      app->process_chain.input_ring_buffer == NULL) {
     size_t input_buffer_bytes =
         (size_t)(input_rate * INPUT_BUFFER_DURATION_SEC *
                  app->module.input_bytes_per_iq_sample);
