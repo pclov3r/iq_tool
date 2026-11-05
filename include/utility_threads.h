@@ -10,8 +10,8 @@
 #ifndef UTILITY_THREADS_H_
 #define UTILITY_THREADS_H_
 
-#include <stdatomic.h>
-#include <stdbool.h>
+struct AppContext;
+struct WaitEvent;
 
 /**
  * @struct SdrInitWatchdogContext
@@ -19,11 +19,9 @@
  */
 typedef struct SdrInitWatchdogContext {
   const char *module_name; ///< Name of the input module being initialized.
-  atomic_bool
-      is_complete; ///< Flag set by the caller when initialization completes.
+  struct WaitEvent *
+      completion_event; ///< Event signaled when initialization completes.
 } SdrInitWatchdogContext;
-
-struct AppContext;
 
 /**
  * @brief Watchdog thread that forces application exit if SDR initialization

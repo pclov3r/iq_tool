@@ -10,6 +10,7 @@
 #include "platform.h"
 #include "signal_handler.h"
 #include "thread_manager.h"
+#include "wait_event.h"
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -83,7 +84,10 @@ static void *keyboard_listener_thread(void *arg) {
       }
     }
 
-    platform_sleep(50); // 50ms sleep to keep CPU at 0%
+    if (wait_event_wait_timeout(app->process_chain.shutdown_event, 50) !=
+        WAIT_EVENT_RESULT_TIMEOUT) {
+      break;
+    }
   }
 
 #ifndef _WIN32

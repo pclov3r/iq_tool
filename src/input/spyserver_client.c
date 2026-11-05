@@ -51,6 +51,7 @@
 #include "signal_handler.h"
 #include "thread_manager.h"
 #include "utilities.h"
+#include "wait_event.h"
 #include <math.h>
 #include <stdatomic.h>
 #include <stdint.h>
@@ -831,7 +832,10 @@ input_spyserver_client_start_background_threads(ModuleContext *context,
          ring_buffer_get_size(client->stream_buffer) < high_water_mark) {
     if (input_has_error(app))
       break;
-    platform_sleep(100);
+    if (wait_event_wait_timeout(app->process_chain.shutdown_event, 100) !=
+        WAIT_EVENT_RESULT_TIMEOUT) {
+      break;
+    }
   }
 
   if (is_shutdown_requested() || input_has_error(app)) {
@@ -854,12 +858,10 @@ input_spyserver_client_push_samples_to_queue(ModuleContext *context,
   // The process_chain_thread_chunker in process_chain_io.c handles pulling
   // chunks from input_ring_buffer and performing the CF32 conversion. The
   // producer thread writes directly to input_ring_buffer in the background.
-  // This function simply idles to keep the input module "running" until
-  // shutdown.
-  while (!is_shutdown_requested()) {
-    if (input_has_error(app))
-      break;
-    platform_sleep(100);
+  // This function waits on shutdown_event to keep the input module running
+  // until shutdown.
+  if (app->process_chain.shutdown_event) {
+    wait_event_wait(app->process_chain.shutdown_event);
   }
 
   if (!is_shutdown_requested()) {

@@ -303,12 +303,16 @@ static bool init_input_module(AppConfig *config, AppContext *app) {
   thread_manager_init(&watchdog_tm, &app->process_chain.setup_arena);
   SdrInitWatchdogContext watchdog_ctx = {
       .module_name = config->input.type_name,
-      .is_complete = false,
+      .completion_event = NULL,
   };
 
   if (app->process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH) {
-    thread_manager_spawn(&watchdog_tm, "watchdog", PRIORITY_NORMAL,
-                         sdr_init_watchdog_thread, &watchdog_ctx);
+    watchdog_ctx.completion_event =
+        wait_event_create(&app->process_chain.setup_arena);
+    if (watchdog_ctx.completion_event) {
+      thread_manager_spawn(&watchdog_tm, "watchdog", PRIORITY_NORMAL,
+                           sdr_init_watchdog_thread, &watchdog_ctx);
+    }
   }
 
   bool init_ok = app->module.input_api->initialize(&context);
@@ -320,9 +324,11 @@ static bool init_input_module(AppConfig *config, AppContext *app) {
   }
 
   if (watchdog_tm.num_threads_started > 0) {
-    atomic_store_explicit(&watchdog_ctx.is_complete, true,
-                          memory_order_relaxed);
+    wait_event_signal(watchdog_ctx.completion_event);
     thread_manager_join_all(&watchdog_tm);
+  }
+  if (watchdog_ctx.completion_event) {
+    wait_event_destroy(watchdog_ctx.completion_event);
   }
 
   return init_ok;

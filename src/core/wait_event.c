@@ -9,12 +9,6 @@
 #include <stdatomic.h>
 #include <stdlib.h>
 
-typedef enum WaitEventState {
-  WAIT_EVENT_STATE_UNINITIALIZED = 0,
-  WAIT_EVENT_STATE_ACTIVE,
-  WAIT_EVENT_STATE_DESTROYED
-} WaitEventState;
-
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -25,12 +19,13 @@ struct WaitEvent {
 };
 
 #else
+#include <errno.h>
 #include <pthread.h>
+#include <time.h>
 
 struct WaitEvent {
   pthread_mutex_t mutex;
   pthread_cond_t cond;
-  bool signaled;
   atomic_int state;
 };
 #endif
@@ -53,14 +48,22 @@ WaitEvent *wait_event_create(struct MemoryArena *arena) {
     log_fatal("Failed to init wait_event mutex.");
     return NULL;
   }
-  if (pthread_cond_init(&ev->cond, NULL) != 0) {
-    log_fatal("Failed to init wait_event cond.");
+  pthread_condattr_t cond_attr;
+  if (pthread_condattr_init(&cond_attr) != 0) {
+    log_fatal("Failed to init wait_event cond attributes.");
     pthread_mutex_destroy(&ev->mutex);
     return NULL;
   }
-  ev->signaled = false;
+  pthread_condattr_setclock(&cond_attr, CLOCK_MONOTONIC);
+  if (pthread_cond_init(&ev->cond, &cond_attr) != 0) {
+    log_fatal("Failed to init wait_event cond.");
+    pthread_condattr_destroy(&cond_attr);
+    pthread_mutex_destroy(&ev->mutex);
+    return NULL;
+  }
+  pthread_condattr_destroy(&cond_attr);
 #endif
-  atomic_store_explicit(&ev->state, WAIT_EVENT_STATE_ACTIVE,
+  atomic_store_explicit(&ev->state, WAIT_EVENT_STATE_WAITING,
                         memory_order_release);
 
   return ev;
@@ -71,8 +74,10 @@ void wait_event_destroy(WaitEvent *ev) {
     return;
 
 #ifdef _WIN32
-  if (atomic_exchange_explicit(&ev->state, WAIT_EVENT_STATE_DESTROYED,
-                               memory_order_acq_rel) != WAIT_EVENT_STATE_ACTIVE)
+  int previous_state = atomic_exchange_explicit(
+      &ev->state, WAIT_EVENT_STATE_DESTROYED, memory_order_acq_rel);
+  if (previous_state != WAIT_EVENT_STATE_WAITING &&
+      previous_state != WAIT_EVENT_STATE_SIGNALED)
     return;
   if (ev->handle) {
     CloseHandle(ev->handle);
@@ -80,8 +85,9 @@ void wait_event_destroy(WaitEvent *ev) {
   }
 #else
   pthread_mutex_lock(&ev->mutex);
-  if (atomic_load_explicit(&ev->state, memory_order_acquire) !=
-      WAIT_EVENT_STATE_ACTIVE) {
+  int current_state = atomic_load_explicit(&ev->state, memory_order_acquire);
+  if (current_state != WAIT_EVENT_STATE_WAITING &&
+      current_state != WAIT_EVENT_STATE_SIGNALED) {
     pthread_mutex_unlock(&ev->mutex);
     return;
   }
@@ -99,18 +105,24 @@ void wait_event_signal(WaitEvent *ev) {
   if (!ev)
     return;
 #ifdef _WIN32
-  if (atomic_load_explicit(&ev->state, memory_order_acquire) !=
-      WAIT_EVENT_STATE_ACTIVE)
-    return;
+  int expected_state = WAIT_EVENT_STATE_WAITING;
+  if (!atomic_compare_exchange_strong_explicit(
+          &ev->state, &expected_state, WAIT_EVENT_STATE_SIGNALED,
+          memory_order_acq_rel, memory_order_acquire)) {
+    if (expected_state != WAIT_EVENT_STATE_SIGNALED)
+      return;
+  }
   SetEvent(ev->handle);
 #else
   pthread_mutex_lock(&ev->mutex);
-  if (atomic_load_explicit(&ev->state, memory_order_acquire) !=
-      WAIT_EVENT_STATE_ACTIVE) {
+  int current_state = atomic_load_explicit(&ev->state, memory_order_acquire);
+  if (current_state != WAIT_EVENT_STATE_WAITING &&
+      current_state != WAIT_EVENT_STATE_SIGNALED) {
     pthread_mutex_unlock(&ev->mutex);
     return;
   }
-  ev->signaled = true;
+  atomic_store_explicit(&ev->state, WAIT_EVENT_STATE_SIGNALED,
+                        memory_order_release);
   // Broadcast wakes up ALL waiting threads, not just one.
   pthread_cond_broadcast(&ev->cond);
   pthread_mutex_unlock(&ev->mutex);
@@ -121,17 +133,65 @@ void wait_event_wait(WaitEvent *ev) {
   if (!ev)
     return;
 #ifdef _WIN32
-  if (atomic_load_explicit(&ev->state, memory_order_acquire) !=
-      WAIT_EVENT_STATE_ACTIVE)
+  int current_state = atomic_load_explicit(&ev->state, memory_order_acquire);
+  if (current_state != WAIT_EVENT_STATE_WAITING &&
+      current_state != WAIT_EVENT_STATE_SIGNALED)
     return;
   WaitForSingleObject(ev->handle, INFINITE);
 #else
   pthread_mutex_lock(&ev->mutex);
-  while (!ev->signaled &&
-         atomic_load_explicit(&ev->state, memory_order_relaxed) ==
-             WAIT_EVENT_STATE_ACTIVE) {
+  while (atomic_load_explicit(&ev->state, memory_order_acquire) ==
+         WAIT_EVENT_STATE_WAITING) {
     pthread_cond_wait(&ev->cond, &ev->mutex);
   }
   pthread_mutex_unlock(&ev->mutex);
+#endif
+}
+
+WaitEventResult wait_event_wait_timeout(WaitEvent *ev, uint32_t timeout_ms) {
+  if (!ev)
+    return WAIT_EVENT_RESULT_INACTIVE;
+#ifdef _WIN32
+  int current_state = atomic_load_explicit(&ev->state, memory_order_acquire);
+  if (current_state == WAIT_EVENT_STATE_UNINITIALIZED ||
+      current_state == WAIT_EVENT_STATE_DESTROYED) {
+    return WAIT_EVENT_RESULT_INACTIVE;
+  }
+  DWORD wait_status = WaitForSingleObject(ev->handle, (DWORD)timeout_ms);
+  if (wait_status == WAIT_OBJECT_0) {
+    return WAIT_EVENT_RESULT_SIGNALED;
+  }
+  if (wait_status == WAIT_TIMEOUT) {
+    return WAIT_EVENT_RESULT_TIMEOUT;
+  }
+  return WAIT_EVENT_RESULT_INACTIVE;
+#else
+  struct timespec deadline;
+  clock_gettime(CLOCK_MONOTONIC, &deadline);
+  deadline.tv_sec += (time_t)(timeout_ms / 1000U);
+  deadline.tv_nsec += (long)((timeout_ms % 1000U) * 1000000L);
+  if (deadline.tv_nsec >= 1000000000L) {
+    deadline.tv_sec += 1;
+    deadline.tv_nsec -= 1000000000L;
+  }
+
+  pthread_mutex_lock(&ev->mutex);
+  while (atomic_load_explicit(&ev->state, memory_order_acquire) ==
+         WAIT_EVENT_STATE_WAITING) {
+    int wait_rc = pthread_cond_timedwait(&ev->cond, &ev->mutex, &deadline);
+    if (wait_rc == ETIMEDOUT) {
+      break;
+    }
+  }
+  int final_state = atomic_load_explicit(&ev->state, memory_order_acquire);
+  pthread_mutex_unlock(&ev->mutex);
+
+  if (final_state == WAIT_EVENT_STATE_SIGNALED) {
+    return WAIT_EVENT_RESULT_SIGNALED;
+  }
+  if (final_state == WAIT_EVENT_STATE_WAITING) {
+    return WAIT_EVENT_RESULT_TIMEOUT;
+  }
+  return WAIT_EVENT_RESULT_INACTIVE;
 #endif
 }
