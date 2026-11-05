@@ -2,49 +2,65 @@
  * @file agc.c
  * @brief Implements the Output Automatic Gain Control module.
  *
- * This module provides a self-contained Harris/LMS implementation inspired by
- * the algorithm described in:
+ * This module provides a digital Automatic Gain Control (AGC) implementation
+ * directly following the theory and architecture documented in:
  *
+ *   Richard G. Lyons, "Understanding Digital Signal Processing", 3rd ed.,
+ *   Section 13.30, Figure 13-77(a) (Logarithmic AGC circuit).
+ *
+ * Based on the foundational work of:
  *   Fred Harris & Gregory Smith, "On the Design, Implementation, and
  *   Performance of a Microprocessor-Controlled AGC System for a Digital
- *   Receiver", and documented in Richard G. Lyons, "Understanding Digital
- *   Signal Processing", 3rd ed., Section 13.30.
+ *   Receiver", IEEE MILCOM, 1988.
  *
  * The deadband and block-level adaptation for software SDR were informed by
  * Chris Gianakopoulos's open-source AGC implementation for RTL-SDR:
  * https://github.com/wizardyesterday/AutomaticGainControl
  *
- * The Harris algorithm works in the dB domain, treating the AGC as a
- * linear system:
+ * Lyons Fig. 13-77(a) Logarithmic AGC Block Diagram:
  *
- *   y(n)   = x(n) + g(n)          [signal + gain, both in dB]
- *   e(n)   = R - y(n)             [error from target R]
- *   g(n+1) = g(n) + alpha * e(n)  [LMS gain update]
+ *   x(n) ───────>[ x ]───────────────────────────────────┬────────> y(n)
+ *                 ▲                                      │
+ *          Gain   │                                      ▼
+ *             ┌───────┐                              ┌───────┐
+ *             │Antilog│                              │   x   │ (squarer: |y(n)|²)
+ *             └───────┘                              └───────┘
+ *                 ▲                                      │
+ *                 │                                      ▼
+ *               ┌───┐                                ┌───────┐
+ *          ┌───>│z⁻¹├───┐                            │  LPF  │ (mean power)
+ *          │    └───┘   │                            └───────┘
+ *          │            │                                │
+ *          │            ▼                                ▼
+ *          │          ┌───┐          ┌───┐           ┌───────┐
+ *          └──────────┤ + │<─────────┤ x │<── (-) ───┤  Log  │
+ *                     └───┘          └───┘           └───────┘
+ *                                      ▲                 ▲ (+)
+ *                                      │ α               │
+ *                                                    2 log(R)
  *
- * A deadband prevents any gain adjustment when the signal is already
- * within a target range. This ensures that signals already in a good
- * range are passed through untouched — if the signal is already
- * close to the target, gain stays at whatever it currently is (typically
- * 0 dB) and samples are unchanged. No soft limiter is used — the output
- * is always a clean linear multiply.
+ * In this software-defined radio implementation (with block adaptation and
+ * deadband informed by Chris Gianakopoulos):
  *
- * Signal chain (per block):
+ *   1. Power Measurement & LPF:
+ *      The squarer + LPF + Log stages are computed across each block of N samples
+ *      using double-precision RMS accumulation:
+ *        P_dB = 10 * log10( (1/N) * sum(|x[i]|²) )
+ *      Estimated output power: y_dB = P_dB + gain_db.
  *
- *   input samples
- *       │
- *       ▼
- *   [1] Impulse Blanker   – zeros samples whose magnitude exceeds
- *                           AGC_BLANKER_THRESHOLD before the
- *                           RMS measurement, protecting the level
- *                           estimator from impulse noise spikes.
- *       │
- *       ▼
- *   [2] Harris/LMS AGC    – measures block RMS in dBFS, computes error
- *                           from target, applies deadband and gain rails,
- *                           updates gain via LMS, applies linear scalar.
- *       │
- *       ▼
- *   output samples
+ *   2. Error Detection & Deadband:
+ *      error = R_target_db - y_dB
+ *      If |error| <= deadband_db, error = 0 (signal passes through untouched).
+ *
+ *   3. Loop Integrator (LMS Update) & Gain Rails:
+ *      gain_db(k+1) = clamp(gain_db(k) + alpha * error, gain_min_db, gain_max_db)
+ *      target_gain_linear = 10^(gain_db / 20)
+ *
+ *   4. Continuous Slew Ramping (Antilog & Multiplier):
+ *      To preserve Lyons' continuous-time feedback behavior and eliminate
+ *      block-boundary step discontinuities, the linear gain is smoothly ramped
+ *      sample-by-sample across the block from gain_linear_previous to target_gain_linear:
+ *        samples[i] *= (gain_start + i * gain_step)
  */
 
 #include "app_context.h"
@@ -59,29 +75,14 @@
 
 // --- Default Configuration ---
 
-// Harris/LMS AGC Logic
-//
-// The algorithm operates entirely in dB (treating the AGC as a linear
-// system), applies a deadband so signals already in a good range are
-// passed through untouched, and applies only a clean linear gain scalar
-// to the samples — no nonlinear soft limiting.
-//
-// Signal chain:
-//   [1] Pre-AGC impulse blanker  — zeros samples whose magnitude exceeds
-//                                   AGC_BLANKER_THRESHOLD.
-//   [2] Harris/LMS gain loop     — block RMS measurement, dB-domain LMS
-//                                   update with deadband and gain rails.
-//                                   Output is always a linear multiply.
-
 /**
  * @def AGC_HARRIS_TARGET_DBFS
  * @brief Target RMS output level in dBFS for the Harris/LMS AGC.
  *
  * -18 dBFS gives high-PAPR signals with high peak-to-average power ratios
- * comfortable headroom below full scale. A signal arriving at -14 dBFS with a 6
- * dB deadband has an error of +4 dB which falls inside the deadband, so the
- * gain stays at 0 dB and the signal passes through untouched.
- *
+ * comfortable headroom below full scale. A signal arriving at -14 dBFS with a 1
+ * dB deadband has an error of +4 dB which falls outside the deadband, so the
+ * gain attenuates by 4 dB * alpha towards the target.
  */
 #define AGC_HARRIS_TARGET_DBFS -18.0f
 
@@ -140,13 +141,6 @@
  */
 #define AGC_HARRIS_GAIN_MAX_DB 40.0f
 
-// Impulse blanker threshold (absolute IQ magnitude).
-// Any sample whose magnitude exceeds this value is zeroed before entering
-// the AGC. Legitimate normalised signals should never exceed 1.0; hardware
-// impulse artefacts commonly exceed 5-10. A value of 2.0 gives comfortable
-// margin between the two without risk of blanking valid signal content.
-#define AGC_BLANKER_THRESHOLD 2.0f
-
 // How often to emit periodic AGC runtime status at debug level (seconds).
 // Applies to all profiles. 5 seconds is frequent enough to observe gain
 // riding during a fade without flooding the log during normal operation.
@@ -157,14 +151,15 @@
  * ======================================================================= */
 
 typedef struct harris_agc_s {
-  float gain_db;         /* Current gain in dB. Updated once per block.    */
-  float gain_linear;     /* Cached linear scalar derived from gain_db.     */
-  float target_db;       /* Target RMS level in dBFS.                      */
-  float deadband_db;     /* Deadband half-width in dB.                     */
-  float alpha;           /* LMS loop filter coefficient (0 < alpha < 1).   */
-  float gain_min_db;     /* Minimum permitted gain in dB.                  */
-  float gain_max_db;     /* Maximum permitted gain in dB.                  */
-  uint64_t samples_seen; /* Total samples processed (for startup logging). */
+  float gain_db;              /* Current gain in dB. Updated once per block.     */
+  float gain_linear;          /* Cached linear scalar derived from gain_db.      */
+  float gain_linear_previous; /* Linear scalar at start of block for slew ramp.  */
+  float target_db;            /* Target RMS level in dBFS.                       */
+  float deadband_db;          /* Deadband half-width in dB.                      */
+  float alpha;                /* LMS loop filter coefficient (0 < alpha < 1).    */
+  float gain_min_db;          /* Minimum permitted gain in dB.                   */
+  float gain_max_db;          /* Maximum permitted gain in dB.                   */
+  uint64_t samples_seen;      /* Total samples processed (for startup logging).  */
 
   // Extracted from DspContext
   bool enabled;
@@ -176,45 +171,31 @@ typedef struct harris_agc_s {
  * ======================================================================= */
 
 /**
- * @brief Blanks (zeros) any sample whose magnitude exceeds the threshold.
- */
-static void apply_impulse_blanker(ComplexFloat *samples,
-                                  unsigned int num_samples, float threshold) {
-  if (threshold < 1e-9f)
-    return;
-
-  float threshold_sq = threshold * threshold;
-
-  for (unsigned int i = 0; i < num_samples; i++) {
-    float r = crealf(samples[i]);
-    float j = cimagf(samples[i]);
-
-    if ((r * r + j * j) > threshold_sq) {
-      samples[i] = 0.0f + 0.0f * I;
-    }
-  }
-}
-
-/**
  * @brief Measures the RMS level of a block of complex samples in dBFS.
+ *
+ * Uses double precision to accumulate squared magnitudes, preventing
+ * precision loss over large blocks of samples.
  */
 static float measure_rms_dbfs(const ComplexFloat *samples,
                               unsigned int num_samples) {
-  if (num_samples == 0)
+  if (num_samples == 0) {
     return -120.0f;
-
-  float sum_sq = 0.0f;
-  for (unsigned int i = 0; i < num_samples; i++) {
-    float r = crealf(samples[i]);
-    float j = cimagf(samples[i]);
-    sum_sq += (r * r + j * j);
   }
 
-  float rms = sqrtf(sum_sq / (float)num_samples);
-  if (rms < 1e-9f)
-    return -120.0f;
+  double sum_squared = 0.0;
+  for (unsigned int sample_index = 0; sample_index < num_samples;
+       sample_index++) {
+    double real_part = (double)crealf(samples[sample_index]);
+    double imag_part = (double)cimagf(samples[sample_index]);
+    sum_squared += (real_part * real_part + imag_part * imag_part);
+  }
 
-  return 20.0f * log10f(rms);
+  double mean_square = sum_squared / (double)num_samples;
+  if (mean_square < 1e-12) {
+    return -120.0f;
+  }
+
+  return (float)(10.0 * log10(mean_square));
 }
 
 /**
@@ -222,7 +203,7 @@ static float measure_rms_dbfs(const ComplexFloat *samples,
  */
 static void harris_agc_execute(HarrisAgc *agc, ComplexFloat *samples,
                                unsigned int num_samples) {
-  /* Measure block RMS in dBFS arriving at the input. */
+  /* Measure block RMS in dBFS arriving at the input (LPF level detector). */
   float rms_db = measure_rms_dbfs(samples, num_samples);
 
   /* y(n) = x(n) + g(n)  — estimated output level.
@@ -236,28 +217,41 @@ static void harris_agc_execute(HarrisAgc *agc, ComplexFloat *samples,
   }
 
   /* Gain rails: stop adjusting beyond the hard limits. */
-  if (agc->gain_db >= agc->gain_max_db && error > 0.0f)
+  if (agc->gain_db >= agc->gain_max_db && error > 0.0f) {
     error = 0.0f;
-  if (agc->gain_db <= agc->gain_min_db && error < 0.0f)
+  }
+  if (agc->gain_db <= agc->gain_min_db && error < 0.0f) {
     error = 0.0f;
+  }
 
   /* LMS update: g(n+1) = g(n) + alpha * e(n). */
   if (error != 0.0f) {
     agc->gain_db += agc->alpha * error;
-
-    if (agc->gain_db > agc->gain_max_db)
+    if (agc->gain_db > agc->gain_max_db) {
       agc->gain_db = agc->gain_max_db;
-    if (agc->gain_db < agc->gain_min_db)
+    }
+    if (agc->gain_db < agc->gain_min_db) {
       agc->gain_db = agc->gain_min_db;
+    }
 
     agc->gain_linear = powf(10.0f, agc->gain_db / 20.0f);
   }
 
-  /* Apply linear gain to all samples in-place. */
-  for (unsigned int i = 0; i < num_samples; i++) {
-    samples[i] *= agc->gain_linear;
+  /* Apply smooth linear gain slew across the block from the previous gain
+   * to the updated gain. This eliminates block-boundary step discontinuities,
+   * preserving continuous feedback behavior per Lyons Fig. 13-77(a). */
+  float gain_start = agc->gain_linear_previous;
+  float gain_end = agc->gain_linear;
+  float gain_step = (gain_end - gain_start) / (float)num_samples;
+  float current_gain = gain_start;
+
+  for (unsigned int sample_index = 0; sample_index < num_samples;
+       sample_index++) {
+    current_gain += gain_step;
+    samples[sample_index] *= current_gain;
   }
 
+  agc->gain_linear_previous = gain_end;
   agc->samples_seen += num_samples;
 }
 
@@ -285,6 +279,7 @@ static HarrisAgc *agc_create(AppConfig *config, AppContext *app) {
   agc->gain_max_db = AGC_HARRIS_GAIN_MAX_DB;
   agc->gain_db = 0.0f; /* Start at unity gain. */
   agc->gain_linear = 1.0f;
+  agc->gain_linear_previous = 1.0f;
   agc->samples_seen = 0;
   agc->enabled = app->dsp.process_chain_agc.enable;
   agc->sample_rate_hz = app->dsp.process_chain_sample_rate_hz;
@@ -301,8 +296,6 @@ static HarrisAgc *agc_create(AppConfig *config, AppContext *app) {
   log_info("  Alpha:      %.2f", agc->alpha);
   log_info("  Gain range: [%.1f dB .. %.1f dB]", agc->gain_min_db,
            agc->gain_max_db);
-  log_info("  Blanker:    threshold magnitude > %.1f",
-           (double)AGC_BLANKER_THRESHOLD);
 
   return agc;
 }
@@ -312,13 +305,10 @@ static void agc_apply(HarrisAgc *agc, ComplexFloat *samples,
   if (!agc || !agc->enabled || num_samples == 0)
     return;
 
-  /* Stage 1: Impulse blanker. */
-  apply_impulse_blanker(samples, num_samples, AGC_BLANKER_THRESHOLD);
-
   /* Capture pre-execute gain for deadband detection in the log. */
   float gain_db_before = agc->gain_db;
 
-  /* Stage 2: Harris/LMS update. */
+  /* Harris/LMS update and slew-ramped gain application. */
   harris_agc_execute(agc, samples, num_samples);
 
   /* Log on first block. */
@@ -328,10 +318,10 @@ static void agc_apply(HarrisAgc *agc, ComplexFloat *samples,
   }
 
   /* Periodic status. */
-  uint64_t prev = agc->samples_seen - num_samples;
+  uint64_t previous_samples_seen = agc->samples_seen - num_samples;
   uint64_t period = (uint64_t)(agc->sample_rate_hz * AGC_LOG_INTERVAL_SEC);
 
-  if (period > 0 && (prev / period) != (agc->samples_seen / period)) {
+  if (period > 0 && (previous_samples_seen / period) != (agc->samples_seen / period)) {
     bool in_deadband = (fabsf(agc->gain_db - gain_db_before) < 1e-6f);
     log_debug("Gain=%.2f dB  %s", agc->gain_db,
               in_deadband ? "(deadband — passing through unchanged)"
@@ -343,6 +333,7 @@ static void agc_reset(HarrisAgc *agc) {
   if (agc) {
     agc->gain_db = 0.0f;
     agc->gain_linear = 1.0f;
+    agc->gain_linear_previous = 1.0f;
     agc->samples_seen = 0;
   }
 }
@@ -431,11 +422,11 @@ static const DspModuleInterface dsp_agc_api = {
 
 // --- Auto-Registration ---
 static void __attribute__((constructor)) register_module(void) {
-  Module m = {
+  Module agc_module = {
       .name = "agc",
       .type = MODULE_TYPE_DSP,
       .api = (void *)&dsp_agc_api,
       .get_cli_options = dsp_agc_get_cli_options,
   };
-  module_registry_add(&m);
+  module_registry_add(&agc_module);
 }
