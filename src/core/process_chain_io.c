@@ -28,8 +28,7 @@ static bool process_chain_queue_samples(void *context, const void *data,
                                         size_t num_samples,
                                         SampleFormat format) {
   AppContext *app = (AppContext *)context;
-  atomic_store_explicit(&app->stats.last_input_heartbeat_time,
-                        platform_get_time(), memory_order_relaxed);
+  input_update_heartbeat(app);
   if (is_shutdown_requested() || input_has_error(app))
     return false;
 

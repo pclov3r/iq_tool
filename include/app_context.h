@@ -11,6 +11,7 @@
 #include "config/constants.h"
 #include "mem_arena.h"
 #include "module.h"
+#include "platform.h"
 #include "presets_loader.h"
 #include "process_chain_types.h"
 #include "thread_manager.h"
@@ -250,6 +251,17 @@ typedef struct AppContext {
   ProcessChainMode process_chain_mode;
   StreamSourceType stream_source_type;
 } AppContext;
+
+/**
+ * @brief Updates the input heartbeat timestamp in a thread-safe manner.
+ * @param app A pointer to the application context.
+ */
+static inline void input_update_heartbeat(AppContext *app) {
+  if (app) {
+    atomic_store_explicit(&app->stats.last_input_heartbeat_time,
+                          platform_get_time(), memory_order_relaxed);
+  }
+}
 
 /**
  * @brief Checks if a fatal stream error has occurred in a thread-safe manner.

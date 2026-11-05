@@ -689,6 +689,8 @@ static void *input_spyserver_client_producer_thread(void *arg) {
       break;
     }
 
+    input_update_heartbeat(app);
+
     uint32_t msg_type = header.MessageType & 0xFFFF;
     uint32_t body_size = header.BodySize;
 
@@ -724,6 +726,7 @@ static void *input_spyserver_client_producer_thread(void *arg) {
                                         app);
             goto end_loop;
           }
+          input_update_heartbeat(app);
           // Discard them (do nothing with rx_buffer) and exit inner loop
           bytes_remaining = 0;
           break;
@@ -736,6 +739,8 @@ static void *input_spyserver_client_producer_thread(void *arg) {
             request_forceful_shutdown("Connection lost reading payload.", app);
           goto end_loop;
         }
+
+        input_update_heartbeat(app);
 
         // 2. Wrap and Write to Ring Buffer
         uint32_t samples_in_chunk = (uint32_t)(aligned_read / bpp);
@@ -774,6 +779,7 @@ static void *input_spyserver_client_producer_thread(void *arg) {
                                       app);
           goto end_loop;
         }
+        input_update_heartbeat(app);
       }
     }
   }
