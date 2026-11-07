@@ -93,15 +93,6 @@ void utility_format_duration(double total_seconds, char *buffer,
                              size_t buffer_size);
 
 /**
- * @brief Checks if a file exists at the given path and is accessible for
- * reading.
- * @param full_path The full path to the file.
- * @return true if the file exists and can be opened for reading, false
- * otherwise.
- */
-bool utility_check_file_exists(const char *full_path);
-
-/**
  * @brief Calculates Decibels relative to Full Scale (dBFS) from a power value.
  * Uses a strict threshold clamp to preserve signal purity while preventing
  * log10(0).

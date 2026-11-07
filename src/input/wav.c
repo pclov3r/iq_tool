@@ -119,14 +119,12 @@ typedef struct {
   SdrMetadata sdr_metadata;
   bool sdr_metadata_present;
 
-  // --- New Split-File State ---
+  // --- Split-File State ---
   bool split_enabled;
-  char **file_list;          // Array of file path strings allocated from Arena
-  int total_files;           // Total number of files found in sequence
-  int current_file_index;    // Index of the currently open file in file_list
-  char *base_path_no_suffix; // Base file path with the suffix stripped
-  const SplitPattern *active_pattern;
-  bool repeat_enabled; // Loop state
+  char **file_list;       // Array of file path strings allocated from Arena
+  int total_files;        // Total number of files found in sequence
+  int current_file_index; // Index of the currently open file in file_list
+  bool repeat_enabled;    // Loop state
 } WavInputContext;
 
 // --- Expat XML Metadata Handlers (Unmodified) ---
@@ -510,91 +508,88 @@ static struct {
 } s_wav_config = {
     .center_target_hz_arg = 0.0f, .wav_read_split = false, .wav_repeat = false};
 
-// --- Helper function to safely duplicate strings into the Arena (MOVED HERE)
-// ---
-static char *arena_strdup(MemoryArena *arena, const char *s) {
-  if (!s)
-    return NULL;
-  size_t length = strlen(s) + 1;
-  char *dest = (char *)mem_arena_alloc(arena, length, false);
-  if (dest) {
-    memcpy(dest, s, length);
-  }
-  return dest;
-}
-
 static bool _probe_split_sequence(WavInputContext *wav_input,
                                   const AppConfig *config, AppContext *app,
                                   MemoryArena *arena) {
   const char *filename = config->input.resolved_path;
+  if (!filename) {
+    return true;
+  }
 
-  const SplitPattern *matched = NULL;
+  const SplitPattern *matched_pattern = NULL;
   int starting_index = -1;
-  size_t suffix_start_pos = 0;
+  size_t suffix_start_position = 0;
   int digit_width = 3; // Fallback default
 
-  // Locate the extension dot (.wav)
-  const char *ext_dot = strrchr(filename, '.');
-  if (!ext_dot || strcasecmp(ext_dot, ".wav") != 0) {
+  // Locate the extension dot (.wav) and ensure at least 1 character precedes it
+  const char *extension_dot = strrchr(filename, '.');
+  if (!extension_dot || extension_dot == filename ||
+      strcasecmp(extension_dot, ".wav") != 0) {
     return true;
   }
 
   // Walk backward from the dot to count consecutive digits
-  const char *digit_ptr = ext_dot - 1;
-  while (digit_ptr > filename && isdigit((unsigned char)*digit_ptr)) {
-    digit_ptr--;
+  const char *digit_cursor = extension_dot - 1;
+  while (digit_cursor > filename && isdigit((unsigned char)*digit_cursor)) {
+    digit_cursor--;
   }
 
-  // digit_ptr now points to the separator character (e.g. '_', '-', '.', or '
-  // ')
-  char sep = *digit_ptr;
-  digit_width = ext_dot - (digit_ptr + 1);
+  // digit_cursor now points to the separator character (e.g. '_', '-', '.', or
+  // ' ')
+  char separator_char = *digit_cursor;
+  digit_width = (int)(extension_dot - (digit_cursor + 1));
 
   // Verify if we found a valid separator and at least 1 digit
-  if (digit_width > 0 &&
-      (sep == '_' || sep == '-' || sep == '.' || sep == ' ')) {
+  if (digit_width > 0 && digit_width <= 9 &&
+      (separator_char == '_' || separator_char == '-' ||
+       separator_char == '.' || separator_char == ' ')) {
     // Parse starting index directly from the isolated digits
-    starting_index = atoi(digit_ptr + 1);
-    suffix_start_pos = digit_ptr - filename;
+    starting_index = atoi(digit_cursor + 1);
+    suffix_start_position = (size_t)(digit_cursor - filename);
 
     // Match against our pattern table
-    for (int i = 0; i < g_num_patterns; i++) {
-      if (g_split_patterns[i].separator == sep) {
-        matched = &g_split_patterns[i];
+    for (int pattern_index = 0; pattern_index < g_num_patterns;
+         pattern_index++) {
+      if (g_split_patterns[pattern_index].separator == separator_char) {
+        matched_pattern = &g_split_patterns[pattern_index];
         break;
       }
     }
   }
 
-  if (!matched) {
+  if (!matched_pattern) {
     log_warn("No split-WAV pattern matched or files found. Running in "
              "single-file mode.");
     return true;
   }
 
-  wav_input->active_pattern = matched;
-
-  // Isolate the base path by copying up to the separator position
-  char base_path[APP_MAX_PATH_BUFFER];
-  strncpy(base_path, filename, APP_MAX_PATH_BUFFER - 1);
-  base_path[suffix_start_pos] = '\0'; // Truncate cleanly at the separator
-  wav_input->base_path_no_suffix = arena_strdup(arena, base_path);
+  // Isolate the base path directly in the arena up to the separator position
+  char *base_path_no_suffix =
+      mem_arena_strndup(arena, filename, suffix_start_position);
+  if (!base_path_no_suffix) {
+    log_fatal("Failed to allocate memory for split WAV base path in arena.");
+    return false;
+  }
 
   // Pass 1: Probe the directory to count existing sequential files
   int file_count = 0;
-  int current_idx = starting_index;
+  int current_sequence_index = starting_index;
   while (true) {
     char test_path[APP_MAX_PATH_BUFFER];
 
     // Use the dynamically measured digit_width (e.g. 3 for "000")
-    snprintf(test_path, sizeof(test_path), matched->format_template,
-             wav_input->base_path_no_suffix, digit_width, current_idx);
+    int formatted_length =
+        snprintf(test_path, sizeof(test_path), matched_pattern->format_template,
+                 base_path_no_suffix, digit_width, current_sequence_index);
+    if (formatted_length < 0 || (size_t)formatted_length >= sizeof(test_path)) {
+      break;
+    }
 
-    if (!utility_check_file_exists(test_path)) {
+    if (!platform_is_file(test_path)) {
       break; // No more files in sequence
     }
     file_count++;
-    current_idx++;
+    current_sequence_index++;
   }
 
   if (file_count <= 1) {
@@ -608,31 +603,41 @@ static bool _probe_split_sequence(WavInputContext *wav_input,
   // Pass 2: Allocate the file list array and gather cumulative metadata
   wav_input->file_list =
       (char **)mem_arena_alloc(arena, sizeof(char *) * file_count, true);
+  if (!wav_input->file_list) {
+    log_fatal("Failed to allocate memory for split WAV file list in arena.");
+    return false;
+  }
   sf_count_t cumulative_frames = 0;
 
-  for (int i = 0; i < file_count; i++) {
+  for (int file_index = 0; file_index < file_count; file_index++) {
     char resolved_path[APP_MAX_PATH_BUFFER];
-    snprintf(resolved_path, sizeof(resolved_path), matched->format_template,
-             wav_input->base_path_no_suffix, digit_width, starting_index + i);
+    int formatted_length = snprintf(
+        resolved_path, sizeof(resolved_path), matched_pattern->format_template,
+        base_path_no_suffix, digit_width, starting_index + file_index);
+    if (formatted_length < 0 ||
+        (size_t)formatted_length >= sizeof(resolved_path)) {
+      log_fatal("Split WAV file path exceeds maximum path buffer length.");
+      return false;
+    }
 
-    wav_input->file_list[i] = arena_strdup(arena, resolved_path);
+    wav_input->file_list[file_index] = mem_arena_strdup(arena, resolved_path);
 
-    if (!wav_input->file_list[i]) {
+    if (!wav_input->file_list[file_index]) {
       log_fatal("Failed to allocate memory for split file names in arena.");
       return false;
     }
 
     // Open briefly to sum up the frames
-    SF_INFO temp_sfinfo;
-    memset(&temp_sfinfo, 0, sizeof(SF_INFO));
+    SF_INFO temp_file_info;
+    memset(&temp_file_info, 0, sizeof(SF_INFO));
     SNDFILE *temp_file =
-        sf_open(wav_input->file_list[i], SFM_READ, &temp_sfinfo);
+        sf_open(wav_input->file_list[file_index], SFM_READ, &temp_file_info);
     if (temp_file) {
-      cumulative_frames += temp_sfinfo.frames;
+      cumulative_frames += temp_file_info.frames;
       sf_close(temp_file);
     } else {
       log_fatal("Failed to probe WAV file in sequence: %s",
-                wav_input->file_list[i]);
+                wav_input->file_list[file_index]);
       return false;
     }
   }
@@ -683,8 +688,12 @@ static bool input_wav_validate_options(AppContext *app) {
   private_data->total_files = 1;
   private_data->file_list = (char **)mem_arena_alloc(
       &app->process_chain.setup_arena, sizeof(char *) * 1, true);
+  if (!private_data->file_list)
+    return false;
   private_data->file_list[0] =
-      arena_strdup(&app->process_chain.setup_arena, input_path);
+      mem_arena_strdup(&app->process_chain.setup_arena, input_path);
+  if (!private_data->file_list[0])
+    return false;
 
   // Run directory prober if requested
   if (private_data->split_enabled) {
@@ -1006,15 +1015,8 @@ static void input_wav_get_summary_info(const ModuleContext *context,
     const char *last_file =
         private_data->file_list[private_data->total_files - 1];
 
-    const char *first_base = strrchr(first_file, '/');
-    if (!first_base)
-      first_base = strrchr(first_file, '\\');
-    first_base = first_base ? first_base + 1 : first_file;
-
-    const char *last_base = strrchr(last_file, '/');
-    if (!last_base)
-      last_base = strrchr(last_file, '\\');
-    last_base = last_base ? last_base + 1 : last_file;
+    const char *first_base = platform_get_basename(first_file);
+    const char *last_base = platform_get_basename(last_file);
 
     utility_add_summary_item(info, "Input Files", "%s ~ %s", first_base,
                              last_base);

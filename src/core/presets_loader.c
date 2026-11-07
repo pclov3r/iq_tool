@@ -129,17 +129,6 @@ static bool preset_key_equals(const char *first_key, const char *second_key) {
   return *first_key == '\0' && *second_key == '\0';
 }
 
-static char *arena_strdup(MemoryArena *arena, const char *source_string) {
-  if (!source_string)
-    return NULL;
-  size_t length = strlen(source_string) + 1;
-  char *copied_string = (char *)mem_arena_alloc(arena, length, false);
-  if (copied_string) {
-    memcpy(copied_string, source_string, length);
-  }
-  return copied_string;
-}
-
 bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
   config->presets = NULL;
   config->num_presets = 0;
@@ -169,7 +158,7 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
       if (num_found_files <
           (int)(sizeof(found_preset_files) / sizeof(found_preset_files[0]))) {
         found_preset_files[num_found_files] =
-            arena_strdup(arena, full_path_buffer);
+            mem_arena_strdup(arena, full_path_buffer);
         if (!found_preset_files[num_found_files]) {
           return false;
         }
@@ -254,7 +243,7 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
       if (name_end) {
         *name_end = '\0';
         current_preset->name =
-            arena_strdup(arena, utility_trim_whitespace(name_start));
+            mem_arena_strdup(arena, utility_trim_whitespace(name_start));
         if (!current_preset->name) {
           fclose(preset_file);
           return false;
@@ -284,7 +273,7 @@ bool presets_load_from_file(AppConfig *config, MemoryArena *arena) {
 
           switch (handler->action) {
           case PRESET_KEY_STRDUP:
-            *(char **)value_ptr = arena_strdup(arena, value);
+            *(char **)value_ptr = mem_arena_strdup(arena, value);
             if (!*(char **)value_ptr) {
               fclose(preset_file);
               return false;

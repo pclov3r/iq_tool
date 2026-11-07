@@ -71,6 +71,27 @@ bool mem_arena_init(MemoryArena *arena);
 void *mem_arena_alloc(MemoryArena *arena, size_t size, bool zero_memory);
 
 /**
+ * @brief Duplicates a null-terminated string into the memory arena.
+ *
+ * @param arena Pointer to the initialized MemoryArena.
+ * @param source_string Null-terminated string to copy.
+ * @return Pointer to the arena-allocated string copy, or NULL on failure.
+ */
+char *mem_arena_strdup(MemoryArena *arena, const char *source_string);
+
+/**
+ * @brief Duplicates at most max_length characters of a string into the memory
+ * arena and always null-terminates the result.
+ *
+ * @param arena Pointer to the initialized MemoryArena.
+ * @param source_string Source character buffer to copy.
+ * @param max_length Maximum number of characters to copy (excluding NUL).
+ * @return Pointer to the arena-allocated string copy, or NULL on failure.
+ */
+char *mem_arena_strndup(MemoryArena *arena, const char *source_string,
+                        size_t max_length);
+
+/**
  * @brief Destroys a memory arena, freeing its main memory block.
  * @param arena Pointer to the MemoryArena to destroy.
  */

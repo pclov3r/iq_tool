@@ -111,10 +111,6 @@ void utility_format_duration(double total_seconds, char *buffer,
   snprintf(buffer, buffer_size, "%02d:%02d:%02d", hours, minutes, seconds);
 }
 
-bool utility_check_file_exists(const char *full_path) {
-  return platform_is_file(full_path);
-}
-
 bool utility_prompt_for_overwrite(const char *path_for_messages) {
   FILE *tty = platform_open_tty();
   if (!tty) {

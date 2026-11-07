@@ -646,11 +646,7 @@ char *platform_resolve_input_path(const char *path, struct MemoryArena *arena) {
     return NULL;
   }
 
-  char *resolved = (char *)mem_arena_alloc(arena, strlen(utf8_path) + 1, false);
-  if (!resolved)
-    return NULL;
-  strcpy(resolved, utf8_path);
-  return resolved;
+  return mem_arena_strdup(arena, utf8_path);
 }
 
 char *platform_resolve_output_path(const char *path,
@@ -664,11 +660,7 @@ char *platform_resolve_output_path(const char *path,
                                  APP_MAX_PATH_BUFFER))
     return NULL;
 
-  char *resolved = (char *)mem_arena_alloc(arena, strlen(utf8_path) + 1, false);
-  if (!resolved)
-    return NULL;
-  strcpy(resolved, utf8_path);
-  return resolved;
+  return mem_arena_strdup(arena, utf8_path);
 }
 #else
 char *platform_resolve_input_path(const char *path, struct MemoryArena *arena) {
@@ -690,12 +682,7 @@ char *platform_resolve_input_path(const char *path, struct MemoryArena *arena) {
               err_msg);
     return NULL;
   }
-  char *resolved =
-      (char *)mem_arena_alloc(arena, strlen(resolved_input_path) + 1, false);
-  if (!resolved)
-    return NULL;
-  strcpy(resolved, resolved_input_path);
-  return resolved;
+  return mem_arena_strdup(arena, resolved_input_path);
 }
 
 char *platform_resolve_output_path(const char *path,
@@ -703,11 +690,9 @@ char *platform_resolve_output_path(const char *path,
   if (!path || !arena)
     return NULL;
 
-  char *path_copy_for_dirname =
-      (char *)mem_arena_alloc(arena, strlen(path) + 1, false);
+  char *path_copy_for_dirname = mem_arena_strdup(arena, path);
   if (!path_copy_for_dirname)
     return NULL;
-  strcpy(path_copy_for_dirname, path);
   char *dir = dirname(path_copy_for_dirname);
   const char *base = platform_get_basename(path);
   char resolved_dir_path[PATH_MAX];
@@ -854,11 +839,8 @@ size_t platform_get_config_search_paths(const char **paths, size_t max_paths,
 #ifdef _WIN32
   char exe_dir[APP_MAX_PATH_BUFFER];
   if (platform_get_executable_dir(exe_dir, sizeof(exe_dir))) {
-    char *exe_dir_copy =
-        arena ? (char *)mem_arena_alloc(arena, strlen(exe_dir) + 1, false)
-              : NULL;
+    char *exe_dir_copy = mem_arena_strdup(arena, exe_dir);
     if (exe_dir_copy) {
-      strcpy(exe_dir_copy, exe_dir);
       if (count < max_paths)
         paths[count++] = exe_dir_copy;
     }

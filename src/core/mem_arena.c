@@ -203,6 +203,37 @@ void *mem_arena_alloc(MemoryArena *arena, size_t size, bool zero_memory) {
   return ptr;
 }
 
+char *mem_arena_strndup(MemoryArena *arena, const char *source_string,
+                        size_t max_length) {
+  if (!arena || !source_string) {
+    return NULL;
+  }
+  size_t actual_length = 0;
+  while (actual_length < max_length && source_string[actual_length] != '\0') {
+    actual_length++;
+  }
+  if (actual_length == SIZE_MAX) {
+    return NULL;
+  }
+  char *duplicated_string =
+      (char *)mem_arena_alloc(arena, actual_length + 1, false);
+  if (!duplicated_string) {
+    return NULL;
+  }
+  if (actual_length > 0) {
+    memcpy(duplicated_string, source_string, actual_length);
+  }
+  duplicated_string[actual_length] = '\0';
+  return duplicated_string;
+}
+
+char *mem_arena_strdup(MemoryArena *arena, const char *source_string) {
+  if (!arena || !source_string) {
+    return NULL;
+  }
+  return mem_arena_strndup(arena, source_string, strlen(source_string));
+}
+
 void mem_arena_destroy(MemoryArena *arena) {
   if (!arena)
     return;
