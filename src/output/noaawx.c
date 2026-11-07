@@ -13,6 +13,7 @@
 #include "signal_handler.h"
 #include "utilities.h"
 #include <complex.h>
+#include <ctype.h>
 #include <liquid.h>
 #include <math.h>
 #include <stdio.h>
@@ -3587,179 +3588,223 @@ static const SameEvent event_table[] = {
     {"WSW", "Winter Storm Warning"},
     {NULL, NULL}};
 
-static void parse_same_header(const char *header) {
-  if (strncmp(header, "ZCZC-", 5) != 0)
+static void parse_same_header(const char *header_string) {
+  if (!header_string || strncmp(header_string, "ZCZC-", 5) != 0)
     return;
 
-  char buffer[256];
-  strncpy(buffer, header + 5, sizeof(buffer) - 1);
-  buffer[255] = '\0';
+  char header_buffer[256];
+  strncpy(header_buffer, header_string + 5, sizeof(header_buffer) - 1);
+  header_buffer[sizeof(header_buffer) - 1] = '\0';
 
-  char *org = strtok(buffer, "-");
-  char *event = strtok(NULL, "-");
-  if (!org || !event)
+  char *originator_code = strtok(header_buffer, "-");
+  char *event_code = strtok(NULL, "-");
+  if (!originator_code || !event_code)
     return;
 
-  char *fips_list[32];
-  int num_fips = 0;
+  enum { MAX_SAME_FIPS_CODES = 32 };
+  char *fips_code_list[MAX_SAME_FIPS_CODES];
+  int fips_count = 0;
 
-  char *dur_str = NULL;
-  char *tok;
-  while ((tok = strtok(NULL, "-")) != NULL) {
-    char *plus = strchr(tok, '+');
-    if (plus) {
-      *plus = '\0';
-      fips_list[num_fips++] = tok;
-      dur_str = plus + 1; // points to "0100"
+  char *duration_string = NULL;
+  char *token = NULL;
+  while ((token = strtok(NULL, "-")) != NULL) {
+    char *plus_separator = strchr(token, '+');
+    if (plus_separator) {
+      *plus_separator = '\0';
+      if (fips_count < MAX_SAME_FIPS_CODES) {
+        fips_code_list[fips_count++] = token;
+      }
+      duration_string = plus_separator + 1; // points to "0100"
       break;
     } else {
-      fips_list[num_fips++] = tok;
+      if (fips_count < MAX_SAME_FIPS_CODES) {
+        fips_code_list[fips_count++] = token;
+      }
     }
   }
 
-  char *julian_time = strtok(NULL, "-");
-  char *station = strtok(NULL, "-");
-  if (!dur_str || !julian_time || !station)
+  char *julian_time_string = strtok(NULL, "-");
+  char *station_id = strtok(NULL, "-");
+  if (fips_count == 0 || !duration_string || !julian_time_string || !station_id)
     return;
 
-  const char *org_str = "Unknown Originator";
-  if (strcmp(org, "WXR") == 0)
-    org_str = "The National Weather Service";
-  else if (strcmp(org, "CIV") == 0)
-    org_str = "Civil Authorities";
-  else if (strcmp(org, "EAS") == 0)
-    org_str = "EAS Participant";
-  else if (strcmp(org, "PEP") == 0)
-    org_str = "Primary Entry Point System";
+  const char *originator_description = "Unknown Originator";
+  if (strcmp(originator_code, "WXR") == 0)
+    originator_description = "The National Weather Service";
+  else if (strcmp(originator_code, "CIV") == 0)
+    originator_description = "Civil Authorities";
+  else if (strcmp(originator_code, "EAS") == 0)
+    originator_description = "EAS Participant";
+  else if (strcmp(originator_code, "PEP") == 0)
+    originator_description = "Primary Entry Point System";
 
-  const char *event_str = event; // Default to raw code if unknown
-  bool found = false;
-  for (int i = 0; event_table[i].code != NULL; i++) {
-    if (strcmp(event_table[i].code, event) == 0) {
-      event_str = event_table[i].desc;
-      found = true;
+  const char *event_description =
+      event_code; // Default to raw code if unknown
+  bool event_found = false;
+  for (int event_index = 0; event_table[event_index].code != NULL;
+       event_index++) {
+    if (strcmp(event_table[event_index].code, event_code) == 0) {
+      event_description = event_table[event_index].desc;
+      event_found = true;
       break;
     }
   }
 
   // Fallbacks for unrecognized codes ending in A, E, S, or W
-  if (!found && strlen(event) == 3) {
-    if (event[2] == 'A')
-      event_str = "Unrecognized Watch";
-    else if (event[2] == 'E')
-      event_str = "Unrecognized Emergency";
-    else if (event[2] == 'S')
-      event_str = "Unrecognized Statement";
-    else if (event[2] == 'W')
-      event_str = "Unrecognized Warning";
+  if (!event_found && strlen(event_code) == 3) {
+    if (event_code[2] == 'A')
+      event_description = "Unrecognized Watch";
+    else if (event_code[2] == 'E')
+      event_description = "Unrecognized Emergency";
+    else if (event_code[2] == 'S')
+      event_description = "Unrecognized Statement";
+    else if (event_code[2] == 'W')
+      event_description = "Unrecognized Warning";
   }
 
   log_info("================ *SAME ALERT!* ===============");
-  log_info("%s has issued a %s", org_str, event_str);
+  log_info("%s has issued a %s", originator_description, event_description);
 
-  char for_str[1024] = {0};
-  bool first_line = true;
-  for (int i = 0; i < num_fips; i++) {
-    const char *fips = fips_list[i];
-    char current[128];
-    if (strlen(fips) == 6) {
-      int part = fips[0] - '0';
-      int state_county = atoi(fips + 1);
+  char formatted_locations[1024] = {0};
+  bool is_first_line = true;
+  for (int fips_index = 0; fips_index < fips_count; fips_index++) {
+    const char *fips_code = fips_code_list[fips_index];
+    char formatted_entry[128];
+    if (strlen(fips_code) == 6 && isdigit((unsigned char)fips_code[0])) {
+      int subdivision_code = fips_code[0] - '0';
+      int state_county_code = atoi(fips_code + 1);
 
-      const char *state_abbr = "??";
+      const char *state_abbreviation = "??";
       const char *county_name = "Unknown Area";
 
-      for (int j = 0; fips_table[j].state != NULL; j++) {
-        if (fips_table[j].code == state_county) {
-          state_abbr = fips_table[j].state;
-          county_name = fips_table[j].county;
+      for (int table_index = 0; fips_table[table_index].state != NULL;
+           table_index++) {
+        if (fips_table[table_index].code == state_county_code) {
+          state_abbreviation = fips_table[table_index].state;
+          county_name = fips_table[table_index].county;
           break;
         }
       }
 
-      if (part == 0) {
-        snprintf(current, sizeof(current), "%s, %s", county_name, state_abbr);
+      if (subdivision_code == 0) {
+        snprintf(formatted_entry, sizeof(formatted_entry), "%s, %s",
+                 county_name, state_abbreviation);
       } else {
-        snprintf(current, sizeof(current), "%s, %s (Part %d)", county_name,
-                 state_abbr, part);
+        snprintf(formatted_entry, sizeof(formatted_entry), "%s, %s (Part %d)",
+                 county_name, state_abbreviation, subdivision_code);
       }
     } else {
-      snprintf(current, sizeof(current), "FIPS %s", fips);
+      snprintf(formatted_entry, sizeof(formatted_entry), "FIPS %s", fips_code);
     }
 
     // Chunking logic: print and reset every 7 items
-    if (i > 0 && i % 7 == 0) {
-      if (first_line) {
-        log_info("For:                 %s", for_str);
-        first_line = false;
+    if (fips_index > 0 && fips_index % 7 == 0) {
+      if (is_first_line) {
+        log_info("For:                 %s", formatted_locations);
+        is_first_line = false;
       } else {
-        log_info("                     %s", for_str);
+        log_info("                     %s", formatted_locations);
       }
-      for_str[0] = '\0';
+      formatted_locations[0] = '\0';
     }
 
-    if (for_str[0] == '\0') {
-      snprintf(for_str, sizeof(for_str), "%s", current);
-    } else {
-      snprintf(for_str + strlen(for_str), sizeof(for_str) - strlen(for_str),
-               " | %s", current);
+    size_t current_length = strlen(formatted_locations);
+    if (current_length == 0) {
+      snprintf(formatted_locations, sizeof(formatted_locations), "%s",
+               formatted_entry);
+    } else if (current_length < sizeof(formatted_locations) - 1) {
+      snprintf(formatted_locations + current_length,
+               sizeof(formatted_locations) - current_length, " | %s",
+               formatted_entry);
     }
   }
 
   // Print the final chunk
-  if (for_str[0] != '\0') {
-    if (first_line) {
-      log_info("For:                 %s", for_str);
+  if (formatted_locations[0] != '\0') {
+    if (is_first_line) {
+      log_info("For:                 %s", formatted_locations);
     } else {
-      log_info("                     %s", for_str);
+      log_info("                     %s", formatted_locations);
     }
   }
 
-  if (strlen(dur_str) >= 4) {
-    int hr = (dur_str[0] - '0') * 10 + (dur_str[1] - '0');
-    int mn = (dur_str[2] - '0') * 10 + (dur_str[3] - '0');
-    log_info("Valid for:           %d %s, %d %s", hr,
-             hr == 1 ? "hour" : "hours", mn, mn == 1 ? "minute" : "minutes");
+  if (strlen(duration_string) >= 4 &&
+      isdigit((unsigned char)duration_string[0]) &&
+      isdigit((unsigned char)duration_string[1]) &&
+      isdigit((unsigned char)duration_string[2]) &&
+      isdigit((unsigned char)duration_string[3])) {
+    int duration_hours =
+        (duration_string[0] - '0') * 10 + (duration_string[1] - '0');
+    int duration_minutes =
+        (duration_string[2] - '0') * 10 + (duration_string[3] - '0');
+    log_info("Valid for:           %d %s, %d %s", duration_hours,
+             duration_hours == 1 ? "hour" : "hours", duration_minutes,
+             duration_minutes == 1 ? "minute" : "minutes");
   }
 
-  if (strlen(julian_time) >= 7) {
-    int julian_day = (julian_time[0] - '0') * 100 +
-                     (julian_time[1] - '0') * 10 + (julian_time[2] - '0');
-    int hr = (julian_time[3] - '0') * 10 + (julian_time[4] - '0');
-    int mn = (julian_time[5] - '0') * 10 + (julian_time[6] - '0');
+  bool julian_digits_valid = (strlen(julian_time_string) >= 7);
+  for (int digit_index = 0; julian_digits_valid && digit_index < 7;
+       digit_index++) {
+    if (!isdigit((unsigned char)julian_time_string[digit_index])) {
+      julian_digits_valid = false;
+    }
+  }
 
-    time_t t = time(NULL);
-    struct tm tm_buf;
-    struct tm *tm_info = platform_gmtime_r(&t, &tm_buf);
-    if (!tm_info) {
+  if (julian_digits_valid) {
+    int julian_day = (julian_time_string[0] - '0') * 100 +
+                     (julian_time_string[1] - '0') * 10 +
+                     (julian_time_string[2] - '0');
+    int issue_hour =
+        (julian_time_string[3] - '0') * 10 + (julian_time_string[4] - '0');
+    int issue_minute =
+        (julian_time_string[5] - '0') * 10 + (julian_time_string[6] - '0');
+
+    time_t current_time = time(NULL);
+    struct tm utc_time_buffer;
+    struct tm *utc_time_info =
+        platform_gmtime_r(&current_time, &utc_time_buffer);
+    if (!utc_time_info) {
       return;
     }
-    int year = tm_info->tm_year + 1900;
+    int issue_year = utc_time_info->tm_year + 1900;
 
     // Handle New Year's edge case (e.g. warning issued Dec 31, received Jan 1)
-    if (tm_info->tm_yday < 30 && julian_day > 330) {
-      year -= 1;
+    if (utc_time_info->tm_yday < 30 && julian_day > 330) {
+      issue_year -= 1;
     }
 
-    int days_in_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) {
+    int days_in_month[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    bool is_leap_year =
+        ((issue_year % 4 == 0 && issue_year % 100 != 0) ||
+         (issue_year % 400 == 0));
+    if (is_leap_year) {
       days_in_month[1] = 29;
     }
+    int max_days_in_year = is_leap_year ? 366 : 365;
 
-    int day = julian_day;
-    int month = 0;
-    while (month < 12 && day > days_in_month[month]) {
-      day -= days_in_month[month];
-      month++;
+    if (julian_day >= 1 && julian_day <= max_days_in_year &&
+        issue_hour >= 0 && issue_hour <= 23 && issue_minute >= 0 &&
+        issue_minute <= 59) {
+      int day_of_month = julian_day;
+      int month_index = 0;
+      while (month_index < 11 && day_of_month > days_in_month[month_index]) {
+        day_of_month -= days_in_month[month_index];
+        month_index++;
+      }
+
+      const char *month_names[12] = {"January",   "February", "March",
+                                     "April",     "May",      "June",
+                                     "July",      "August",   "September",
+                                     "October",   "November", "December"};
+
+      log_info("Issued on:           %s %d at %02d:%02d UTC",
+               month_names[month_index], day_of_month, issue_hour,
+               issue_minute);
+    } else {
+      log_info("Issued on:           Invalid timestamp (%s)",
+               julian_time_string);
     }
-
-    const char *months[] = {"January",   "February", "March",    "April",
-                            "May",       "June",     "July",     "August",
-                            "September", "October",  "November", "December"};
-
-    log_info("Issued on:           %s %d at %02d:%02d UTC", months[month], day,
-             hr, mn);
-    log_info("Originating Station: %s", station);
+    log_info("Originating Station: %s", station_id);
   }
 
   log_info("==============================================");
