@@ -191,7 +191,7 @@ typedef struct {
   void **stream_buffers;
   size_t num_stream_buffers;
   size_t samples_per_buffer;
-  atomic_bool stream_error;
+  size_t next_buffer_index;
   atomic_int state;
 } BladerfContext;
 
@@ -497,7 +497,7 @@ static bool input_bladerf_initialize(ModuleContext *context) {
 
   private_data->rx_stream = NULL;
   private_data->stream_buffers = NULL;
-  atomic_init(&private_data->stream_error, false);
+  private_data->next_buffer_index = 0;
   success = true;
 
 cleanup:
@@ -639,7 +639,8 @@ static void *bladerf_rx_stream_callback(struct bladerf *dev,
   }
 
   if (is_shutdown_requested() || input_has_error(app) ||
-      atomic_load_explicit(&private_data->stream_error, memory_order_acquire)) {
+      atomic_load_explicit(&private_data->state, memory_order_acquire) !=
+          DRIVER_STATE_STREAMING) {
     return BLADERF_STREAM_SHUTDOWN;
   }
 
@@ -653,16 +654,12 @@ static void *bladerf_rx_stream_callback(struct bladerf *dev,
     /* Warning handled internally by process_chain */
   }
 
-  for (size_t i = 0; i < private_data->num_stream_buffers; i++) {
-    if (private_data->stream_buffers[i] != samples) {
-      return private_data->stream_buffers[i];
-    }
-  }
-
-  return private_data->stream_buffers[0];
+  void *next_buffer =
+      private_data->stream_buffers[private_data->next_buffer_index];
+  private_data->next_buffer_index =
+      (private_data->next_buffer_index + 1) % private_data->num_stream_buffers;
+  return next_buffer;
 }
-
-static void input_bladerf_stop_sample_queue_push(ModuleContext *context);
 
 static void *input_bladerf_push_samples_to_queue(ModuleContext *context,
                                                  QueueSamples queue_samples,
@@ -722,6 +719,8 @@ static void *input_bladerf_push_samples_to_queue(ModuleContext *context,
 
   private_data->samples_per_buffer = samples_per_buffer;
   private_data->num_stream_buffers = s_bladerf_config.num_buffers;
+  private_data->next_buffer_index =
+      s_bladerf_config.num_transfers % s_bladerf_config.num_buffers;
 
   status = bladerf_init_stream(
       &private_data->rx_stream, private_data->dev, bladerf_rx_stream_callback,
@@ -743,6 +742,7 @@ static void *input_bladerf_push_samples_to_queue(ModuleContext *context,
     request_forceful_shutdown(error_buffer, app);
     bladerf_deinit_stream(private_data->rx_stream);
     private_data->rx_stream = NULL;
+    private_data->stream_buffers = NULL;
     return NULL;
   }
 
@@ -758,7 +758,18 @@ static void *input_bladerf_push_samples_to_queue(ModuleContext *context,
     request_forceful_shutdown(error_buffer, app);
   }
 
-  input_bladerf_stop_sample_queue_push(context);
+  bladerf_deinit_stream(private_data->rx_stream);
+  private_data->rx_stream = NULL;
+  private_data->stream_buffers = NULL;
+
+  log_debug("Disabling BladeRF RX module...");
+  int disable_status =
+      bladerf_enable_module(private_data->dev, rx_channel, false);
+  if (disable_status != 0) {
+    log_error("Failed to disable BladeRF RX module: %s",
+              bladerf_strerror(disable_status));
+  }
+
   return NULL;
 }
 
@@ -769,28 +780,8 @@ static void input_bladerf_stop_sample_queue_push(ModuleContext *context) {
   }
   BladerfContext *private_data =
       (BladerfContext *)app->module.input_private_data;
-  if (private_data && driver_stop_streaming(&private_data->state)) {
-    if (private_data->dev) {
-      // Set error flag so callback returns BLADERF_STREAM_SHUTDOWN
-      atomic_store_explicit(&private_data->stream_error, true,
-                            memory_order_release);
-
-      // Give the stream thread time to exit cleanly
-      platform_sleep(200);
-
-      bladerf_channel rx_channel;
-      if (strcmp(private_data->board_name, "bladerf2") == 0) {
-        rx_channel = BLADERF_CHANNEL_RX(s_bladerf_config.channel);
-      } else {
-        rx_channel = BLADERF_CHANNEL_RX(0);
-      }
-      log_debug("Disabling BladeRF RX module...");
-      int status = bladerf_enable_module(private_data->dev, rx_channel, false);
-      if (status != 0) {
-        log_error("Failed to disable BladeRF RX module: %s",
-                  bladerf_strerror(status));
-      }
-    }
+  if (private_data) {
+    driver_stop_streaming(&private_data->state);
   }
 }
 
@@ -799,22 +790,11 @@ static void input_bladerf_cleanup(ModuleContext *context) {
   if (app && app->module.input_private_data) {
     BladerfContext *private_data =
         (BladerfContext *)app->module.input_private_data;
-    if (driver_close(&private_data->state)) {
-      if (private_data->dev) {
-        atomic_store_explicit(&private_data->stream_error, true,
-                              memory_order_release);
-        bladerf_channel rx_channel;
-        if (strcmp(private_data->board_name, "bladerf2") == 0) {
-          rx_channel = BLADERF_CHANNEL_RX(s_bladerf_config.channel);
-        } else {
-          rx_channel = BLADERF_CHANNEL_RX(0);
-        }
-        bladerf_enable_module(private_data->dev, rx_channel, false);
-      }
-    }
+    driver_close(&private_data->state);
     if (private_data->rx_stream) {
       bladerf_deinit_stream(private_data->rx_stream);
       private_data->rx_stream = NULL;
+      private_data->stream_buffers = NULL;
     }
     if (private_data->dev) {
       bladerf_close(private_data->dev);
@@ -905,7 +885,11 @@ static bool bladerf_find_and_load_fpga_automatically(struct bladerf *dev) {
   char exe_dir[APP_MAX_PATH_BUFFER] = {0};
   char parent_dir[APP_MAX_PATH_BUFFER] = {0};
   if (platform_get_executable_dir(exe_dir, sizeof(exe_dir))) {
-    snprintf(parent_dir, sizeof(parent_dir), "%s/..", exe_dir);
+    int parent_written =
+        snprintf(parent_dir, sizeof(parent_dir), "%s/..", exe_dir);
+    if (parent_written < 0 || (size_t)parent_written >= sizeof(parent_dir)) {
+      snprintf(parent_dir, sizeof(parent_dir), "..");
+    }
   } else {
     snprintf(exe_dir, sizeof(exe_dir), ".");
     snprintf(parent_dir, sizeof(parent_dir), "..");
@@ -919,9 +903,14 @@ static bool bladerf_find_and_load_fpga_automatically(struct bladerf *dev) {
                                 NULL};
   char full_path[APP_MAX_PATH_BUFFER];
 
-  for (int i = 0; search_bases[i] != NULL; i++) {
-    snprintf(full_path, sizeof(full_path), "%s/fpga/bladerf/%s",
-             search_bases[i], filename_utf8);
+  for (size_t search_index = 0; search_bases[search_index] != NULL;
+       search_index++) {
+    int path_written =
+        snprintf(full_path, sizeof(full_path), "%s/fpga/bladerf/%s",
+                 search_bases[search_index], filename_utf8);
+    if (path_written < 0 || (size_t)path_written >= sizeof(full_path)) {
+      continue;
+    }
     if (platform_is_file(full_path)) {
       log_info("Found FPGA file at: %s", full_path);
       status = bladerf_load_fpga(dev, full_path);
