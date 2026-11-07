@@ -30,16 +30,6 @@ typedef enum NetworkingState {
 typedef struct NetworkingContext NetworkingContext;
 
 /**
- * @brief Initializes the networking subsystem (e.g., WSAStartup on Windows).
- */
-bool networking_init(void);
-
-/**
- * @brief Cleans up the networking subsystem.
- */
-void networking_cleanup(void);
-
-/**
  * @brief Connects to a remote host and returns a handle.
  * This function allocates the NetworkingContext from the provided memory arena.
  * @param hostname The hostname or IP address of the server.
@@ -51,8 +41,7 @@ NetworkingContext *networking_connect(const char *hostname, int port,
                                       struct MemoryArena *arena);
 
 /**
- * @brief Disconnects a network connection and releases its subsystem reference.
- * This function closes the socket and decrements the subsystem reference count.
+ * @brief Disconnects a network connection and closes its underlying socket.
  * It does NOT free the context handle, as its memory is managed by the memory
  * arena.
  * @param context The context handle to disconnect.
