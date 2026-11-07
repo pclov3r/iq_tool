@@ -205,6 +205,8 @@ void request_shutdown(void) {
     // Signal all ring buffers to shut down and wake up any waiting threads
     if (app->process_chain.input_ring_buffer)
       ring_buffer_shutdown(app->process_chain.input_ring_buffer);
+    if (app->process_chain.audio_ring_buffer)
+      ring_buffer_shutdown(app->process_chain.audio_ring_buffer);
   }
 }
 

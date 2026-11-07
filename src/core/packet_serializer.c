@@ -20,6 +20,13 @@ static bool _has_space_for(RingBuffer *buffer, size_t bytes_needed) {
   return (free_space >= bytes_needed);
 }
 
+static bool _is_buffer_writable(const RingBuffer *buffer) {
+  RingBufferState state = ring_buffer_get_state(buffer);
+  return state == RING_BUFFER_STATE_ACTIVE ||
+         state == RING_BUFFER_STATE_CONSUMER_WAITING ||
+         state == RING_BUFFER_STATE_PRODUCER_WAITING;
+}
+
 // --- WRITE IMPLEMENTATION ---
 
 PacketWriteResult packet_serializer_write_packet(RingBuffer *buffer,
@@ -30,8 +37,7 @@ PacketWriteResult packet_serializer_write_packet(RingBuffer *buffer,
   if (!buffer)
     return PACKET_WRITE_INACTIVE;
 
-  RingBufferState state = ring_buffer_get_state(buffer);
-  if (state != RING_BUFFER_STATE_ACTIVE) {
+  if (!_is_buffer_writable(buffer)) {
     return PACKET_WRITE_INACTIVE;
   }
 
@@ -57,7 +63,7 @@ PacketWriteResult packet_serializer_write_packet(RingBuffer *buffer,
   size_t written = ring_buffer_write_packet(buffer, &header, sizeof(header),
                                             sample_data, data_size);
   if (written == 0) {
-    if (ring_buffer_get_state(buffer) != RING_BUFFER_STATE_ACTIVE) {
+    if (!_is_buffer_writable(buffer)) {
       return PACKET_WRITE_INACTIVE;
     }
     return PACKET_WRITE_DROPPED;
@@ -70,8 +76,7 @@ PacketWriteResult packet_serializer_write_reset_event(RingBuffer *buffer) {
   if (!buffer)
     return PACKET_WRITE_INACTIVE;
 
-  RingBufferState state = ring_buffer_get_state(buffer);
-  if (state != RING_BUFFER_STATE_ACTIVE) {
+  if (!_is_buffer_writable(buffer)) {
     return PACKET_WRITE_INACTIVE;
   }
 
@@ -89,7 +94,7 @@ PacketWriteResult packet_serializer_write_reset_event(RingBuffer *buffer) {
   size_t written =
       ring_buffer_write_packet(buffer, &header, sizeof(header), NULL, 0);
   if (written == 0) {
-    if (ring_buffer_get_state(buffer) != RING_BUFFER_STATE_ACTIVE) {
+    if (!_is_buffer_writable(buffer)) {
       return PACKET_WRITE_INACTIVE;
     }
     return PACKET_WRITE_DROPPED;

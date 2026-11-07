@@ -172,6 +172,7 @@ typedef struct ProcessChainInfrastructure {
   Queue *output_queue;
 
   struct RingBuffer *input_ring_buffer;
+  struct RingBuffer *audio_ring_buffer;
 
   WaitEvent *shutdown_event;
 } ProcessChainInfrastructure;

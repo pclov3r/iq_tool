@@ -9,14 +9,16 @@
 
 /**
  * @enum RingBufferState
- * @brief Lifecycle states for the lock-free ring buffer.
+ * @brief Lifecycle and thread-parking states for the lock-free ring buffer.
  */
 typedef enum RingBufferState {
   RING_BUFFER_STATE_UNINITIALIZED = 0,
-  RING_BUFFER_STATE_ACTIVE,   ///< Normal streaming operation.
-  RING_BUFFER_STATE_DRAINING, ///< End of stream: reject writes, reader drains.
-  RING_BUFFER_STATE_SHUTDOWN, ///< Immediate shutdown: abort reader and writer.
-  RING_BUFFER_STATE_DESTROYED ///< Mutexes destroyed: completely inert.
+  RING_BUFFER_STATE_ACTIVE,           ///< Streaming: both threads active.
+  RING_BUFFER_STATE_CONSUMER_WAITING, ///< Empty: consumer parked waiting for data.
+  RING_BUFFER_STATE_PRODUCER_WAITING, ///< Full: producer parked waiting for space.
+  RING_BUFFER_STATE_DRAINING,         ///< End of stream: reject writes, reader drains.
+  RING_BUFFER_STATE_SHUTDOWN,         ///< Immediate shutdown: abort reader and writer.
+  RING_BUFFER_STATE_DESTROYED         ///< Mutexes destroyed: completely inert.
 } RingBufferState;
 
 // --- Opaque Structure Definition ---

@@ -16,6 +16,7 @@
 #include "platform.h"
 
 struct AudioOutputContext {
+  AppContext *app;
   ma_device audio_device;
   RingBuffer *audio_ring_buffer;
   bool audio_device_initialized;
@@ -62,6 +63,7 @@ AudioOutputContext *audio_output_create(AppContext *app, int sample_rate,
   if (!context)
     return NULL;
 
+  context->app = app;
   context->buffer_size = buffer_size_bytes;
   context->channels = channels;
 
@@ -92,6 +94,7 @@ AudioOutputContext *audio_output_create(AppContext *app, int sample_rate,
     log_fatal("Failed to create ring buffer.");
     return NULL;
   }
+  app->process_chain.audio_ring_buffer = context->audio_ring_buffer;
 
   double bytes_per_sec = (double)sample_rate * channels * sizeof(int16_t);
   double duration = (double)buffer_size_bytes / bytes_per_sec;
@@ -112,6 +115,7 @@ AudioOutputContext *audio_output_create(AppContext *app, int sample_rate,
   if (init_res != MA_SUCCESS) {
     log_fatal("Failed to initialize audio device: %s",
               ma_result_description(init_res));
+    app->process_chain.audio_ring_buffer = NULL;
     ring_buffer_destroy(context->audio_ring_buffer);
     return NULL;
   }
@@ -123,6 +127,7 @@ AudioOutputContext *audio_output_create(AppContext *app, int sample_rate,
     log_fatal("Failed to open audio device: %s",
               ma_result_description(start_res));
     ma_device_uninit(&context->audio_device);
+    app->process_chain.audio_ring_buffer = NULL;
     ring_buffer_destroy(context->audio_ring_buffer);
     return NULL;
   }
@@ -244,6 +249,11 @@ void audio_output_destroy(AudioOutputContext *context) {
     context->audio_device_initialized = false;
   }
   if (context->audio_ring_buffer) {
+    if (context->app &&
+        context->app->process_chain.audio_ring_buffer ==
+            context->audio_ring_buffer) {
+      context->app->process_chain.audio_ring_buffer = NULL;
+    }
     ring_buffer_destroy(context->audio_ring_buffer);
     context->audio_ring_buffer = NULL;
   }
