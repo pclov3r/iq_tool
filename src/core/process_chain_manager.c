@@ -300,15 +300,22 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
   app->process_chain.sample_chunk_pool = (SampleChunk **)mem_arena_alloc(
       &app->process_chain.setup_arena,
       app->process_chain.num_chunks * sizeof(SampleChunk *), true);
+  if (!app->process_chain.sample_chunk_pool) {
+    log_fatal("Failed to allocate sample chunk catalog.");
+    return false;
+  }
 
-  for (size_t i = 0; i < app->process_chain.num_chunks; ++i) {
+  for (size_t chunk_index = 0; chunk_index < app->process_chain.num_chunks;
+       ++chunk_index) {
     // Calculate the base address for this specific tray
-    uint8_t *tray_base =
-        (uint8_t *)app->process_chain.chunk_data_pool + (i * total_tray_size);
+    uint8_t *tray_base = (uint8_t *)app->process_chain.chunk_data_pool +
+                         (chunk_index * total_tray_size);
 
     // The Catalog entry points to the struct at the front of the tray
-    app->process_chain.sample_chunk_pool[i] = (SampleChunk *)tray_base;
-    SampleChunk *item = app->process_chain.sample_chunk_pool[i];
+    app->process_chain.sample_chunk_pool[chunk_index] =
+        (SampleChunk *)tray_base;
+    SampleChunk *item = app->process_chain.sample_chunk_pool[chunk_index];
+    memset(item, 0, sizeof(SampleChunk));
 
     // The buffers follow immediately after the metadata struct
     uint8_t *data_ptr = tray_base + struct_stride;

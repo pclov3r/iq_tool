@@ -1,7 +1,7 @@
 /**
  * @file interleave_functions.h
- * @brief Functions for interleaving left/right planes or I/Q arrays into packed
- * blocks.
+ * @brief Functions for interleaving planar I/Q (or stereo L/R) arrays into
+ * packed interleaved blocks.
  */
 
 #ifndef INTERLEAVE_FUNCTIONS_H_
@@ -25,35 +25,35 @@ void interleave_u16(const uint16_t *restrict i_plane,
                     uint16_t *restrict interleaved_out, size_t num_samples);
 
 // --- Float to Integer Interleavers (Output: Float -> Integer) ---
-void interleave_f32_to_s8(const float *restrict left_plane,
-                          const float *restrict right_plane,
+void interleave_f32_to_s8(const float *restrict i_plane,
+                          const float *restrict q_plane,
                           int8_t *restrict interleaved_out, size_t num_samples);
-void interleave_f32_to_u8(const float *restrict left_plane,
-                          const float *restrict right_plane,
+void interleave_f32_to_u8(const float *restrict i_plane,
+                          const float *restrict q_plane,
                           uint8_t *restrict interleaved_out,
                           size_t num_samples);
-void interleave_f32_to_s16(const float *restrict left_plane,
-                           const float *restrict right_plane,
+void interleave_f32_to_s16(const float *restrict i_plane,
+                           const float *restrict q_plane,
                            int16_t *restrict interleaved_out,
                            size_t num_samples);
-void interleave_f32_to_u16(const float *restrict left_plane,
-                           const float *restrict right_plane,
+void interleave_f32_to_u16(const float *restrict i_plane,
+                           const float *restrict q_plane,
                            uint16_t *restrict interleaved_out,
                            size_t num_samples);
-void interleave_f32_to_s24(const float *restrict left_plane,
-                           const float *restrict right_plane,
+void interleave_f32_to_s24(const float *restrict i_plane,
+                           const float *restrict q_plane,
                            uint8_t *restrict interleaved_out,
                            size_t num_samples);
-void interleave_f32_to_u24(const float *restrict left_plane,
-                           const float *restrict right_plane,
+void interleave_f32_to_u24(const float *restrict i_plane,
+                           const float *restrict q_plane,
                            uint8_t *restrict interleaved_out,
                            size_t num_samples);
-void interleave_f32_to_s32(const float *restrict left_plane,
-                           const float *restrict right_plane,
+void interleave_f32_to_s32(const float *restrict i_plane,
+                           const float *restrict q_plane,
                            int32_t *restrict interleaved_out,
                            size_t num_samples);
-void interleave_f32_to_u32(const float *restrict left_plane,
-                           const float *restrict right_plane,
+void interleave_f32_to_u32(const float *restrict i_plane,
+                           const float *restrict q_plane,
                            uint32_t *restrict interleaved_out,
                            size_t num_samples);
 

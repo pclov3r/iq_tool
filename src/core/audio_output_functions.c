@@ -29,17 +29,21 @@ static void miniaudio_data_callback(ma_device *pDevice, void *pOutput,
                                     const void *pInput, ma_uint32 frameCount) {
   (void)pInput;
   AudioOutputContext *context = (AudioOutputContext *)pDevice->pUserData;
-  if (frameCount == 0)
+  if (frameCount == 0 || !context || context->channels <= 0)
     return;
 
-  size_t bytes_needed = frameCount * context->channels * sizeof(int16_t);
-  size_t available = ring_buffer_get_size(context->audio_ring_buffer);
+  size_t frame_bytes = (size_t)context->channels * sizeof(int16_t);
+  size_t bytes_needed = (size_t)frameCount * frame_bytes;
+  size_t available_bytes = ring_buffer_get_size(context->audio_ring_buffer);
 
-  if (available < bytes_needed) {
-    // Underrun: Play whatever is left, pad the rest with silence.
-    if (available > 0)
-      ring_buffer_read(context->audio_ring_buffer, pOutput, available);
-    memset((uint8_t *)pOutput + available, 0, bytes_needed - available);
+  if (available_bytes < bytes_needed) {
+    // Underrun: Play only whole frames available, pad the rest with silence.
+    size_t aligned_available = (available_bytes / frame_bytes) * frame_bytes;
+    if (aligned_available > 0) {
+      ring_buffer_read(context->audio_ring_buffer, pOutput, aligned_available);
+    }
+    memset((uint8_t *)pOutput + aligned_available, 0,
+           bytes_needed - aligned_available);
     return;
   }
 
@@ -140,15 +144,21 @@ size_t audio_output_write(AudioOutputContext *context, const void *pcm_data,
     return bytes;
   }
 
-  const uint8_t *ptr = (const uint8_t *)pcm_data;
+  const uint8_t *source_ptr = (const uint8_t *)pcm_data;
   size_t bytes_left = bytes;
+  size_t frame_bytes = (context->channels > 0)
+                           ? ((size_t)context->channels * sizeof(int16_t))
+                           : sizeof(int16_t);
   size_t safe_capacity =
       (context->buffer_size > 0) ? context->buffer_size - 1 : 0;
 
-  // Cap chunk size to 50% of buffer capacity to guarantee it fits safely
+  // Cap chunk size to 50% of buffer capacity, rounded down to whole PCM frames
   size_t max_chunk = safe_capacity / 2;
-  if (max_chunk == 0)
-    max_chunk = 1;
+  if (max_chunk >= frame_bytes) {
+    max_chunk = (max_chunk / frame_bytes) * frame_bytes;
+  } else {
+    max_chunk = frame_bytes;
+  }
 
   while (bytes_left > 0) {
     if (is_shutdown_requested())
@@ -158,16 +168,17 @@ size_t audio_output_write(AudioOutputContext *context, const void *pcm_data,
 
     // --- CONDITIONAL BACKPRESSURE ---
     if (mode == PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL) {
-      size_t target_size = safe_capacity - chunk_size;
+      size_t target_size =
+          (safe_capacity >= chunk_size) ? (safe_capacity - chunk_size) : 0;
       ring_buffer_wait_for_threshold(context->audio_ring_buffer, target_size);
       if (is_shutdown_requested())
         break;
     }
 
     size_t written =
-        ring_buffer_write(context->audio_ring_buffer, ptr, chunk_size);
+        ring_buffer_write(context->audio_ring_buffer, source_ptr, chunk_size);
     if (written > 0) {
-      ptr += written;
+      source_ptr += written;
       bytes_left -= written;
     } else {
       // Write failed (buffer likely shutting down), break to prevent infinite

@@ -8,6 +8,7 @@
 #include "log.h"
 #include "platform.h"
 #include <assert.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -25,19 +26,22 @@ struct ArenaBlock {
 static ArenaBlock *create_arena_block(size_t capacity) {
   size_t header_size = (sizeof(ArenaBlock) + MEM_ARENA_ALIGNMENT - 1) &
                        ~(MEM_ARENA_ALIGNMENT - 1);
+  if (capacity > SIZE_MAX - (MEM_ARENA_ALIGNMENT - 1) - header_size) {
+    return NULL;
+  }
   size_t aligned_capacity =
       (capacity + MEM_ARENA_ALIGNMENT - 1) & ~(MEM_ARENA_ALIGNMENT - 1);
   size_t total_bytes = header_size + aligned_capacity;
 
-  void *raw = aligned_alloc(MEM_ARENA_ALIGNMENT, total_bytes);
-  if (!raw) {
+  void *raw_memory = aligned_alloc(MEM_ARENA_ALIGNMENT, total_bytes);
+  if (!raw_memory) {
     return NULL;
   }
-  ArenaBlock *block = (ArenaBlock *)raw;
+  ArenaBlock *block = (ArenaBlock *)raw_memory;
   block->next = NULL;
   block->capacity = aligned_capacity;
   block->offset = 0;
-  block->memory = (char *)raw + header_size;
+  block->memory = (char *)raw_memory + header_size;
   return block;
 }
 
@@ -64,17 +68,21 @@ bool mem_arena_init(MemoryArena *arena) {
   size_t max_cap;
 
   if (total_ram > 0) {
-    max_cap =
-        (size_t)((total_ram * (uint64_t)MEM_ARENA_RAM_PERCENT_CAP) / 100ULL);
-    // On 32-bit systems, clamp to 1.5 GB to prevent virtual address space
-    // exhaustion
-    if (sizeof(void *) == 4 && max_cap > (size_t)MEM_ARENA_32BIT_CAP) {
-      max_cap = (size_t)MEM_ARENA_32BIT_CAP;
+    uint64_t calculated_cap =
+        (total_ram * (uint64_t)MEM_ARENA_RAM_PERCENT_CAP) / 100ULL;
+    // Clamp in 64-bit arithmetic before casting to size_t to prevent truncation
+    // on 32-bit builds running on systems with >= 4 GB of physical RAM
+    if (sizeof(void *) == 4 && calculated_cap > (uint64_t)MEM_ARENA_32BIT_CAP) {
+      calculated_cap = (uint64_t)MEM_ARENA_32BIT_CAP;
     }
+    if (calculated_cap > (uint64_t)SIZE_MAX) {
+      calculated_cap = (uint64_t)SIZE_MAX;
+    }
+    max_cap = (size_t)calculated_cap;
   } else {
     // Fallback if system RAM query is unavailable
     max_cap =
-        (sizeof(void *) == 4) ? (512 * 1024 * 1024) : (1024 * 1024 * 1024);
+        (sizeof(void *) == 4) ? (512U * 1024U * 1024U) : (1024U * 1024U * 1024U);
   }
 
   if (max_cap < default_chunk) {
@@ -89,8 +97,8 @@ bool mem_arena_init(MemoryArena *arena) {
   arena->state = MEM_ARENA_STATE_UNINITIALIZED;
 
   // Allocate initial 32 MB chunk immediately
-  ArenaBlock *first = create_arena_block(arena->default_chunk_size);
-  if (!first) {
+  ArenaBlock *first_block = create_arena_block(arena->default_chunk_size);
+  if (!first_block) {
     log_fatal("Failed to allocate initial memory arena block (%zu bytes).",
               arena->default_chunk_size);
     pthread_mutex_destroy(&arena->lock);
@@ -98,9 +106,9 @@ bool mem_arena_init(MemoryArena *arena) {
     return false;
   }
 
-  arena->first_block = first;
-  arena->current_block = first;
-  arena->total_allocated = first->capacity;
+  arena->first_block = first_block;
+  arena->current_block = first_block;
+  arena->total_allocated = first_block->capacity;
   arena->state = MEM_ARENA_STATE_ACTIVE;
 
   log_debug("Memory arena initialized: %zu MB (limit: %zu MB)",
@@ -111,7 +119,7 @@ bool mem_arena_init(MemoryArena *arena) {
 }
 
 void *mem_arena_alloc(MemoryArena *arena, size_t size, bool zero_memory) {
-  if (!arena || size == 0)
+  if (!arena || size == 0 || size > SIZE_MAX - (MEM_ARENA_ALIGNMENT - 1))
     return NULL;
 
   size_t aligned_size =
