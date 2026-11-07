@@ -353,13 +353,6 @@ static bool input_spyserver_client_initialize(ModuleContext *context) {
   if (!client->rx_buffer)
     return false;
 
-  // This module now takes responsibility for initializing its dependency.
-  if (!networking_init()) {
-    log_error("SpyServer client failed because the networking module could not "
-              "be initialized.");
-    return false;
-  }
-
   client->net_context = networking_connect(s_spyserver_client_config.hostname,
                                            s_spyserver_client_config.port,
                                            &app->process_chain.setup_arena);
@@ -658,8 +651,8 @@ static bool input_spyserver_client_initialize(ModuleContext *context) {
 error_cleanup:
   if (client && client->net_context) {
     networking_disconnect(client->net_context);
+    client->net_context = NULL;
   }
-  networking_cleanup();
   return false;
 }
 
