@@ -59,8 +59,8 @@ static struct {
   int hydrasdr_vga_gain_arg;
   char *sample_format;
   bool sample_format_provided;
+  char *serial_str;
   uint64_t serial_number;
-  bool serial_provided;
   bool packing_enabled;
 } s_hydrasdr_config;
 
@@ -93,7 +93,7 @@ static const struct argparse_option input_hydrasdr_cli_options[] = {
         OPT_INTEGER(0, "hydrasdr-mixer-gain", &s_hydrasdr_config.hydrasdr_mixer_gain_arg, "Manual Mixer gain (0-15). Only with manual mode. (Default: 5)", NULL, 0, 0),
         OPT_INTEGER(0, "hydrasdr-vga-gain", &s_hydrasdr_config.hydrasdr_vga_gain_arg, "Manual VGA gain (0-15). Only with manual mode. (Default: 5)", NULL, 0, 0),
         OPT_STRING(0, "hydrasdr-sample-format", &s_hydrasdr_config.sample_format, "Sample format: 'cf32' or 'cs16'. (Default: cs16)", NULL, 0, 0),
-        OPT_INTEGER( 0, "hydrasdr-serial", (int *)&s_hydrasdr_config.serial_number, "Select device by serial number (hex, e.g., 0x123456789ABCDEF0).", NULL, 0, 0),
+        OPT_STRING(0, "hydrasdr-serial", &s_hydrasdr_config.serial_str, "Select device by serial number (hex, e.g., 0x123456789ABCDEF0).", NULL, 0, 0),
         OPT_BOOLEAN(0, "hydrasdr-packing", &s_hydrasdr_config.packing_enabled, "Enable bit-packing mode (12-bit samples).", NULL, 0, 0),
 };
 // clang-format on
@@ -198,8 +198,26 @@ static bool input_hydrasdr_validate_options(AppContext *app) {
   }
 
   // Serial Number Validation
-  if (s_hydrasdr_config.serial_number != 0) {
-    s_hydrasdr_config.serial_provided = true;
+  if (s_hydrasdr_config.serial_str != NULL) {
+    if (s_hydrasdr_config.serial_str[0] == '\0' ||
+        strchr(s_hydrasdr_config.serial_str, '-') != NULL) {
+      log_error("Invalid --hydrasdr-serial '%s'. Must be a 64-bit hexadecimal "
+                "serial number.",
+                s_hydrasdr_config.serial_str);
+      return false;
+    }
+    char *end_pointer = NULL;
+    errno = 0;
+    unsigned long long parsed_serial =
+        strtoull(s_hydrasdr_config.serial_str, &end_pointer, 16);
+    if (errno == ERANGE || end_pointer == s_hydrasdr_config.serial_str ||
+        *end_pointer != '\0') {
+      log_error("Invalid --hydrasdr-serial '%s'. Must be a 64-bit hexadecimal "
+                "serial number.",
+                s_hydrasdr_config.serial_str);
+      return false;
+    }
+    s_hydrasdr_config.serial_number = (uint64_t)parsed_serial;
   }
 
   // Validate that manual gain options are only used with manual mode
@@ -356,7 +374,7 @@ static bool input_hydrasdr_initialize(ModuleContext *context) {
   app->module.input_private_data = private_data;
 
   // Open device
-  if (s_hydrasdr_config.serial_provided) {
+  if (s_hydrasdr_config.serial_str != NULL) {
     result =
         hydrasdr_open_sn(&private_data->dev, s_hydrasdr_config.serial_number);
   } else {
@@ -374,11 +392,11 @@ static bool input_hydrasdr_initialize(ModuleContext *context) {
   hydrasdr_device_info_t info = {0};
   result = hydrasdr_get_device_info(private_data->dev, &info);
   if (result == HYDRASDR_SUCCESS) {
-    size_t name_len = strlen(info.board_name);
-    char *safe_name = (char *)mem_arena_alloc(&app->process_chain.setup_arena,
-                                              name_len + 1, false);
-    strcpy(safe_name, info.board_name);
-    private_data->board_name = safe_name;
+    private_data->board_name =
+        mem_arena_strdup(&app->process_chain.setup_arena, info.board_name);
+    if (!private_data->board_name) {
+      private_data->board_name = "Unknown HydraSDR";
+    }
   } else {
     private_data->board_name = "Unknown HydraSDR";
   }

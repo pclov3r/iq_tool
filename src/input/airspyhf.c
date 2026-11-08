@@ -38,8 +38,8 @@ static struct {
   bool attenuation_provided;
   bool preamp_enabled;
   bool preamp_provided;
+  char *serial_str;
   uint64_t serial_number;
-  bool serial_provided;
   bool lib_dsp_disabled;
 } s_airspyhf_config;
 
@@ -59,7 +59,7 @@ static const struct argparse_option input_airspyhf_cli_options[] = {
         OPT_STRING(0, "airspyhf-agc", &s_airspyhf_config.agc_mode, "AGC mode: 'off', 'low', or 'high'. (Default: high)", NULL, 0, 0),
         OPT_FLOAT(0, "airspyhf-attn", &s_airspyhf_config.attenuation, "Attenuation in dB (0.0 to 48.0). (Default: 0.0)", NULL, 0, 0),
         OPT_BOOLEAN(0, "airspyhf-preamp", &s_airspyhf_config.preamp_enabled, "Enable LNA/PreAmp.", NULL, 0, 0),
-        OPT_INTEGER( 0, "airspyhf-serial", (int *)&s_airspyhf_config.serial_number, "Select device by serial number (hex, e.g., 0x123456789ABCDEF0).", NULL, 0, 0),
+        OPT_STRING(0, "airspyhf-serial", &s_airspyhf_config.serial_str, "Select device by serial number (hex, e.g., 0x123456789ABCDEF0).", NULL, 0, 0),
         OPT_BOOLEAN( 0, "airspyhf-no-lib-dsp", &s_airspyhf_config.lib_dsp_disabled, "Disable library DSP processing (IQ correction, DC removal, etc).", NULL, 0, 0),
 };
 // clang-format on
@@ -118,8 +118,26 @@ static bool input_airspyhf_validate_options(AppContext *app) {
   }
 
   // Serial Number Validation
-  if (s_airspyhf_config.serial_number != 0) {
-    s_airspyhf_config.serial_provided = true;
+  if (s_airspyhf_config.serial_str != NULL) {
+    if (s_airspyhf_config.serial_str[0] == '\0' ||
+        strchr(s_airspyhf_config.serial_str, '-') != NULL) {
+      log_error("Invalid --airspyhf-serial '%s'. Must be a 64-bit hexadecimal "
+                "serial number.",
+                s_airspyhf_config.serial_str);
+      return false;
+    }
+    char *end_pointer = NULL;
+    errno = 0;
+    unsigned long long parsed_serial =
+        strtoull(s_airspyhf_config.serial_str, &end_pointer, 16);
+    if (errno == ERANGE || end_pointer == s_airspyhf_config.serial_str ||
+        *end_pointer != '\0') {
+      log_error("Invalid --airspyhf-serial '%s'. Must be a 64-bit hexadecimal "
+                "serial number.",
+                s_airspyhf_config.serial_str);
+      return false;
+    }
+    s_airspyhf_config.serial_number = (uint64_t)parsed_serial;
   }
 
   // Sample Rate Validation
@@ -243,7 +261,7 @@ static bool input_airspyhf_initialize(ModuleContext *context) {
   app->module.input_private_data = private_data;
 
   // Open device
-  if (s_airspyhf_config.serial_provided) {
+  if (s_airspyhf_config.serial_str != NULL) {
     result =
         airspyhf_open_sn(&private_data->dev, s_airspyhf_config.serial_number);
   } else {
@@ -257,11 +275,12 @@ static bool input_airspyhf_initialize(ModuleContext *context) {
   }
 
   // Read 128-bit Serial Number (4 chunks of 32-bits)
-  airspyhf_read_partid_serialno_t s = {0};
-  airspyhf_board_partid_serialno_read(private_data->dev, &s);
+  airspyhf_read_partid_serialno_t part_serial = {0};
+  airspyhf_board_partid_serialno_read(private_data->dev, &part_serial);
 
-  log_info("Using Airspy HF+ device (S/N: 0x%08X%08X%08X%08X)", s.serial_no[0],
-           s.serial_no[1], s.serial_no[2], s.serial_no[3]);
+  log_info("Using Airspy HF+ device (S/N: 0x%08X%08X%08X%08X)",
+           part_serial.serial_no[0], part_serial.serial_no[1],
+           part_serial.serial_no[2], part_serial.serial_no[3]);
 
   // Get and validate supported sample rates
   uint32_t num_rates = 0;

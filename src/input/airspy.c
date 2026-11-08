@@ -72,8 +72,8 @@ static struct {
   int airspy_vga_gain_arg;
   char *sample_format;
   bool sample_format_provided;
+  char *serial_str;
   uint64_t serial_number;
-  bool serial_provided;
   bool packing_enabled;
 } s_airspy_config;
 
@@ -106,7 +106,7 @@ static const struct argparse_option input_airspy_cli_options[] = {
         OPT_INTEGER(0, "airspy-mixer-gain", &s_airspy_config.airspy_mixer_gain_arg, "Manual Mixer gain (0-15). Only with manual mode. (Default: 5)", NULL, 0, 0),
         OPT_INTEGER(0, "airspy-vga-gain", &s_airspy_config.airspy_vga_gain_arg, "Manual VGA gain (0-15). Only with manual mode. (Default: 5)", NULL, 0, 0),
         OPT_STRING(0, "airspy-sample-format", &s_airspy_config.sample_format, "Sample format: 'cf32' or 'cs16'. (Default: cs16)", NULL, 0, 0),
-        OPT_INTEGER( 0, "airspy-serial", (int *)&s_airspy_config.serial_number, "Select device by serial number (hex, e.g., 0x123456789ABCDEF0).", NULL, 0, 0),
+        OPT_STRING(0, "airspy-serial", &s_airspy_config.serial_str, "Select device by serial number (hex, e.g., 0x123456789ABCDEF0).", NULL, 0, 0),
         OPT_BOOLEAN(0, "airspy-packing", &s_airspy_config.packing_enabled, "Enable bit-packing mode (12-bit samples).", NULL, 0, 0),
 };
 // clang-format on
@@ -208,8 +208,26 @@ static bool input_airspy_validate_options(AppContext *app) {
   }
 
   // Serial Number Validation
-  if (s_airspy_config.serial_number != 0) {
-    s_airspy_config.serial_provided = true;
+  if (s_airspy_config.serial_str != NULL) {
+    if (s_airspy_config.serial_str[0] == '\0' ||
+        strchr(s_airspy_config.serial_str, '-') != NULL) {
+      log_error("Invalid --airspy-serial '%s'. Must be a 64-bit hexadecimal "
+                "serial number.",
+                s_airspy_config.serial_str);
+      return false;
+    }
+    char *end_pointer = NULL;
+    errno = 0;
+    unsigned long long parsed_serial =
+        strtoull(s_airspy_config.serial_str, &end_pointer, 16);
+    if (errno == ERANGE || end_pointer == s_airspy_config.serial_str ||
+        *end_pointer != '\0') {
+      log_error("Invalid --airspy-serial '%s'. Must be a 64-bit hexadecimal "
+                "serial number.",
+                s_airspy_config.serial_str);
+      return false;
+    }
+    s_airspy_config.serial_number = (uint64_t)parsed_serial;
   }
 
   // Sample Rate Validation
@@ -402,7 +420,7 @@ static bool input_airspy_initialize(ModuleContext *context) {
   }
 
   // Open device
-  if (s_airspy_config.serial_provided) {
+  if (s_airspy_config.serial_str != NULL) {
     result = airspy_open_sn(&private_data->dev, s_airspy_config.serial_number);
   } else {
     result = airspy_open(&private_data->dev);
@@ -433,12 +451,13 @@ static bool input_airspy_initialize(ModuleContext *context) {
     }
   }
   // Read 128-bit Serial Number (4 chunks of 32-bits)
-  airspy_read_partid_serialno_t s = {0};
-  airspy_board_partid_serialno_read(private_data->dev, &s);
+  airspy_read_partid_serialno_t part_serial = {0};
+  airspy_board_partid_serialno_read(private_data->dev, &part_serial);
 
   log_info("Using Airspy device: %s (S/N: 0x%08X%08X%08X%08X)",
-           private_data->board_name, s.serial_no[0], s.serial_no[1],
-           s.serial_no[2], s.serial_no[3]);
+           private_data->board_name, part_serial.serial_no[0],
+           part_serial.serial_no[1], part_serial.serial_no[2],
+           part_serial.serial_no[3]);
 
   // Get and validate supported sample rates
   uint32_t num_rates = 0;
