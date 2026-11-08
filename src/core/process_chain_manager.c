@@ -57,7 +57,7 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app) {
   OutputAgcConfig target_agc = {0};
 
   const Module *out_mod =
-      module_get(config->output.module_name, MODULE_TYPE_OUTPUT);
+      module_get(config->output_module.name, MODULE_TYPE_OUTPUT);
   const struct OutputModuleInterface *out_api =
       out_mod ? (const struct OutputModuleInterface *)out_mod->api : NULL;
   if (out_api && out_api->get_pipeline_requirements) {
@@ -65,7 +65,7 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app) {
                                        &target_gain, &target_agc);
   } else {
     target_rate_hz = config->output_sample_rate.rate_hz;
-    target_format = config->output.sample_format;
+    target_format = config->output_sample_format.format;
     target_gain = config->dsp.output_gain;
     target_agc = config->dsp.output_agc;
   }
@@ -86,14 +86,14 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app) {
   app->dsp.process_chain_sample_rate_hz = target_rate_hz;
 
   if (config->dsp.raw_passthrough) {
-    if (config->output.format_source >= CONFIG_SOURCE_PRESET &&
-        config->output.sample_format != app->module.input_format) {
+    if (config->output_sample_format.source >= CONFIG_SOURCE_PRESET &&
+        config->output_sample_format.format != app->module.input_format) {
       log_error("Option --raw-passthrough cannot be used with an explicit "
                 "--output-sample-format that differs from the input module.");
       return false;
     }
     app->dsp.process_chain_sample_format = app->module.input_format;
-    config->output.sample_format = app->module.input_format;
+    config->output_sample_format.format = app->module.input_format;
   } else {
     app->dsp.process_chain_sample_format = target_format;
   }

@@ -28,18 +28,18 @@
 bool output_wav_common_validate_options(AppContext *app) {
   AppConfig *config = app ? (AppConfig *)app->config : NULL;
   // This logic is identical for both WAV and RF64.
-  int pcm_subtype = format_to_pcm_subtype(config->output.sample_format);
+  int pcm_subtype = format_to_pcm_subtype(config->output_sample_format.format);
   if (pcm_subtype == 0 ||
-      format_from_pcm_subtype(pcm_subtype, 2) != config->output.sample_format) {
+      format_from_pcm_subtype(pcm_subtype, 2) != config->output_sample_format.format) {
     log_error("Invalid sample format '%s' for WAV/RF64 container. Only 'cs8', "
               "'cu8', 'cs16', 'cs24', 'cs32', and 'cf32' are supported.",
-              config->output.sample_format_str);
+              config->output_sample_format.format_str);
     return false;
   }
 
-  if (!config->output.resolved_path || config->output.resolved_path[0] == '\0')
+  if (!config->output_module.resolved_path || config->output_module.resolved_path[0] == '\0')
     return false;
-  const char *path = config->output.resolved_path;
+  const char *path = config->output_module.resolved_path;
 
   if (!utility_verify_output_path(config, path))
     return false;
@@ -68,7 +68,7 @@ bool output_wav_common_initialize(ModuleContext *context, int sf_format_flag) {
     return false;
   app->module.output_private_data = data;
 
-  const char *out_path = config->output.resolved_path;
+  const char *out_path = config->output_module.resolved_path;
 
   // Prepare the libsndfile info struct.
   SF_INFO sfinfo;
@@ -76,7 +76,7 @@ bool output_wav_common_initialize(ModuleContext *context, int sf_format_flag) {
   sfinfo.samplerate = (int)app->dsp.process_chain_sample_rate_hz;
   sfinfo.channels = 2;
   sfinfo.format =
-      sf_format_flag | format_to_pcm_subtype(config->output.sample_format);
+      sf_format_flag | format_to_pcm_subtype(config->output_sample_format.format);
 
   // Verify that libsndfile supports this format combination.
   if (!sf_format_check(&sfinfo)) {
@@ -107,16 +107,16 @@ bool output_wav_common_initialize(ModuleContext *context, int sf_format_flag) {
     strftime(date_only, sizeof(date_only), "%d-%b-%Y", tm_info);
   }
 
-  int bits_per_sample = get_bits_per_sample(config->output.sample_format);
+  int bits_per_sample = get_bits_per_sample(config->output_sample_format.format);
   if (bits_per_sample <= 0) {
     log_error("Invalid sample format '%s': unable to determine bit depth.",
-              config->output.sample_format_str);
+              config->output_sample_format.format_str);
     return false;
   }
   size_t bytes_per_second = (size_t)app->dsp.process_chain_sample_rate_hz *
                             app->module.output_bytes_per_iq_sample;
   const char *radio_model =
-      config->input.type_name ? config->input.type_name : "iq_tool";
+      config->input_module.name ? config->input_module.name : "iq_tool";
 
 #ifndef GIT_HASH
 #define GIT_HASH "unknown"

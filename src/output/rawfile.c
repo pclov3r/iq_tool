@@ -26,13 +26,13 @@ typedef struct {
 static bool output_rawfile_validate_options(AppContext *app) {
   AppConfig *config = (AppConfig *)app->config;
 
-  if (!config->output.resolved_path ||
-      config->output.resolved_path[0] == '\0') {
+  if (!config->output_module.resolved_path ||
+      config->output_module.resolved_path[0] == '\0') {
     log_error("Rawfile output requires a valid file path.");
     return false;
   }
 
-  const char *path = config->output.resolved_path;
+  const char *path = config->output_module.resolved_path;
 
   if (!utility_verify_output_path(config, path)) {
     return false;
@@ -121,7 +121,7 @@ static void output_rawfile_get_pipeline_requirements(
     const struct AppConfig *config, double *rate, SampleFormat *format,
     float *gain, struct OutputAgcConfig *agc) {
   *rate = config->output_sample_rate.rate_hz;
-  *format = config->output.sample_format;
+  *format = config->output_sample_format.format;
   *gain = config->dsp.output_gain;
   *agc = config->dsp.output_agc;
 }

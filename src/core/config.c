@@ -21,12 +21,12 @@
 
 bool validate_output_type_and_sample_format(AppConfig *config) {
   const Module *out_mod =
-      module_get(config->output.module_name, MODULE_TYPE_OUTPUT);
+      module_get(config->output_module.name, MODULE_TYPE_OUTPUT);
   if (out_mod) {
-    config->output.payload = out_mod->payload;
+    config->output_module.payload = out_mod->payload;
   }
 
-  if (config->output.payload == PAYLOAD_AUDIO) {
+  if (config->output_module.payload == PAYLOAD_AUDIO) {
     if (!config->baseband_sample_format.format_str) {
       if (out_mod && out_mod->module_defines_format) {
         config->baseband_sample_format.format_str = "cf32";
@@ -34,7 +34,7 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
       } else {
         log_error("Missing required argument: --baseband-sample-format for "
                   "output '%s'.",
-                  config->output.module_name);
+                  config->output_module.name);
         return false;
       }
     }
@@ -49,30 +49,30 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
       return false;
     }
   } else {
-    if (!config->output.sample_format_str) {
-      if (config->output.path_arg) {
-        config->output.sample_format_str = "cs16";
-        config->output.format_source = CONFIG_SOURCE_MODULE_DEFAULT;
+    if (!config->output_sample_format.format_str) {
+      if (config->output_module.path_arg) {
+        config->output_sample_format.format_str = "cs16";
+        config->output_sample_format.source = CONFIG_SOURCE_MODULE_DEFAULT;
         log_info("No output sample format specified; defaulting to 'cs16' for "
                  "file output.");
       } else if (out_mod && out_mod->module_defines_format) {
-        config->output.sample_format_str = "cs16";
-        config->output.format_source = CONFIG_SOURCE_MODULE_DEFAULT;
+        config->output_sample_format.format_str = "cs16";
+        config->output_sample_format.source = CONFIG_SOURCE_MODULE_DEFAULT;
       } else {
         log_error("Missing required argument: --output-sample-format for "
                   "output '%s'.",
-                  config->output.module_name);
+                  config->output_module.name);
         return false;
       }
     }
-    config->output.sample_format =
-        get_format_info_by_name(config->output.sample_format_str)
-            ? get_format_info_by_name(config->output.sample_format_str)
+    config->output_sample_format.format =
+        get_format_info_by_name(config->output_sample_format.format_str)
+            ? get_format_info_by_name(config->output_sample_format.format_str)
                   ->format_enum
             : FORMAT_UNKNOWN;
-    if (config->output.sample_format == FORMAT_UNKNOWN) {
+    if (config->output_sample_format.format == FORMAT_UNKNOWN) {
       log_error("Invalid sample format '%s'.",
-                config->output.sample_format_str);
+                config->output_sample_format.format_str);
       return false;
     }
   }
@@ -82,7 +82,7 @@ bool validate_output_type_and_sample_format(AppConfig *config) {
 bool validate_option_combinations(AppConfig *config) {
 
   if (config->audio.path_arg != NULL || config->audio.mute) {
-    if (config->output.payload != PAYLOAD_AUDIO) {
+    if (config->output_module.payload != PAYLOAD_AUDIO) {
       log_error("Options --audio-writer and --mute-audio can only be used with "
                 "audio demodulation modules.");
       return false;
@@ -120,13 +120,13 @@ bool validate_option_combinations(AppConfig *config) {
     }
   }
 
-  if (config->output.payload == PAYLOAD_AUDIO) {
+  if (config->output_module.payload == PAYLOAD_AUDIO) {
     if (config->output_sample_rate.source >= CONFIG_SOURCE_PRESET) {
       log_error("--output-sample-rate cannot be used with demodulators. Please "
                 "use --baseband-sample-rate.");
       return false;
     }
-    if (config->output.format_source >= CONFIG_SOURCE_PRESET) {
+    if (config->output_sample_format.source >= CONFIG_SOURCE_PRESET) {
       log_error("--output-sample-format cannot be used with demodulators. "
                 "Please use --baseband-sample-format.");
       return false;
@@ -179,7 +179,7 @@ bool validate_option_combinations(AppConfig *config) {
       log_error("--raw-passthrough cannot be used with any other DSP options.");
       return false;
     }
-    if (config->output.payload == PAYLOAD_AUDIO) {
+    if (config->output_module.payload == PAYLOAD_AUDIO) {
       log_error("Option --raw-passthrough cannot be used with audio "
                 "demodulation modules.");
       return false;

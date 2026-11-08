@@ -108,9 +108,9 @@ static int build_cli_options(struct argparse_option *options_buffer,
   int total_options = 0;
   struct argparse_option generic_options[] = {
       OPT_GROUP("Required Input & Output"),
-      OPT_STRING('i', "input", &config->input.type_name,
+      OPT_STRING('i', "input", &config->input_module.name,
                  "Specifies the input module.", NULL, 0, 0),
-      OPT_STRING('o', "output", &config->output.module_name,
+      OPT_STRING('o', "output", &config->output_module.name,
                  "Specifies the output module and optional file path", NULL, 0,
                  0),
 
@@ -150,10 +150,10 @@ static int build_cli_options(struct argparse_option *options_buffer,
       OPT_DOUBLE(0, "output-sample-rate", &config->output_sample_rate.rate_hz,
                  "Output sample rate in Hz.", mark_cli_source_callback,
                  (intptr_t)&config->output_sample_rate.source, 0),
-      OPT_STRING(0, "output-sample-format", &config->output.sample_format_str,
+      OPT_STRING(0, "output-sample-format", &config->output_sample_format.format_str,
                  "Sample format for output data {cs8|cu8|cs16|...}.",
                  mark_cli_source_callback,
-                 (intptr_t)&config->output.format_source, 0),
+                 (intptr_t)&config->output_sample_format.source, 0),
       OPT_FLOAT(
           0, "output-gain-multiplier", &config->dsp.output_gain,
           "Apply a linear gain multiplier to OUTPUT samples before saving.",
@@ -331,8 +331,8 @@ static bool apply_preset_if_requested(AppConfig *config) {
         config->baseband_sample_rate.source = CONFIG_SOURCE_PRESET;
       }
       if (preset->output_sample_format) {
-        config->output.sample_format_str = preset->output_sample_format;
-        config->output.format_source = CONFIG_SOURCE_PRESET;
+        config->output_sample_format.format_str = preset->output_sample_format;
+        config->output_sample_format.source = CONFIG_SOURCE_PRESET;
       }
       if (preset->baseband_sample_format) {
         config->baseband_sample_format.format_str =
@@ -396,16 +396,16 @@ static bool resolve_file_paths(AppConfig *config, MemoryArena *arena) {
   if (!config || !arena)
     return false;
 
-  if (config->input.path_arg) {
-    config->input.resolved_path =
-        platform_resolve_input_path(config->input.path_arg, arena);
-    if (!config->input.resolved_path)
+  if (config->input_module.path_arg) {
+    config->input_module.resolved_path =
+        platform_resolve_input_path(config->input_module.path_arg, arena);
+    if (!config->input_module.resolved_path)
       return false;
   }
-  if (config->output.path_arg) {
-    config->output.resolved_path =
-        platform_resolve_output_path(config->output.path_arg, arena);
-    if (!config->output.resolved_path)
+  if (config->output_module.path_arg) {
+    config->output_module.resolved_path =
+        platform_resolve_output_path(config->output_module.path_arg, arena);
+    if (!config->output_module.resolved_path)
       return false;
   }
   if (config->audio.path_arg) {
@@ -421,14 +421,14 @@ static bool validate_and_process_args(AppContext *app, int non_opt_argc,
                                       const char **non_opt_argv) {
   AppConfig *config = (AppConfig *)app->config;
   MemoryArena *arena = &app->process_chain.setup_arena;
-  if (!config->input.type_name) {
+  if (!config->input_module.name) {
     log_error("Missing required argument: --input <type>");
     return false;
   }
   const Module *selected_input_module =
-      module_get(config->input.type_name, MODULE_TYPE_INPUT);
+      module_get(config->input_module.name, MODULE_TYPE_INPUT);
   if (!selected_input_module) {
-    log_error("Invalid input type '%s'.", config->input.type_name);
+    log_error("Invalid input type '%s'.", config->input_module.name);
     return false;
   }
   InputModuleInterface *selected_module_api =
@@ -439,35 +439,35 @@ static bool validate_and_process_args(AppContext *app, int non_opt_argc,
   if (selected_input_module->requires_input_path) {
     if (non_opt_argc < 1) {
       log_error("Missing <in_file> argument for input type '%s'.",
-                config->input.type_name);
+                config->input_module.name);
       return false;
     }
-    config->input.path_arg = (char *)non_opt_argv[0];
+    config->input_module.path_arg = (char *)non_opt_argv[0];
     non_opt_argv++;
     non_opt_argc--;
   }
 
-  if (!config->output.module_name) {
+  if (!config->output_module.name) {
     log_error("Missing required argument: --output <type> [path]");
     return false;
   }
   const Module *selected_output_module =
-      module_get(config->output.module_name, MODULE_TYPE_OUTPUT);
+      module_get(config->output_module.name, MODULE_TYPE_OUTPUT);
   if (!selected_output_module) {
-    log_error("Invalid value for --output: '%s'.", config->output.module_name);
+    log_error("Invalid value for --output: '%s'.", config->output_module.name);
     return false;
   }
   if (selected_output_module->requires_output_path) {
     if (non_opt_argc < 1) {
       log_error("Missing <out_file> argument for '--output %s'.",
-                config->output.module_name);
+                config->output_module.name);
       return false;
     }
-    config->output.path_arg = (char *)non_opt_argv[0];
+    config->output_module.path_arg = (char *)non_opt_argv[0];
     non_opt_argv++;
     non_opt_argc--;
   } else {
-    config->output.path_arg = NULL;
+    config->output_module.path_arg = NULL;
   }
 
   if (non_opt_argc > 0) {
@@ -483,7 +483,7 @@ static bool validate_and_process_args(AppContext *app, int non_opt_argc,
       log_error("SDR options (--sdr-rf-freq, --sdr-sample-rate, "
                 "--sdr-freq-offset, --sdr-bias-t) cannot be used with '%s' "
                 "input.",
-                config->input.type_name);
+                config->input_module.name);
       return false;
     }
   }
@@ -524,7 +524,7 @@ static bool validate_and_process_args(AppContext *app, int non_opt_argc,
     return false;
 
   const Module *out_mod_val =
-      module_get(config->output.module_name, MODULE_TYPE_OUTPUT);
+      module_get(config->output_module.name, MODULE_TYPE_OUTPUT);
   if (out_mod_val) {
     OutputModuleInterface *out_api = (OutputModuleInterface *)out_mod_val->api;
     if (out_api && out_api->validate_options) {

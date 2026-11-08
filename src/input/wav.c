@@ -511,7 +511,7 @@ static struct {
 static bool _probe_split_sequence(WavInputContext *wav_input,
                                   const AppConfig *config, AppContext *app,
                                   MemoryArena *arena) {
-  const char *filename = config->input.resolved_path;
+  const char *filename = config->input_module.resolved_path;
   if (!filename) {
     return true;
   }
@@ -670,7 +670,7 @@ static bool input_wav_validate_options(AppContext *app) {
   if (!config)
     return true;
 
-  const char *input_path = config->input.resolved_path;
+  const char *input_path = config->input_module.resolved_path;
 
   if (!input_path || input_path[0] == '\0')
     return true;
@@ -991,9 +991,9 @@ static void input_wav_get_summary_info(const ModuleContext *context,
   WavInputContext *private_data =
       (WavInputContext *)app->module.input_private_data;
 
-  const char *display_path = config->input.resolved_path
-                                 ? config->input.resolved_path
-                                 : config->input.path_arg;
+  const char *display_path = config->input_module.resolved_path
+                                 ? config->input_module.resolved_path
+                                 : config->input_module.path_arg;
 
   // Dynamic key output depending on split configuration status
   if (private_data && private_data->split_enabled &&

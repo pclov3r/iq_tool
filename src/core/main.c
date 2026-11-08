@@ -193,9 +193,9 @@ int main(int argc, char *argv[]) {
   print_configuration_summary(&config, &app);
 
   if (app.stream_source_type == STREAM_SOURCE_LIVE_STREAM) {
-    log_info("Starting %s live input capture...", config.input.type_name);
+    log_info("Starting %s live input capture...", config.input_module.name);
   } else {
-    log_info("Starting %s file processing...", config.input.type_name);
+    log_info("Starting %s file processing...", config.input_module.name);
   }
 
   app.stats.progress_callback = application_progress_callback;
@@ -235,7 +235,7 @@ cleanup:
   }
 
   if (app.module.output_api) {
-    log_info("Closing %s output module...", config.output.module_name);
+    log_info("Closing %s output module...", config.output_module.name);
     close_output_module(&config, &app);
   }
 
@@ -246,12 +246,12 @@ cleanup:
   if (app.module.input_api) {
     if (resources_initialized) {
       if (app.stream_source_type == STREAM_SOURCE_LIVE_STREAM) {
-        log_info("Stopping %s live input capture...", config.input.type_name);
+        log_info("Stopping %s live input capture...", config.input_module.name);
       } else {
-        log_info("Finished %s file processing.", config.input.type_name);
+        log_info("Finished %s file processing.", config.input_module.name);
       }
     }
-    log_info("Closing %s input module...", config.input.type_name);
+    log_info("Closing %s input module...", config.input_module.name);
     close_input_module(&config, &app);
   }
 
@@ -285,10 +285,10 @@ static bool init_input_module(AppConfig *config, AppContext *app) {
   ModuleContext context = {.config = config, .app = app};
 
   const Module *selected_input_module =
-      module_get(config->input.type_name, MODULE_TYPE_INPUT);
+      module_get(config->input_module.name, MODULE_TYPE_INPUT);
   if (!selected_input_module) {
     log_error("Input type '%s' is not supported or enabled in this build.",
-              config->input.type_name);
+              config->input_module.name);
     return false;
   }
   app->module.input_api = (InputModuleInterface *)selected_input_module->api;
@@ -297,12 +297,12 @@ static bool init_input_module(AppConfig *config, AppContext *app) {
   app->module.input_info.demod_audio_buffer_size =
       selected_input_module->default_demod_audio_buffer_size;
 
-  log_info("Initializing the '%s' input module...", config->input.type_name);
+  log_info("Initializing the '%s' input module...", config->input_module.name);
 
   ThreadManager watchdog_tm;
   thread_manager_init(&watchdog_tm, &app->process_chain.setup_arena);
   SdrInitWatchdogContext watchdog_ctx = {
-      .module_name = config->input.type_name,
+      .module_name = config->input_module.name,
       .completion_event = NULL,
   };
 
@@ -338,7 +338,7 @@ static bool init_output_module(AppConfig *config, AppContext *app) {
   ModuleContext context = {.config = config, .app = app};
 
   const Module *selected_output_module =
-      module_get(config->output.module_name, MODULE_TYPE_OUTPUT);
+      module_get(config->output_module.name, MODULE_TYPE_OUTPUT);
   if (!selected_output_module) {
     log_fatal("Internal error: Could not retrieve selected output module.");
     return false;
@@ -346,7 +346,7 @@ static bool init_output_module(AppConfig *config, AppContext *app) {
   app->module.output_api = (OutputModuleInterface *)selected_output_module->api;
 
   log_info("Initializing the '%s' output module...",
-           config->output.module_name);
+           config->output_module.name);
   return app->module.output_api->initialize(&context);
 }
 
@@ -404,7 +404,7 @@ static void print_configuration_summary(const AppConfig *config,
   app->module.input_api->get_summary_info(&context, &input_info);
 
   const Module *input_module =
-      module_get(config->input.type_name, MODULE_TYPE_INPUT);
+      module_get(config->input_module.name, MODULE_TYPE_INPUT);
   if (input_module &&
       input_module->process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH &&
       config->rf_freq_hz > 0.0) {
@@ -441,7 +441,7 @@ static void print_configuration_summary(const AppConfig *config,
           : "Unknown";
   utility_add_summary_item(&output_info, "Sample Type", "%s", sample_type_str);
 
-  if (config->output.payload == PAYLOAD_AUDIO) {
+  if (config->output_module.payload == PAYLOAD_AUDIO) {
     utility_add_summary_item(&output_info, "Baseband Sample Rate", "%.15g Hz",
                              app->dsp.process_chain_sample_rate_hz);
   } else {
@@ -463,7 +463,7 @@ static void print_configuration_summary(const AppConfig *config,
   process_chain_get_summary_info(app, &output_info);
 
   const char *agc_label =
-      (config->output.payload == PAYLOAD_AUDIO) ? "Baseband AGC" : "Output AGC";
+      (config->output_module.payload == PAYLOAD_AUDIO) ? "Baseband AGC" : "Output AGC";
 
   if (app->dsp.process_chain_agc.enable) {
     if (app->dsp.process_chain_agc.target_level > 0.0f) {
@@ -477,16 +477,16 @@ static void print_configuration_summary(const AppConfig *config,
     utility_add_summary_item(&output_info, agc_label, "Disabled");
   }
 
-  if (config->output.payload == PAYLOAD_AUDIO &&
+  if (config->output_module.payload == PAYLOAD_AUDIO &&
       app->dsp.process_chain_gain != 1.0f) {
     utility_add_summary_item(&output_info, "Baseband Gain", "%.2fx",
                              app->dsp.process_chain_gain);
   }
 
-  if (config->output.path_arg != NULL) {
+  if (config->output_module.path_arg != NULL) {
     utility_add_summary_item(&output_info, "Output File", "%s",
-                             config->output.resolved_path);
-  } else if (config->output.payload == PAYLOAD_AUDIO) {
+                             config->output_module.resolved_path);
+  } else if (config->output_module.payload == PAYLOAD_AUDIO) {
     utility_add_summary_item(&output_info, "Output Target", "Audio Device");
   }
 
@@ -515,7 +515,7 @@ static void print_final_summary(const AppConfig *config, const AppContext *app,
   (void)config;
 
   // If the output target is not a file (e.g., stdout), don't print a summary.
-  if (config->output.path_arg == NULL) {
+  if (config->output_module.path_arg == NULL) {
     return;
   }
 

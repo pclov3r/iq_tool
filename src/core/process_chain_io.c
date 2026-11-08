@@ -295,7 +295,7 @@ void *process_chain_thread_output(void *arg) {
       }
 
       // Stats & Progress Reporting (Only for file outputs)
-      if (args->config->output.path_arg != NULL &&
+      if (args->config->output_module.path_arg != NULL &&
           app->stats.progress_callback && written > 0) {
         atomic_fetch_add_explicit(&app->stats.total_output_frames,
                                   item->frames_to_write, memory_order_relaxed);

@@ -45,10 +45,10 @@ const char *utility_get_basename_for_parsing(const AppConfig *config,
                                              char *buffer, size_t buffer_size,
                                              MemoryArena *arena) {
   (void)arena;
-  if (!config || !config->input.resolved_path || !buffer || buffer_size == 0) {
+  if (!config || !config->input_module.resolved_path || !buffer || buffer_size == 0) {
     return NULL;
   }
-  const char *base = platform_get_basename(config->input.resolved_path);
+  const char *base = platform_get_basename(config->input_module.resolved_path);
   strncpy(buffer, base, buffer_size - 1);
   buffer[buffer_size - 1] = '\0';
   return buffer;

@@ -89,7 +89,7 @@ static void *input_watchdog_thread(void *arg) {
           "FATAL: The input module/driver has likely hung due to a crash or "
           "device removal.\n"
           "FATAL: Forcing application exit.\n",
-          (config && config->input.type_name) ? config->input.type_name
+          (config && config->input_module.name) ? config->input_module.name
                                               : "input",
           WATCHDOG_TIMEOUT_MS / 1000);
 

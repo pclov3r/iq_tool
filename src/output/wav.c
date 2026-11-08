@@ -59,7 +59,7 @@ static void output_wav_get_pipeline_requirements(const struct AppConfig *config,
                                                  float *gain,
                                                  struct OutputAgcConfig *agc) {
   *rate = config->output_sample_rate.rate_hz;
-  *format = config->output.sample_format;
+  *format = config->output_sample_format.format;
   *gain = config->dsp.output_gain;
   *agc = config->dsp.output_agc;
 }

@@ -79,8 +79,8 @@ static bool input_rawfile_validate_options(AppContext *app) {
     return false;
   }
 
-  if (!config || !config->input.resolved_path ||
-      config->input.resolved_path[0] == '\0') {
+  if (!config || !config->input_module.resolved_path ||
+      config->input_module.resolved_path[0] == '\0') {
     log_error("RAW file input requires an input file path.");
     return false;
   }
@@ -114,10 +114,10 @@ static bool input_rawfile_validate_options(AppContext *app) {
   sfinfo.format = SF_FORMAT_RAW | pcm_subtype;
 
   private_data->infile =
-      sf_open(config->input.resolved_path, SFM_READ, &sfinfo);
+      sf_open(config->input_module.resolved_path, SFM_READ, &sfinfo);
 
   if (!private_data->infile) {
-    log_error("Error opening RAW input file '%s': %s", config->input.path_arg,
+    log_error("Error opening RAW input file '%s': %s", config->input_module.path_arg,
               sf_strerror(NULL));
     return false;
   }
@@ -157,7 +157,7 @@ static bool input_rawfile_initialize(ModuleContext *context) {
              &private_data->sfinfo, sizeof(private_data->sfinfo));
   app->module.input_info.frames = private_data->sfinfo.frames;
 
-  log_info("Opening RAW input file: %s", config->input.resolved_path);
+  log_info("Opening RAW input file: %s", config->input_module.resolved_path);
 
   return true;
 }
@@ -231,9 +231,9 @@ static void input_rawfile_get_summary_info(const ModuleContext *context,
                                            SummaryInfo *info) {
   const AppConfig *config = context->config;
   const AppContext *app = context->app;
-  const char *display_path = config->input.resolved_path
-                                 ? config->input.resolved_path
-                                 : config->input.path_arg;
+  const char *display_path = config->input_module.resolved_path
+                                 ? config->input_module.resolved_path
+                                 : config->input_module.path_arg;
 
   utility_add_summary_item(info, "Input File", "%s", display_path);
   utility_add_summary_item(info, "Input Type", "RAW FILE");

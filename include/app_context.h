@@ -49,23 +49,20 @@ typedef struct {
  * @brief Stores all user-defined configuration settings.
  */
 typedef struct AppConfig {
-  // --- Input Configuration ---
+  // --- Input Module Configuration ---
   struct {
-    char *type_name;
+    char *name;
     char *path_arg;
     char *resolved_path;
-  } input;
+  } input_module;
 
-  // --- Output Configuration ---
+  // --- Output Module Configuration ---
   struct {
-    char *module_name;
+    char *name;
     char *path_arg;
-    char *sample_format_str;
-    ConfigValueSource format_source;
-    OutputPayload payload;
-    SampleFormat sample_format;
     char *resolved_path;
-  } output;
+    OutputPayload payload;
+  } output_module;
 
   // --- Output Sample Rate ---
   struct {
@@ -78,6 +75,13 @@ typedef struct AppConfig {
     double rate_hz;
     ConfigValueSource source;
   } baseband_sample_rate;
+
+  // --- Output Sample Format ---
+  struct {
+    char *format_str;
+    SampleFormat format;
+    ConfigValueSource source;
+  } output_sample_format;
 
   // --- Baseband Sample Format (for Demodulators) ---
   struct {
