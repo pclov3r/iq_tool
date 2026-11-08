@@ -32,13 +32,13 @@ static bool process_chain_queue_samples(void *context, const void *data,
   if (is_shutdown_requested() || input_has_error(app))
     return false;
 
-  PacketWriteResult res = packet_serializer_write_packet(
+  PacketWriteResult write_result = packet_serializer_write_packet(
       app->process_chain.input_ring_buffer, num_samples, data, format,
-      app->module.input_info.sample_rate);
+      app->config->input_sample_rate_hz);
 
-  if (res == PACKET_WRITE_INACTIVE) {
+  if (write_result == PACKET_WRITE_INACTIVE) {
     return false;
-  } else if (res == PACKET_WRITE_DROPPED) {
+  } else if (write_result == PACKET_WRITE_DROPPED) {
     static double last_drop_log_time = 0.0;
     static size_t accumulated_drops = 0;
 

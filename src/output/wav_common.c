@@ -122,17 +122,9 @@ bool output_wav_common_initialize(ModuleContext *context, int sf_format_flag) {
 #define GIT_HASH "unknown"
 #endif
 
-  // Determine the effective center frequency with fallback to input file metadata
-  double center_freq_hz = 0.0;
-  if (config->sdr_general.rf_freq_provided &&
-      config->sdr_general.rf_freq_hz > 0.0) {
-    center_freq_hz = config->sdr_general.rf_freq_hz;
-  } else if (config->iq_file_metadata.rf_freq_provided &&
-             config->iq_file_metadata.rf_freq_hz > 0.0) {
-    center_freq_hz = config->iq_file_metadata.rf_freq_hz;
-  } else if (config->sdr_general.rf_freq_hz > 0.0) {
-    center_freq_hz = config->sdr_general.rf_freq_hz;
-  }
+  // Determine the effective center frequency
+  double center_freq_hz =
+      (config->rf_freq_hz > 0.0) ? config->rf_freq_hz : 0.0;
 
   // Construct the strictly formatted filename exclusively for the XML
   // attributes to satisfy SDR Console's regex parser

@@ -229,7 +229,7 @@ typedef struct {
 } SdrplayContext;
 
 static void input_sdrplay_set_default_config(AppConfig *config) {
-  config->sdr_general.sample_rate_hz = SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
+  config->input_sample_rate_hz = SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
   s_sdrplay_config.bandwidth_hz = SDRPLAY_DEFAULT_BANDWIDTH_HZ;
   s_sdrplay_config.sdrplay_bandwidth_hz_arg = 0.0f;
   s_sdrplay_config.sdrplay_lna_state_arg = -1;
@@ -272,7 +272,7 @@ static bool input_sdrplay_validate_generic_options(const AppConfig *config);
 static sdrplay_api_Bw_MHzT map_bw_hz_to_enum(double bw_hz);
 
 static bool input_sdrplay_validate_generic_options(const AppConfig *config) {
-  if (!config->sdr_general.rf_freq_provided) {
+  if (config->rf_freq_hz <= 0.0) {
     log_error("SDRplay input requires the --sdr-rf-freq option.");
     return false;
   }
@@ -324,21 +324,17 @@ static bool input_sdrplay_validate_options(AppContext *app) {
     s_sdrplay_config.bandwidth_provided = true;
   }
 
-  if (!config->sdr_general.sample_rate_provided) {
-    config->sdr_general.sample_rate_hz = SDRPLAY_DEFAULT_SAMPLE_RATE_HZ;
-  } else {
-    double sr = config->sdr_general.sample_rate_hz;
-    // We strictly enforce 2M, 6M, 8M, or 10M to ensure hardware-native integer
-    // decimation. This prevents the proprietary SDRplay API from silently
-    // invoking its internal software resampler for arbitrary rates, forcing
-    // iq_tool to handle any necessary resampling.
-    if (sr != 2000000.0 && sr != 6000000.0 && sr != 8000000.0 &&
-        sr != 10000000.0) {
-      log_error("Invalid SDRplay sample rate %.0f Hz. Must be exactly 2000000, "
-                "6000000, 8000000, or 10000000.",
-                sr);
-      return false;
-    }
+  double sample_rate_hz = config->input_sample_rate_hz;
+  // We strictly enforce 2M, 6M, 8M, or 10M to ensure hardware-native integer
+  // decimation. This prevents the proprietary SDRplay API from silently
+  // invoking its internal software resampler for arbitrary rates, forcing
+  // iq_tool to handle any necessary resampling.
+  if (sample_rate_hz != 2000000.0 && sample_rate_hz != 6000000.0 &&
+      sample_rate_hz != 8000000.0 && sample_rate_hz != 10000000.0) {
+    log_error("Invalid SDRplay sample rate %.0f Hz. Must be exactly 2000000, "
+              "6000000, 8000000, or 10000000.",
+              sample_rate_hz);
+    return false;
   }
 
   if (map_bw_hz_to_enum(s_sdrplay_config.bandwidth_hz) ==
@@ -348,11 +344,10 @@ static bool input_sdrplay_validate_options(AppContext *app) {
         s_sdrplay_config.bandwidth_hz);
     return false;
   }
-  if (s_sdrplay_config.bandwidth_hz > config->sdr_general.sample_rate_hz) {
+  if (s_sdrplay_config.bandwidth_hz > config->input_sample_rate_hz) {
     log_error("Bandwidth (%.15g Hz) cannot be greater than the sample rate "
               "(%.15g Hz).",
-              s_sdrplay_config.bandwidth_hz,
-              config->sdr_general.sample_rate_hz);
+              s_sdrplay_config.bandwidth_hz, config->input_sample_rate_hz);
     return false;
   }
 
@@ -569,7 +564,7 @@ static void input_sdrplay_get_summary_info(const ModuleContext *context,
   utility_add_summary_item(info, "Input Format",
                            "16-bit Signed Complex (cs16)");
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                           (double)app->module.input_info.sample_rate);
+                           config->input_sample_rate_hz);
 
   utility_add_summary_item(info, "Bandwidth", "%.15g Hz",
                            s_sdrplay_config.bandwidth_hz);
@@ -740,10 +735,10 @@ static bool input_sdrplay_initialize(ModuleContext *context) {
   chParams->ctrlParams.dcOffset.DCenable = 1;
   chParams->ctrlParams.dcOffset.IQenable = 1;
 
-  devParams->fsFreq.fsHz = config->sdr_general.sample_rate_hz;
+  devParams->fsFreq.fsHz = config->input_sample_rate_hz;
   chParams->tunerParams.bwType = bw_enum;
   chParams->tunerParams.ifType = sdrplay_api_IF_Zero;
-  chParams->tunerParams.rfFreq.rfHz = config->sdr_general.rf_freq_hz;
+  chParams->tunerParams.rfFreq.rfHz = config->rf_freq_hz;
   log_debug("SDRplay: API accepting sample rate %.15g Hz.",
             devParams->fsFreq.fsHz);
   log_debug("SDRplay: API accepting bandwidth %.15g Hz.",
@@ -908,9 +903,8 @@ static bool input_sdrplay_initialize(ModuleContext *context) {
   }
 
   if (s_sdrplay_config.lna_state_provided) {
-    int num_lna_states =
-        get_num_lna_states(private_data->sdr_device->hwVer,
-                           config->sdr_general.rf_freq_hz, hiz_port_selected);
+    int num_lna_states = get_num_lna_states(
+        private_data->sdr_device->hwVer, config->rf_freq_hz, hiz_port_selected);
     if (s_sdrplay_config.lna_state_target >= 0.0f) {
       float target = s_sdrplay_config.lna_state_target;
       if (target > 100.0f)
@@ -949,7 +943,6 @@ static bool input_sdrplay_initialize(ModuleContext *context) {
   app->module.input_format = CS16;
   app->module.input_bytes_per_iq_sample =
       (get_bytes_per_iq_sample(app->module.input_format));
-  app->module.input_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
   app->module.input_info.frames = -1;
 
   success = true;

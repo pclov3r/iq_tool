@@ -73,7 +73,7 @@ typedef struct {
 } HydraSDRContext;
 
 static void input_hydrasdr_set_default_config(AppConfig *config) {
-  config->sdr_general.sample_rate_hz = HYDRASDR_DEFAULT_SAMPLE_RATE;
+  config->input_sample_rate_hz = HYDRASDR_DEFAULT_SAMPLE_RATE;
   s_hydrasdr_config.gain_value = HYDRASDR_DEFAULT_GAIN_VALUE;
   s_hydrasdr_config.hydrasdr_gain_value_arg = HYDRASDR_DEFAULT_GAIN_VALUE;
   s_hydrasdr_config.lna_gain = HYDRASDR_DEFAULT_LNA_GAIN;
@@ -113,7 +113,7 @@ static bool input_hydrasdr_validate_generic_options(const AppConfig *config);
 static int input_hydrasdr_buffered_stream_callback(hydrasdr_transfer *transfer);
 
 static bool input_hydrasdr_validate_generic_options(const AppConfig *config) {
-  if (!config->sdr_general.rf_freq_provided) {
+  if (config->rf_freq_hz <= 0.0) {
     log_error("HydraSDR input requires the --sdr-rf-freq option.");
     return false;
   }
@@ -121,7 +121,7 @@ static bool input_hydrasdr_validate_generic_options(const AppConfig *config) {
 }
 
 static bool input_hydrasdr_validate_options(AppContext *app) {
-  AppConfig *config = app ? (AppConfig *)app->config : NULL;
+  (void)app;
   // Gain Mode Validation
   if (s_hydrasdr_config.gain_mode) {
     s_hydrasdr_config.gain_mode_provided = true;
@@ -200,12 +200,6 @@ static bool input_hydrasdr_validate_options(AppContext *app) {
   // Serial Number Validation
   if (s_hydrasdr_config.serial_number != 0) {
     s_hydrasdr_config.serial_provided = true;
-  }
-
-  // Sample Rate Validation
-  if (config->sdr_general.sample_rate_provided) {
-    // We defer sample rate validation to the init function where we can query
-    // the device for its dynamically supported decimation rates.
   }
 
   // Validate that manual gain options are only used with manual mode
@@ -311,7 +305,7 @@ static void input_hydrasdr_get_summary_info(const ModuleContext *context,
 
   utility_add_summary_item(info, "Input Format", "%s", format_str);
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                           (double)app->module.input_info.sample_rate);
+                           config->input_sample_rate_hz);
 
   // Gain reporting
   if (s_hydrasdr_config.gain_mode_provided) {
@@ -413,9 +407,9 @@ static bool input_hydrasdr_initialize(ModuleContext *context) {
   }
 
   bool rate_supported = false;
-  uint32_t requested_rate = (uint32_t)config->sdr_general.sample_rate_hz;
-  for (uint32_t i = 0; i < num_rates; i++) {
-    if (rates[i] == requested_rate) {
+  uint32_t requested_rate = (uint32_t)config->input_sample_rate_hz;
+  for (uint32_t rate_index = 0; rate_index < num_rates; rate_index++) {
+    if (rates[rate_index] == requested_rate) {
       rate_supported = true;
       break;
     }
@@ -423,10 +417,10 @@ static bool input_hydrasdr_initialize(ModuleContext *context) {
 
   if (!rate_supported) {
     log_error("Requested sample rate %.15g Hz is not supported.",
-              config->sdr_general.sample_rate_hz);
+              config->input_sample_rate_hz);
     log_error("Supported rates are:");
-    for (uint32_t i = 0; i < num_rates; i++) {
-      log_error("  %u Hz", rates[i]);
+    for (uint32_t rate_index = 0; rate_index < num_rates; rate_index++) {
+      log_error("  %u Hz", rates[rate_index]);
     }
     goto cleanup;
   }
@@ -480,7 +474,6 @@ static bool input_hydrasdr_initialize(ModuleContext *context) {
 
   app->module.input_bytes_per_iq_sample =
       get_bytes_per_iq_sample(app->module.input_format);
-  app->module.input_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
   app->module.input_info.frames = -1;
 
   success = true;
@@ -516,16 +509,17 @@ static void *input_hydrasdr_push_samples_to_queue(ModuleContext *context,
     return NULL;
   }
 
-  uint32_t sr_count = 0;
-  hydrasdr_get_samplerates(private_data->dev, &sr_count, 0);
+  uint32_t sample_rate_count = 0;
+  hydrasdr_get_samplerates(private_data->dev, &sample_rate_count, 0);
   uint32_t *samplerates = (uint32_t *)mem_arena_alloc(
-      &app->process_chain.setup_arena, sr_count * sizeof(uint32_t), false);
+      &app->process_chain.setup_arena, sample_rate_count * sizeof(uint32_t),
+      false);
   if (samplerates) {
-    hydrasdr_get_samplerates(private_data->dev, samplerates, sr_count);
+    hydrasdr_get_samplerates(private_data->dev, samplerates, sample_rate_count);
   }
 
-  result = hydrasdr_set_freq(private_data->dev,
-                             (uint64_t)app->config->sdr_general.rf_freq_hz);
+  result =
+      hydrasdr_set_freq(private_data->dev, (uint64_t)app->config->rf_freq_hz);
   if (result != HYDRASDR_SUCCESS) {
     char error_buffer[256];
     snprintf(error_buffer, sizeof(error_buffer),
@@ -539,8 +533,8 @@ static void *input_hydrasdr_push_samples_to_queue(ModuleContext *context,
   // In the future, we may want to expose a CLI option to toggle HD mode.
   // Skipped bandwidth (Auto-bandwidth selected by library)
 
-  result = hydrasdr_set_samplerate(
-      private_data->dev, (uint32_t)app->config->sdr_general.sample_rate_hz);
+  result = hydrasdr_set_samplerate(private_data->dev,
+                                   (uint32_t)app->config->input_sample_rate_hz);
   if (result != HYDRASDR_SUCCESS) {
     char error_buffer[256];
     snprintf(error_buffer, sizeof(error_buffer),

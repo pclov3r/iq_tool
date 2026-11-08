@@ -45,9 +45,8 @@ struct ThreadManager;
  * @brief Holds basic, essential information about the input.
  */
 typedef struct InputInfo {
-  int64_t frames;  ///< Total number of I/Q frames in the input. -1 for a live
-                   ///< stream.
-  int sample_rate; ///< The native sample rate of the input in Hz.
+  int64_t frames; ///< Total number of I/Q frames in the input. -1 for a live
+                  ///< stream.
   size_t demod_audio_buffer_size; ///< Downstream demodulator audio buffer size
                                   ///< dictated by this input module.
 } InputInfo;

@@ -431,15 +431,15 @@ bool iq_correction_run_initial_calibration(
   const DspModuleInterface *dc_block_api = get_dsp_module("dc_block");
   if (((AppConfig *)app->config)->dsp.dc_block.enable && dc_block_api) {
     double dummy_rate;
-    dc_block_state = dc_block_api->initialize(
-        context, app->module.input_info.sample_rate,
-        app->module.input_info.sample_rate, &dummy_rate);
+    dc_block_state =
+        dc_block_api->initialize(context, app->config->input_sample_rate_hz,
+                                 app->config->input_sample_rate_hz, &dummy_rate);
   }
 
   void *state = iq_correction_init((AppConfig *)context->config, app,
                                    &app->process_chain.setup_arena);
 
-  for (int i = 0; i < 64; i++) {
+  for (int block_index = 0; block_index < 64; block_index++) {
     size_t bytes_read = read_callback(user_data, raw_buffer, num_bytes);
     if (bytes_read < num_bytes)
       break;

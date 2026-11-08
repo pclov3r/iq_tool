@@ -50,7 +50,7 @@ typedef struct {
 } HackrfContext;
 
 static void input_hackrf_set_default_config(AppConfig *config) {
-  config->sdr_general.sample_rate_hz = HACKRF_DEFAULT_SAMPLE_RATE;
+  config->input_sample_rate_hz = HACKRF_DEFAULT_SAMPLE_RATE;
   s_hackrf_config.lna_gain = HACKRF_DEFAULT_LNA_GAIN;
   s_hackrf_config.hackrf_lna_gain_arg = HACKRF_DEFAULT_LNA_GAIN;
   s_hackrf_config.vga_gain = HACKRF_DEFAULT_VGA_GAIN;
@@ -80,7 +80,7 @@ static bool input_hackrf_validate_generic_options(const AppConfig *config);
 static int input_hackrf_buffered_stream_callback(hackrf_transfer *transfer);
 
 static bool input_hackrf_validate_generic_options(const AppConfig *config) {
-  if (!config->sdr_general.rf_freq_provided) {
+  if (config->rf_freq_hz <= 0.0) {
     log_error("HackRF input requires the --sdr-rf-freq option.");
     return false;
   }
@@ -119,14 +119,12 @@ static bool input_hackrf_validate_options(AppContext *app) {
     s_hackrf_config.vga_gain_provided = true;
   }
 
-  if (config->sdr_general.sample_rate_provided) {
-    if (config->sdr_general.sample_rate_hz < 2e6 ||
-        config->sdr_general.sample_rate_hz > 20e6) {
-      log_error("Invalid HackRF sample rate %.15g Hz. Must be between "
-                "2,000,000 and 20,000,000.",
-                config->sdr_general.sample_rate_hz);
-      return false;
-    }
+  if (config->input_sample_rate_hz < 2e6 ||
+      config->input_sample_rate_hz > 20e6) {
+    log_error("Invalid HackRF sample rate %.15g Hz. Must be between "
+              "2,000,000 and 20,000,000.",
+              config->input_sample_rate_hz);
+    return false;
   }
 
   return true;
@@ -156,11 +154,10 @@ static int input_hackrf_buffered_stream_callback(hackrf_transfer *transfer) {
 static void input_hackrf_get_summary_info(const ModuleContext *context,
                                           SummaryInfo *info) {
   const AppConfig *config = context->config;
-  const AppContext *app = context->app;
   utility_add_summary_item(info, "Input Source", "HackRF One");
   utility_add_summary_item(info, "Input Format", "8-bit Signed Complex (cs8)");
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                           (double)app->module.input_info.sample_rate);
+                           config->input_sample_rate_hz);
 
   // as HackRF does not have a true hardware AGC. The gain is always fixed.
   utility_add_summary_item(info, "LNA Gain", "%u dB", s_hackrf_config.lna_gain);
@@ -204,16 +201,15 @@ static bool input_hackrf_initialize(ModuleContext *context) {
   }
   log_info("Found HackRF One.");
 
-  result = hackrf_set_sample_rate(private_data->dev,
-                                  config->sdr_general.sample_rate_hz);
+  result =
+      hackrf_set_sample_rate(private_data->dev, config->input_sample_rate_hz);
   if (result != HACKRF_SUCCESS) {
     log_error("hackrf_set_sample_rate() failed: %s (%d)",
               hackrf_error_name(result), result);
     goto cleanup;
   }
 
-  result = hackrf_set_freq(private_data->dev,
-                           (uint64_t)config->sdr_general.rf_freq_hz);
+  result = hackrf_set_freq(private_data->dev, (uint64_t)config->rf_freq_hz);
   if (result != HACKRF_SUCCESS) {
     log_error("hackrf_set_freq() failed: %s (%d)", hackrf_error_name(result),
               result);
@@ -254,7 +250,6 @@ static bool input_hackrf_initialize(ModuleContext *context) {
   app->module.input_format = CS8;
   app->module.input_bytes_per_iq_sample =
       get_bytes_per_iq_sample(app->module.input_format);
-  app->module.input_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
   app->module.input_info.frames = -1;
 
   success = true;

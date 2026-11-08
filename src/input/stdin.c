@@ -23,11 +23,8 @@
 
 // --- CLI Config ---
 static struct {
-  double sample_rate_hz;
   float input_stdin_sample_rate_hz_arg;
-  bool sample_rate_provided;
   char *format_str;
-  bool format_provided;
 } s_stdin_config;
 
 // --- Private Module State ---
@@ -53,31 +50,24 @@ static const struct argparse_option *input_stdin_get_cli_options(int *count) {
 
 static bool input_stdin_validate_options(AppContext *app) {
   AppConfig *config = app ? (AppConfig *)app->config : NULL;
-  (void)config;
-  if (s_stdin_config.input_stdin_sample_rate_hz_arg > 0.0f) {
-    s_stdin_config.sample_rate_hz =
-        (double)s_stdin_config.input_stdin_sample_rate_hz_arg;
-    s_stdin_config.sample_rate_provided = true;
-  }
-
-  if (!s_stdin_config.sample_rate_provided) {
+  if (s_stdin_config.input_stdin_sample_rate_hz_arg <= 0.0f) {
     log_error("Missing required option --stdin-input-sample-rate <hz> for "
               "stdin input.");
     return false;
   }
+  config->input_sample_rate_hz =
+      (double)s_stdin_config.input_stdin_sample_rate_hz_arg;
+
   if (!s_stdin_config.format_str) {
     log_error("Missing required option --stdin-input-sample-format <format> "
               "for stdin input.");
     return false;
   }
 
-  s_stdin_config.format_provided = true;
   return true;
 }
 
 static bool input_stdin_initialize(ModuleContext *context) {
-  const AppConfig *config = context->config;
-  (void)config;
   AppContext *app = context->app;
 
   if (!platform_set_binary_mode(stdin)) {
@@ -86,19 +76,19 @@ static bool input_stdin_initialize(ModuleContext *context) {
   }
 
   // 1. Allocate the context and the read buffer from the Memory Arena
-  StdinContext *p = (StdinContext *)mem_arena_alloc(
+  StdinContext *stdin_context = (StdinContext *)mem_arena_alloc(
       &app->process_chain.setup_arena, sizeof(StdinContext), true);
-  if (!p)
+  if (!stdin_context)
     return false;
 
   // Use a 32KB buffer aligned to MEM_ARENA_ALIGNMENT
-  p->rx_buffer_size = 32768;
-  p->rx_buffer = (unsigned char *)mem_arena_alloc(
-      &app->process_chain.setup_arena, p->rx_buffer_size, false);
-  if (!p->rx_buffer)
+  stdin_context->rx_buffer_size = 32768;
+  stdin_context->rx_buffer = (unsigned char *)mem_arena_alloc(
+      &app->process_chain.setup_arena, stdin_context->rx_buffer_size, false);
+  if (!stdin_context->rx_buffer)
     return false;
 
-  app->module.input_private_data = p;
+  app->module.input_private_data = stdin_context;
 
   // 2. Resolve format and metadata
   app->module.input_format =
@@ -113,7 +103,6 @@ static bool input_stdin_initialize(ModuleContext *context) {
   app->module.input_bytes_per_iq_sample =
       get_bytes_per_iq_sample(app->module.input_format);
 
-  app->module.input_info.sample_rate = (int)s_stdin_config.sample_rate_hz;
   app->module.input_info.frames = -1;
 
   log_info("Reading raw I/Q data from standard input (stdin)...");
@@ -178,12 +167,12 @@ static void input_stdin_cleanup(ModuleContext *context) { (void)context; }
 
 static void input_stdin_get_summary_info(const ModuleContext *context,
                                          SummaryInfo *info) {
-  (void)context;
+  const AppConfig *config = context->config;
   utility_add_summary_item(info, "Input Source", "Standard Input (stdin)");
   utility_add_summary_item(info, "Input Format", "%s",
                            s_stdin_config.format_str);
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                           s_stdin_config.sample_rate_hz);
+                           config->input_sample_rate_hz);
 }
 
 static InputModuleInterface s_input_stdin_api = {

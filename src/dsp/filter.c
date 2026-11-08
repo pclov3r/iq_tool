@@ -93,7 +93,7 @@ static bool _configure_filter_stage(AppConfig *config, AppContext *app) {
     return true;
   }
 
-  double input_rate = (double)app->module.input_info.sample_rate;
+  double input_rate = config->input_sample_rate_hz;
   double output_sample_rate = app->dsp.process_chain_sample_rate_hz;
   float max_filter_freq_hz = _get_max_filter_freq_hz(config);
 
@@ -852,16 +852,16 @@ static void dsp_filter_cleanup(void *state) {
   }
 }
 
-static void *dsp_filter_init(ModuleContext *ctx, double input_rate,
+static void *dsp_filter_init(ModuleContext *context, double input_rate,
                              double target_output_rate, double *out_rate) {
   (void)target_output_rate;
   *out_rate = input_rate;
 
-  AppConfig *config = (AppConfig *)ctx->config;
+  AppConfig *config = (AppConfig *)context->config;
   if (config->dsp.filter.count == 0)
     return NULL;
 
-  MemoryArena *arena = &ctx->app->process_chain.setup_arena;
+  MemoryArena *arena = &context->app->process_chain.setup_arena;
   FilterState *state =
       (FilterState *)mem_arena_alloc(arena, sizeof(FilterState), true);
   if (!state)
@@ -871,12 +871,12 @@ static void *dsp_filter_init(ModuleContext *ctx, double input_rate,
   state->type_actual = FILTER_IMPL_NONE;
   state->block_size = 0;
 
-  if (!_configure_filter_stage(config, ctx->app))
+  if (!_configure_filter_stage(config, context->app))
     return NULL;
 
   double sample_rate = config->dsp.filter.apply_post_resample
-                           ? ctx->app->dsp.process_chain_sample_rate_hz
-                           : (double)ctx->app->module.input_info.sample_rate;
+                           ? context->app->dsp.process_chain_sample_rate_hz
+                           : config->input_sample_rate_hz;
 
   int master_length = 0;
   bool is_complex = false, norm_peak = false;
@@ -902,7 +902,7 @@ static void *dsp_filter_init(ModuleContext *ctx, double input_rate,
 
   if (!_compile_filter_object(config, state, master_taps, master_length,
                               is_complex, norm_peak, sample_rate, arena,
-                              ctx->app->process_chain.alloc_size_samples)) {
+                              context->app->process_chain.alloc_size_samples)) {
     log_fatal("Failed to create final combined filter object.");
     return NULL;
   }
@@ -1030,7 +1030,7 @@ static bool dsp_filter_is_active(AppContext *app, const char *stage_tag) {
     return false;
   }
 
-  double input_rate = (double)app->module.input_info.sample_rate;
+  double input_rate = config->input_sample_rate_hz;
   double output_sample_rate = app->dsp.process_chain_sample_rate_hz;
   if (input_rate > 0.0 && output_sample_rate > 0.0) {
     float max_filter_freq_hz = _get_max_filter_freq_hz(config);

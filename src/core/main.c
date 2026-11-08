@@ -135,19 +135,19 @@ int main(int argc, char *argv[]) {
 
   // Apply frequency offset logic before initializing hardware
   if (config.sdr_general.frequency_offset_hz != 0.0f &&
-      config.sdr_general.rf_freq_provided) {
-    double user_target_hz = config.sdr_general.rf_freq_hz;
-    config.sdr_general.rf_freq_hz += config.sdr_general.frequency_offset_hz;
+      config.rf_freq_hz > 0.0) {
+    double user_target_hz = config.rf_freq_hz;
+    config.rf_freq_hz += config.sdr_general.frequency_offset_hz;
 
     log_info("Applying Frequency Offset: Target %.15g Hz + Offset %+.15g Hz = "
              "Tuning to %.15g Hz",
              user_target_hz, config.sdr_general.frequency_offset_hz,
-             config.sdr_general.rf_freq_hz);
+             config.rf_freq_hz);
 
-    if (config.sdr_general.rf_freq_hz <= 0.0) {
+    if (config.rf_freq_hz <= 0.0) {
       log_error("Resulting hardware frequency is %.15g Hz, which is not valid. "
                 "Aborting.",
-                config.sdr_general.rf_freq_hz);
+                config.rf_freq_hz);
       goto cleanup;
     }
   }
@@ -403,19 +403,23 @@ static void print_configuration_summary(const AppConfig *config,
   SummaryInfo input_info = {0};
   app->module.input_api->get_summary_info(&context, &input_info);
 
-  if (config->sdr_general.rf_freq_provided) {
+  const Module *input_module =
+      module_get(config->input.type_name, MODULE_TYPE_INPUT);
+  if (input_module &&
+      input_module->process_chain_mode == PROCESS_CHAIN_MODE_ASYNCHRONOUS_PUSH &&
+      config->rf_freq_hz > 0.0) {
     if (fabs(config->sdr_general.frequency_offset_hz) > 1e-9) {
-      double user_hz = config->sdr_general.rf_freq_hz -
-                       config->sdr_general.frequency_offset_hz;
+      double user_hz =
+          config->rf_freq_hz - config->sdr_general.frequency_offset_hz;
       utility_add_summary_item(&input_info, "Actual Frequency", "%.15g Hz",
                                user_hz);
       utility_add_summary_item(&input_info, "Frequency Offset", "%+.0f Hz",
                                config->sdr_general.frequency_offset_hz);
       utility_add_summary_item(&input_info, "Tuned Frequency", "%.15g Hz",
-                               config->sdr_general.rf_freq_hz);
+                               config->rf_freq_hz);
     } else {
       utility_add_summary_item(&input_info, "RF Frequency", "%.15g Hz",
-                               config->sdr_general.rf_freq_hz);
+                               config->rf_freq_hz);
     }
   }
   utility_add_summary_item(&input_info, "I/Q Correction", "%s",

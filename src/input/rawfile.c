@@ -29,17 +29,11 @@
 #define RAWFILE_DEMOD_AUDIO_BUFFER_SIZE (128 * 1024)
 
 static struct {
-  double sample_rate_hz;
   float raw_file_sample_rate_hz_arg;
-  bool sample_rate_provided;
   char *format_str;
-  bool format_provided;
   bool repeat_enabled; // Loop state
-} s_rawfile_config = {.sample_rate_hz = 0.0,
-                      .raw_file_sample_rate_hz_arg = 0.0f,
-                      .sample_rate_provided = false,
+} s_rawfile_config = {.raw_file_sample_rate_hz_arg = 0.0f,
                       .format_str = NULL,
-                      .format_provided = false,
                       .repeat_enabled = false};
 
 // This is the private data structure for the Raw File input module.
@@ -71,26 +65,19 @@ static bool input_rawfile_pre_stream_iq_correction(ModuleContext *context);
 
 static bool input_rawfile_validate_options(AppContext *app) {
   AppConfig *config = app ? (AppConfig *)app->config : NULL;
-  if (s_rawfile_config.raw_file_sample_rate_hz_arg > 0.0f) {
-    s_rawfile_config.sample_rate_hz =
-        (double)s_rawfile_config.raw_file_sample_rate_hz_arg;
-    s_rawfile_config.sample_rate_provided = true;
-  }
-
-  bool format_provided = s_rawfile_config.format_str != NULL;
-
-  if (!s_rawfile_config.sample_rate_provided) {
+  if (s_rawfile_config.raw_file_sample_rate_hz_arg <= 0.0f) {
     log_error("Missing required option --rawfile-input-rate <hz> for raw file "
               "input.");
     return false;
   }
-  if (!format_provided) {
+  config->input_sample_rate_hz =
+      (double)s_rawfile_config.raw_file_sample_rate_hz_arg;
+
+  if (!s_rawfile_config.format_str) {
     log_error("Missing required option --rawfile-input-sample-format <format> "
               "for raw file input.");
     return false;
   }
-
-  s_rawfile_config.format_provided = true;
 
   if (!config || !config->input.resolved_path ||
       config->input.resolved_path[0] == '\0') {
@@ -116,7 +103,7 @@ static bool input_rawfile_validate_options(AppContext *app) {
 
   SF_INFO sfinfo;
   memset(&sfinfo, 0, sizeof(SF_INFO));
-  sfinfo.samplerate = (int)s_rawfile_config.sample_rate_hz;
+  sfinfo.samplerate = (int)config->input_sample_rate_hz;
   sfinfo.channels = 2;
   int pcm_subtype = format_to_pcm_subtype(format_enum);
   if (!pcm_subtype) {
@@ -168,7 +155,6 @@ static bool input_rawfile_initialize(ModuleContext *context) {
 
   sf_command(private_data->infile, SFC_GET_CURRENT_SF_INFO,
              &private_data->sfinfo, sizeof(private_data->sfinfo));
-  app->module.input_info.sample_rate = private_data->sfinfo.samplerate;
   app->module.input_info.frames = private_data->sfinfo.frames;
 
   log_info("Opening RAW input file: %s", config->input.resolved_path);
@@ -254,7 +240,7 @@ static void input_rawfile_get_summary_info(const ModuleContext *context,
   utility_add_summary_item(info, "Input Format", "%s",
                            s_rawfile_config.format_str);
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                           s_rawfile_config.sample_rate_hz);
+                           config->input_sample_rate_hz);
 
   char size_buffer[40];
   long long file_size_bytes =

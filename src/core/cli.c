@@ -57,16 +57,7 @@ static int mark_cli_source_callback(struct argparse *self,
                                     const struct argparse_option *option) {
   (void)self;
   if (option && option->data) {
-    *(ConfigValueSource *)option->data = CONFIG_SOURCE_USER_CLI;
-  }
-  return 0;
-}
-
-static int mark_cli_bool_callback(struct argparse *self,
-                                  const struct argparse_option *option) {
-  (void)self;
-  if (option && option->data) {
-    *(bool *)option->data = true;
+    *(ConfigValueSource *)option->data = CONFIG_SOURCE_USER;
   }
   return 0;
 }
@@ -179,17 +170,14 @@ static int build_cli_options(struct argparse_option *options_buffer,
 
   struct argparse_option sdr_general_options[] = {
       OPT_GROUP("SDR General Options"),
-      OPT_DOUBLE(0, "sdr-rf-freq", &config->sdr_general.rf_freq_hz,
-                 "(Required for SDR) Tuner center frequency in Hz",
-                 mark_cli_bool_callback,
-                 (intptr_t)&config->sdr_general.rf_freq_provided, 0),
+      OPT_DOUBLE(0, "sdr-rf-freq", &config->rf_freq_hz,
+                 "(Required for SDR) Tuner center frequency in Hz", NULL, 0, 0),
       OPT_DOUBLE(
           0, "sdr-freq-offset", &config->sdr_general.frequency_offset_hz,
           "Frequency offset in Hz (e.g. 125e6 for HamItUp).", NULL, 0, 0),
-      OPT_DOUBLE(0, "sdr-sample-rate", &config->sdr_general.sample_rate_hz,
-                 "Set sample rate in Hz. (Device-specific default)",
-                 mark_cli_bool_callback,
-                 (intptr_t)&config->sdr_general.sample_rate_provided, 0),
+      OPT_DOUBLE(0, "sdr-sample-rate", &config->input_sample_rate_hz,
+                 "Set sample rate in Hz. (Device-specific default)", NULL, 0,
+                 0),
       OPT_BOOLEAN(0, "sdr-bias-t", &config->sdr_general.bias_t_enable,
                   "(Optional) Enable Bias-T power.", NULL, 0, 0),
   };
@@ -487,13 +475,17 @@ static bool validate_and_process_args(AppContext *app, int non_opt_argc,
     return false;
   }
 
-  if (config->sdr_general.rf_freq_provided &&
-      config->sdr_general.rf_freq_hz <= 0.0) {
-    config->sdr_general.rf_freq_provided = false;
-  }
-  if (config->sdr_general.sample_rate_provided &&
-      config->sdr_general.sample_rate_hz <= 0.0) {
-    config->sdr_general.sample_rate_provided = false;
+  if (selected_input_module->process_chain_mode ==
+      PROCESS_CHAIN_MODE_SYNCHRONOUS_PULL) {
+    if (config->rf_freq_hz != 0.0 || config->input_sample_rate_hz != 0.0 ||
+        config->sdr_general.frequency_offset_hz != 0.0 ||
+        config->sdr_general.bias_t_enable) {
+      log_error("SDR options (--sdr-rf-freq, --sdr-sample-rate, "
+                "--sdr-freq-offset, --sdr-bias-t) cannot be used with '%s' "
+                "input.",
+                config->input.type_name);
+      return false;
+    }
   }
 
   if (!resolve_file_paths(config, arena))

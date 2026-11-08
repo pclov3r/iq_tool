@@ -64,7 +64,7 @@ static void *nco_create(AppConfig *config, AppContext *app) {
 
   // --- Create Pre-Resample NCO ---
   if (!config->dsp.shift_after_resample) {
-    double rate_for_nco = (double)app->module.input_info.sample_rate;
+    double rate_for_nco = config->input_sample_rate_hz;
     double nyquist_limit = rate_for_nco / 2.0;
     if (fabs(state->nco_shift_hz) > nyquist_limit) {
       log_error("Requested frequency shift %.1f Hz exceeds the Nyquist limit "

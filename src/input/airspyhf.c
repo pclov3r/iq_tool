@@ -50,7 +50,7 @@ typedef struct {
 } AirspyHFContext;
 
 static void input_airspyhf_set_default_config(AppConfig *config) {
-  config->sdr_general.sample_rate_hz = AIRSPYHF_DEFAULT_SAMPLE_RATE;
+  config->input_sample_rate_hz = AIRSPYHF_DEFAULT_SAMPLE_RATE;
 }
 
 // clang-format off
@@ -80,7 +80,7 @@ static int
 input_airspyhf_buffered_stream_callback(airspyhf_transfer_t *transfer);
 
 static bool input_airspyhf_validate_generic_options(const AppConfig *config) {
-  if (!config->sdr_general.rf_freq_provided) {
+  if (config->rf_freq_hz <= 0.0) {
     log_error("Airspy HF+ input requires the --sdr-rf-freq option.");
     return false;
   }
@@ -123,37 +123,34 @@ static bool input_airspyhf_validate_options(AppContext *app) {
   }
 
   // Sample Rate Validation
-  if (config->sdr_general.sample_rate_provided) {
-    // Common Airspy HF+ sample rates
-    static const uint32_t VALID_AIRSPYHF_RATES[] = {
-        192000, // 192 kHz
-        228000, // 228 kHz
-        384000, // 384 kHz
-        456000, // 456 kHz
-        768000, // 768 kHz
-        912000  // 912 kHz
-    };
-    const size_t NUM_RATES =
-        sizeof(VALID_AIRSPYHF_RATES) / sizeof(VALID_AIRSPYHF_RATES[0]);
+  static const uint32_t VALID_AIRSPYHF_RATES[] = {
+      192000, // 192 kHz
+      228000, // 228 kHz
+      384000, // 384 kHz
+      456000, // 456 kHz
+      768000, // 768 kHz
+      912000  // 912 kHz
+  };
+  const size_t NUM_RATES =
+      sizeof(VALID_AIRSPYHF_RATES) / sizeof(VALID_AIRSPYHF_RATES[0]);
 
-    bool rate_found = false;
-    uint32_t requested = (uint32_t)config->sdr_general.sample_rate_hz;
+  bool rate_found = false;
+  uint32_t requested_rate_hz = (uint32_t)config->input_sample_rate_hz;
 
-    for (size_t i = 0; i < NUM_RATES; i++) {
-      if (requested == VALID_AIRSPYHF_RATES[i]) {
-        rate_found = true;
-        break;
-      }
+  for (size_t rate_index = 0; rate_index < NUM_RATES; rate_index++) {
+    if (requested_rate_hz == VALID_AIRSPYHF_RATES[rate_index]) {
+      rate_found = true;
+      break;
     }
+  }
 
-    if (!rate_found) {
-      log_error("Invalid Airspy HF+ sample rate %u Hz.", requested);
-      log_error("Common sample rates: 192000, 228000, 384000, 456000, 768000, "
-                "912000");
-      log_error("Note: Supported rates vary by device model. The device will "
-                "report actual supported rates during initialization.");
-      return false;
-    }
+  if (!rate_found) {
+    log_error("Invalid Airspy HF+ sample rate %u Hz.", requested_rate_hz);
+    log_error("Common sample rates: 192000, 228000, 384000, 456000, 768000, "
+              "912000");
+    log_error("Note: Supported rates vary by device model. The device will "
+              "report actual supported rates during initialization.");
+    return false;
   }
 
   // Warn if both AGC and manual attenuation are specified
@@ -194,12 +191,11 @@ input_airspyhf_buffered_stream_callback(airspyhf_transfer_t *transfer) {
 static void input_airspyhf_get_summary_info(const ModuleContext *context,
                                             SummaryInfo *info) {
   const AppConfig *config = context->config;
-  const AppContext *app = context->app;
 
   utility_add_summary_item(info, "Input Source", "Airspy HF+");
   utility_add_summary_item(info, "Input Format", "32-bit Float Complex (cf32)");
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                           (double)app->module.input_info.sample_rate);
+                           config->input_sample_rate_hz);
 
   // Gain reporting
   if (s_airspyhf_config.agc_mode_provided) {
@@ -289,9 +285,9 @@ static bool input_airspyhf_initialize(ModuleContext *context) {
 
   // Find if requested rate is supported
   bool rate_supported = false;
-  uint32_t requested_rate = (uint32_t)config->sdr_general.sample_rate_hz;
-  for (uint32_t i = 0; i < num_rates; i++) {
-    if (rates[i] == requested_rate) {
+  uint32_t requested_rate = (uint32_t)config->input_sample_rate_hz;
+  for (uint32_t rate_index = 0; rate_index < num_rates; rate_index++) {
+    if (rates[rate_index] == requested_rate) {
       rate_supported = true;
       break;
     }
@@ -300,10 +296,10 @@ static bool input_airspyhf_initialize(ModuleContext *context) {
   if (!rate_supported) {
     log_error("Requested sample rate %.15g Hz is not supported by this Airspy "
               "HF+ device.",
-              config->sdr_general.sample_rate_hz);
+              config->input_sample_rate_hz);
     log_error("Supported rates are:");
-    for (uint32_t i = 0; i < num_rates; i++) {
-      log_error("  %u Hz", rates[i]);
+    for (uint32_t rate_index = 0; rate_index < num_rates; rate_index++) {
+      log_error("  %u Hz", rates[rate_index]);
     }
     goto cleanup;
   }
@@ -316,8 +312,7 @@ static bool input_airspyhf_initialize(ModuleContext *context) {
   }
 
   // Set frequency
-  result = airspyhf_set_freq(private_data->dev,
-                             (uint32_t)config->sdr_general.rf_freq_hz);
+  result = airspyhf_set_freq(private_data->dev, (uint32_t)config->rf_freq_hz);
   if (result != AIRSPYHF_SUCCESS) {
     log_error("airspyhf_set_freq() failed: %d", result);
     goto cleanup;
@@ -423,7 +418,6 @@ static bool input_airspyhf_initialize(ModuleContext *context) {
   }
 
   app->module.input_bytes_per_iq_sample = (get_bytes_per_iq_sample(CF32));
-  app->module.input_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
   app->module.input_info.frames = -1;
 
   success = true;

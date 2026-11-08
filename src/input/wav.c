@@ -746,12 +746,7 @@ static bool input_wav_validate_options(AppContext *app) {
     if (s_wav_config.center_target_hz_arg != 0.0f) {
       resolved_center_freq_hz = (double)s_wav_config.center_target_hz_arg;
     }
-    config->iq_file_metadata.rf_freq_hz = resolved_center_freq_hz;
-    config->iq_file_metadata.rf_freq_provided = true;
-    if (!config->sdr_general.rf_freq_provided &&
-        config->sdr_general.rf_freq_hz == 0.0) {
-      config->sdr_general.rf_freq_hz = resolved_center_freq_hz;
-    }
+    config->rf_freq_hz = resolved_center_freq_hz;
   }
 
   return true;
@@ -790,7 +785,8 @@ static bool input_wav_initialize(ModuleContext *context) {
     return false;
   }
 
-  app->module.input_info.sample_rate = private_data->sfinfo.samplerate;
+  ((AppConfig *)config)->input_sample_rate_hz =
+      (double)private_data->sfinfo.samplerate;
 
   if (!private_data->split_enabled) {
     app->module.input_info.frames = private_data->sfinfo.frames;
@@ -825,21 +821,10 @@ static bool input_wav_initialize(ModuleContext *context) {
     double target_frequency_hz = (double)s_wav_config.center_target_hz_arg;
     app->dsp.nco_shift_hz =
         private_data->sdr_metadata.center_freq_hz - target_frequency_hz;
-    ((AppConfig *)config)->iq_file_metadata.rf_freq_hz = target_frequency_hz;
-    if (!config->sdr_general.rf_freq_provided) {
-      ((AppConfig *)config)->sdr_general.rf_freq_hz = target_frequency_hz;
-    }
+    ((AppConfig *)config)->rf_freq_hz = target_frequency_hz;
   } else if (private_data->sdr_metadata.center_freq_hz_present) {
-    if (!config->iq_file_metadata.rf_freq_provided) {
-      ((AppConfig *)config)->iq_file_metadata.rf_freq_hz =
-          private_data->sdr_metadata.center_freq_hz;
-      ((AppConfig *)config)->iq_file_metadata.rf_freq_provided = true;
-    }
-    if (!config->sdr_general.rf_freq_provided &&
-        config->sdr_general.rf_freq_hz == 0.0) {
-      ((AppConfig *)config)->sdr_general.rf_freq_hz =
-          private_data->sdr_metadata.center_freq_hz;
-    }
+    ((AppConfig *)config)->rf_freq_hz =
+        private_data->sdr_metadata.center_freq_hz;
   }
 
   return true;
@@ -896,11 +881,13 @@ static size_t input_wav_read_chunk(ModuleContext *context, void *buffer,
         }
 
         // Strict format validation across boundaries
-        if (new_sfinfo.samplerate != app->module.input_info.sample_rate ||
+        if ((double)new_sfinfo.samplerate !=
+                context->config->input_sample_rate_hz ||
             new_sfinfo.channels != wav_input->sfinfo.channels) {
-          log_fatal(
-              "Next split file format mismatch! (Expected Rate: %d, Chans: %d)",
-              app->module.input_info.sample_rate, wav_input->sfinfo.channels);
+          log_fatal("Next split file format mismatch! (Expected Rate: %.15g, "
+                    "Chans: %d)",
+                    context->config->input_sample_rate_hz,
+                    wav_input->sfinfo.channels);
           request_forceful_shutdown("Format mismatch during rollover.", app);
           return 0;
         }
@@ -924,11 +911,13 @@ static size_t input_wav_read_chunk(ModuleContext *context, void *buffer,
         }
 
         // Strict format validation across boundaries
-        if (new_sfinfo.samplerate != app->module.input_info.sample_rate ||
+        if ((double)new_sfinfo.samplerate !=
+                context->config->input_sample_rate_hz ||
             new_sfinfo.channels != wav_input->sfinfo.channels) {
-          log_fatal(
-              "Format mismatch on loop reopen! (Expected Rate: %d, Chans: %d)",
-              app->module.input_info.sample_rate, wav_input->sfinfo.channels);
+          log_fatal("Format mismatch on loop reopen! (Expected Rate: %.15g, "
+                    "Chans: %d)",
+                    context->config->input_sample_rate_hz,
+                    wav_input->sfinfo.channels);
           request_forceful_shutdown("Format mismatch during loop.", app);
           return 0;
         }
@@ -1035,7 +1024,7 @@ static void input_wav_get_summary_info(const ModuleContext *context,
     // Reuse existing utilities.c duration parser for combined HH:MM:SS
     // formatting
     double total_seconds = (double)app->module.input_info.frames /
-                           (double)app->module.input_info.sample_rate;
+                           config->input_sample_rate_hz;
     char duration_buffer[40];
     utility_format_duration(total_seconds, duration_buffer,
                             sizeof(duration_buffer));
@@ -1065,7 +1054,7 @@ static void input_wav_get_summary_info(const ModuleContext *context,
   }
   utility_add_summary_item(info, "Input Format", "%s", format_str);
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                           (double)app->module.input_info.sample_rate);
+                           config->input_sample_rate_hz);
 
   if (private_data->sdr_metadata_present) {
     if (private_data->sdr_metadata.timestamp_unix_present) {

@@ -127,23 +127,15 @@ typedef struct AppConfig {
     } filter;
   } dsp;
 
-  // --- I/Q File Metadata (WAV/RAW/etc) ---
-  struct {
-    double rf_freq_hz;
-    bool rf_freq_provided;
-  } iq_file_metadata;
-
   // --- SDR General ---
   struct {
-    double rf_freq_hz;
-    bool rf_freq_provided;
     double frequency_offset_hz;
-    double sample_rate_hz;
-    bool sample_rate_provided;
     bool bias_t_enable;
   } sdr_general;
 
   // --- Global / Misc ---
+  double rf_freq_hz;
+  double input_sample_rate_hz;
   char *preset_name;
   PresetDefinition *presets;
   int num_presets;

@@ -51,7 +51,7 @@ typedef struct {
 } RtlSdrContext;
 
 static void input_rtlsdr_set_default_config(AppConfig *config) {
-  config->sdr_general.sample_rate_hz = RTLSDR_DEFAULT_SAMPLE_RATE;
+  config->input_sample_rate_hz = RTLSDR_DEFAULT_SAMPLE_RATE;
 }
 
 // clang-format off
@@ -126,7 +126,7 @@ static const char *get_tuner_name_from_enum(enum rtlsdr_tuner tuner_type) {
 }
 
 static bool input_rtlsdr_validate_generic_options(const AppConfig *config) {
-  if (!config->sdr_general.rf_freq_provided) {
+  if (config->rf_freq_hz <= 0.0) {
     log_error("RTL-SDR input requires the --sdr-rf-freq option.");
     return false;
   }
@@ -153,14 +153,12 @@ static bool input_rtlsdr_validate_options(AppContext *app) {
     s_rtlsdr_config.direct_sampling_provided = true;
   }
 
-  if (config->sdr_general.sample_rate_provided) {
-    if (config->sdr_general.sample_rate_hz < 225001 ||
-        config->sdr_general.sample_rate_hz > 3200000) {
-      log_error("Invalid sample rate for RTL-SDR: %.15g Hz. Must be between "
-                "225001 and 3200000.",
-                config->sdr_general.sample_rate_hz);
-      return false;
-    }
+  if (config->input_sample_rate_hz < 225001 ||
+      config->input_sample_rate_hz > 3200000) {
+    log_error("Invalid sample rate for RTL-SDR: %.15g Hz. Must be between "
+              "225001 and 3200000.",
+              config->input_sample_rate_hz);
+    return false;
   }
 
   return true;
@@ -247,7 +245,7 @@ static bool input_rtlsdr_initialize(ModuleContext *context) {
   log_info("Found RTL-SDR device with tuner: %s", tuner_name);
 
   result = rtlsdr_set_sample_rate(private_data->dev,
-                                  (uint32_t)config->sdr_general.sample_rate_hz);
+                                  (uint32_t)config->input_sample_rate_hz);
   if (result < 0) {
     log_fatal("Failed to set sample rate: %s", strerror(-result));
     goto cleanup;
@@ -255,11 +253,11 @@ static bool input_rtlsdr_initialize(ModuleContext *context) {
   uint32_t actual_rate = rtlsdr_get_sample_rate(private_data->dev);
   log_info(
       "RTL-SDR: Requested sample rate %.15g Hz, actual rate set to %.15g Hz.",
-      config->sdr_general.sample_rate_hz, (double)actual_rate);
-  app->module.input_info.sample_rate = actual_rate;
+      config->input_sample_rate_hz, (double)actual_rate);
+  ((AppConfig *)config)->input_sample_rate_hz = (double)actual_rate;
 
-  result = rtlsdr_set_center_freq(private_data->dev,
-                                  (uint32_t)config->sdr_general.rf_freq_hz);
+  result =
+      rtlsdr_set_center_freq(private_data->dev, (uint32_t)config->rf_freq_hz);
   if (result < 0) {
     log_fatal("Failed to set center frequency: %s", strerror(-result));
     goto cleanup;
@@ -429,7 +427,7 @@ static void input_rtlsdr_get_summary_info(const ModuleContext *context,
   utility_add_summary_item(info, "Input Format",
                            "8-bit Unsigned Complex (cu8)");
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                           (double)app->module.input_info.sample_rate);
+                           config->input_sample_rate_hz);
   if (s_rtlsdr_config.gain_provided) {
     utility_add_summary_item(info, "Gain", "%.1f dB (Manual)",
                              (float)s_rtlsdr_config.gain / 10.0f);

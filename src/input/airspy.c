@@ -86,7 +86,7 @@ typedef struct {
 } AirspyContext;
 
 static void input_airspy_set_default_config(AppConfig *config) {
-  config->sdr_general.sample_rate_hz = AIRSPY_DEFAULT_SAMPLE_RATE;
+  config->input_sample_rate_hz = AIRSPY_DEFAULT_SAMPLE_RATE;
   s_airspy_config.gain_value = AIRSPY_DEFAULT_GAIN_VALUE;
   s_airspy_config.airspy_gain_value_arg = AIRSPY_DEFAULT_GAIN_VALUE;
   s_airspy_config.lna_gain = AIRSPY_DEFAULT_LNA_GAIN;
@@ -125,7 +125,7 @@ static bool input_airspy_validate_generic_options(const AppConfig *config);
 static int input_airspy_buffered_stream_callback(airspy_transfer *transfer);
 
 static bool input_airspy_validate_generic_options(const AppConfig *config) {
-  if (!config->sdr_general.rf_freq_provided) {
+  if (config->rf_freq_hz <= 0.0) {
     log_error("Airspy input requires the --sdr-rf-freq option.");
     return false;
   }
@@ -213,33 +213,31 @@ static bool input_airspy_validate_options(AppContext *app) {
   }
 
   // Sample Rate Validation
-  if (config->sdr_general.sample_rate_provided) {
-    static const uint32_t VALID_AIRSPY_RATES[] = {
-        2500000, // R2
-        3000000, // Mini
-        6000000, // Mini
-        10000000 // R2 & Mini
-    };
-    const size_t NUM_RATES =
-        sizeof(VALID_AIRSPY_RATES) / sizeof(VALID_AIRSPY_RATES[0]);
+  static const uint32_t VALID_AIRSPY_RATES[] = {
+      2500000, // R2
+      3000000, // Mini
+      6000000, // Mini
+      10000000 // R2 & Mini
+  };
+  const size_t NUM_RATES =
+      sizeof(VALID_AIRSPY_RATES) / sizeof(VALID_AIRSPY_RATES[0]);
 
-    bool rate_found = false;
-    uint32_t requested = (uint32_t)config->sdr_general.sample_rate_hz;
+  bool rate_found = false;
+  uint32_t requested_rate_hz = (uint32_t)config->input_sample_rate_hz;
 
-    for (size_t i = 0; i < NUM_RATES; i++) {
-      if (requested == VALID_AIRSPY_RATES[i]) {
-        rate_found = true;
-        break;
-      }
+  for (size_t rate_index = 0; rate_index < NUM_RATES; rate_index++) {
+    if (requested_rate_hz == VALID_AIRSPY_RATES[rate_index]) {
+      rate_found = true;
+      break;
     }
+  }
 
-    if (!rate_found) {
-      log_error("Invalid Airspy sample rate %u Hz.", requested);
-      log_error(
-          "Valid sample rates for Airspy Mini: 3000000, 6000000, 10000000");
-      log_error("Valid sample rates for Airspy R2: 2500000, 10000000");
-      return false;
-    }
+  if (!rate_found) {
+    log_error("Invalid Airspy sample rate %u Hz.", requested_rate_hz);
+    log_error(
+        "Valid sample rates for Airspy Mini: 3000000, 6000000, 10000000");
+    log_error("Valid sample rates for Airspy R2: 2500000, 10000000");
+    return false;
   }
 
   // Validate that manual gain options are only used with manual mode
@@ -346,7 +344,7 @@ static void input_airspy_get_summary_info(const ModuleContext *context,
 
   utility_add_summary_item(info, "Input Format", "%s", format_str);
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                           (double)app->module.input_info.sample_rate);
+                           config->input_sample_rate_hz);
 
   // Gain reporting
   if (s_airspy_config.gain_mode_provided) {
@@ -466,9 +464,9 @@ static bool input_airspy_initialize(ModuleContext *context) {
 
   // Find if requested rate is supported
   bool rate_supported = false;
-  uint32_t requested_rate = (uint32_t)config->sdr_general.sample_rate_hz;
-  for (uint32_t i = 0; i < num_rates; i++) {
-    if (rates[i] == requested_rate) {
+  uint32_t requested_rate = (uint32_t)config->input_sample_rate_hz;
+  for (uint32_t rate_index = 0; rate_index < num_rates; rate_index++) {
+    if (rates[rate_index] == requested_rate) {
       rate_supported = true;
       break;
     }
@@ -477,10 +475,10 @@ static bool input_airspy_initialize(ModuleContext *context) {
   if (!rate_supported) {
     log_error("Requested sample rate %.15g Hz is not supported by this Airspy "
               "device.",
-              config->sdr_general.sample_rate_hz);
+              config->input_sample_rate_hz);
     log_error("Supported rates are:");
-    for (uint32_t i = 0; i < num_rates; i++) {
-      log_error("  %u Hz", rates[i]);
+    for (uint32_t rate_index = 0; rate_index < num_rates; rate_index++) {
+      log_error("  %u Hz", rates[rate_index]);
     }
     goto cleanup;
   }
@@ -494,8 +492,7 @@ static bool input_airspy_initialize(ModuleContext *context) {
   }
 
   // Set frequency
-  result = airspy_set_freq(private_data->dev,
-                           (uint32_t)config->sdr_general.rf_freq_hz);
+  result = airspy_set_freq(private_data->dev, (uint32_t)config->rf_freq_hz);
   if (result != AIRSPY_SUCCESS) {
     log_error("airspy_set_freq() failed: %s (%d)", airspy_error_name(result),
               result);
@@ -636,7 +633,6 @@ static bool input_airspy_initialize(ModuleContext *context) {
 
   app->module.input_bytes_per_iq_sample =
       get_bytes_per_iq_sample(app->module.input_format);
-  app->module.input_info.sample_rate = (int)config->sdr_general.sample_rate_hz;
   app->module.input_info.frames = -1;
 
   success = true;

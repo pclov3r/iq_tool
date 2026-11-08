@@ -23,23 +23,23 @@
 
 // === DSP Module Interface Implementation ===
 
-static void *dc_block_initialize(ModuleContext *ctx, double input_rate,
+static void *dc_block_initialize(ModuleContext *context, double input_rate,
                                  double target_output_rate, double *out_rate) {
   (void)target_output_rate;
   *out_rate = input_rate;
 
-  AppConfig *config = (AppConfig *)ctx->config;
+  AppConfig *config = (AppConfig *)context->config;
   if (!config->dsp.dc_block.enable) {
     return NULL;
   }
 
-  if (ctx->app->module.input_info.sample_rate <= 0.0) {
+  if (config->input_sample_rate_hz <= 0.0) {
     log_error("Cannot initialize with invalid sample rate.");
     return NULL;
   }
 
-  float normalized_alpha = (float)(2.0 * M_PI * DC_BLOCK_CUTOFF_HZ /
-                                   ctx->app->module.input_info.sample_rate);
+  float normalized_alpha =
+      (float)(2.0 * M_PI * DC_BLOCK_CUTOFF_HZ / config->input_sample_rate_hz);
 
   if (normalized_alpha <= 0.0f) {
     log_error("Calculated normalized alpha (%.6f) is invalid.",

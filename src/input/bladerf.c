@@ -196,7 +196,7 @@ typedef struct {
 } BladerfContext;
 
 static void input_bladerf_set_default_config(AppConfig *config) {
-  config->sdr_general.sample_rate_hz = BLADERF_DEFAULT_SAMPLE_RATE_HZ;
+  config->input_sample_rate_hz = BLADERF_DEFAULT_SAMPLE_RATE_HZ;
   s_bladerf_config.bandwidth_hz = BLADERF_DEFAULT_BANDWIDTH_HZ;
 }
 
@@ -238,7 +238,7 @@ bladerf_configure_high_speed_rate_and_rf(ModuleContext *context,
                                          bladerf_channel rx_channel);
 
 static bool input_bladerf_validate_generic_options(const AppConfig *config) {
-  if (!config->sdr_general.rf_freq_provided) {
+  if (config->rf_freq_hz <= 0.0) {
     log_error("BladeRF input requires the --sdr-rf-freq option.");
     return false;
   }
@@ -273,7 +273,7 @@ static bool input_bladerf_validate_options(AppContext *app) {
 
   s_bladerf_config.active_bit_depth = 12;
 
-  if (config->sdr_general.sample_rate_hz > 61440000.0) {
+  if (config->input_sample_rate_hz > 61440000.0) {
     if (s_bladerf_config.bit_depth_provided &&
         s_bladerf_config.bit_depth_arg == 12) {
       log_error("Invalid configuration: The BladeRF does not support 12-bit "
@@ -283,7 +283,7 @@ static bool input_bladerf_validate_options(AppContext *app) {
     if (!s_bladerf_config.bit_depth_provided) {
       log_warn("Sample rate of %.15g Hz exceeds the 61440000 Hz limit for "
                "12-bit mode. Automatically switching to 8-bit mode.",
-               config->sdr_general.sample_rate_hz);
+               config->input_sample_rate_hz);
     }
     s_bladerf_config.active_bit_depth = 8;
   } else {
@@ -435,7 +435,7 @@ static bool input_bladerf_initialize(ModuleContext *context) {
     }
   }
 
-  bool is_high_speed_mode = (config->sdr_general.sample_rate_hz > 61440000.0);
+  bool is_high_speed_mode = (config->input_sample_rate_hz > 61440000.0);
 
   if (is_high_speed_mode) {
     if (!is_bladerf2) {
@@ -450,7 +450,7 @@ static bool input_bladerf_initialize(ModuleContext *context) {
       goto cleanup;
   }
 
-  if (app->module.input_info.sample_rate == 0) {
+  if (config->input_sample_rate_hz <= 0.0) {
     log_fatal("BladeRF failed to set the sample rate. The actual rate was "
               "reported as 0 Hz.");
     goto cleanup;
@@ -523,9 +523,7 @@ bladerf_configure_high_speed_rate_and_rf(ModuleContext *context,
   }
 
   struct bladerf_rational_rate rate_to_set = {
-      .integer = 0,
-      .num = (uint64_t)config->sdr_general.sample_rate_hz,
-      .den = 1};
+      .integer = 0, .num = (uint64_t)config->input_sample_rate_hz, .den = 1};
 
   struct bladerf_rational_rate actual_rate_from_device;
   status = bladerf_set_rational_sample_rate(
@@ -544,14 +542,13 @@ bladerf_configure_high_speed_rate_and_rf(ModuleContext *context,
   double actual_rate_double = (double)actual_rate_from_device.integer +
                               ((double)actual_rate_from_device.num /
                                (double)actual_rate_from_device.den);
-  app->module.input_info.sample_rate = (int)actual_rate_double;
   log_info(
       "BladeRF: Requested sample rate %.15g Hz, actual rate set to %.15g Hz.",
-      config->sdr_general.sample_rate_hz,
-      (double)app->module.input_info.sample_rate);
+      config->input_sample_rate_hz, actual_rate_double);
+  config->input_sample_rate_hz = actual_rate_double;
 
   status = bladerf_set_frequency(private_data->dev, rx_channel,
-                                 config->sdr_general.rf_freq_hz);
+                                 (bladerf_frequency)config->rf_freq_hz);
   if (is_shutdown_requested()) {
     return false;
   }
@@ -574,7 +571,7 @@ static bool bladerf_configure_standard_rate_and_rf(ModuleContext *context,
   int status;
 
   bladerf_sample_rate requested_rate =
-      (bladerf_sample_rate)config->sdr_general.sample_rate_hz;
+      (bladerf_sample_rate)config->input_sample_rate_hz;
   bladerf_sample_rate actual_rate;
   status = bladerf_set_sample_rate(private_data->dev, rx_channel,
                                    requested_rate, &actual_rate);
@@ -589,7 +586,7 @@ static bool bladerf_configure_standard_rate_and_rf(ModuleContext *context,
   log_info(
       "BladeRF: Requested sample rate %.15g Hz, actual rate set to %.15g Hz.",
       (double)requested_rate, (double)actual_rate);
-  app->module.input_info.sample_rate = (int)actual_rate;
+  config->input_sample_rate_hz = (double)actual_rate;
 
   bladerf_bandwidth requested_bw = s_bladerf_config.bandwidth_hz;
   bladerf_bandwidth actual_bw;
@@ -611,7 +608,7 @@ static bool bladerf_configure_standard_rate_and_rf(ModuleContext *context,
   s_bladerf_config.bandwidth_hz = actual_bw;
 
   status = bladerf_set_frequency(private_data->dev, rx_channel,
-                                 config->sdr_general.rf_freq_hz);
+                                 (bladerf_frequency)config->rf_freq_hz);
   if (is_shutdown_requested()) {
     return false;
   }
@@ -675,13 +672,13 @@ static void *input_bladerf_push_samples_to_queue(ModuleContext *context,
   if (!private_data)
     return NULL;
 
-  if (app->module.input_info.sample_rate >= 5000000) {
+  if (context->config->input_sample_rate_hz >= 5000000.0) {
     log_debug(
         "BladeRF: Using High-Throughput profile for sample rate >= 5 MSPS.");
     s_bladerf_config.num_buffers = BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_BUFFERS;
     s_bladerf_config.num_transfers =
         BLADERF_PROFILE_HIGHTHROUGHPUT_NUM_TRANSFERS;
-  } else if (app->module.input_info.sample_rate >= 1000000) {
+  } else if (context->config->input_sample_rate_hz >= 1000000.0) {
     log_debug("BladeRF: Using Balanced profile for sample rate between 1 and 5 "
               "MSPS.");
     s_bladerf_config.num_buffers = BLADERF_PROFILE_BALANCED_NUM_BUFFERS;
@@ -704,7 +701,7 @@ static void *input_bladerf_push_samples_to_queue(ModuleContext *context,
   }
 
   unsigned int samples_per_buffer =
-      (unsigned int)(app->module.input_info.sample_rate *
+      (unsigned int)(context->config->input_sample_rate_hz *
                      BLADERF_TRANSFER_SIZE_SECONDS);
 
   // Apply limits and alignment
@@ -830,7 +827,7 @@ static void input_bladerf_get_summary_info(const ModuleContext *context,
     utility_add_summary_item(info, "Antenna Port", "Automatic");
 
   utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                           (double)app->module.input_info.sample_rate);
+                           config->input_sample_rate_hz);
   utility_add_summary_item(info, "Bandwidth", "%u Hz",
                            s_bladerf_config.bandwidth_hz);
 

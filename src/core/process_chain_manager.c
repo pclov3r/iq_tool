@@ -73,7 +73,7 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app) {
   // --- Step 2: Handle Smart Default (Missing Rate) ---
   // If the user didn't specify a rate (0), use the hardware/file input rate.
   if (target_rate_hz <= 0.0) {
-    target_rate_hz = (double)app->module.input_info.sample_rate;
+    target_rate_hz = config->input_sample_rate_hz;
     log_info("No explicit output sample rate specified. Defaulting to native "
              "input rate: %.15g Hz",
              target_rate_hz);
@@ -102,7 +102,7 @@ static bool resolve_process_chain_config(AppConfig *config, AppContext *app) {
   app->dsp.process_chain_agc = target_agc;
 
   // --- Step 3: Validate Rate Scalar ---
-  double input_rate_d = (double)app->module.input_info.sample_rate;
+  double input_rate_d = config->input_sample_rate_hz;
   double rate_scalar = app->dsp.process_chain_sample_rate_hz / input_rate_d;
 
   if (config->dsp.raw_passthrough) {
@@ -236,7 +236,7 @@ static bool allocate_processing_buffers(AppConfig *config, AppContext *app) {
   // -------------------------------------------------------------------------
   // 4. Calculate Dynamic ProcessChain Depth ("Trays")
   // -------------------------------------------------------------------------
-  double input_rate = (double)app->module.input_info.sample_rate;
+  double input_rate = config->input_sample_rate_hz;
 
   // FAIL FAST: If the input rate is unknown or invalid, we cannot safely
   // configure the process_chain.
@@ -525,17 +525,19 @@ bool process_chain_init_dsp_modules(ProcessChainContext *context) {
     return app->process_chain.shutdown_event != NULL;
   }
 
-  double current_stream_rate = app->module.input_info.sample_rate;
-  for (int i = 0; i < DEFAULT_PROCESS_CHAIN_LENGTH; i++) {
-    app->dsp.states[i] = NULL;
+  double current_stream_rate = config->input_sample_rate_hz;
+  for (int stage_index = 0; stage_index < DEFAULT_PROCESS_CHAIN_LENGTH;
+       stage_index++) {
+    app->dsp.states[stage_index] = NULL;
     const struct DspModuleInterface *module =
-        get_dsp_module(DEFAULT_PROCESS_CHAIN[i].module_name);
-    if (module && module->is_active(app, DEFAULT_PROCESS_CHAIN[i].stage_tag)) {
+        get_dsp_module(DEFAULT_PROCESS_CHAIN[stage_index].module_name);
+    if (module &&
+        module->is_active(app, DEFAULT_PROCESS_CHAIN[stage_index].stage_tag)) {
       if (module->initialize) {
-        app->dsp.states[i] = module->initialize(
+        app->dsp.states[stage_index] = module->initialize(
             &mctx, current_stream_rate, app->dsp.process_chain_sample_rate_hz,
             &current_stream_rate);
-        if (!app->dsp.states[i])
+        if (!app->dsp.states[stage_index])
           return false;
       }
     }

@@ -220,7 +220,7 @@ input_spyserver_client_get_cli_options(int *count) {
 // --- Default Configuration ---
 static void
 input_spyserver_client_set_default_config(struct AppConfig *config) {
-  config->sdr_general.sample_rate_hz = SPYSERVER_DEFAULT_SAMPLE_RATE_HZ;
+  config->input_sample_rate_hz = SPYSERVER_DEFAULT_SAMPLE_RATE_HZ;
   s_spyserver_client_config.hostname = NULL;
   s_spyserver_client_config.port = 0;
   s_spyserver_client_config.gain = -1;
@@ -234,6 +234,8 @@ static void
 input_spyserver_client_get_summary_info(const ModuleContext *context,
                                         SummaryInfo *info);
 static bool input_spyserver_client_validate_options(AppContext *app);
+static bool
+input_spyserver_client_validate_generic_options(const AppConfig *config);
 
 // --- The InputModuleInterface V-Table ---
 
@@ -290,6 +292,15 @@ static bool send_setting(SpyServerClientContext *client, uint32_t setting,
 }
 
 // --- Validation Function ---
+static bool
+input_spyserver_client_validate_generic_options(const AppConfig *config) {
+  if (config->rf_freq_hz <= 0.0) {
+    log_error("SpyServer Client input requires the --sdr-rf-freq option.");
+    return false;
+  }
+  return true;
+}
+
 static bool input_spyserver_client_validate_options(AppContext *app) {
   AppConfig *config = app ? (AppConfig *)app->config : NULL;
   (void)config;
@@ -510,30 +521,33 @@ static bool input_spyserver_client_initialize(ModuleContext *context) {
   app->module.input_format = final_format;
   app->module.input_bytes_per_iq_sample = get_bytes_per_iq_sample(final_format);
 
-  uint32_t max_sr = client->device_info.MaximumSampleRate;
-  uint32_t min_dec = client->device_info.MinimumIQDecimation;
-  uint32_t dec_count = client->device_info.DecimationStageCount;
+  uint32_t maximum_sample_rate = client->device_info.MaximumSampleRate;
+  uint32_t minimum_decimation = client->device_info.MinimumIQDecimation;
+  uint32_t decimation_stage_count = client->device_info.DecimationStageCount;
   double supported_rates[32];
   int num_supported_rates = 0;
-  for (uint32_t i = min_dec; i <= dec_count && num_supported_rates < 32; i++) {
-    supported_rates[num_supported_rates++] = (double)max_sr / (double)(1 << i);
+  for (uint32_t decimation_stage = minimum_decimation;
+       decimation_stage <= decimation_stage_count && num_supported_rates < 32;
+       decimation_stage++) {
+    supported_rates[num_supported_rates++] =
+        (double)maximum_sample_rate / (double)(1 << decimation_stage);
   }
 
-  double user_rate = config->sdr_general.sample_rate_hz > 0
-                         ? config->sdr_general.sample_rate_hz
+  double user_rate = config->input_sample_rate_hz > 0
+                         ? config->input_sample_rate_hz
                          : supported_rates[0];
-  int best_rate_idx = 0;
+  int best_rate_index = 0;
   double min_diff = fabs(supported_rates[0] - user_rate);
-  for (int i = 1; i < num_supported_rates; i++) {
-    double diff = fabs(supported_rates[i] - user_rate);
+  for (int rate_index = 1; rate_index < num_supported_rates; rate_index++) {
+    double diff = fabs(supported_rates[rate_index] - user_rate);
     if (diff < min_diff) {
       min_diff = diff;
-      best_rate_idx = i;
+      best_rate_index = rate_index;
     }
   }
 
-  double actual_rate = supported_rates[best_rate_idx];
-  uint32_t dec_index_to_send = min_dec + best_rate_idx;
+  double actual_rate = supported_rates[best_rate_index];
+  uint32_t dec_index_to_send = minimum_decimation + best_rate_index;
   if (min_diff < 1.0) {
     log_info("Using requested sample rate: %.15g Hz.", actual_rate);
   } else {
@@ -542,14 +556,14 @@ static bool input_spyserver_client_initialize(ModuleContext *context) {
              user_rate, actual_rate);
   }
 
-  app->module.input_info.sample_rate = (int)actual_rate;
+  config->input_sample_rate_hz = actual_rate;
 
   int format_to_request_int =
       get_spyserver_enum_from_internal_format(final_format);
 
   log_info("Configuring remote device...");
   if (!send_setting(client, SPYSERVER_SETTING_IQ_FREQUENCY,
-                    (uint32_t)config->sdr_general.rf_freq_hz))
+                    (uint32_t)config->rf_freq_hz))
     goto error_cleanup;
   if (!send_setting(client, SPYSERVER_SETTING_IQ_DECIMATION, dec_index_to_send))
     goto error_cleanup;
@@ -740,7 +754,7 @@ static void *input_spyserver_client_producer_thread(void *arg) {
         uint32_t samples_in_chunk = (uint32_t)(aligned_read / bpp);
         PacketWriteResult write_res = packet_serializer_write_packet(
             client->stream_buffer, samples_in_chunk, client->rx_buffer,
-            client->active_format, (double)app->module.input_info.sample_rate);
+            client->active_format, context->config->input_sample_rate_hz);
 
         if (write_res == PACKET_WRITE_INACTIVE) {
           goto end_loop;
@@ -808,7 +822,7 @@ input_spyserver_client_start_background_threads(ModuleContext *context,
     return false;
   }
 
-  size_t bytes_per_sec = (size_t)app->module.input_info.sample_rate *
+  size_t bytes_per_sec = (size_t)context->config->input_sample_rate_hz *
                          get_bytes_per_iq_sample(client->active_format);
   size_t desired_buffer_size = ring_buffer_get_capacity(client->stream_buffer);
   size_t high_water_mark =
@@ -900,6 +914,7 @@ input_spyserver_client_get_summary_info(const ModuleContext *context,
                                         SummaryInfo *info) {
   const SpyServerClientContext *client =
       (const SpyServerClientContext *)context->app->module.input_private_data;
+  const AppConfig *config = context->config;
   const AppContext *app = context->app;
   char server_addr[256];
   snprintf(server_addr, sizeof(server_addr), "%s:%d",
@@ -930,7 +945,7 @@ input_spyserver_client_get_summary_info(const ModuleContext *context,
             ? get_format_info_by_enum(app->module.input_format)->description_str
             : "Unknown");
     utility_add_summary_item(info, "Input Sample Rate", "%.15g Hz",
-                             (double)app->module.input_info.sample_rate);
+                             config->input_sample_rate_hz);
 
     if (s_spyserver_client_config.gain_provided) {
       utility_add_summary_item(info, "Gain", "%d (Manual)",
@@ -950,7 +965,7 @@ static InputModuleInterface s_input_spyserver_client_api = {
     .cleanup = input_spyserver_client_cleanup,
     .get_summary_info = input_spyserver_client_get_summary_info,
     .validate_options = input_spyserver_client_validate_options,
-    .validate_generic_options = NULL,
+    .validate_generic_options = input_spyserver_client_validate_generic_options,
     .pre_stream_iq_correction = NULL,
 };
 

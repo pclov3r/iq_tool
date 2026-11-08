@@ -595,9 +595,7 @@ static bool output_nrsc5_validate_options(AppContext *app) {
   config->baseband_sample_format.format = CF32;
 
   if (!s_nrsc5_config.band_str) {
-    double active_freq = config->iq_file_metadata.rf_freq_provided
-                             ? config->iq_file_metadata.rf_freq_hz
-                             : config->sdr_general.rf_freq_hz;
+    double active_freq = config->rf_freq_hz;
 
     if (active_freq >= 530000.0 && active_freq <= 1710000.0) {
       s_nrsc5_config.active_mode = NRSC5_MODE_AM;

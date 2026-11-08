@@ -164,8 +164,8 @@ bool validate_option_combinations(AppConfig *config) {
     }
   }
 
-  if ((config->output_sample_rate.source == CONFIG_SOURCE_USER_CLI ||
-       config->baseband_sample_rate.source == CONFIG_SOURCE_USER_CLI) &&
+  if ((config->output_sample_rate.source == CONFIG_SOURCE_USER ||
+       config->baseband_sample_rate.source == CONFIG_SOURCE_USER) &&
       config->preset_name) {
     log_error("Options --output-sample-rate or --baseband-sample-rate cannot "
               "be used with --preset.");
