@@ -217,6 +217,16 @@
 #define WATCHDOG_TIMEOUT_MS 8000
 
 /**
+ * @def RING_BUFFER_WAIT_TIMEOUT_MS
+ * @brief Upper bound in milliseconds for a single ring buffer park.
+ *
+ * Producer and consumer wakeups are normally immediate (semaphore post). This
+ * timeout only guarantees forward progress if a wakeup is ever missed, so a
+ * parked thread can never sleep indefinitely.
+ */
+#define RING_BUFFER_WAIT_TIMEOUT_MS 100U
+
+/**
  * @def NETWORK_SOCKET_TIMEOUT_MS
  * @brief The receive/send timeout for network sockets in milliseconds.
  *

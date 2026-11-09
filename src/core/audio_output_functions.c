@@ -26,30 +26,24 @@ struct AudioOutputContext {
 };
 
 // --- Miniaudio Callback ---
-static void miniaudio_data_callback(ma_device *pDevice, void *pOutput,
-                                    const void *pInput, ma_uint32 frameCount) {
-  (void)pInput;
-  AudioOutputContext *context = (AudioOutputContext *)pDevice->pUserData;
-  if (frameCount == 0 || !context || context->channels <= 0)
+static void miniaudio_data_callback(ma_device *audio_device, void *output_buffer,
+                                    const void *input_buffer,
+                                    ma_uint32 frame_count) {
+  (void)input_buffer;
+  AudioOutputContext *context = (AudioOutputContext *)audio_device->pUserData;
+  if (frame_count == 0 || !context || context->channels <= 0)
     return;
 
   size_t frame_bytes = (size_t)context->channels * sizeof(int16_t);
-  size_t bytes_needed = (size_t)frameCount * frame_bytes;
-  size_t available_bytes = ring_buffer_get_size(context->audio_ring_buffer);
+  size_t bytes_needed = (size_t)frame_count * frame_bytes;
 
-  if (available_bytes < bytes_needed) {
-    // Underrun: Play only whole frames available, pad the rest with silence.
-    size_t aligned_available = (available_bytes / frame_bytes) * frame_bytes;
-    if (aligned_available > 0) {
-      ring_buffer_read(context->audio_ring_buffer, pOutput, aligned_available);
-    }
-    memset((uint8_t *)pOutput + aligned_available, 0,
-           bytes_needed - aligned_available);
-    return;
+  size_t bytes_read = ring_buffer_try_read(context->audio_ring_buffer,
+                                           output_buffer, bytes_needed);
+  if (bytes_read < bytes_needed) {
+    // Underrun or buffer empty: pad the remainder with silence
+    memset((uint8_t *)output_buffer + bytes_read, 0,
+           bytes_needed - bytes_read);
   }
-
-  // Normal: Pull the exact requested amount of data.
-  ring_buffer_read(context->audio_ring_buffer, pOutput, bytes_needed);
 }
 
 // --- Public API ---

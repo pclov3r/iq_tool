@@ -76,6 +76,21 @@ size_t ring_buffer_write_packet(RingBuffer *iob, const void *header,
 size_t ring_buffer_read(RingBuffer *iob, void *buffer, size_t max_bytes);
 
 /**
+ * @brief Reads available data from the I/O buffer without blocking.
+ *
+ * This is a LOCK-FREE, NON-BLOCKING call safe for real-time audio callbacks.
+ * Returns immediately with whatever data is currently available up to max_bytes,
+ * or 0 if empty or shutting down.
+ *
+ * @param ring_buffer The I/O buffer.
+ * @param buffer Output destination buffer.
+ * @param max_bytes Maximum number of bytes to read.
+ * @return The number of bytes actually read.
+ */
+size_t ring_buffer_try_read(RingBuffer *ring_buffer, void *buffer,
+                            size_t max_bytes);
+
+/**
  * @brief Blocks the calling thread until the buffer usage drops below a target.
  *
  * This is used for BACKPRESSURE (e.g. File Readers). It sleeps efficiently

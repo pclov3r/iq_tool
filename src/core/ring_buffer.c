@@ -8,20 +8,46 @@
 #include "log.h"
 #include "mem_arena.h"
 #include "platform.h"
-#include <pthread.h>
 #include <stdalign.h>  // C11 Alignment
 #include <stdatomic.h> // C11 Atomics
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
+#if defined(_WIN32)
 #include <malloc.h>
 #include <windows.h>
+#elif defined(__APPLE__)
+#include <dispatch/dispatch.h>
 #else
 #include <errno.h>
+#include <semaphore.h>
 #include <time.h>
 #endif
+
+// Internal sentinel stored in clear_target when no clear request is pending.
+// Not a tunable: any value >= capacity works, SIZE_MAX can never be a valid
+// buffer index.
+#define RING_BUFFER_NO_CLEAR_PENDING SIZE_MAX
+
+/*
+ * WakeSignal: a binary, auto-reset wakeup with no user-space mutex.
+ * Posting never blocks, so it is safe to call from SDR and audio callbacks.
+ *   Windows: auto-reset Event object
+ *   macOS:   dispatch_semaphore (unnamed POSIX semaphores are unsupported)
+ *   Linux:   POSIX sem_t (futex-backed), monotonic timeout via sem_clockwait
+ */
+typedef struct {
+#if defined(_WIN32)
+  HANDLE handle;
+#elif defined(__APPLE__)
+  dispatch_semaphore_t handle;
+#else
+  sem_t handle;
+#endif
+  bool initialized;
+} WakeSignal;
 
 struct RingBuffer {
   unsigned char *buffer;
@@ -35,26 +61,112 @@ struct RingBuffer {
   alignas(CACHE_LINE_PADDING) atomic_size_t write_pos;
   alignas(CACHE_LINE_PADDING) atomic_size_t read_pos;
 
-  // Isolates the reader index from the state and mutexes below.
+  // Isolates the reader index from the state and wake signals below.
   alignas(CACHE_LINE_PADDING) atomic_int state;
 
-  // Synchronization for Backpressure (Producer Waiting)
-  // These are NOT used by the lock-free writer (SDR hardware thread).
-  pthread_mutex_t sync_mutex;
-  pthread_cond_t space_free_cond;
+  // Pending clear request: the write position to discard up to, or
+  // RING_BUFFER_NO_CLEAR_PENDING. Only the consumer applies it, so read_pos
+  // always has exactly one writer.
+  atomic_size_t clear_target;
 
-  // Synchronization for Latency (Consumer Waiting)
-  // Used to wake up the reader immediately when a block arrives.
-#ifdef _WIN32
-  HANDLE block_ready_event;
-#else
-  // Replaced sem_t with manual Auto-Reset Event logic to match Windows behavior
-  // and ensure CLOCK_MONOTONIC usage (immune to time jumps).
-  pthread_mutex_t event_mutex;
-  pthread_cond_t event_cond;
-  bool event_signaled;
-#endif
+  // Latency: the consumer parks here when empty; the producer posts after
+  // publishing new data.
+  WakeSignal data_ready;
+
+  // Backpressure: the producer parks here when full; the consumer posts after
+  // freeing space. Not used by the lock-free writer (SDR hardware thread).
+  WakeSignal space_free;
 };
+
+// --- Wake Signal ---
+
+static bool wake_signal_init(WakeSignal *signal) {
+#if defined(_WIN32)
+  signal->handle = CreateEvent(NULL, FALSE, FALSE, NULL);
+  signal->initialized = (signal->handle != NULL);
+#elif defined(__APPLE__)
+  signal->handle = dispatch_semaphore_create(0);
+  signal->initialized = (signal->handle != NULL);
+#else
+  signal->initialized = (sem_init(&signal->handle, 0, 0) == 0);
+#endif
+  return signal->initialized;
+}
+
+static void wake_signal_destroy(WakeSignal *signal) {
+  if (!signal->initialized)
+    return;
+  signal->initialized = false;
+#if defined(_WIN32)
+  CloseHandle(signal->handle);
+  signal->handle = NULL;
+#elif defined(__APPLE__)
+  dispatch_release(signal->handle);
+  signal->handle = NULL;
+#else
+  sem_destroy(&signal->handle);
+#endif
+}
+
+static void wake_signal_post(WakeSignal *signal) {
+#if defined(_WIN32)
+  SetEvent(signal->handle);
+#elif defined(__APPLE__)
+  dispatch_semaphore_signal(signal->handle);
+#else
+  sem_post(&signal->handle);
+#endif
+}
+
+// Discards stale posts left over from an earlier park. Must be called BEFORE
+// registering as a waiter, so a post meant for the upcoming park is never lost.
+static void wake_signal_discard_pending(WakeSignal *signal) {
+#if defined(_WIN32)
+  ResetEvent(signal->handle);
+#elif defined(__APPLE__)
+  while (dispatch_semaphore_wait(signal->handle, DISPATCH_TIME_NOW) == 0) {
+  }
+#else
+  while (sem_trywait(&signal->handle) == 0) {
+  }
+#endif
+}
+
+static void wake_signal_wait(WakeSignal *signal, uint32_t timeout_ms) {
+#if defined(_WIN32)
+  WaitForSingleObject(signal->handle, timeout_ms);
+#elif defined(__APPLE__)
+  dispatch_semaphore_wait(
+      signal->handle,
+      dispatch_time(DISPATCH_TIME_NOW,
+                    (int64_t)timeout_ms * (int64_t)NSEC_PER_MSEC));
+#else
+#ifdef HAVE_SEM_CLOCKWAIT
+  const clockid_t wait_clock = CLOCK_MONOTONIC; // Immune to wall-clock jumps
+#else
+  const clockid_t wait_clock = CLOCK_REALTIME; // sem_timedwait requires it
+#endif
+  struct timespec deadline;
+  clock_gettime(wait_clock, &deadline);
+  deadline.tv_sec += (time_t)(timeout_ms / 1000U);
+  deadline.tv_nsec += (long)(timeout_ms % 1000U) * 1000000L;
+  if (deadline.tv_nsec >= 1000000000L) {
+    deadline.tv_sec += 1;
+    deadline.tv_nsec -= 1000000000L;
+  }
+
+  int wait_result;
+  do {
+#ifdef HAVE_SEM_CLOCKWAIT
+    wait_result = sem_clockwait(&signal->handle, wait_clock, &deadline);
+#else
+    wait_result = sem_timedwait(&signal->handle, &deadline);
+#endif
+  } while (wait_result != 0 && errno == EINTR);
+#endif
+}
+
+// --- Internal Helpers ---
 
 static inline bool is_writable_state(int state) {
   return state == RING_BUFFER_STATE_ACTIVE ||
@@ -62,31 +174,124 @@ static inline bool is_writable_state(int state) {
          state == RING_BUFFER_STATE_PRODUCER_WAITING;
 }
 
-static inline void wake_waiting_consumer(RingBuffer *iob) {
-  int current_state =
-      atomic_load_explicit(&iob->state, memory_order_seq_cst);
-  if (current_state == RING_BUFFER_STATE_CONSUMER_WAITING) {
-    int expected_state = RING_BUFFER_STATE_CONSUMER_WAITING;
-    atomic_compare_exchange_strong_explicit(
-        &iob->state, &expected_state, RING_BUFFER_STATE_ACTIVE,
-        memory_order_acq_rel, memory_order_acquire);
-#ifdef _WIN32
-    if (iob->block_ready_event) {
-      SetEvent(iob->block_ready_event);
-    }
-#else
-    pthread_mutex_lock(&iob->event_mutex);
-    iob->event_signaled = true;
-    pthread_cond_signal(&iob->event_cond);
-    pthread_mutex_unlock(&iob->event_mutex);
-#endif
+static inline bool is_terminal_state(int state) {
+  return state == RING_BUFFER_STATE_SHUTDOWN ||
+         state == RING_BUFFER_STATE_DESTROYED ||
+         state == RING_BUFFER_STATE_UNINITIALIZED;
+}
+
+static inline size_t used_bytes_between(size_t read_index, size_t write_index,
+                                        size_t capacity) {
+  return (write_index >= read_index) ? (write_index - read_index)
+                                     : (capacity - (read_index - write_index));
+}
+
+// Returns a parked thread's state to ACTIVE. Fails harmlessly if the other
+// side already woke us, or if the buffer moved to DRAINING/SHUTDOWN.
+static inline void restore_active_state(RingBuffer *ring_buffer,
+                                        int waiting_state) {
+  int expected_state = waiting_state;
+  atomic_compare_exchange_strong_explicit(
+      &ring_buffer->state, &expected_state, RING_BUFFER_STATE_ACTIVE,
+      memory_order_acq_rel, memory_order_relaxed);
+}
+
+// Producer side, called after publishing write_pos. The seq_cst fence pairs
+// with the fence in the consumer's park path: either this thread observes
+// CONSUMER_WAITING, or the consumer observes the new write_pos before parking.
+static inline void wake_waiting_consumer(RingBuffer *ring_buffer) {
+  atomic_thread_fence(memory_order_seq_cst);
+  if (atomic_load_explicit(&ring_buffer->state, memory_order_relaxed) !=
+      RING_BUFFER_STATE_CONSUMER_WAITING)
+    return;
+  int expected_state = RING_BUFFER_STATE_CONSUMER_WAITING;
+  if (atomic_compare_exchange_strong_explicit(
+          &ring_buffer->state, &expected_state, RING_BUFFER_STATE_ACTIVE,
+          memory_order_acq_rel, memory_order_relaxed)) {
+    wake_signal_post(&ring_buffer->data_ready);
   }
 }
 
+// Consumer side, called after publishing read_pos. Mirror of
+// wake_waiting_consumer() for the backpressure path.
+static inline void wake_waiting_producer(RingBuffer *ring_buffer) {
+  atomic_thread_fence(memory_order_seq_cst);
+  if (atomic_load_explicit(&ring_buffer->state, memory_order_relaxed) !=
+      RING_BUFFER_STATE_PRODUCER_WAITING)
+    return;
+  int expected_state = RING_BUFFER_STATE_PRODUCER_WAITING;
+  if (atomic_compare_exchange_strong_explicit(
+          &ring_buffer->state, &expected_state, RING_BUFFER_STATE_ACTIVE,
+          memory_order_acq_rel, memory_order_relaxed)) {
+    wake_signal_post(&ring_buffer->space_free);
+  }
+}
+
+// CONSUMER ONLY: applies a pending ring_buffer_clear() request and returns the
+// (possibly advanced) read index.
+static size_t apply_pending_clear(RingBuffer *ring_buffer) {
+  size_t read_index =
+      atomic_load_explicit(&ring_buffer->read_pos, memory_order_relaxed);
+
+  // Fast path: plain load, no read-modify-write when nothing is pending.
+  if (atomic_load_explicit(&ring_buffer->clear_target, memory_order_relaxed) ==
+      RING_BUFFER_NO_CLEAR_PENDING)
+    return read_index;
+
+  size_t clear_target = atomic_exchange_explicit(
+      &ring_buffer->clear_target, RING_BUFFER_NO_CLEAR_PENDING,
+      memory_order_acquire);
+  if (clear_target == RING_BUFFER_NO_CLEAR_PENDING)
+    return read_index;
+
+  size_t write_index =
+      atomic_load_explicit(&ring_buffer->write_pos, memory_order_acquire);
+  size_t capacity = ring_buffer->capacity;
+  size_t discard_bytes = used_bytes_between(read_index, clear_target, capacity);
+  size_t used_bytes = used_bytes_between(read_index, write_index, capacity);
+
+  // Skip if the consumer has already read past the requested position.
+  if (discard_bytes == 0 || discard_bytes > used_bytes)
+    return read_index;
+
+  atomic_store_explicit(&ring_buffer->read_pos, clear_target,
+                        memory_order_release);
+  wake_waiting_producer(ring_buffer);
+  return clear_target;
+}
+
+// CONSUMER ONLY: copies out bytes starting at read_index and publishes the new
+// read position.
+static size_t consume_bytes(RingBuffer *ring_buffer, void *buffer,
+                            size_t read_index, size_t bytes_to_read) {
+  size_t capacity = ring_buffer->capacity;
+  size_t first_chunk_size = (read_index + bytes_to_read > capacity)
+                                ? (capacity - read_index)
+                                : bytes_to_read;
+  memcpy(buffer, ring_buffer->buffer + read_index, first_chunk_size);
+
+  size_t second_chunk_size = bytes_to_read - first_chunk_size;
+  if (second_chunk_size > 0) {
+    memcpy((unsigned char *)buffer + first_chunk_size, ring_buffer->buffer,
+           second_chunk_size);
+  }
+
+  atomic_store_explicit(&ring_buffer->read_pos,
+                        (read_index + bytes_to_read) % capacity,
+                        memory_order_release);
+
+  // Signal Backpressure: wake the producer ONLY if parked in PRODUCER_WAITING
+  wake_waiting_producer(ring_buffer);
+
+  return bytes_to_read;
+}
+
+// --- Public API ---
+
 RingBuffer *ring_buffer_create(size_t capacity, MemoryArena *arena) {
-  RingBuffer *iob =
+  RingBuffer *ring_buffer =
       (RingBuffer *)mem_arena_alloc(arena, sizeof(RingBuffer), true);
-  if (!iob) {
+  if (!ring_buffer) {
     log_fatal("Failed to allocate memory for RingBuffer struct from arena.");
     return NULL;
   }
@@ -94,92 +299,63 @@ RingBuffer *ring_buffer_create(size_t capacity, MemoryArena *arena) {
   size_t aligned_capacity =
       (capacity + MEM_ARENA_ALIGNMENT - 1) & ~(MEM_ARENA_ALIGNMENT - 1);
 
-  iob->buffer =
+  ring_buffer->buffer =
       (unsigned char *)mem_arena_alloc(arena, aligned_capacity, false);
-  if (!iob->buffer) {
+  if (!ring_buffer->buffer) {
     log_fatal(
         "Failed to allocate memory for RingBuffer data buffer from arena.");
     return NULL;
   }
 
-  iob->capacity = aligned_capacity;
-  atomic_init(&iob->write_pos, 0);
-  atomic_init(&iob->read_pos, 0);
-  atomic_init(&iob->state, RING_BUFFER_STATE_ACTIVE);
+  ring_buffer->capacity = aligned_capacity;
+  atomic_init(&ring_buffer->write_pos, 0);
+  atomic_init(&ring_buffer->read_pos, 0);
+  atomic_init(&ring_buffer->clear_target, RING_BUFFER_NO_CLEAR_PENDING);
 
-  pthread_mutex_init(&iob->sync_mutex, NULL);
-  pthread_cond_init(&iob->space_free_cond, NULL);
-
-#ifdef _WIN32
-  iob->block_ready_event = CreateEvent(NULL, FALSE, FALSE, NULL);
-  if (!iob->block_ready_event) {
-    log_fatal("Failed to create RingBuffer event.");
+  if (!wake_signal_init(&ring_buffer->data_ready)) {
+    log_fatal("Failed to create RingBuffer data-ready signal.");
     return NULL;
   }
-#else
-  if (pthread_mutex_init(&iob->event_mutex, NULL) != 0) {
-    log_fatal("Failed to initialize RingBuffer event mutex.");
+  if (!wake_signal_init(&ring_buffer->space_free)) {
+    log_fatal("Failed to create RingBuffer space-free signal.");
+    wake_signal_destroy(&ring_buffer->data_ready);
     return NULL;
   }
 
-  pthread_condattr_t attr;
-  pthread_condattr_init(&attr);
-  pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
-
-  if (pthread_cond_init(&iob->event_cond, &attr) != 0) {
-    log_fatal("Failed to initialize RingBuffer event cond.");
-    pthread_condattr_destroy(&attr);
-    return NULL;
-  }
-  pthread_condattr_destroy(&attr);
-
-  iob->event_signaled = false;
-#endif
-
-  return iob;
+  atomic_init(&ring_buffer->state, RING_BUFFER_STATE_ACTIVE);
+  return ring_buffer;
 }
 
-void ring_buffer_destroy(RingBuffer *iob) {
-  if (!iob)
+void ring_buffer_destroy(RingBuffer *ring_buffer) {
+  if (!ring_buffer)
     return;
 
-  int expected = atomic_load(&iob->state);
-  if (expected == RING_BUFFER_STATE_UNINITIALIZED ||
-      expected == RING_BUFFER_STATE_DESTROYED) {
+  int expected_state = atomic_load(&ring_buffer->state);
+  if (expected_state == RING_BUFFER_STATE_UNINITIALIZED ||
+      expected_state == RING_BUFFER_STATE_DESTROYED) {
     return;
   }
-  atomic_store(&iob->state, RING_BUFFER_STATE_DESTROYED);
+  atomic_store(&ring_buffer->state, RING_BUFFER_STATE_DESTROYED);
 
-  pthread_mutex_destroy(&iob->sync_mutex);
-  pthread_cond_destroy(&iob->space_free_cond);
-
-#ifdef _WIN32
-  if (iob->block_ready_event) {
-    CloseHandle(iob->block_ready_event);
-    iob->block_ready_event = NULL;
-  }
-#else
-  pthread_mutex_destroy(&iob->event_mutex);
-  pthread_cond_destroy(&iob->event_cond);
-#endif
+  wake_signal_destroy(&ring_buffer->space_free);
+  wake_signal_destroy(&ring_buffer->data_ready);
 }
 
 // PRODUCER: High Priority, Lock-Free, Never Sleeps
-size_t ring_buffer_write(RingBuffer *iob, const void *data, size_t bytes) {
-  if (!iob || !data || bytes == 0 ||
+size_t ring_buffer_write(RingBuffer *ring_buffer, const void *data,
+                         size_t bytes) {
+  if (!ring_buffer || !data || bytes == 0 ||
       !is_writable_state(
-          atomic_load_explicit(&iob->state, memory_order_acquire)))
+          atomic_load_explicit(&ring_buffer->state, memory_order_acquire)))
     return 0;
 
   size_t write_index =
-      atomic_load_explicit(&iob->write_pos, memory_order_relaxed);
+      atomic_load_explicit(&ring_buffer->write_pos, memory_order_relaxed);
   size_t read_index =
-      atomic_load_explicit(&iob->read_pos, memory_order_acquire);
-  size_t capacity = iob->capacity;
+      atomic_load_explicit(&ring_buffer->read_pos, memory_order_acquire);
+  size_t capacity = ring_buffer->capacity;
 
-  size_t used_bytes = (write_index >= read_index)
-                          ? (write_index - read_index)
-                          : (capacity - (read_index - write_index));
+  size_t used_bytes = used_bytes_between(read_index, write_index, capacity);
   size_t available_space = (capacity - 1) - used_bytes;
 
   if (bytes > available_space) {
@@ -188,41 +364,40 @@ size_t ring_buffer_write(RingBuffer *iob, const void *data, size_t bytes) {
 
   size_t first_chunk_size =
       (write_index + bytes > capacity) ? (capacity - write_index) : bytes;
-  memcpy(iob->buffer + write_index, data, first_chunk_size);
+  memcpy(ring_buffer->buffer + write_index, data, first_chunk_size);
 
   size_t second_chunk_size = bytes - first_chunk_size;
   if (second_chunk_size > 0) {
-    memcpy(iob->buffer, (const unsigned char *)data + first_chunk_size,
+    memcpy(ring_buffer->buffer, (const unsigned char *)data + first_chunk_size,
            second_chunk_size);
   }
 
-  atomic_store_explicit(&iob->write_pos, (write_index + bytes) % capacity,
+  atomic_store_explicit(&ring_buffer->write_pos,
+                        (write_index + bytes) % capacity,
                         memory_order_release);
 
-  wake_waiting_consumer(iob);
+  wake_waiting_consumer(ring_buffer);
 
   return bytes;
 }
 
 // PRODUCER: High Priority, Lock-Free, Scatter-Gather
-size_t ring_buffer_write_packet(RingBuffer *iob, const void *header,
-                                size_t h_length, const void *payload,
-                                size_t p_length) {
-  if (!iob || !header ||
+size_t ring_buffer_write_packet(RingBuffer *ring_buffer, const void *header,
+                                size_t header_length, const void *payload,
+                                size_t payload_length) {
+  if (!ring_buffer || !header ||
       !is_writable_state(
-          atomic_load_explicit(&iob->state, memory_order_acquire)))
+          atomic_load_explicit(&ring_buffer->state, memory_order_acquire)))
     return 0;
 
-  size_t total_bytes = h_length + p_length;
+  size_t total_bytes = header_length + payload_length;
   size_t write_index =
-      atomic_load_explicit(&iob->write_pos, memory_order_relaxed);
+      atomic_load_explicit(&ring_buffer->write_pos, memory_order_relaxed);
   size_t read_index =
-      atomic_load_explicit(&iob->read_pos, memory_order_acquire);
-  size_t capacity = iob->capacity;
+      atomic_load_explicit(&ring_buffer->read_pos, memory_order_acquire);
+  size_t capacity = ring_buffer->capacity;
 
-  size_t used_bytes = (write_index >= read_index)
-                          ? (write_index - read_index)
-                          : (capacity - (read_index - write_index));
+  size_t used_bytes = used_bytes_between(read_index, write_index, capacity);
   size_t available_space = (capacity - 1) - used_bytes;
 
   if (total_bytes > available_space) {
@@ -230,64 +405,63 @@ size_t ring_buffer_write_packet(RingBuffer *iob, const void *header,
   }
 
   // 1. Write Header
-  size_t header_chunk1 =
-      (write_index + h_length > capacity) ? (capacity - write_index) : h_length;
-  memcpy(iob->buffer + write_index, header, header_chunk1);
+  size_t header_chunk1 = (write_index + header_length > capacity)
+                             ? (capacity - write_index)
+                             : header_length;
+  memcpy(ring_buffer->buffer + write_index, header, header_chunk1);
 
-  size_t header_chunk2 = h_length - header_chunk1;
+  size_t header_chunk2 = header_length - header_chunk1;
   if (header_chunk2 > 0) {
-    memcpy(iob->buffer, (const unsigned char *)header + header_chunk1,
+    memcpy(ring_buffer->buffer, (const unsigned char *)header + header_chunk1,
            header_chunk2);
   }
-  write_index = (write_index + h_length) % capacity;
+  write_index = (write_index + header_length) % capacity;
 
   // 2. Write Payload (if exists)
-  if (payload && p_length > 0) {
-    size_t payload_chunk1 = (write_index + p_length > capacity)
+  if (payload && payload_length > 0) {
+    size_t payload_chunk1 = (write_index + payload_length > capacity)
                                 ? (capacity - write_index)
-                                : p_length;
-    memcpy(iob->buffer + write_index, payload, payload_chunk1);
+                                : payload_length;
+    memcpy(ring_buffer->buffer + write_index, payload, payload_chunk1);
 
-    size_t payload_chunk2 = p_length - payload_chunk1;
+    size_t payload_chunk2 = payload_length - payload_chunk1;
     if (payload_chunk2 > 0) {
-      memcpy(iob->buffer, (const unsigned char *)payload + payload_chunk1,
-             payload_chunk2);
+      memcpy(ring_buffer->buffer,
+             (const unsigned char *)payload + payload_chunk1, payload_chunk2);
     }
-    write_index = (write_index + p_length) % capacity;
+    write_index = (write_index + payload_length) % capacity;
   }
 
   // 3. Update write_pos and signal ONCE
-  atomic_store_explicit(&iob->write_pos, write_index, memory_order_release);
+  atomic_store_explicit(&ring_buffer->write_pos, write_index,
+                        memory_order_release);
 
-  wake_waiting_consumer(iob);
+  wake_waiting_consumer(ring_buffer);
 
   return total_bytes;
 }
 
 // CONSUMER: Low Priority, Blocking (Sleeps if empty)
-size_t ring_buffer_read(RingBuffer *iob, void *buffer, size_t max_bytes) {
-  if (!iob || !buffer || max_bytes == 0)
+size_t ring_buffer_read(RingBuffer *ring_buffer, void *buffer,
+                        size_t max_bytes) {
+  if (!ring_buffer || !buffer || max_bytes == 0)
     return 0;
 
-  size_t write_index;
+  size_t capacity = ring_buffer->capacity;
   size_t read_index;
-  size_t capacity;
+  size_t write_index;
   size_t available_bytes;
 
   while (true) {
-    write_index = atomic_load_explicit(&iob->write_pos, memory_order_acquire);
-    read_index = atomic_load_explicit(&iob->read_pos, memory_order_relaxed);
-    capacity = iob->capacity;
-
-    int current_state = atomic_load_explicit(&iob->state, memory_order_acquire);
-    if (current_state == RING_BUFFER_STATE_SHUTDOWN ||
-        current_state == RING_BUFFER_STATE_DESTROYED ||
-        current_state == RING_BUFFER_STATE_UNINITIALIZED)
+    int current_state =
+        atomic_load_explicit(&ring_buffer->state, memory_order_acquire);
+    if (is_terminal_state(current_state))
       return 0;
 
-    available_bytes = (write_index >= read_index)
-                          ? (write_index - read_index)
-                          : (capacity - (read_index - write_index));
+    read_index = apply_pending_clear(ring_buffer);
+    write_index =
+        atomic_load_explicit(&ring_buffer->write_pos, memory_order_acquire);
+    available_bytes = used_bytes_between(read_index, write_index, capacity);
 
     if (available_bytes > 0) {
       break;
@@ -297,249 +471,189 @@ size_t ring_buffer_read(RingBuffer *iob, void *buffer, size_t max_bytes) {
       return 0;
     }
 
-    // 1. Transition ACTIVE -> CONSUMER_WAITING (seq_cst prevents reordering)
+    // 1. Drop stale posts, then register: ACTIVE -> CONSUMER_WAITING
+    wake_signal_discard_pending(&ring_buffer->data_ready);
     int expected_state = RING_BUFFER_STATE_ACTIVE;
     if (!atomic_compare_exchange_strong_explicit(
-            &iob->state, &expected_state, RING_BUFFER_STATE_CONSUMER_WAITING,
-            memory_order_seq_cst, memory_order_seq_cst)) {
+            &ring_buffer->state, &expected_state,
+            RING_BUFFER_STATE_CONSUMER_WAITING, memory_order_seq_cst,
+            memory_order_acquire)) {
       if (expected_state == RING_BUFFER_STATE_DRAINING) {
         continue;
       }
       if (!is_writable_state(expected_state)) {
         return 0;
       }
+      // Could not register (producer is parked): fall through to a bounded
+      // timed wait instead of spinning.
     }
 
-    // 2. Double-check if data arrived while transitioning to CONSUMER_WAITING
-    write_index = atomic_load_explicit(&iob->write_pos, memory_order_acquire);
-    available_bytes = (write_index >= read_index)
-                          ? (write_index - read_index)
-                          : (capacity - (read_index - write_index));
+    // 2. Pairs with the fence in wake_waiting_consumer(): re-check for data
+    // published while we were registering.
+    atomic_thread_fence(memory_order_seq_cst);
+    write_index =
+        atomic_load_explicit(&ring_buffer->write_pos, memory_order_acquire);
+    available_bytes = used_bytes_between(read_index, write_index, capacity);
     if (available_bytes > 0) {
-      int wake_expected = RING_BUFFER_STATE_CONSUMER_WAITING;
-      atomic_compare_exchange_strong_explicit(
-          &iob->state, &wake_expected, RING_BUFFER_STATE_ACTIVE,
-          memory_order_acq_rel, memory_order_acquire);
+      restore_active_state(ring_buffer, RING_BUFFER_STATE_CONSUMER_WAITING);
       break;
     }
 
-    // Buffer still empty, wait efficiently for the producer signal
-#ifdef _WIN32
-    if (iob->block_ready_event) {
-      WaitForSingleObject(iob->block_ready_event, 100);
-    }
-#else
-    struct timespec timeout_spec;
-    clock_gettime(CLOCK_MONOTONIC, &timeout_spec);
-
-    // Add 100ms
-    timeout_spec.tv_nsec += 100000000;
-    if (timeout_spec.tv_nsec >= 1000000000) {
-      timeout_spec.tv_sec += 1;
-      timeout_spec.tv_nsec -= 1000000000;
-    }
-
-    pthread_mutex_lock(&iob->event_mutex);
-
-    // Auto-Reset Event Logic:
-    // Wait until signaled or timeout.
-    while (!iob->event_signaled &&
-           atomic_load_explicit(&iob->state, memory_order_acquire) ==
-               RING_BUFFER_STATE_CONSUMER_WAITING) {
-      int wait_result = pthread_cond_timedwait(
-          &iob->event_cond, &iob->event_mutex, &timeout_spec);
-      if (wait_result == ETIMEDOUT)
-        break;
-    }
-
-    // Clear flag immediately (Auto-Reset) so we sleep again next time
-    // unless producer signals again.
-    iob->event_signaled = false;
-
-    pthread_mutex_unlock(&iob->event_mutex);
-#endif
-    int post_wait_expected = RING_BUFFER_STATE_CONSUMER_WAITING;
-    atomic_compare_exchange_strong_explicit(
-        &iob->state, &post_wait_expected, RING_BUFFER_STATE_ACTIVE,
-        memory_order_acq_rel, memory_order_acquire);
+    // 3. Buffer still empty: park until the producer posts or timeout.
+    wake_signal_wait(&ring_buffer->data_ready, RING_BUFFER_WAIT_TIMEOUT_MS);
+    restore_active_state(ring_buffer, RING_BUFFER_STATE_CONSUMER_WAITING);
   }
 
   size_t bytes_to_read =
       (max_bytes > available_bytes) ? available_bytes : max_bytes;
+  return consume_bytes(ring_buffer, buffer, read_index, bytes_to_read);
+}
 
-  size_t first_chunk_size = (read_index + bytes_to_read > capacity)
-                                ? (capacity - read_index)
-                                : bytes_to_read;
-  memcpy(buffer, iob->buffer + read_index, first_chunk_size);
+// CONSUMER: Real-Time Safe, Lock-Free, Never Sleeps
+size_t ring_buffer_try_read(RingBuffer *ring_buffer, void *buffer,
+                            size_t max_bytes) {
+  if (!ring_buffer || !buffer || max_bytes == 0)
+    return 0;
 
-  size_t second_chunk_size = bytes_to_read - first_chunk_size;
-  if (second_chunk_size > 0) {
-    memcpy((unsigned char *)buffer + first_chunk_size, iob->buffer,
-           second_chunk_size);
-  }
+  if (is_terminal_state(
+          atomic_load_explicit(&ring_buffer->state, memory_order_acquire)))
+    return 0;
 
-  atomic_store_explicit(&iob->read_pos, (read_index + bytes_to_read) % capacity,
-                        memory_order_release);
+  size_t read_index = apply_pending_clear(ring_buffer);
+  size_t write_index =
+      atomic_load_explicit(&ring_buffer->write_pos, memory_order_acquire);
+  size_t available_bytes =
+      used_bytes_between(read_index, write_index, ring_buffer->capacity);
+  if (available_bytes == 0)
+    return 0;
 
-  // Signal Backpressure: Wake up producer ONLY if parked in PRODUCER_WAITING
-  int post_read_state =
-      atomic_load_explicit(&iob->state, memory_order_seq_cst);
-  if (post_read_state == RING_BUFFER_STATE_PRODUCER_WAITING) {
-    int wake_producer_expected = RING_BUFFER_STATE_PRODUCER_WAITING;
-    atomic_compare_exchange_strong_explicit(
-        &iob->state, &wake_producer_expected, RING_BUFFER_STATE_ACTIVE,
-        memory_order_acq_rel, memory_order_acquire);
-    pthread_mutex_lock(&iob->sync_mutex);
-    pthread_cond_broadcast(&iob->space_free_cond);
-    pthread_mutex_unlock(&iob->sync_mutex);
-  }
-
-  return bytes_to_read;
+  size_t bytes_to_read =
+      (max_bytes > available_bytes) ? available_bytes : max_bytes;
+  return consume_bytes(ring_buffer, buffer, read_index, bytes_to_read);
 }
 
 // BACKPRESSURE WAIT: Used by File Readers / Audio Demodulators (Producers)
-void ring_buffer_wait_for_threshold(RingBuffer *iob, size_t target_size) {
-  if (!iob ||
-      !is_writable_state(atomic_load_explicit(&iob->state, memory_order_acquire)))
+void ring_buffer_wait_for_threshold(RingBuffer *ring_buffer,
+                                    size_t target_size) {
+  if (!ring_buffer)
     return;
 
-  if (ring_buffer_get_size(iob) <= target_size)
-    return;
+  while (true) {
+    if (!is_writable_state(
+            atomic_load_explicit(&ring_buffer->state, memory_order_acquire)))
+      return;
 
-  pthread_mutex_lock(&iob->sync_mutex);
-  while (ring_buffer_get_size(iob) > target_size) {
+    if (ring_buffer_get_size(ring_buffer) <= target_size)
+      return;
+
+    // 1. Drop stale posts, then register: ACTIVE -> PRODUCER_WAITING
+    wake_signal_discard_pending(&ring_buffer->space_free);
     int expected_state = RING_BUFFER_STATE_ACTIVE;
     if (!atomic_compare_exchange_strong_explicit(
-            &iob->state, &expected_state, RING_BUFFER_STATE_PRODUCER_WAITING,
-            memory_order_seq_cst, memory_order_seq_cst)) {
+            &ring_buffer->state, &expected_state,
+            RING_BUFFER_STATE_PRODUCER_WAITING, memory_order_seq_cst,
+            memory_order_acquire)) {
       if (!is_writable_state(expected_state)) {
-        break;
+        return;
       }
+      // Could not register (consumer is parked): fall through to a bounded
+      // timed wait instead of spinning.
     }
-    if (ring_buffer_get_size(iob) <= target_size) {
-      break;
+
+    // 2. Pairs with the fence in wake_waiting_producer(): re-check for space
+    // freed while we were registering.
+    atomic_thread_fence(memory_order_seq_cst);
+    if (ring_buffer_get_size(ring_buffer) <= target_size) {
+      restore_active_state(ring_buffer, RING_BUFFER_STATE_PRODUCER_WAITING);
+      return;
     }
-    pthread_cond_wait(&iob->space_free_cond, &iob->sync_mutex);
-    if (!is_writable_state(
-            atomic_load_explicit(&iob->state, memory_order_acquire))) {
-      break;
-    }
+
+    // 3. Still above threshold: park until the consumer posts or timeout.
+    wake_signal_wait(&ring_buffer->space_free, RING_BUFFER_WAIT_TIMEOUT_MS);
+    restore_active_state(ring_buffer, RING_BUFFER_STATE_PRODUCER_WAITING);
   }
-  int restore_expected = RING_BUFFER_STATE_PRODUCER_WAITING;
-  atomic_compare_exchange_strong_explicit(
-      &iob->state, &restore_expected, RING_BUFFER_STATE_ACTIVE,
-      memory_order_acq_rel, memory_order_acquire);
-  pthread_mutex_unlock(&iob->sync_mutex);
 }
 
-void ring_buffer_drain(RingBuffer *iob) {
-  if (!iob)
+void ring_buffer_drain(RingBuffer *ring_buffer) {
+  if (!ring_buffer)
     return;
-  int expected_state = atomic_load_explicit(&iob->state, memory_order_acquire);
+  int expected_state =
+      atomic_load_explicit(&ring_buffer->state, memory_order_acquire);
   while (is_writable_state(expected_state)) {
     if (atomic_compare_exchange_weak_explicit(
-            &iob->state, &expected_state, RING_BUFFER_STATE_DRAINING,
+            &ring_buffer->state, &expected_state, RING_BUFFER_STATE_DRAINING,
             memory_order_acq_rel, memory_order_acquire)) {
-      // Wake up backpressure waiters
-      pthread_mutex_lock(&iob->sync_mutex);
-      pthread_cond_broadcast(&iob->space_free_cond);
-      pthread_mutex_unlock(&iob->sync_mutex);
-
-      // Wake up consumer
-#ifdef _WIN32
-      if (iob->block_ready_event) {
-        SetEvent(iob->block_ready_event);
-      }
-#else
-      pthread_mutex_lock(&iob->event_mutex);
-      iob->event_signaled = true;
-      pthread_cond_signal(&iob->event_cond);
-      pthread_mutex_unlock(&iob->event_mutex);
-#endif
+      // Wake any parked thread so it observes DRAINING
+      wake_signal_post(&ring_buffer->space_free);
+      wake_signal_post(&ring_buffer->data_ready);
       return;
     }
   }
 }
 
-void ring_buffer_shutdown(RingBuffer *iob) {
-  if (!iob)
+void ring_buffer_shutdown(RingBuffer *ring_buffer) {
+  if (!ring_buffer)
     return;
-  int current_state = atomic_load_explicit(&iob->state, memory_order_acquire);
-  if (current_state == RING_BUFFER_STATE_UNINITIALIZED ||
-      current_state == RING_BUFFER_STATE_DESTROYED ||
-      current_state == RING_BUFFER_STATE_SHUTDOWN)
+  int current_state =
+      atomic_load_explicit(&ring_buffer->state, memory_order_acquire);
+  if (is_terminal_state(current_state))
     return;
-  atomic_store_explicit(&iob->state, RING_BUFFER_STATE_SHUTDOWN,
-                        memory_order_release);
+  atomic_store_explicit(&ring_buffer->state, RING_BUFFER_STATE_SHUTDOWN,
+                        memory_order_seq_cst);
 
-  pthread_mutex_lock(&iob->sync_mutex);
-  pthread_cond_broadcast(&iob->space_free_cond);
-  pthread_mutex_unlock(&iob->sync_mutex);
-
-  // Wake up consumer
-#ifdef _WIN32
-  if (iob->block_ready_event) {
-    SetEvent(iob->block_ready_event);
-  }
-#else
-  pthread_mutex_lock(&iob->event_mutex);
-  iob->event_signaled = true;
-  pthread_cond_signal(&iob->event_cond);
-  pthread_mutex_unlock(&iob->event_mutex);
-#endif
+  // Wake any parked thread so it observes SHUTDOWN
+  wake_signal_post(&ring_buffer->space_free);
+  wake_signal_post(&ring_buffer->data_ready);
 }
 
-size_t ring_buffer_get_size(RingBuffer *iob) {
-  if (!iob)
+size_t ring_buffer_get_size(RingBuffer *ring_buffer) {
+  if (!ring_buffer)
     return 0;
-  int current_state = atomic_load_explicit(&iob->state, memory_order_acquire);
+  int current_state =
+      atomic_load_explicit(&ring_buffer->state, memory_order_acquire);
   if (current_state == RING_BUFFER_STATE_UNINITIALIZED ||
       current_state == RING_BUFFER_STATE_DESTROYED)
     return 0;
   size_t write_index =
-      atomic_load_explicit(&iob->write_pos, memory_order_acquire);
+      atomic_load_explicit(&ring_buffer->write_pos, memory_order_acquire);
   size_t read_index =
-      atomic_load_explicit(&iob->read_pos, memory_order_acquire);
-  if (write_index >= read_index)
-    return write_index - read_index;
-  return iob->capacity - (read_index - write_index);
+      atomic_load_explicit(&ring_buffer->read_pos, memory_order_acquire);
+  return used_bytes_between(read_index, write_index, ring_buffer->capacity);
 }
 
-size_t ring_buffer_get_capacity(RingBuffer *iob) {
-  if (!iob)
+size_t ring_buffer_get_capacity(RingBuffer *ring_buffer) {
+  if (!ring_buffer)
     return 0;
-  int current_state = atomic_load_explicit(&iob->state, memory_order_acquire);
+  int current_state =
+      atomic_load_explicit(&ring_buffer->state, memory_order_acquire);
   if (current_state == RING_BUFFER_STATE_UNINITIALIZED ||
       current_state == RING_BUFFER_STATE_DESTROYED)
     return 0;
-  return iob->capacity;
+  return ring_buffer->capacity;
 }
 
-void ring_buffer_clear(RingBuffer *iob) {
-  if (!iob)
+void ring_buffer_clear(RingBuffer *ring_buffer) {
+  if (!ring_buffer)
     return;
-  int current_state = atomic_load_explicit(&iob->state, memory_order_acquire);
+  int current_state =
+      atomic_load_explicit(&ring_buffer->state, memory_order_acquire);
   if (current_state == RING_BUFFER_STATE_UNINITIALIZED ||
       current_state == RING_BUFFER_STATE_DESTROYED)
     return;
-  // Safe Lock-Free Clear: Advance read_pos to match write_pos
+
+  // Request the clear instead of writing read_pos here: read_pos must only be
+  // written by the consumer, otherwise a concurrent read can store its own
+  // position over ours and silently undo the clear. The consumer discards
+  // everything published up to this write position on its next read.
   size_t write_index =
-      atomic_load_explicit(&iob->write_pos, memory_order_acquire);
-  atomic_store_explicit(&iob->read_pos, write_index, memory_order_release);
-
-  int expected_state = RING_BUFFER_STATE_PRODUCER_WAITING;
-  atomic_compare_exchange_strong_explicit(
-      &iob->state, &expected_state, RING_BUFFER_STATE_ACTIVE,
-      memory_order_acq_rel, memory_order_acquire);
-
-  pthread_mutex_lock(&iob->sync_mutex);
-  pthread_cond_broadcast(&iob->space_free_cond);
-  pthread_mutex_unlock(&iob->sync_mutex);
+      atomic_load_explicit(&ring_buffer->write_pos, memory_order_acquire);
+  atomic_store_explicit(&ring_buffer->clear_target, write_index,
+                        memory_order_release);
 }
 
-RingBufferState ring_buffer_get_state(const RingBuffer *iob) {
-  if (!iob)
+RingBufferState ring_buffer_get_state(const RingBuffer *ring_buffer) {
+  if (!ring_buffer)
     return RING_BUFFER_STATE_UNINITIALIZED;
-  return (RingBufferState)atomic_load_explicit(&iob->state,
+  return (RingBufferState)atomic_load_explicit(&ring_buffer->state,
                                                memory_order_acquire);
 }
