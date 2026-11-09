@@ -128,12 +128,15 @@ static bool _configure_filter_stage(AppConfig *config, AppContext *app) {
 }
 
 static inline void _normalize_filter_dc_gain(float *taps, unsigned int length) {
-  float sum = 0.0f;
-  for (unsigned int k = 0; k < length; k++)
-    sum += taps[k];
-  if (sum != 0.0f) {
-    for (unsigned int k = 0; k < length; k++)
-      taps[k] /= sum;
+  double sum = 0.0;
+  for (unsigned int tap_index = 0; tap_index < length; tap_index++) {
+    sum += (double)taps[tap_index];
+  }
+  if (fabs(sum) > FILTER_GAIN_ZERO_THRESHOLD) {
+    float gain_divisor = (float)sum;
+    for (unsigned int tap_index = 0; tap_index < length; tap_index++) {
+      taps[tap_index] /= gain_divisor;
+    }
   }
 }
 
