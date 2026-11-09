@@ -361,6 +361,8 @@ void platform_set_thread_name(const char *name) {
       pfnSetThreadDescription(GetCurrentThread(), wname);
     }
   }
+#elif defined(__APPLE__)
+  pthread_setname_np(name);
 #elif defined(HAVE_PTHREAD_SETNAME_NP) && defined(__linux__)
   char buf[16];
   strncpy(buf, name, sizeof(buf) - 1);
