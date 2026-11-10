@@ -1095,7 +1095,7 @@ static void input_sdrplay_cleanup(ModuleContext *context) {
       sdrplay_api_ReleaseDevice(private_data->sdr_device);
 #ifndef _WIN32
       log_debug("Waiting for SDRplay daemon to release device...");
-      sleep(1);
+      platform_sleep(1000);
 #endif
       // No free() needed, memory is in the arena
       private_data->sdr_device = NULL;
