@@ -183,13 +183,37 @@ WaitEventResult wait_event_wait_timeout(WaitEvent *wait_event,
   }
   return WAIT_EVENT_RESULT_INACTIVE;
 #elif defined(__APPLE__)
-  struct timespec relative_timeout;
-  relative_timeout.tv_sec = (time_t)(timeout_ms / 1000U);
-  relative_timeout.tv_nsec = (long)((timeout_ms % 1000U) * 1000000L);
+  struct timespec deadline;
+  clock_gettime(CLOCK_MONOTONIC, &deadline);
+  deadline.tv_sec += (time_t)(timeout_ms / 1000U);
+  deadline.tv_nsec += (long)((timeout_ms % 1000U) * 1000000L);
+  if (deadline.tv_nsec >= 1000000000L) {
+    deadline.tv_sec += 1;
+    deadline.tv_nsec -= 1000000000L;
+  }
 
   pthread_mutex_lock(&wait_event->mutex);
   while (atomic_load_explicit(&wait_event->state, memory_order_acquire) ==
          WAIT_EVENT_STATE_WAITING) {
+    struct timespec current_time;
+    clock_gettime(CLOCK_MONOTONIC, &current_time);
+
+    if (current_time.tv_sec > deadline.tv_sec ||
+        (current_time.tv_sec == deadline.tv_sec &&
+         current_time.tv_nsec >= deadline.tv_nsec)) {
+      break;
+    }
+
+    struct timespec relative_timeout;
+    relative_timeout.tv_sec = deadline.tv_sec - current_time.tv_sec;
+    if (deadline.tv_nsec >= current_time.tv_nsec) {
+      relative_timeout.tv_nsec = deadline.tv_nsec - current_time.tv_nsec;
+    } else {
+      relative_timeout.tv_sec -= 1;
+      relative_timeout.tv_nsec =
+          1000000000L + deadline.tv_nsec - current_time.tv_nsec;
+    }
+
     int wait_status = pthread_cond_timedwait_relative_np(
         &wait_event->cond, &wait_event->mutex, &relative_timeout);
     if (wait_status == ETIMEDOUT) {

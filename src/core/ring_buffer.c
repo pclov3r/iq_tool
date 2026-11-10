@@ -193,21 +193,20 @@ static inline void restore_active_state(RingBuffer *ring_buffer,
   int expected_state = waiting_state;
   atomic_compare_exchange_strong_explicit(
       &ring_buffer->state, &expected_state, RING_BUFFER_STATE_ACTIVE,
-      memory_order_acq_rel, memory_order_relaxed);
+      memory_order_seq_cst, memory_order_relaxed);
 }
 
-// Producer side, called after publishing write_pos. The seq_cst fence pairs
-// with the fence in the consumer's park path: either this thread observes
-// CONSUMER_WAITING, or the consumer observes the new write_pos before parking.
+// Producer side, called after publishing write_pos. Sequentially consistent
+// operations guarantee either this thread observes CONSUMER_WAITING, or the
+// consumer observes the new write_pos before parking.
 static inline void wake_waiting_consumer(RingBuffer *ring_buffer) {
-  atomic_thread_fence(memory_order_seq_cst);
-  if (atomic_load_explicit(&ring_buffer->state, memory_order_relaxed) !=
+  if (atomic_load_explicit(&ring_buffer->state, memory_order_seq_cst) !=
       RING_BUFFER_STATE_CONSUMER_WAITING)
     return;
   int expected_state = RING_BUFFER_STATE_CONSUMER_WAITING;
   if (atomic_compare_exchange_strong_explicit(
           &ring_buffer->state, &expected_state, RING_BUFFER_STATE_ACTIVE,
-          memory_order_acq_rel, memory_order_relaxed)) {
+          memory_order_seq_cst, memory_order_relaxed)) {
     wake_signal_post(&ring_buffer->data_ready);
   }
 }
@@ -215,14 +214,13 @@ static inline void wake_waiting_consumer(RingBuffer *ring_buffer) {
 // Consumer side, called after publishing read_pos. Mirror of
 // wake_waiting_consumer() for the backpressure path.
 static inline void wake_waiting_producer(RingBuffer *ring_buffer) {
-  atomic_thread_fence(memory_order_seq_cst);
-  if (atomic_load_explicit(&ring_buffer->state, memory_order_relaxed) !=
+  if (atomic_load_explicit(&ring_buffer->state, memory_order_seq_cst) !=
       RING_BUFFER_STATE_PRODUCER_WAITING)
     return;
   int expected_state = RING_BUFFER_STATE_PRODUCER_WAITING;
   if (atomic_compare_exchange_strong_explicit(
           &ring_buffer->state, &expected_state, RING_BUFFER_STATE_ACTIVE,
-          memory_order_acq_rel, memory_order_relaxed)) {
+          memory_order_seq_cst, memory_order_relaxed)) {
     wake_signal_post(&ring_buffer->space_free);
   }
 }
@@ -255,7 +253,7 @@ static size_t apply_pending_clear(RingBuffer *ring_buffer) {
     return read_index;
 
   atomic_store_explicit(&ring_buffer->read_pos, clear_target,
-                        memory_order_release);
+                        memory_order_seq_cst);
   wake_waiting_producer(ring_buffer);
   return clear_target;
 }
@@ -278,7 +276,7 @@ static size_t consume_bytes(RingBuffer *ring_buffer, void *buffer,
 
   atomic_store_explicit(&ring_buffer->read_pos,
                         (read_index + bytes_to_read) % capacity,
-                        memory_order_release);
+                        memory_order_seq_cst);
 
   // Signal Backpressure: wake the producer ONLY if parked in PRODUCER_WAITING
   wake_waiting_producer(ring_buffer);
@@ -374,7 +372,7 @@ size_t ring_buffer_write(RingBuffer *ring_buffer, const void *data,
 
   atomic_store_explicit(&ring_buffer->write_pos,
                         (write_index + bytes) % capacity,
-                        memory_order_release);
+                        memory_order_seq_cst);
 
   wake_waiting_consumer(ring_buffer);
 
@@ -434,7 +432,7 @@ size_t ring_buffer_write_packet(RingBuffer *ring_buffer, const void *header,
 
   // 3. Update write_pos and signal ONCE
   atomic_store_explicit(&ring_buffer->write_pos, write_index,
-                        memory_order_release);
+                        memory_order_seq_cst);
 
   wake_waiting_consumer(ring_buffer);
 
@@ -477,7 +475,7 @@ size_t ring_buffer_read(RingBuffer *ring_buffer, void *buffer,
     if (!atomic_compare_exchange_strong_explicit(
             &ring_buffer->state, &expected_state,
             RING_BUFFER_STATE_CONSUMER_WAITING, memory_order_seq_cst,
-            memory_order_acquire)) {
+            memory_order_seq_cst)) {
       if (expected_state == RING_BUFFER_STATE_DRAINING) {
         continue;
       }
@@ -488,11 +486,10 @@ size_t ring_buffer_read(RingBuffer *ring_buffer, void *buffer,
       // timed wait instead of spinning.
     }
 
-    // 2. Pairs with the fence in wake_waiting_consumer(): re-check for data
-    // published while we were registering.
-    atomic_thread_fence(memory_order_seq_cst);
+    // 2. Pairs with wake_waiting_consumer(): re-check for data published while
+    // we were registering.
     write_index =
-        atomic_load_explicit(&ring_buffer->write_pos, memory_order_acquire);
+        atomic_load_explicit(&ring_buffer->write_pos, memory_order_seq_cst);
     available_bytes = used_bytes_between(read_index, write_index, capacity);
     if (available_bytes > 0) {
       restore_active_state(ring_buffer, RING_BUFFER_STATE_CONSUMER_WAITING);
@@ -552,7 +549,7 @@ void ring_buffer_wait_for_threshold(RingBuffer *ring_buffer,
     if (!atomic_compare_exchange_strong_explicit(
             &ring_buffer->state, &expected_state,
             RING_BUFFER_STATE_PRODUCER_WAITING, memory_order_seq_cst,
-            memory_order_acquire)) {
+            memory_order_seq_cst)) {
       if (!is_writable_state(expected_state)) {
         return;
       }
@@ -560,10 +557,14 @@ void ring_buffer_wait_for_threshold(RingBuffer *ring_buffer,
       // timed wait instead of spinning.
     }
 
-    // 2. Pairs with the fence in wake_waiting_producer(): re-check for space
-    // freed while we were registering.
-    atomic_thread_fence(memory_order_seq_cst);
-    if (ring_buffer_get_size(ring_buffer) <= target_size) {
+    // 2. Pairs with wake_waiting_producer(): re-check for space freed while
+    // we were registering.
+    size_t write_position =
+        atomic_load_explicit(&ring_buffer->write_pos, memory_order_seq_cst);
+    size_t read_position =
+        atomic_load_explicit(&ring_buffer->read_pos, memory_order_seq_cst);
+    if (used_bytes_between(read_position, write_position,
+                           ring_buffer->capacity) <= target_size) {
       restore_active_state(ring_buffer, RING_BUFFER_STATE_PRODUCER_WAITING);
       return;
     }

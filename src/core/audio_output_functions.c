@@ -39,10 +39,11 @@ static void miniaudio_data_callback(ma_device *audio_device, void *output_buffer
 
   size_t bytes_read = ring_buffer_try_read(context->audio_ring_buffer,
                                            output_buffer, bytes_needed);
-  if (bytes_read < bytes_needed) {
+  size_t aligned_read_bytes = (bytes_read / frame_bytes) * frame_bytes;
+  if (aligned_read_bytes < bytes_needed) {
     // Underrun or buffer empty: pad the remainder with silence
-    memset((uint8_t *)output_buffer + bytes_read, 0,
-           bytes_needed - bytes_read);
+    memset((uint8_t *)output_buffer + aligned_read_bytes, 0,
+           bytes_needed - aligned_read_bytes);
   }
 }
 
