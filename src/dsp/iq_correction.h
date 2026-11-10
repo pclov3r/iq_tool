@@ -1,15 +1,15 @@
 /**
  * @file dsp/iq_correction.h
- * @brief Helper declarations for I/Q estimation and initial calibration.
+ * @brief Helper declarations for initial I/Q calibration.
  */
 
 #ifndef DSP_IQ_CORRECTION_H_
 #define DSP_IQ_CORRECTION_H_
 
-#include "app_context.h"
-#include "module.h"
+#include <stdbool.h>
+#include <stddef.h>
 
-void iq_correction_run_estimation(void *state, const ComplexFloat *samples);
+struct ModuleContext;
 
 bool iq_correction_run_initial_calibration(
     struct ModuleContext *context,

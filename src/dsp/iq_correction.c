@@ -331,8 +331,8 @@ static void iq_correction_apply(IqState *state, ComplexFloat *samples,
   state->last_amplitude = current_amplitude;
 }
 
-void iq_correction_run_estimation(void *state,
-                                  const ComplexFloat *optimization_data) {
+static void iq_correction_run_estimation(void *state,
+                                         const ComplexFloat *optimization_data) {
   if (!state)
     return;
 
