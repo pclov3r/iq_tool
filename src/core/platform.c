@@ -38,11 +38,15 @@
 
 // --- Timing & Execution Delay ---
 
-void platform_sleep(unsigned int ms) {
+void platform_sleep(unsigned int duration_ms) {
 #ifdef _WIN32
-  Sleep(ms);
+  Sleep((DWORD)duration_ms);
 #else
-  usleep((useconds_t)ms * 1000);
+  struct timespec timeout;
+  timeout.tv_sec = (time_t)(duration_ms / 1000U);
+  timeout.tv_nsec = (long)(duration_ms % 1000U) * 1000000L;
+  while (nanosleep(&timeout, &timeout) != 0 && errno == EINTR) {
+  }
 #endif
 }
 
@@ -84,15 +88,19 @@ uint64_t platform_get_total_memory(void) {
 #endif
 }
 
-void platform_sleep_us(unsigned int us) {
+void platform_sleep_us(unsigned int duration_us) {
 #ifdef _WIN32
-  if (us == 0) {
+  if (duration_us == 0) {
     Sleep(0);
   } else {
-    Sleep((us + 999) / 1000);
+    Sleep((DWORD)((duration_us + 999) / 1000));
   }
 #else
-  usleep((useconds_t)us);
+  struct timespec timeout;
+  timeout.tv_sec = (time_t)(duration_us / 1000000U);
+  timeout.tv_nsec = (long)(duration_us % 1000000U) * 1000L;
+  while (nanosleep(&timeout, &timeout) != 0 && errno == EINTR) {
+  }
 #endif
 }
 

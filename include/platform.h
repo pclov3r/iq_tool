@@ -52,9 +52,9 @@ static inline SNDFILE *win32_compat_sf_open(const char *utf8_path, int mode,
 
 /**
  * @brief Suspends execution of the calling thread for the specified duration.
- * @param ms Duration to sleep in milliseconds.
+ * @param duration_ms Duration to sleep in milliseconds.
  */
-void platform_sleep(unsigned int ms);
+void platform_sleep(unsigned int duration_ms);
 
 /**
  * @brief Returns high-resolution monotonic time in seconds.
@@ -76,9 +76,9 @@ uint64_t platform_get_total_memory(void);
 /**
  * @brief Suspends execution of the calling thread for the specified microsecond
  * duration.
- * @param us Duration to sleep in microseconds.
+ * @param duration_us Duration to sleep in microseconds.
  */
-void platform_sleep_us(unsigned int us);
+void platform_sleep_us(unsigned int duration_us);
 
 /**
  * @brief Adds milliseconds to a timespec structure, handling nanosecond overflow.
