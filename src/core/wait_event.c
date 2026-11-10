@@ -6,6 +6,7 @@
 #include "wait_event.h"
 #include "log.h"
 #include "mem_arena.h"
+#include "platform.h"
 #include <stdatomic.h>
 #include <stdlib.h>
 
@@ -185,12 +186,7 @@ WaitEventResult wait_event_wait_timeout(WaitEvent *wait_event,
 #elif defined(__APPLE__)
   struct timespec deadline;
   clock_gettime(CLOCK_MONOTONIC, &deadline);
-  deadline.tv_sec += (time_t)(timeout_ms / 1000U);
-  deadline.tv_nsec += (long)((timeout_ms % 1000U) * 1000000L);
-  if (deadline.tv_nsec >= 1000000000L) {
-    deadline.tv_sec += 1;
-    deadline.tv_nsec -= 1000000000L;
-  }
+  platform_timespec_add_ms(&deadline, timeout_ms);
 
   pthread_mutex_lock(&wait_event->mutex);
   while (atomic_load_explicit(&wait_event->state, memory_order_acquire) ==
@@ -198,20 +194,10 @@ WaitEventResult wait_event_wait_timeout(WaitEvent *wait_event,
     struct timespec current_time;
     clock_gettime(CLOCK_MONOTONIC, &current_time);
 
-    if (current_time.tv_sec > deadline.tv_sec ||
-        (current_time.tv_sec == deadline.tv_sec &&
-         current_time.tv_nsec >= deadline.tv_nsec)) {
-      break;
-    }
-
     struct timespec relative_timeout;
-    relative_timeout.tv_sec = deadline.tv_sec - current_time.tv_sec;
-    if (deadline.tv_nsec >= current_time.tv_nsec) {
-      relative_timeout.tv_nsec = deadline.tv_nsec - current_time.tv_nsec;
-    } else {
-      relative_timeout.tv_sec -= 1;
-      relative_timeout.tv_nsec =
-          1000000000L + deadline.tv_nsec - current_time.tv_nsec;
+    if (!platform_timespec_remaining(&deadline, &current_time,
+                                     &relative_timeout)) {
+      break;
     }
 
     int wait_status = pthread_cond_timedwait_relative_np(
@@ -234,12 +220,7 @@ WaitEventResult wait_event_wait_timeout(WaitEvent *wait_event,
 #else
   struct timespec deadline;
   clock_gettime(CLOCK_MONOTONIC, &deadline);
-  deadline.tv_sec += (time_t)(timeout_ms / 1000U);
-  deadline.tv_nsec += (long)((timeout_ms % 1000U) * 1000000L);
-  if (deadline.tv_nsec >= 1000000000L) {
-    deadline.tv_sec += 1;
-    deadline.tv_nsec -= 1000000000L;
-  }
+  platform_timespec_add_ms(&deadline, timeout_ms);
 
   pthread_mutex_lock(&wait_event->mutex);
   while (atomic_load_explicit(&wait_event->state, memory_order_acquire) ==

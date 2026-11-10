@@ -148,12 +148,7 @@ static void wake_signal_wait(WakeSignal *signal, uint32_t timeout_ms) {
 #endif
   struct timespec deadline;
   clock_gettime(wait_clock, &deadline);
-  deadline.tv_sec += (time_t)(timeout_ms / 1000U);
-  deadline.tv_nsec += (long)(timeout_ms % 1000U) * 1000000L;
-  if (deadline.tv_nsec >= 1000000000L) {
-    deadline.tv_sec += 1;
-    deadline.tv_nsec -= 1000000000L;
-  }
+  platform_timespec_add_ms(&deadline, timeout_ms);
 
   int wait_result;
   do {

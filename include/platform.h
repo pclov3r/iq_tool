@@ -81,6 +81,65 @@ uint64_t platform_get_total_memory(void);
 void platform_sleep_us(unsigned int us);
 
 /**
+ * @brief Adds milliseconds to a timespec structure, handling nanosecond overflow.
+ *
+ * @param destination_time Pointer to the timespec to modify.
+ * @param duration_ms Duration in milliseconds to add.
+ */
+static inline void platform_timespec_add_ms(struct timespec *destination_time,
+                                            uint32_t duration_ms) {
+  if (!destination_time) {
+    return;
+  }
+  destination_time->tv_sec += (time_t)(duration_ms / 1000U);
+  destination_time->tv_nsec += (long)(duration_ms % 1000U) * 1000000L;
+  if (destination_time->tv_nsec >= 1000000000L) {
+    destination_time->tv_sec += 1;
+    destination_time->tv_nsec -= 1000000000L;
+  }
+}
+
+/**
+ * @brief Computes remaining time between current time and a deadline.
+ *
+ * @param deadline Absolute deadline timespec.
+ * @param current_time Current timespec.
+ * @param remaining Destination timespec populated with the remaining duration.
+ * @return true if time remains (remaining populated), false if deadline has passed.
+ */
+static inline bool platform_timespec_remaining(const struct timespec *deadline,
+                                               const struct timespec *current_time,
+                                               struct timespec *remaining) {
+  if (!deadline || !current_time) {
+    if (remaining) {
+      remaining->tv_sec = 0;
+      remaining->tv_nsec = 0;
+    }
+    return false;
+  }
+  if (current_time->tv_sec > deadline->tv_sec ||
+      (current_time->tv_sec == deadline->tv_sec &&
+       current_time->tv_nsec >= deadline->tv_nsec)) {
+    if (remaining) {
+      remaining->tv_sec = 0;
+      remaining->tv_nsec = 0;
+    }
+    return false;
+  }
+  if (remaining) {
+    remaining->tv_sec = deadline->tv_sec - current_time->tv_sec;
+    if (deadline->tv_nsec >= current_time->tv_nsec) {
+      remaining->tv_nsec = deadline->tv_nsec - current_time->tv_nsec;
+    } else {
+      remaining->tv_sec -= 1;
+      remaining->tv_nsec =
+          1000000000L + deadline->tv_nsec - current_time->tv_nsec;
+    }
+  }
+  return true;
+}
+
+/**
  * @brief Converts broken-down time in UTC to calendar time (seconds since Unix
  * epoch).
  *
