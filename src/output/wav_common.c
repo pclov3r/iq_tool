@@ -12,7 +12,7 @@
 #include "utilities.h"
 #include <ctype.h>
 #include <errno.h>
-#include <sndfile.h>
+#include "sndfile_win32_wrappers.h"
 #include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>

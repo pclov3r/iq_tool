@@ -18,7 +18,7 @@
 #include "utilities.h"
 #include <errno.h>
 #include <pthread.h>
-#include <sndfile.h>
+#include "sndfile_win32_wrappers.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>

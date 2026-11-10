@@ -12,7 +12,7 @@
 #define OUTPUT_WAV_COMMON_H_
 
 #include "module.h"  // For ModuleContext
-#include <sndfile.h> // For SNDFILE*
+#include "sndfile_win32_wrappers.h" // For SNDFILE*
 
 // --- Forward Declaration ---
 // This tells the compiler that a struct named AppConfig exists, allowing us

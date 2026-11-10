@@ -10,7 +10,7 @@
 #include "ring_buffer.h"
 #include "signal_handler.h"
 #include "utilities.h"
-#include <sndfile.h>
+#include "sndfile_win32_wrappers.h"
 #include <string.h>
 
 #include "platform.h"

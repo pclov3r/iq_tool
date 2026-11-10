@@ -22,7 +22,7 @@
 #include <limits.h>
 #include <math.h>
 #include <pthread.h>
-#include <sndfile.h>
+#include "sndfile_win32_wrappers.h"
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
